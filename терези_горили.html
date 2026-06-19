@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Математичні Ваги: Редактор та Гра</title>
+    <style>
+        /* --- CSS Стилі --- */
+        :root {
+            --bg-color: #f0f0f0;
+            --panel-bg: rgba(255, 255, 255, 0.9);
+            --border-color: #333;
+            --scale-color-default: #5d4037;
+            --weight-color: #3f51b5;
+            --text-color: #000;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            background-size: cover;
+            background-position: center;
+        }
+
+        #game-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* --- Кнопка повернення в редактор --- */
+        #btn-return-editor {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: transparent;
+            border: none;
+            color: #333;
+            font-size: 24px;
+            opacity: 0.15;
+            cursor: pointer;
+            z-index: 2000;
+            transition: opacity 0.3s;
+            display: none; 
+        }
+        
+        #btn-return-editor:hover {
+            opacity: 1;
+        }
+
+        /* --- Панель управління (Редактор) --- */
+        #editor-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 280px;
+            background: var(--panel-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            cursor: move; 
+        }
+
+        .panel-section {
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 5px;
+            margin-bottom: 5px;
+        }
+
+        .panel-section:last-child {
+            border-bottom: none;
+        }
+
+        label { font-size: 14px; display: block; margin-bottom: 2px; }
+
+        input[type="number"], input[type="text"], input[type="color"], select, input[type="file"] {
+            width: 100%;
+            padding: 4px;
+            box-sizing: border-box;
+            margin-bottom: 5px;
+        }
+
+        button {
+            padding: 6px 12px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        button:hover { background-color: #45a049; }
+        button#btn-save { background-color: #2196F3; }
+        button#btn-save:hover { background-color: #0b7dda; }
+        button#btn-mode { background-color: #ff9800; }
+        button#btn-mode:hover { background-color: #e68a00; }
+
+        /* --- Елементи Гри --- */
+        
+        /* Банк чисел */
+        #numbers-bank {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 10px;
+            z-index: 10;
+            min-height: 80px;
+            cursor: move; 
+            box-sizing: border-box;
+        }
+
+        .weight-number {
+            background-color: var(--weight-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: grab;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            position: relative;
+            transition: transform 0.1s, outline 0.1s;
+        }
+        
+        .weight-number.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+
+        .weight-number.selected {
+            outline: 4px solid #ffeb3b;
+            box-shadow: 0 0 15px #ffeb3b;
+            transform: scale(1.1);
+            z-index: 100;
+        }
+
+        /* --- ВАГИ (Терези) --- */
+        .scale-wrapper {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: move; 
+            transform-origin: top left;
+        }
+
+        .scale-label {
+            position: absolute;
+            top: -25px;
+            font-weight: bold;
+            font-size: 16px;
+            pointer-events: none;
+        }
+
+        .scale-base {
+            width: 20px;
+            height: 100px;
+            background-color: var(--scale-color-default);
+            position: relative;
+            border-radius: 5px 5px 0 0;
+        }
+        
+        .scale-foot {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 15px;
+            background-color: var(--scale-color-default);
+            border-radius: 10px 10px 0 0;
+        }
+
+        .scale-pivot {
+            width: 12px;
+            height: 12px;
+            background-color: #333;
+            border-radius: 50%;
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+        }
+
+        .scale-beam {
+            width: 300px; 
+            height: 10px;
+            background-color: var(--scale-color-default);
+            position: absolute;
+            top: 11px; 
+            left: 50%;
+            transform: translateX(-50%) rotate(0deg); 
+            transform-origin: center center;
+            transition: transform 0.5s ease-out; 
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 10px;
+            box-sizing: border-box;
+        }
+
+        /* Підвіс у вигляді троса/ланцюга */
+        .cup-hanger {
+            width: 4px;
+            height: 60px;
+            background: repeating-linear-gradient(0deg, #555, #555 6px, #222 6px, #222 12px);
+            position: absolute;
+            top: 10px;
+            transform-origin: top center;
+            z-index: 10;
+        }
+        
+        .hanger-left { left: 15px; }
+        .hanger-right { right: 15px; }
+
+        .scale-cup {
+            width: 180px;          
+            min-height: 250px;     
+            background-color: transparent;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            position: absolute;
+            top: 0;                
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: row;   
+            flex-wrap: wrap;       
+            justify-content: center; 
+            align-content: flex-start;
+            padding-top: 60px;     
+            gap: 4px;              
+            transition: all 0.2s;
+            cursor: pointer;
+            z-index: 50;           
+        }
+
+        /* Верхня планка/магніт підвісу */
+        .scale-cup::before {
+            content: '';
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100px;          
+            height: 6px;
+            background-color: var(--scale-color-default);
+            border-radius: 3px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        /* Підсвітка зони при наведенні мишки */
+        .scale-cup:hover { 
+            background-color: rgba(255, 255, 255, 0.15); 
+        }
+
+        .scale-cup.drag-over { 
+            background-color: rgba(255, 255, 0, 0.2) !important;
+            border-color: rgba(255, 255, 0, 0.5);
+        }
+
+        /* --- ВІЗУАЛЬНА ПІДКАЗКА: Підсвітка зон, коли гіря ВИДІЛЕНА --- */
+        body.weight-selected .scale-cup, 
+        body.weight-selected .formula-slot {
+            background-color: rgba(76, 175, 80, 0.15);
+            border: 2px dashed #4CAF50;
+        }
+        
+        body.weight-selected .scale-cup:hover, 
+        body.weight-selected .formula-slot:hover {
+            background-color: rgba(76, 175, 80, 0.35);
+        }
+
+        /* --- Вікно Формули --- */
+        #formula-window {
+            position: absolute;
+            top: 150px;
+            left: 500px;
+            padding: 15px;
+            background-color: rgba(255, 255, 255, 0.8);
+            border: 3px solid #333;
+            border-radius: 8px;
+            display: flex; /* Буде керуватися через JS (flex / none) */
+            align-items: center;
+            gap: 10px;
+            cursor: move;
+            transform-origin: top left;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .formula-slot {
+            width: 50px;
+            height: 50px;
+            border: 2px dashed #555;
+            background-color: rgba(255,255,255,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            position: relative;
+            transition: all 0.2s;
+        }
+        
+        .formula-slot.drag-over { background-color: rgba(0, 255, 0, 0.3); }
+        .formula-operator { font-size: 24px; font-weight: bold; }
+
+        /* Класи для гри */
+        body.game-mode #editor-panel { display: none !important; }
+        body.game-mode #btn-return-editor { display: block; }
+        body.game-mode .scale-wrapper,
+        body.game-mode #formula-window,
+        body.game-mode #numbers-bank { cursor: default; }
+
+    </style>
+</head>
+<body class="game-mode">
+
+<div id="game-container">
+    
+    <button id="btn-return-editor" title="Повернутися до редактора">⚙</button>
+
+    <div id="editor-panel">
+        <div class="panel-section">
+            <button id="btn-mode">Режим: Редактор</button>
+            <button id="btn-save">Зберегти налаштування</button>
+        </div>
+        
+        <div class="panel-section">
+            <label>Фон (Завантажити зображення):</label>
+            <input type="file" id="bg-file" accept="image/png, image/jpeg">
+        </div>
+
+        <div class="panel-section">
+            <label>Колір гир:</label>
+            <input type="color" id="weights-color" value="#3f51b5">
+        </div>
+
+        <div class="panel-section">
+            <label style="display: flex; align-items: center; gap: 5px;">
+                <input type="checkbox" id="toggle-formula" checked style="width: auto; margin: 0;"> 
+                Показувати вікно формули
+            </label>
+        </div>
+
+        <div class="panel-section">
+            <label>Виберіть елемент:</label>
+            <select id="element-selector">
+                <option value="scale1">Ваги 1</option>
+                <option value="formula">Вікно формули</option>
+            </select>
+        </div>
+
+        <div id="props-scale" class="props-group">
+            <label>Назва:</label>
+            <input type="text" id="scale-name" value="Ваги 1">
+            <label>Колір:</label>
+            <input type="color" id="scale-color" value="#5d4037">
+            <label>Товщина балки (px):</label>
+            <input type="number" id="scale-thickness" value="10" min="2" max="30">
+            <label>Масштаб:</label>
+            <input type="number" id="scale-scale" value="1" step="0.1" min="0.5" max="3">
+        </div>
+
+        <div id="props-formula" class="props-group" style="display:none;">
+            <label>Колір фону:</label>
+            <input type="color" id="formula-bg-color" value="#ffffff">
+            <label>Прозорість фону (0-1):</label>
+            <input type="number" id="formula-opacity" value="0.8" step="0.1" min="0" max="1">
+            <label>Колір рамки:</label>
+            <input type="color" id="formula-border-color" value="#333333">
+            <label>Товщина рамки (px):</label>
+            <input type="number" id="formula-border-width" value="3" min="0" max="20">
+            <label>Масштаб:</label>
+            <input type="number" id="formula-scale" value="1" step="0.1" min="0.5" max="3">
+        </div>
+    </div>
+
+    <div class="scale-wrapper" id="scale1" style="top: 200px; left: 200px;" data-type="scale">
+        <div class="scale-label">Ваги 1</div>
+        <div class="scale-base">
+            <div class="scale-pivot"></div>
+            <div class="scale-foot"></div>
+        </div>
+        <div class="scale-beam" id="scale1-beam">
+            <div class="cup-hanger hanger-left">
+                <div class="scale-cup" id="scale1-cup-left" data-side="left"></div>
+            </div>
+            <div class="cup-hanger hanger-right">
+                <div class="scale-cup" id="scale1-cup-right" data-side="right"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="formula-window" style="top: 150px; left: 500px;" data-type="formula">
+        <div class="formula-slot" data-slot="1" id="f-slot1"></div>
+        <div class="formula-operator">+</div>
+        <div class="formula-slot" data-slot="2" id="f-slot2"></div>
+        <div class="formula-operator">=</div>
+        <div class="formula-slot" data-slot="3" id="f-slot3"></div>
+        <div class="formula-operator">+</div>
+        <div class="formula-slot" data-slot="4" id="f-slot4"></div>
+    </div>
+
+    <div id="numbers-bank"></div>
+
+</div>
+
+<script>
+    // --- ЧАСТИНА 2: Базова логіка, Режими, Кліки (Zoom), Drag & Drop, Зображення ---
+
+const config = {
+    bgUrl: "", 
+    weightsColor: "#3f51b5",
+    formulaVisible: true, 
+    scale1: { x: 200, y: 200, name: "Ваги 1", color: "#5d4037", thickness: 10, scale: 1 },
+    formula: { x: 500, y: 150, bgColor: "#ffffff", opacity: 0.8, borderColor: "#333333", borderWidth: 3, scale: 1 },
+    editorPos: { x: 10, y: 10 },
+    bankPos: { left: "50%", top: "auto", bottom: "20px", transform: "translateX(-50%)" } 
+};
+
+let isEditorMode = false;
+let draggedNode = null;
+let selectedWeightValue = null; 
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+let draggingElement = null;
+
+const elements = {
+    body: document.body,
+    editorPanel: document.getElementById('editor-panel'),
+    btnMode: document.getElementById('btn-mode'),
+    btnSave: document.getElementById('btn-save'),
+    btnReturn: document.getElementById('btn-return-editor'),
+    bank: document.getElementById('numbers-bank'),
+    bgFile: document.getElementById('bg-file'),
+    weightsColor: document.getElementById('weights-color'),
+    toggleFormula: document.getElementById('toggle-formula'), 
+    elementSelector: document.getElementById('element-selector'),
+    propsScale: document.getElementById('props-scale'),
+    propsFormula: document.getElementById('props-formula'),
+    scale1Wrapper: document.getElementById('scale1'),
+    formulaWindow: document.getElementById('formula-window'),
+    scale1Beam: document.getElementById('scale1-beam'),
+    scale1Label: document.querySelector('#scale1 .scale-label')
+};
+
+// --- Логіка приховування/показу формули ---
+elements.toggleFormula.addEventListener('change', (e) => {
+    config.formulaVisible = e.target.checked;
+    elements.formulaWindow.style.display = config.formulaVisible ? 'flex' : 'none';
+});
+
+// 1. Ініціалізація банку чисел 
+function initBank() {
+    elements.bank.innerHTML = '';
+    for (let i = 1; i <= 10; i++) {
+        const w = createWeightNode(i, true);
+        elements.bank.appendChild(w);
+    }
+}
+
+// Функція створення ДОМ-вузла гірі
+function createWeightNode(value, isBank = false) {
+    const div = document.createElement('div');
+    div.className = 'weight-number';
+    div.draggable = true;
+    div.dataset.value = value;
+    div.textContent = value;
+    
+    const size = 30 + (parseInt(value) * 3); 
+    div.style.width = `${size}px`;
+    div.style.height = `${size}px`;
+    div.style.fontSize = `${12 + parseInt(value)}px`; 
+    // ЖОРСТКЕ ЗАДАННЯ КОЛЬОРУ НАПРЯМУ:
+    div.style.backgroundColor = config.weightsColor;
+    
+    // --- Логіка КЛІКІВ (для Zoom) ---
+    div.addEventListener('click', (e) => {
+        if (isEditorMode) return;
+        e.stopPropagation(); 
+        
+        if (isBank) {
+            Array.from(elements.bank.children).forEach(child => child.classList.remove('selected'));
+            div.classList.add('selected');
+            selectedWeightValue = value;
+            document.body.classList.add('weight-selected');
+        } else {
+            div.remove();
+            if(typeof updateScalePhysics === 'function') updateScalePhysics();
+        }
+    });
+
+    // --- HTML5 Drag and Drop ---
+    div.addEventListener('dragstart', (e) => {
+        if (isEditorMode) { e.preventDefault(); return; }
+        
+        Array.from(elements.bank.children).forEach(child => child.classList.remove('selected'));
+        selectedWeightValue = null;
+        document.body.classList.add('weight-selected');
+        
+        draggedNode = div;
+        if (!isBank) setTimeout(() => div.classList.add('dragging'), 0);
+    });
+    
+    div.addEventListener('dragend', () => {
+        if (draggedNode && !isBank) draggedNode.classList.remove('dragging');
+        draggedNode = null;
+        document.body.classList.remove('weight-selected');
+        if(typeof updateScalePhysics === 'function') updateScalePhysics();
+    });
+    
+    return div;
+}
+
+// 2. Логіка Зон Скидання та Кліку 
+const dropZones = document.querySelectorAll('.scale-cup, .formula-slot');
+
+dropZones.forEach(zone => {
+    zone.addEventListener('click', (e) => {
+        if (isEditorMode || !selectedWeightValue) return;
+        e.stopPropagation(); 
+        
+        if (zone.classList.contains('formula-slot') && zone.children.length > 0) {
+            zone.children[0].remove();
+        }
+        
+        const newWeight = createWeightNode(selectedWeightValue, false);
+        zone.appendChild(newWeight);
+        
+        Array.from(elements.bank.children).forEach(child => child.classList.remove('selected'));
+        selectedWeightValue = null;
+        document.body.classList.remove('weight-selected');
+        
+        if(typeof updateScalePhysics === 'function') updateScalePhysics();
+    });
+
+    zone.addEventListener('dragover', (e) => {
+        if (isEditorMode) return;
+        e.preventDefault();
+        zone.classList.add('drag-over');
+    });
+    
+    zone.addEventListener('dragleave', () => {
+        zone.classList.remove('drag-over');
+    });
+    
+    zone.addEventListener('drop', (e) => {
+        if (isEditorMode) return;
+        e.preventDefault();
+        zone.classList.remove('drag-over');
+        
+        if (draggedNode) {
+            if (zone.classList.contains('formula-slot') && zone.children.length > 0) {
+                zone.children[0].remove();
+            }
+            
+            const isFromBank = draggedNode.parentElement.id === 'numbers-bank';
+            if (isFromBank) {
+                const clone = createWeightNode(draggedNode.dataset.value, false);
+                zone.appendChild(clone);
+            } else {
+                zone.appendChild(draggedNode);
+            }
+            
+            document.body.classList.remove('weight-selected');
+        }
+    });
+});
+
+document.getElementById('game-container').addEventListener('click', (e) => {
+    if (!isEditorMode && selectedWeightValue) {
+        Array.from(elements.bank.children).forEach(child => child.classList.remove('selected'));
+        selectedWeightValue = null;
+        document.body.classList.remove('weight-selected');
+    }
+});
+
+document.getElementById('game-container').addEventListener('dragover', (e) => {
+    if (!isEditorMode) e.preventDefault();
+});
+document.getElementById('game-container').addEventListener('drop', (e) => {
+    if (!isEditorMode && draggedNode && e.target.id === 'game-container') {
+        const isFromBank = draggedNode.parentElement.id === 'numbers-bank';
+        if (!isFromBank) {
+             draggedNode.remove();
+             if(typeof updateScalePhysics === 'function') updateScalePhysics();
+        }
+    }
+});
+
+// 3. Універсальне перетягування об'єктів в РЕДАКТОРІ 
+function makeDraggableForEditor(element) {
+    element.addEventListener('mousedown', (e) => {
+        const isInput = ['INPUT', 'SELECT', 'BUTTON', 'LABEL'].includes(e.target.tagName);
+        if (isInput) return;
+        if (!isEditorMode && element.id !== 'editor-panel') return;
+        if (e.target.closest('.weight-number') && element.id !== 'numbers-bank') return;
+        
+        draggingElement = element;
+        const rect = element.getBoundingClientRect();
+        
+        if (element.id === 'numbers-bank') {
+            const style = window.getComputedStyle(element);
+            if (style.transform !== 'none') {
+                 element.style.transform = 'none';
+                 element.style.left = `${rect.left}px`;
+                 element.style.bottom = 'auto';
+                 element.style.top = `${rect.top}px`;
+            }
+        }
+
+        dragOffsetX = e.clientX - element.getBoundingClientRect().left;
+        dragOffsetY = e.clientY - element.getBoundingClientRect().top;
+        element.style.zIndex = 2000;
+        e.preventDefault();
+    });
+}
+
+makeDraggableForEditor(elements.scale1Wrapper);
+makeDraggableForEditor(elements.formulaWindow);
+makeDraggableForEditor(elements.editorPanel);
+makeDraggableForEditor(elements.bank); 
+
+document.addEventListener('mousemove', (e) => {
+    if (draggingElement) {
+        if (!isEditorMode && draggingElement.id !== 'editor-panel') return;
+        
+        const x = e.clientX - dragOffsetX;
+        const y = e.clientY - dragOffsetY;
+        draggingElement.style.left = `${x}px`;
+        draggingElement.style.top = `${y}px`;
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    if (draggingElement) {
+        if (draggingElement.id === 'editor-panel') {
+            config.editorPos.x = parseInt(draggingElement.style.left);
+            config.editorPos.y = parseInt(draggingElement.style.top);
+        } else if (draggingElement.id === 'numbers-bank') {
+            config.bankPos.left = draggingElement.style.left;
+            config.bankPos.top = draggingElement.style.top;
+            config.bankPos.bottom = 'auto';
+            config.bankPos.transform = 'none';
+        }
+        draggingElement.style.zIndex = draggingElement.id === 'editor-panel' ? 1000 : (draggingElement.id === 'numbers-bank' ? 10 : '');
+        draggingElement = null;
+    }
+});
+
+// 4. Оптимізація фону (WebP)
+elements.bgFile.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
+            config.bgUrl = webpDataUrl;
+            elements.body.style.backgroundImage = `url(${config.bgUrl})`;
+        }
+        img.src = event.target.result;
+    }
+    reader.readAsDataURL(file);
+});
+
+// 5. Перемикання режимів
+function toggleMode(forceEditor = null) {
+    isEditorMode = forceEditor !== null ? forceEditor : !isEditorMode;
+    elements.body.className = isEditorMode ? '' : 'game-mode';
+    
+    if (isEditorMode) {
+        elements.btnMode.textContent = 'Режим: Редактор';
+        elements.btnMode.style.backgroundColor = "#ff9800";
+    } else {
+        Array.from(elements.bank.children).forEach(child => child.classList.remove('selected'));
+        selectedWeightValue = null;
+        document.body.classList.remove('weight-selected');
+        
+        document.querySelectorAll('.scale-cup .weight-number, .formula-slot .weight-number').forEach(w => w.remove());
+        if(typeof updateScalePhysics === 'function') updateScalePhysics();
+    }
+}
+
+elements.btnMode.addEventListener('click', () => toggleMode(false));
+elements.btnReturn.addEventListener('click', () => toggleMode(true));
+
+// 6. Збереження
+function saveSettings() {
+    config.scale1.x = parseInt(elements.scale1Wrapper.style.left) || 200;
+    config.scale1.y = parseInt(elements.scale1Wrapper.style.top) || 200;
+    config.formula.x = parseInt(elements.formulaWindow.style.left) || 500;
+    config.formula.y = parseInt(elements.formulaWindow.style.top) || 150;
+    
+    try {
+        localStorage.setItem('mathScaleConfig', JSON.stringify(config));
+        alert('Налаштування збережено!');
+    } catch (e) {
+        alert('Помилка збереження! Можливо, фонове зображення занадто велике.');
+    }
+}
+
+elements.btnSave.addEventListener('click', saveSettings);
+
+// --- ЧАСТИНА 3: Редактор властивостей, Фізика ваг, Ініціалізація ---
+
+// 7. Логіка панелі властивостей (Редактор)
+elements.elementSelector.addEventListener('change', (e) => {
+    const val = e.target.value;
+    elements.propsScale.style.display = val === 'scale1' ? 'block' : 'none';
+    elements.propsFormula.style.display = val === 'formula' ? 'block' : 'none';
+});
+
+// Зміна кольору гир (ЖОРСТКЕ ОНОВЛЕННЯ ВСІХ ЕЛЕМЕНТІВ)
+elements.weightsColor.addEventListener('input', (e) => {
+    config.weightsColor = e.target.value;
+    document.documentElement.style.setProperty('--weight-color', e.target.value);
+    
+    // Перебираємо всі існуючі гірі і міняємо колір наживо
+    document.querySelectorAll('.weight-number').forEach(w => {
+        w.style.backgroundColor = e.target.value;
+    });
+});
+
+// --- Редагування Ваг ---
+document.getElementById('scale-name').addEventListener('input', (e) => {
+    config.scale1.name = e.target.value;
+    elements.scale1Label.textContent = e.target.value;
+});
+
+document.getElementById('scale-color').addEventListener('input', (e) => {
+    config.scale1.color = e.target.value;
+    elements.scale1Wrapper.style.setProperty('--scale-color-default', e.target.value);
+});
+
+document.getElementById('scale-thickness').addEventListener('input', (e) => {
+    config.scale1.thickness = parseInt(e.target.value);
+    elements.scale1Beam.style.height = `${config.scale1.thickness}px`;
+    elements.scale1Beam.style.top = `${16 - config.scale1.thickness / 2}px`; 
+});
+
+document.getElementById('scale-scale').addEventListener('input', (e) => {
+    config.scale1.scale = parseFloat(e.target.value);
+    elements.scale1Wrapper.style.transform = `scale(${config.scale1.scale})`;
+});
+
+// --- Редагування Формули ---
+function updateFormulaStyles() {
+    const r = parseInt(config.formula.bgColor.slice(1, 3), 16);
+    const g = parseInt(config.formula.bgColor.slice(3, 5), 16);
+    const b = parseInt(config.formula.bgColor.slice(5, 7), 16);
+    elements.formulaWindow.style.backgroundColor = `rgba(${r}, ${g}, ${b}, ${config.formula.opacity})`;
+    elements.formulaWindow.style.borderColor = config.formula.borderColor;
+    elements.formulaWindow.style.borderWidth = `${config.formula.borderWidth}px`;
+    elements.formulaWindow.style.transform = `scale(${config.formula.scale})`;
+}
+
+document.getElementById('formula-bg-color').addEventListener('input', (e) => {
+    config.formula.bgColor = e.target.value; updateFormulaStyles();
+});
+document.getElementById('formula-opacity').addEventListener('input', (e) => {
+    config.formula.opacity = parseFloat(e.target.value); updateFormulaStyles();
+});
+document.getElementById('formula-border-color').addEventListener('input', (e) => {
+    config.formula.borderColor = e.target.value; updateFormulaStyles();
+});
+document.getElementById('formula-border-width').addEventListener('input', (e) => {
+    config.formula.borderWidth = parseInt(e.target.value); updateFormulaStyles();
+});
+document.getElementById('formula-scale').addEventListener('input', (e) => {
+    config.formula.scale = parseFloat(e.target.value); updateFormulaStyles();
+});
+
+
+// 8. ФІЗИКА ВАГ (Адекватний нахил)
+function updateScalePhysics() {
+    const leftCup = document.getElementById('scale1-cup-left');
+    let leftSum = 0;
+    Array.from(leftCup.children).forEach(child => {
+        if(child.classList.contains('weight-number')) {
+            leftSum += parseInt(child.dataset.value);
+        }
+    });
+
+    const rightCup = document.getElementById('scale1-cup-right');
+    let rightSum = 0;
+    Array.from(rightCup.children).forEach(child => {
+        if(child.classList.contains('weight-number')) {
+            rightSum += parseInt(child.dataset.value);
+        }
+    });
+
+    const difference = rightSum - leftSum;
+    const maxAngle = 30;
+    const sensitivity = 3; 
+    
+    let targetAngle = difference * sensitivity;
+    if (targetAngle > maxAngle) targetAngle = maxAngle;
+    if (targetAngle < -maxAngle) targetAngle = -maxAngle;
+
+    elements.scale1Beam.style.transform = `translateX(-50%) rotate(${targetAngle}deg)`;
+    
+    const hangers = elements.scale1Beam.querySelectorAll('.cup-hanger');
+    hangers.forEach(hanger => {
+        hanger.style.transform = `rotate(${-targetAngle}deg)`;
+    });
+}
+
+
+// 9. Завантаження налаштувань (Старт додатку)
+function loadSettings() {
+    const saved = localStorage.getItem('mathScaleConfig');
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            Object.assign(config, parsed);
+        } catch(e) { console.error("Помилка читання конфігу", e); }
+    }
+
+    // Застосовуємо фонове зображення
+    if (config.bgUrl) {
+        elements.body.style.backgroundImage = `url(${config.bgUrl})`;
+    }
+
+    // Видимість панелі з формулою
+    elements.toggleFormula.checked = config.formulaVisible !== false; 
+    elements.formulaWindow.style.display = elements.toggleFormula.checked ? 'flex' : 'none';
+
+    // Колір гир (Збереження жорстким стилем)
+    document.getElementById('weights-color').value = config.weightsColor;
+    document.documentElement.style.setProperty('--weight-color', config.weightsColor);
+    document.querySelectorAll('.weight-number').forEach(w => {
+        w.style.backgroundColor = config.weightsColor;
+    });
+
+    // Позиція панелі редактора
+    if (config.editorPos) {
+        elements.editorPanel.style.left = `${config.editorPos.x}px`;
+        elements.editorPanel.style.top = `${config.editorPos.y}px`;
+    }
+
+    // Позиція банку гир
+    if (config.bankPos) {
+        elements.bank.style.left = config.bankPos.left;
+        elements.bank.style.top = config.bankPos.top;
+        elements.bank.style.bottom = config.bankPos.bottom;
+        elements.bank.style.transform = config.bankPos.transform;
+    }
+
+    // Ваги 1
+    elements.scale1Wrapper.style.left = `${config.scale1.x}px`;
+    elements.scale1Wrapper.style.top = `${config.scale1.y}px`;
+    document.getElementById('scale-name').value = config.scale1.name;
+    elements.scale1Label.textContent = config.scale1.name;
+    document.getElementById('scale-color').value = config.scale1.color;
+    elements.scale1Wrapper.style.setProperty('--scale-color-default', config.scale1.color);
+    document.getElementById('scale-thickness').value = config.scale1.thickness;
+    elements.scale1Beam.style.height = `${config.scale1.thickness}px`;
+    elements.scale1Beam.style.top = `${16 - config.scale1.thickness / 2}px`;
+    document.getElementById('scale-scale').value = config.scale1.scale;
+    elements.scale1Wrapper.style.transform = `scale(${config.scale1.scale})`;
+
+    // Формула
+    elements.formulaWindow.style.left = `${config.formula.x}px`;
+    elements.formulaWindow.style.top = `${config.formula.y}px`;
+    document.getElementById('formula-bg-color').value = config.formula.bgColor;
+    document.getElementById('formula-opacity').value = config.formula.opacity;
+    document.getElementById('formula-border-color').value = config.formula.borderColor;
+    document.getElementById('formula-border-width').value = config.formula.borderWidth;
+    document.getElementById('formula-scale').value = config.formula.scale;
+    updateFormulaStyles();
+}
+
+// Запуск при завантаженні сторінки
+window.onload = () => {
+    initBank();
+    loadSettings();
+    updateScalePhysics();
+    
+    // Старт завжди у режимі гри
+    isEditorMode = false;
+    elements.body.className = 'game-mode';
+};
+</script>
+
+</body>
+</html>
