@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гра: Знайди добуток</title>
+    <style>
+        /* Базові налаштування */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        /* Напівпрозорий контейнер гри по центру */
+        #game-container {
+            background-color: rgba(255, 255, 255, 0.93);
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            width: 1200px;
+            height: 670px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* --- Екран вибору множників (Стартовий) --- */
+        #setup-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        #setup-screen h2 {
+            font-size: 32px;
+            color: #2c3e50;
+            margin-bottom: 25px;
+        }
+
+        .multiplier-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+            width: 450px;
+        }
+
+        .mult-btn {
+            background-color: #fff;
+            border: 3px solid #3498db;
+            color: #3498db;
+            padding: 15px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        .mult-btn.selected {
+            background-color: #3498db;
+            color: white;
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .setup-controls {
+            display: flex;
+            gap: 15px;
+        }
+
+        .action-btn {
+            padding: 15px 35px;
+            font-size: 22px;
+            font-weight: bold;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-start {
+            background-color: #2ecc71;
+            color: white;
+        }
+
+        .btn-start:hover {
+            background-color: #27ae60;
+            transform: scale(1.05);
+        }
+
+        .btn-utility {
+            background-color: #95a5a6;
+            color: white;
+        }
+
+        /* --- Ігровий Екран --- */
+        #play-screen {
+            display: none;
+            width: 100%;
+            height: 100%;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 30px;
+            align-items: center;
+        }
+
+        /* Ліва частина: Сітка */
+        .grid-container-layout {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(11, 48px);
+            grid-auto-rows: 48px;
+            gap: 3px;
+        }
+
+        .cell {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 28px; /* Збільшено шрифт у сітці */
+            font-weight: bold;
+            border-radius: 6px;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        .header-cell {
+            background-color: #34495e;
+            color: white;
+            box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);
+            font-size: 22px; /* Трохи менший для заголовків, щоб вміщався */
+        }
+
+        .empty-corner {
+            background-color: transparent;
+            color: #7f8c8d;
+        }
+
+        .inner-cell {
+            background-color: #ecf0f1;
+            color: transparent;
+            cursor: pointer;
+            border: 2px solid #bdc3c7;
+            transition: all 0.2s ease;
+        }
+
+        .inner-cell:hover {
+            background-color: #dcdde1;
+            transform: scale(1.08);
+            z-index: 2;
+        }
+
+        .inner-cell.inactive-cell {
+            opacity: 0.25;
+            pointer-events: none;
+            background-color: #bdc3c7;
+        }
+
+        /* Статуси клітинок */
+        .correct {
+            background-color: #2ecc71 !important;
+            border-color: #27ae60 !important;
+            transform: scale(1) !important;
+            cursor: default;
+        }
+
+        .correct .grid-coin {
+            font-size: 32px;
+            display: inline-block;
+            animation: pop-coin 0.3s ease;
+        }
+
+        .correct-flash {
+            animation: flashGreen 0.5s ease-out;
+        }
+
+        @keyframes flashGreen {
+            0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.8); }
+            70% { box-shadow: 0 0 0 20px rgba(46, 204, 113, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        }
+
+        @keyframes pop-coin {
+            0% { transform: scale(0.5); }
+            100% { transform: scale(1); }
+        }
+
+        .wrong {
+            background-color: #e74c3c !important;
+            border-color: #c0392b !important;
+            animation: shake 0.3s;
+        }
+
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            50% { transform: translateX(4px); }
+            75% { transform: translateX(-4px); }
+            100% { transform: translateX(0); }
+        }
+
+        /* Права частина: Панель стану */
+        .sidebar-panel {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            height: 90%;
+            padding: 10px 0;
+            box-sizing: border-box;
+            position: relative; /* Для позиціонування спливаючих текстів */
+        }
+
+        #task-display {
+            font-size: 44px;
+            font-weight: bold;
+            color: #2c3e50;
+            background: #e8f0fe;
+            padding: 15px 25px;
+            border-radius: 15px;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        #target-number {
+            color: #e74c3c;
+            font-size: 60px;
+            display: block;
+            margin-top: 10px;
+            font-weight: 900;
+        }
+
+        /* Стилізований гаманець/сумка */
+        #wallet-container {
+            position: relative;
+            width: 220px;
+            height: 220px;
+            margin-top: 10px;
+            transition: transform 0.2s ease-in-out;
+        }
+
+        #purse-svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 8px 15px rgba(0,0,0,0.15));
+        }
+
+        #score-display {
+            position: absolute;
+            top: 72%; /* Опущено нижче */
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 42px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.4);
+            pointer-events: none;
+        }
+
+        .pulse-active {
+            animation: bounce-bag 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes bounce-bag {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); filter: brightness(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        /* Повільно падаюча монетка згори */
+        .falling-coin {
+            position: fixed;
+            font-size: 48px;
+            z-index: 10000;
+            pointer-events: none;
+            /* Повільна анімація падіння */
+            transition: top 1.8s cubic-bezier(0.3, 0.1, 0.4, 1), transform 1.8s ease-in;
+        }
+
+        /* Спливаючі бали +1 / -1 */
+        .floating-score {
+            position: absolute;
+            font-size: 32px;
+            font-weight: bold;
+            z-index: 10001;
+            pointer-events: none;
+            animation: floatUpAndFade 1.2s forwards;
+        }
+
+        .score-plus { color: #2ecc71; text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; }
+        .score-minus { color: #e74c3c; text-shadow: 2px 2px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff; }
+
+        @keyframes floatUpAndFade {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-60px) scale(1.3); }
+        }
+
+        .btn-back-settings {
+            background-color: #7f8c8d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 15px;
+        }
+
+        .btn-back-settings:hover {
+            background-color: #95a5a6;
+        }
+
+        /* --- Переможний Екран --- */
+        #victory-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(46, 204, 113, 0.95);
+            border-radius: 20px;
+            z-index: 100;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+
+        #victory-overlay h2 {
+            font-size: 64px;
+            margin: 0 0 20px 0;
+            text-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        #victory-overlay p {
+            font-size: 28px;
+            margin: 0 0 30px 0;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Theme Manager UI */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: white;
+            border: none;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+
+        #theme-btn:hover {
+            transform: scale(1.1) rotate(45deg);
+        }
+
+        #theme-modal {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            z-index: 9998;
+            max-height: 60vh;
+            width: 320px;
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            overflow-y: auto;
+            display: none;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        #theme-modal h3 {
+            margin-top: 0;
+            text-align: center;
+            color: #333;
+        }
+
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .thumb-container {
+            position: relative;
+            cursor: pointer;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+            aspect-ratio: 16/9;
+            background-color: #eee;
+        }
+
+        .thumb-container:hover {
+            border-color: #3498db;
+        }
+
+        .thumb-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .thumb-text {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            text-align: center;
+            padding: 4px 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- Стартовий екран вибору множників -->
+        <div id="setup-screen">
+            <h2>Обери множники для тренування:</h2>
+            <div class="multiplier-grid" id="multiplier-options"></div>
+            <div class="setup-controls">
+                <button class="action-btn btn-utility" id="btn-select-all">Усі</button>
+                <button class="action-btn btn-utility" id="btn-clear-all">Очистити</button>
+                <button class="action-btn btn-start" id="btn-start-game">Грати!</button>
+            </div>
+        </div>
+
+        <!-- Ігровий екран -->
+        <div id="play-screen">
+            <div class="grid-container-layout">
+                <div id="grid"></div>
+            </div>
+            
+            <div class="sidebar-panel">
+                <div id="task-display">
+                    Знайди добуток:
+                    <span id="target-number">...</span>
+                </div>
+
+                <!-- Сумка / Гаманець -->
+                <div id="wallet-container">
+                    <svg viewBox="0 0 100 100" id="purse-svg">
+                        <!-- Контур сумки -->
+                        <path d="M 30,25 C 25,12 75,12 70,25 C 88,40 88,85 70,92 C 50,96 50,96 30,92 C 12,85 12,40 30,25 Z" fill="#d35400" stroke="#a04000" stroke-width="3"/>
+                        <!-- Золотий ремінець-зав'язка -->
+                        <path d="M 27,29 Q 50,38 73,29" fill="none" stroke="#f1c40f" stroke-width="4"/>
+                        <!-- Кінці зав'язок із китицями -->
+                        <path d="M 50,34 L 43,48 M 50,34 L 57,48" fill="none" stroke="#f1c40f" stroke-width="3"/>
+                        <circle cx="43" cy="48" r="3" fill="#f39c12"/>
+                        <circle cx="57" cy="48" r="3" fill="#f39c12"/>
+                    </svg>
+                    <div id="score-display">0</div>
+                </div>
+
+                <button class="btn-back-settings" id="btn-back">⚙️ Змінити числа</button>
+            </div>
+        </div>
+
+        <!-- Переможний оверлей -->
+        <div id="victory-overlay">
+            <h2>Перемога! 🎉</h2>
+            <p>Ти назбирав повну сумку монет!</p>
+            <button class="action-btn btn-start" id="btn-restart" style="background-color: white; color: #2ecc71;">Грати знову</button>
+        </div>
+    </div>
+
+    <!-- Theme Manager -->
+    <button id="theme-btn" title="Налаштування фону">⚙️</button>
+    <div id="theme-modal">
+        <h3>Обери фон</h3>
+        <div id="theme-gallery"></div>
+    </div>
+
+    <script>
+        // ==========================================
+        // Звуковий менеджер (AudioContext)
+        // ==========================================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            if (type === 'correct') {
+                // М'який "дзінь"
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now); // Нота A5
+                osc.frequency.exponentialRampToValueAtTime(1760, now + 0.1); // Стрибок вгору
+                
+                gainNode.gain.setValueAtTime(0.05, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'wrong') {
+                // Легкий глухий звук помилки
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.2); // Спуск вниз
+                
+                gainNode.gain.setValueAtTime(0.06, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+                
+                osc.start(now);
+                osc.stop(now + 0.2);
+            }
+        }
+
+        // ==========================================
+        // Theme Manager Logic (Динамічні фони)
+        // ==========================================
+        const BASE_BG_URL = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        const defaultBg = BASE_BG_URL + 'background_1.webp';
+        
+        const savedBg = localStorage.getItem('mySavedGameBg') || defaultBg;
+        document.body.style.backgroundImage = `url('${savedBg}')`;
+
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+
+        themeBtn.addEventListener('click', () => {
+            themeModal.style.display = themeModal.style.display === 'none' || themeModal.style.display === '' ? 'block' : 'none';
+        });
+
+        for (let i = 1; i <= 1000; i++) {
+            let imgUrl = `${BASE_BG_URL}background_${i}.webp`;
+            let img = new Image();
+            
+            img.onload = function() {
+                let thumbContainer = document.createElement('div');
+                thumbContainer.className = 'thumb-container';
+                thumbContainer.style.order = i;
+
+                let thumbImg = document.createElement('img');
+                thumbImg.src = imgUrl;
+
+                let thumbText = document.createElement('div');
+                thumbText.className = 'thumb-text';
+                thumbText.innerText = `Фон ${i}`;
+
+                thumbContainer.appendChild(thumbImg);
+                thumbContainer.appendChild(thumbText);
+
+                thumbContainer.addEventListener('click', () => {
+                    document.body.style.backgroundImage = `url('${imgUrl}')`;
+                    localStorage.setItem('mySavedGameBg', imgUrl);
+                });
+
+                themeGallery.appendChild(thumbContainer);
+            };
+            img.src = imgUrl;
+        }
+
+        // ==========================================
+        // Game Logic (Логіка гри)
+        // ==========================================
+        const gridContainer = document.getElementById('grid');
+        const targetNumberDisplay = document.getElementById('target-number');
+        const scoreDisplay = document.getElementById('score-display');
+        const walletContainer = document.getElementById('wallet-container');
+        const setupScreen = document.getElementById('setup-screen');
+        const playScreen = document.getElementById('play-screen');
+        const victoryOverlay = document.getElementById('victory-overlay');
+        const multiplierOptions = document.getElementById('multiplier-options');
+        const sidebarPanel = document.querySelector('.sidebar-panel');
+        
+        let unopenedCells = [];
+        let currentTargetValue = null;
+        let score = 0;
+        let selectedMultipliers = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+        function buildSetupScreen() {
+            multiplierOptions.innerHTML = '';
+            for (let i = 2; i <= 10; i++) {
+                const btn = document.createElement('button');
+                btn.className = 'mult-btn';
+                if (selectedMultipliers.has(i)) btn.classList.add('selected');
+                btn.innerText = `×${i}`;
+                btn.addEventListener('click', () => {
+                    if (selectedMultipliers.has(i)) {
+                        if (selectedMultipliers.size > 1) {
+                            selectedMultipliers.delete(i);
+                            btn.classList.remove('selected');
+                        }
+                    } else {
+                        selectedMultipliers.add(i);
+                        btn.classList.add('selected');
+                    }
+                });
+                multiplierOptions.appendChild(btn);
+            }
+        }
+
+        document.getElementById('btn-select-all').addEventListener('click', () => {
+            for (let i = 2; i <= 10; i++) selectedMultipliers.add(i);
+            document.querySelectorAll('.mult-btn').forEach(btn => btn.classList.add('selected'));
+        });
+
+        document.getElementById('btn-clear-all').addEventListener('click', () => {
+            selectedMultipliers.clear();
+            selectedMultipliers.add(2);
+            document.querySelectorAll('.mult-btn').forEach(btn => {
+                btn.classList.remove('selected');
+                if (btn.innerText === '×2') btn.classList.add('selected');
+            });
+        });
+
+        document.getElementById('btn-start-game').addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            setupScreen.style.display = 'none';
+            playScreen.style.display = 'grid';
+            score = 0;
+            scoreDisplay.innerText = score;
+            initGame();
+        });
+
+        document.getElementById('btn-back').addEventListener('click', () => {
+            playScreen.style.display = 'none';
+            setupScreen.style.display = 'flex';
+        });
+
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            victoryOverlay.style.display = 'none';
+            playScreen.style.display = 'none';
+            setupScreen.style.display = 'flex';
+        });
+
+        function initGame() {
+            gridContainer.innerHTML = '';
+            unopenedCells = [];
+
+            for (let row = 0; row <= 10; row++) {
+                for (let col = 0; col <= 10; col++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+
+                    if (row === 0 && col === 0) {
+                        cell.classList.add('empty-corner');
+                        cell.innerText = '✖';
+                        gridContainer.appendChild(cell);
+                        continue;
+                    }
+
+                    if (row === 0) {
+                        cell.classList.add('header-cell');
+                        cell.innerText = col;
+                        gridContainer.appendChild(cell);
+                        continue;
+                    }
+
+                    if (col === 0) {
+                        cell.classList.add('header-cell');
+                        cell.innerText = row;
+                        gridContainer.appendChild(cell);
+                        continue;
+                    }
+
+                    const product = row * col;
+                    cell.classList.add('inner-cell');
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    cell.dataset.value = product;
+
+                    const isRowSelected = selectedMultipliers.has(row);
+                    const isColSelected = selectedMultipliers.has(col);
+
+                    if (isRowSelected || isColSelected) {
+                        const cellData = { element: cell, row: row, col: col, value: product };
+                        unopenedCells.push(cellData);
+                        cell.addEventListener('click', () => handleCellClick(cellData));
+                    } else {
+                        cell.classList.add('inactive-cell');
+                    }
+
+                    gridContainer.appendChild(cell);
+                }
+            }
+            setNewTarget();
+        }
+
+        function setNewTarget() {
+            if (unopenedCells.length === 0) {
+                triggerVictory();
+                return;
+            }
+            const randomIndex = Math.floor(Math.random() * unopenedCells.length);
+            currentTargetValue = unopenedCells[randomIndex].value;
+            targetNumberDisplay.innerText = currentTargetValue;
+        }
+
+        function showFloatingScore(text, isPositive) {
+            const el = document.createElement('div');
+            el.className = `floating-score ${isPositive ? 'score-plus' : 'score-minus'}`;
+            el.innerText = text;
+            
+            // Позиціонуємо відносно сумки
+            el.style.top = '40%';
+            el.style.left = '40%';
+            
+            walletContainer.appendChild(el);
+            setTimeout(() => el.remove(), 1200);
+        }
+
+        function handleCellClick(cellData) {
+            const el = cellData.element;
+
+            if (el.classList.contains('correct')) return;
+
+            if (cellData.value === currentTargetValue) {
+                // --- Правильна відповідь ---
+                el.classList.add('correct');
+                el.classList.add('correct-flash');
+                el.innerHTML = '<span class="grid-coin">🪙</span>';
+                
+                playSound('correct'); // Звуковий фідбек
+                
+                unopenedCells = unopenedCells.filter(c => !(c.row === cellData.row && c.col === cellData.col));
+                
+                animateFallingCoin();
+                setNewTarget();
+            } else {
+                // --- Неправильна відповідь ---
+                el.classList.add('wrong');
+                setTimeout(() => {
+                    el.classList.remove('wrong');
+                }, 300);
+
+                playSound('wrong'); // Звуковий фідбек
+                
+                if (score > 0) {
+                    showFloatingScore('-1', false);
+                }
+                
+                score = Math.max(0, score - 1);
+                scoreDisplay.innerText = score;
+            }
+        }
+
+        // Анімація повільного падіння окремої монетки згори
+        function animateFallingCoin() {
+            const purseRect = walletContainer.getBoundingClientRect();
+            const coin = document.createElement('div');
+            coin.className = 'falling-coin';
+            coin.innerText = '🪙';
+            
+            // Стартує за межами екрану згори, чітко над сумкою
+            coin.style.left = `${purseRect.left + purseRect.width / 2 - 24}px`;
+            coin.style.top = `-80px`; 
+            
+            document.body.appendChild(coin);
+
+            // Сила форсованого зчитування стилю
+            coin.offsetWidth;
+
+            // Повільне падіння в центр сумки з невеликим обертанням
+            coin.style.top = `${purseRect.top + purseRect.height / 2 - 10}px`;
+            coin.style.transform = 'scale(0.6) rotate(360deg)';
+            coin.style.opacity = '0.3';
+
+            // Час синхронізовано з CSS transition (1.8s)
+            setTimeout(() => {
+                coin.remove();
+                
+                score++;
+                scoreDisplay.innerText = score;
+                showFloatingScore('+1', true);
+
+                walletContainer.classList.add('pulse-active');
+                setTimeout(() => {
+                    walletContainer.classList.remove('pulse-active');
+                }, 400);
+
+                if (score >= 15) {
+                    triggerVictory();
+                }
+            }, 1800); 
+        }
+
+        function triggerVictory() {
+            victoryOverlay.style.display = 'flex';
+            playVictoryMelody();
+        }
+
+        function playVictoryMelody() {
+            try {
+                const now = audioCtx.currentTime;
+                const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+                
+                notes.forEach((freq, index) => {
+                    const osc = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+                    
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + index * 0.12);
+                    
+                    gainNode.gain.setValueAtTime(0, now + index * 0.12);
+                    gainNode.gain.linearRampToValueAtTime(0.04, now + index * 0.12 + 0.05);
+                    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.12 + 0.6);
+                    
+                    osc.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    
+                    osc.start(now + index * 0.12);
+                    osc.stop(now + index * 0.12 + 0.6);
+                });
+            } catch (e) {
+                console.log("Аудіоконтекст заблоковано.");
+            }
+        }
+
+        buildSetupScreen();
+    </script>
+</body>
+</html>
