@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Утворення пар: Шкарпетки</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            overflow: hidden;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Головний контейнер гри */
+        #game-container {
+            width: 90vw;
+            height: 85vh;
+            max-width: 1200px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* Панель керування (мінімалістична, справа в кутку) */
+        #controls {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        input[type="number"] {
+            width: 45px;
+            height: 24px;
+            font-size: 14px;
+            text-align: center;
+            font-family: Arial, sans-serif;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            outline: none;
+        }
+
+        input[type="number"]:focus {
+            border-color: #4CAF50;
+        }
+
+        button.action-btn {
+            font-size: 14px;
+            padding: 6px 15px;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+            border-radius: 4px;
+            border: 1px solid #aaa;
+            background-color: #f9f9f9;
+            color: #333;
+            transition: background-color 0.2s, transform 0.1s;
+            margin-top: 5px;
+        }
+
+        button.action-btn:hover {
+            background-color: #e0e0e0;
+        }
+
+        button.action-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* Ігрове поле */
+        #play-area {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            border: 3px dashed #bbb;
+            border-radius: 15px;
+            overflow: hidden;
+            background-color: rgba(255, 255, 255, 0.5);
+            box-sizing: border-box;
+        }
+
+        .sock {
+            position: absolute;
+            width: 60px;
+            height: 80px;
+            cursor: pointer;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.3));
+            touch-action: none; /* Заборона стандартного скролу при тачі */
+        }
+
+        .sock.paired {
+            cursor: pointer;
+            filter: drop-shadow(0 0 10px rgba(76, 175, 80, 0.8));
+        }
+
+        /* Theme Manager */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 65px;
+            height: 65px;
+            border-radius: 50%;
+            background: white;
+            border: 3px solid #ccc;
+            font-size: 35px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+
+        #theme-btn:hover {
+            transform: scale(1.1);
+            border-color: #007bff;
+        }
+
+        #theme-modal {
+            position: fixed;
+            bottom: 95px;
+            right: 20px;
+            z-index: 9998;
+            width: 320px;
+            max-height: 60vh;
+            overflow-y: auto;
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            display: none;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            box-sizing: border-box;
+        }
+
+        .theme-thumb {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background-size: cover;
+            background-position: center;
+            border-radius: 10px;
+            cursor: pointer;
+            position: relative;
+            border: 3px solid transparent;
+            transition: border-color 0.2s, transform 0.2s;
+        }
+
+        .theme-thumb:hover {
+            border-color: #007bff;
+            transform: scale(1.05);
+        }
+
+        .theme-thumb span {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <div id="controls">
+            <div class="input-group">
+                <label for="left-count">Лівих:</label>
+                <input type="number" id="left-count" min="0" max="30" value="3">
+            </div>
+            <div class="input-group">
+                <label for="right-count">Правих:</label>
+                <input type="number" id="right-count" min="0" max="30" value="3">
+            </div>
+            <button class="action-btn" onclick="startGame()">Розкласти</button>
+        </div>
+
+        <div id="play-area"></div>
+    </div>
+
+    <!-- Theme Manager UI -->
+    <button id="theme-btn">⚙️</button>
+    <div id="theme-modal"></div>
+
+    <script>
+        /* =========================================
+           Логіка Theme Manager (Система динамічних фонів)
+           ========================================= */
+        const bgBaseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        const maxBgs = 1000;
+        const themeModal = document.getElementById('theme-modal');
+        const themeBtn = document.getElementById('theme-btn');
+
+        // Встановлення збереженого або дефолтного фону при завантаженні
+        const savedBg = localStorage.getItem('mySavedGameBg') || `${bgBaseUrl}background_1.webp`;
+        document.body.style.backgroundImage = `url('${savedBg}')`;
+
+        // Відкриття/закриття меню
+        themeBtn.onclick = () => {
+            themeModal.style.display = themeModal.style.display === 'grid' ? 'none' : 'grid';
+        };
+
+        // Асинхронна перевірка та завантаження фонів
+        async function checkAndLoadBackgrounds() {
+            let i = 1;
+            while (i <= maxBgs) {
+                const url = `${bgBaseUrl}background_${i}.webp`;
+                const exists = await checkImageExists(url);
+                if (exists) {
+                    createThumbnail(url, i);
+                    i++;
+                } else {
+                    break; // Зупиняємо цикл на першому відсутньому файлі
+                }
+            }
+        }
+
+        // Перевірка існування картинки
+        function checkImageExists(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        }
+
+        // Створення мініатюри в галереї
+        function createThumbnail(url, index) {
+            const div = document.createElement('div');
+            div.className = 'theme-thumb';
+            div.style.backgroundImage = `url('${url}')`;
+            div.innerHTML = `<span>Фон ${index}</span>`;
+            div.onclick = () => {
+                document.body.style.backgroundImage = `url('${url}')`;
+                localStorage.setItem('mySavedGameBg', url);
+            };
+            themeModal.appendChild(div);
+        }
+
+        // Запуск завантаження фонів
+        checkAndLoadBackgrounds();
+
+
+        /* =========================================
+           Логіка гри "Шкарпетки"
+           ========================================= */
+        const playArea = document.getElementById('play-area');
+        const sockSize = { w: 60, h: 80 };
+        let socksData = [];
+        let sockIdCounter = 0;
+
+        // SVG графіка для шкарпеток
+        const svgLeft = `
+        <svg viewBox="0 0 60 80" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <path d="M45,10 V50 Q45,70 25,70 H15 Q5,70 5,60 Q5,50 15,50 H25 V10 Z" fill="#FFEB3B" stroke="#F57F17" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M15,50 Q20,50 20,60 Q20,70 15,70 Q5,70 5,60 Q5,50 15,50 Z" fill="#F57F17"/>
+            <path d="M25,10 H45 V20 H25 Z" fill="#F57F17"/>
+        </svg>`;
+
+        const svgRight = `
+        <svg viewBox="0 0 60 80" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <path d="M15,10 V50 Q15,70 35,70 H45 Q55,70 55,60 Q55,50 45,50 H35 V10 Z" fill="#FFEB3B" stroke="#F57F17" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M45,50 Q40,50 40,60 Q40,70 45,70 Q55,70 55,60 Q55,50 45,50 Z" fill="#F57F17"/>
+            <path d="M15,10 H35 V20 H15 Z" fill="#F57F17"/>
+        </svg>`;
+
+        // Старт гри: генеруємо шкарпетки
+        function startGame() {
+            playArea.innerHTML = '';
+            socksData = [];
+            sockIdCounter = 0;
+            attachedSock = null;
+
+            const leftCount = parseInt(document.getElementById('left-count').value) || 0;
+            const rightCount = parseInt(document.getElementById('right-count').value) || 0;
+
+            for (let i = 0; i < leftCount; i++) createSock('left');
+            for (let i = 0; i < rightCount; i++) createSock('right');
+        }
+
+        // Створення одного елемента шкарпетки
+        function createSock(type) {
+            const el = document.createElement('div');
+            el.className = 'sock';
+            el.innerHTML = type === 'left' ? svgLeft : svgRight;
+            
+            const pos = getSafePosition();
+            el.style.left = pos.x + 'px';
+            el.style.top = pos.y + 'px';
+            
+            const sockObj = {
+                id: sockIdCounter++,
+                el: el,
+                type: type,
+                x: pos.x,
+                y: pos.y,
+                paired: false,
+                partner: null
+            };
+
+            setupInteractions(sockObj);
+            socksData.push(sockObj);
+            playArea.appendChild(el);
+        }
+
+        // Пошук вільної позиції без накладань на інші шкарпетки та вікна
+        function getSafePosition() {
+            const areaRect = playArea.getBoundingClientRect();
+            for (let tries = 0; tries < 200; tries++) {
+                let testX = Math.random() * (areaRect.width - sockSize.w - 20) + 10;
+                let testY = Math.random() * (areaRect.height - sockSize.h - 20) + 10;
+                
+                if (isSafe(testX, testY)) {
+                    return { x: testX, y: testY };
+                }
+            }
+            return {
+                x: Math.random() * (areaRect.width - sockSize.w),
+                y: Math.random() * (areaRect.height - sockSize.h)
+            };
+        }
+
+        function isSafe(x, y) {
+            const controlsRect = document.getElementById('controls').getBoundingClientRect();
+            const playAreaRect = playArea.getBoundingClientRect();
+            
+            // Позиція панелі відносно ігрового поля
+            const ctrlX = controlsRect.left - playAreaRect.left;
+            const ctrlY = controlsRect.top - playAreaRect.top;
+            
+            // Перевірка, щоб шкарпетки не генерувались під панеллю налаштувань (з відступом 20px)
+            if (x + sockSize.w > ctrlX - 20 && x < ctrlX + controlsRect.width + 20 &&
+                y + sockSize.h > ctrlY - 20 && y < ctrlY + controlsRect.height + 20) {
+                return false;
+            }
+
+            for (let sock of socksData) {
+                if (Math.abs(sock.x - x) < sockSize.w + 10 && Math.abs(sock.y - y) < sockSize.h + 10) {
+                    return false; // Занадто близько до іншої шкарпетки
+                }
+            }
+            return true;
+        }
+
+        /* --- Логіка Кліків та Перенесення (Click-to-attach) --- */
+        let attachedSock = null;
+        let clickStartX = 0, clickStartY = 0;
+
+        function setupInteractions(sockObj) {
+            sockObj.el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!attachedSock) {
+                    pickup(sockObj, e);
+                } else {
+                    drop(e);
+                }
+            });
+        }
+
+        // Клік по полю скидає шкарпетку, яка "приклеїлась"
+        playArea.addEventListener('click', (e) => {
+            if (attachedSock) {
+                drop(e);
+            }
+        });
+
+        // Шкарпетка іде за курсором/пальцем
+        document.addEventListener('mousemove', (e) => {
+            if (attachedSock) {
+                moveObj(e.clientX, e.clientY);
+            }
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (attachedSock) {
+                e.preventDefault();
+                moveObj(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        function pickup(sockObj, e) {
+            let clientX = e.clientX;
+            let clientY = e.clientY;
+
+            clickStartX = clientX;
+            clickStartY = clientY;
+
+            let rect = sockObj.el.getBoundingClientRect();
+            
+            sockObj.dragOffsetX = clientX - rect.left;
+            sockObj.dragOffsetY = clientY - rect.top;
+
+            attachedSock = sockObj;
+            
+            sockObj.el.style.transition = 'none';
+            sockObj.el.style.zIndex = 1000;
+
+            // Якщо вона в парі, піднімаємо і партнера
+            if (sockObj.paired && sockObj.partner) {
+                sockObj.partner.el.style.transition = 'none';
+                sockObj.partner.el.style.zIndex = 1000;
+                // Зберігаємо відстань між ними, щоб вони летіли разом
+                sockObj.partner.relX = sockObj.partner.x - sockObj.x;
+                sockObj.partner.relY = sockObj.partner.y - sockObj.y;
+            }
+        }
+
+        function moveObj(clientX, clientY) {
+            let areaRect = playArea.getBoundingClientRect();
+            let newX = clientX - areaRect.left - attachedSock.dragOffsetX;
+            let newY = clientY - areaRect.top - attachedSock.dragOffsetY;
+
+            // Обмеження виходу за межі контейнера
+            newX = Math.max(0, Math.min(newX, areaRect.width - sockSize.w));
+            newY = Math.max(0, Math.min(newY, areaRect.height - sockSize.h));
+
+            attachedSock.x = newX;
+            attachedSock.y = newY;
+            attachedSock.el.style.left = newX + 'px';
+            attachedSock.el.style.top = newY + 'px';
+
+            // Якщо переносимо пару - рухаємо партнера теж
+            if (attachedSock.paired && attachedSock.partner) {
+                let px = newX + attachedSock.partner.relX;
+                let py = newY + attachedSock.partner.relY;
+                
+                px = Math.max(0, Math.min(px, areaRect.width - sockSize.w));
+                py = Math.max(0, Math.min(py, areaRect.height - sockSize.h));
+
+                attachedSock.partner.x = px;
+                attachedSock.partner.y = py;
+                attachedSock.partner.el.style.left = px + 'px';
+                attachedSock.partner.el.style.top = py + 'px';
+            }
+        }
+
+        function drop(e) {
+            let clientX = e.clientX;
+            let clientY = e.clientY;
+            
+            // Якщо ми клікнули (тапнули) по новому місцю без руху миші, переміщуємо туди
+            if (e.type === 'click') {
+                moveObj(clientX, clientY);
+            }
+
+            let dist = Math.hypot(clientX - clickStartX, clientY - clickStartY);
+
+            attachedSock.el.style.transition = 'left 0.4s ease, top 0.4s ease';
+            attachedSock.el.style.zIndex = '';
+
+            if (attachedSock.paired && attachedSock.partner) {
+                attachedSock.partner.el.style.transition = 'left 0.4s ease, top 0.4s ease';
+                attachedSock.partner.el.style.zIndex = '';
+            }
+
+            // Перевіряємо з'єднання в пару (тільки якщо шкарпетка ще не була в парі)
+            if (!attachedSock.paired) {
+                if (dist < 5) {
+                    // Звичайний клік на місці - шукаємо пару автоматично і вона злітається
+                    handleSockClick(attachedSock);
+                } else {
+                    // Якщо перенесли і відпустили поруч із парою - перевіряємо
+                    checkProximityPairing(attachedSock);
+                }
+            }
+
+            attachedSock = null;
+        }
+
+        // Обробка кліку (пошук пари на полі і злітання)
+        function handleSockClick(sockObj) {
+            let partner = socksData.find(s => !s.paired && s.type !== sockObj.type);
+            
+            if (partner) {
+                pairThemUp(sockObj, partner);
+            } else {
+                // Якщо пари немає, трохи похитати, щоб показати відсутність
+                sockObj.el.animate([
+                    { transform: 'translateX(0)' },
+                    { transform: 'translateX(-5px) rotate(-5deg)' },
+                    { transform: 'translateX(5px) rotate(5deg)' },
+                    { transform: 'translateX(0)' }
+                ], { duration: 300 });
+            }
+        }
+
+        // Обробка відпускання перетягнутої шкарпетки поруч із парою
+        function checkProximityPairing(sockObj) {
+            for (let other of socksData) {
+                if (other.id !== sockObj.id && !other.paired && other.type !== sockObj.type) {
+                    let dx = Math.abs(sockObj.x - other.x);
+                    let dy = Math.abs(sockObj.y - other.y);
+                    
+                    if (dx < sockSize.w + 40 && dy < sockSize.h + 40) {
+                        pairThemUp(sockObj, other);
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Об'єднання у пару та візуальна анімація
+        function pairThemUp(s1, s2) {
+            s1.paired = true;
+            s2.paired = true;
+            s1.partner = s2;
+            s2.partner = s1;
+
+            let targetX = s1.x;
+            let targetY = s1.y;
+
+            if (s1.type === 'left') {
+                s2.x = targetX + sockSize.w + 5; // Права стає праворуч
+            } else {
+                s2.x = targetX - sockSize.w - 5; // Ліва стає ліворуч
+            }
+            s2.y = targetY;
+
+            s2.el.style.left = s2.x + 'px';
+            s2.el.style.top = s2.y + 'px';
+
+            setTimeout(() => {
+                s1.el.classList.add('paired');
+                s2.el.classList.add('paired');
+            }, 100);
+        }
+
+        // Запуск при завантаженні
+        window.onload = startGame;
+    </script>
+</body>
+</html>
