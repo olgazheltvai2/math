@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Головоломка з коробками</title>
+    <style>
+        /* Базові стилі сторінки */
+        body {
+            /* Використовуємо заданий тобою шрифт для проєктів, а Arial як запасний */
+            font-family: 'Propysy Bold', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: #f0f0f0;
+            overflow: hidden;
+        }
+
+        /* Ігровий контейнер */
+        #game-container {
+            width: 900px;
+            max-width: 95%;
+            margin: 40px auto;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+            z-index: 10;
+        }
+
+        #task-question {
+            font-size: 38px; /* Значно збільшений шрифт */
+            font-weight: bold;
+            color: #0056b3;
+            margin: 20px 0;
+        }
+
+        /* Стилі для коробок */
+        .boxes-container {
+            display: flex;
+            justify-content: center;
+            gap: 50px;
+            margin-top: 50px;
+            margin-bottom: 20px;
+        }
+
+        .box-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .box-wrapper {
+            position: relative;
+            width: 170px; /* Трохи збільшив саму коробку для більшого тексту */
+            height: 180px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        /* Тіло коробки */
+        .box-body {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 110px;
+            background: #D2B48C;
+            border: 3px solid #8B4513;
+            border-radius: 4px;
+            z-index: 3;
+            box-sizing: border-box;
+            box-shadow: inset 0 -15px 15px rgba(0,0,0,0.1);
+            transition: box-shadow 0.3s ease;
+        }
+
+        /* Кришка коробки */
+        .box-lid {
+            position: absolute;
+            bottom: 105px;
+            left: -5%;
+            width: 110%;
+            height: 30px;
+            background: #DEB887;
+            border: 3px solid #8B4513;
+            border-radius: 4px;
+            z-index: 4;
+            box-sizing: border-box;
+            transition: transform 0.5s ease, box-shadow 0.3s ease;
+            transform-origin: left bottom;
+        }
+
+        /* Емодзі тваринки */
+        .box-emoji {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 80px;
+            z-index: 2;
+            transition: transform 0.5s ease;
+        }
+
+        /* Напис на коробці */
+        .box-label {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            background: #fff;
+            border: 3px solid #8B4513;
+            border-radius: 5px;
+            padding: 6px 4px;
+            font-size: 22px; /* Значно збільшений шрифт напису */
+            font-weight: bold;
+            width: 90%;
+            text-align: center;
+            box-sizing: border-box;
+        }
+
+        /* Допомагайчик */
+        .helper-tool {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            background: #fff;
+            padding: 8px 12px;
+            border-radius: 10px;
+            border: 2px dashed #aaa;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .helper-btn {
+            position: relative;
+            font-size: 28px;
+            cursor: pointer;
+            user-select: none;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 8px;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .helper-btn:hover {
+            transform: scale(1.1);
+        }
+
+        /* Статуси допомагайчика */
+        .helper-btn.crossed::after {
+            content: '❌';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            opacity: 0.85;
+            pointer-events: none;
+        }
+        .helper-btn.crossed {
+            opacity: 0.6;
+        }
+
+        .helper-btn.circled {
+            border-color: #28a745;
+            background: rgba(40, 167, 69, 0.2);
+        }
+
+        /* Анімація відкриття */
+        .box-wrapper.open .box-lid {
+            transform: translateY(-60px) rotate(-15deg);
+        }
+
+        .box-wrapper.open .box-emoji {
+            transform: translate(-50%, -80px);
+        }
+
+        /* Візуальні фідбеки (анімації) */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-10px); }
+            40% { transform: translateX(10px); }
+            60% { transform: translateX(-10px); }
+            80% { transform: translateX(10px); }
+        }
+
+        .anim-shake {
+            animation: shake 0.4s ease;
+        }
+
+        .glow-error .box-body, .glow-error .box-lid {
+            box-shadow: 0 0 25px rgba(220, 53, 69, 0.9);
+            border-color: #dc3545;
+        }
+
+        .glow-success .box-body, .glow-success .box-lid {
+            box-shadow: 0 0 35px rgba(255, 215, 0, 1);
+            border-color: #ffc107;
+        }
+
+        /* Конфетті */
+        .confetti {
+            position: fixed;
+            width: 12px;
+            height: 12px;
+            top: -20px;
+            z-index: 10000;
+            animation: fall linear forwards;
+        }
+
+        @keyframes fall {
+            to {
+                transform: translateY(110vh) rotate(720deg);
+            }
+        }
+
+        /* Кнопка */
+        #next-btn {
+            margin-top: 20px;
+            padding: 15px 35px;
+            font-size: 24px;
+            font-weight: bold;
+            font-family: inherit;
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: background 0.3s;
+            display: none;
+        }
+
+        #next-btn:hover {
+            background-color: #218838;
+        }
+
+        /* =========================================
+           Theme Manager (Система динамічних фонів)
+           ========================================= */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            background: white;
+            border: none;
+            border-radius: 50%;
+            width: 55px;
+            height: 55px;
+            font-size: 28px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+
+        #theme-btn:hover {
+            transform: scale(1.1);
+        }
+
+        #theme-modal {
+            display: none;
+            position: fixed;
+            bottom: 85px;
+            right: 20px;
+            width: 320px;
+            max-height: 60vh;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            z-index: 9998;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .theme-header {
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 15px;
+            text-align: center;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .theme-thumb {
+            position: relative;
+            width: 100%;
+            height: 90px;
+            border-radius: 8px;
+            background-size: cover;
+            background-position: center;
+            cursor: pointer;
+            border: 3px solid transparent;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+
+        .theme-thumb:hover {
+            border-color: #007bff;
+        }
+
+        .theme-label {
+            position: absolute;
+            bottom: 5px;
+            left: 5%;
+            width: 90%;
+            text-align: center;
+            background: rgba(255,255,255,0.85);
+            font-size: 13px;
+            font-weight: bold;
+            border-radius: 4px;
+            padding: 2px 0;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Ігровий контейнер -->
+    <div id="game-container">
+        <h2 id="task-question">Завантаження...</h2>
+        
+        <div class="boxes-container" id="boxes-container">
+            <!-- Коробки будуть згенеровані тут через JS -->
+        </div>
+
+        <button id="next-btn">Наступне завдання</button>
+    </div>
+
+    <!-- Кнопка Theme Manager -->
+    <button id="theme-btn" onclick="toggleThemeModal()">⚙️</button>
+
+    <!-- Модальне вікно Theme Manager -->
+    <div id="theme-modal">
+        <div class="theme-header">Обери фон гри</div>
+        <div class="theme-grid" id="theme-grid">
+            <!-- Мініатюри будуть згенеровані тут через JS -->
+        </div>
+    </div>
+
+    <script>
+        // =========================================
+        // Аудіо система (тихі звуки)
+        // =========================================
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playQuietSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
+                osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); // E5
+                osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2); // G5
+                gain.gain.setValueAtTime(0.03, audioCtx.currentTime); // ДУЖЕ ТИХО
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+                osc.start(); 
+                osc.stop(audioCtx.currentTime + 0.5);
+            } else {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.04, audioCtx.currentTime); // ДУЖЕ ТИХО
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                osc.start(); 
+                osc.stop(audioCtx.currentTime + 0.3);
+            }
+        }
+
+        // =========================================
+        // Візуальна система конфетті
+        // =========================================
+        function fireConfetti() {
+            const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722'];
+            for (let i = 0; i < 70; i++) {
+                const confetti = document.createElement('div');
+                confetti.className = 'confetti';
+                confetti.style.left = Math.random() * 100 + 'vw';
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.animationDuration = (Math.random() * 2 + 2) + 's';
+                confetti.style.animationDelay = (Math.random() * 0.5) + 's';
+                document.body.appendChild(confetti);
+                
+                // Прибираємо після падіння
+                setTimeout(() => confetti.remove(), 4000);
+            }
+        }
+
+        // =========================================
+        // Логіка гри (10 задач)
+        // =========================================
+        const EMOJI_CAT = "🐱";
+        const EMOJI_DOG = "🐶";
+        const EMOJI_MOUSE = "🐭";
+        const ALL_EMOJIS = [EMOJI_CAT, EMOJI_DOG, EMOJI_MOUSE];
+
+        const levels = [
+            {
+                question: "Знайди кота 🐱!",
+                boxes: [
+                    { label: "Кіт", animal: EMOJI_DOG },
+                    { label: "Тут не миша", animal: EMOJI_MOUSE },
+                    { label: "Пес", animal: EMOJI_CAT }
+                ],
+                target: EMOJI_CAT
+            },
+            {
+                question: "Знайди пса 🐶!",
+                boxes: [
+                    { label: "Тут кіт або миша", animal: EMOJI_DOG },
+                    { label: "Тут кіт", animal: EMOJI_MOUSE },
+                    { label: "Пес", animal: EMOJI_CAT }
+                ],
+                target: EMOJI_DOG
+            },
+            {
+                question: "Знайди мишу 🐭!",
+                boxes: [
+                    { label: "Пес", animal: EMOJI_MOUSE },
+                    { label: "Тут не кіт", animal: EMOJI_CAT },
+                    { label: "Миша", animal: EMOJI_DOG }
+                ],
+                target: EMOJI_MOUSE
+            },
+            {
+                question: "Знайди кота 🐱!",
+                boxes: [
+                    { label: "Тут не пес", animal: EMOJI_DOG },
+                    { label: "Миша", animal: EMOJI_CAT },
+                    { label: "Кіт", animal: EMOJI_MOUSE }
+                ],
+                target: EMOJI_CAT
+            },
+            {
+                question: "Знайди пса 🐶!",
+                boxes: [
+                    { label: "Миша", animal: EMOJI_CAT },
+                    { label: "Кіт", animal: EMOJI_DOG },
+                    { label: "Тут пес або кіт", animal: EMOJI_MOUSE }
+                ],
+                target: EMOJI_DOG
+            },
+            {
+                question: "Знайди мишу 🐭!",
+                boxes: [
+                    { label: "Тут кіт", animal: EMOJI_DOG },
+                    { label: "Тут пес", animal: EMOJI_MOUSE },
+                    { label: "Тут миша або пес", animal: EMOJI_CAT }
+                ],
+                target: EMOJI_MOUSE
+            },
+            {
+                question: "Знайди кота 🐱!",
+                boxes: [
+                    { label: "Тут пес або миша", animal: EMOJI_CAT },
+                    { label: "Тут кіт", animal: EMOJI_DOG },
+                    { label: "Тут пес", animal: EMOJI_MOUSE }
+                ],
+                target: EMOJI_CAT
+            },
+            {
+                question: "Знайди пса 🐶!",
+                boxes: [
+                    { label: "Тут не кіт", animal: EMOJI_CAT },
+                    { label: "Тут миша", animal: EMOJI_DOG },
+                    { label: "Тут кіт", animal: EMOJI_MOUSE }
+                ],
+                target: EMOJI_DOG
+            },
+            {
+                question: "Знайди мишу 🐭!",
+                boxes: [
+                    { label: "Тут кіт", animal: EMOJI_MOUSE },
+                    { label: "Тут не пес", animal: EMOJI_DOG },
+                    { label: "Тут миша", animal: EMOJI_CAT }
+                ],
+                target: EMOJI_MOUSE
+            },
+            {
+                question: "Знайди кота 🐱!",
+                boxes: [
+                    { label: "Тут пес", animal: EMOJI_CAT },
+                    { label: "Тут миша", animal: EMOJI_DOG },
+                    { label: "Тут не миша", animal: EMOJI_MOUSE }
+                ],
+                target: EMOJI_CAT
+            }
+        ];
+
+        let currentLevel = 0;
+        let isLevelCompleted = false;
+
+        const boxesContainer = document.getElementById('boxes-container');
+        const questionEl = document.getElementById('task-question');
+        const nextBtn = document.getElementById('next-btn');
+
+        function initGame() {
+            renderLevel();
+        }
+
+        function renderLevel() {
+            boxesContainer.innerHTML = '';
+            nextBtn.style.display = 'none';
+            isLevelCompleted = false;
+
+            if (currentLevel >= levels.length) {
+                questionEl.innerHTML = '🎉 Вітаємо! Всі задачі розв\'язані!';
+                return;
+            }
+
+            const level = levels[currentLevel];
+            questionEl.innerText = level.question;
+
+            level.boxes.forEach((boxData) => {
+                const group = document.createElement('div');
+                group.className = 'box-group';
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'box-wrapper';
+                wrapper.onclick = () => openBox(wrapper, boxData.animal, level.target);
+
+                const lid = document.createElement('div');
+                lid.className = 'box-lid';
+
+                const body = document.createElement('div');
+                body.className = 'box-body';
+
+                const emoji = document.createElement('div');
+                emoji.className = 'box-emoji';
+                emoji.innerText = boxData.animal;
+
+                const label = document.createElement('div');
+                label.className = 'box-label';
+                label.innerText = boxData.label;
+
+                wrapper.appendChild(emoji);
+                wrapper.appendChild(body);
+                wrapper.appendChild(lid);
+                wrapper.appendChild(label);
+
+                // Допомагайчик
+                const helper = document.createElement('div');
+                helper.className = 'helper-tool';
+                
+                ALL_EMOJIS.forEach(em => {
+                    const btn = document.createElement('div');
+                    btn.className = 'helper-btn';
+                    btn.innerText = em;
+                    // Статуси: 0=нормальний, 1=викреслений, 2=обведений
+                    let state = 0; 
+                    btn.onclick = (e) => {
+                        e.stopPropagation(); // щоб коробка не відкривалась при кліку на допомагайчик
+                        state = (state + 1) % 3;
+                        btn.className = 'helper-btn'; // скидаємо класи
+                        if (state === 1) btn.classList.add('crossed');
+                        if (state === 2) btn.classList.add('circled');
+                    };
+                    helper.appendChild(btn);
+                });
+
+                group.appendChild(wrapper);
+                group.appendChild(helper);
+                boxesContainer.appendChild(group);
+            });
+        }
+
+        function openBox(wrapper, actualAnimal, targetAnimal) {
+            if (wrapper.classList.contains('open') || isLevelCompleted) return;
+
+            // Скидаємо попередні анімації помилок
+            document.querySelectorAll('.box-wrapper').forEach(b => {
+                b.classList.remove('anim-shake', 'glow-error');
+            });
+
+            if (actualAnimal === targetAnimal) {
+                // Перемога
+                wrapper.classList.add('open', 'glow-success');
+                isLevelCompleted = true;
+                playQuietSound('success');
+                fireConfetti();
+                nextBtn.style.display = 'inline-block';
+            } else {
+                // Помилка (тільки візуал і тихий звук)
+                playQuietSound('error');
+                // Вимушений рефлоу для перезапуску CSS анімації
+                void wrapper.offsetWidth;
+                wrapper.classList.add('open', 'anim-shake', 'glow-error');
+            }
+        }
+
+        nextBtn.onclick = () => {
+            currentLevel++;
+            renderLevel();
+        };
+
+        // =========================================
+        // Theme Manager (Динамічні фони)
+        // =========================================
+        const bgBaseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        const themeGrid = document.getElementById('theme-grid');
+        const themeModal = document.getElementById('theme-modal');
+        let bgIndex = 1;
+
+        function toggleThemeModal() {
+            if (themeModal.style.display === 'block') {
+                themeModal.style.display = 'none';
+            } else {
+                themeModal.style.display = 'block';
+            }
+        }
+
+        function applyBackground(url) {
+            document.body.style.backgroundImage = `url(${url})`;
+            document.body.style.backgroundSize = 'cover';
+            document.body.style.backgroundPosition = 'center';
+            document.body.style.backgroundAttachment = 'fixed';
+            localStorage.setItem('mySavedGameBg', url);
+        }
+
+        function checkBackground() {
+            const url = `${bgBaseUrl}background_${bgIndex}.webp`;
+            const img = new Image();
+            
+            img.onload = () => {
+                const thumb = document.createElement('div');
+                thumb.className = 'theme-thumb';
+                thumb.style.backgroundImage = `url(${url})`;
+                thumb.onclick = () => {
+                    applyBackground(url);
+                    toggleThemeModal();
+                };
+
+                const label = document.createElement('div');
+                label.className = 'theme-label';
+                label.innerText = `Фон ${bgIndex}`;
+                
+                thumb.appendChild(label);
+                themeGrid.appendChild(thumb);
+
+                bgIndex++;
+                checkBackground(); 
+            };
+            
+            img.onerror = () => {
+                console.log('Перевірку фонів завершено. Останній знайдений:', bgIndex - 1);
+            };
+
+            img.src = url;
+        }
+
+        // Ініціалізація
+        window.onload = () => {
+            const savedBg = localStorage.getItem('mySavedGameBg');
+            if (savedBg) {
+                applyBackground(savedBg);
+            } else {
+                applyBackground(`${bgBaseUrl}background_1.webp`);
+            }
+            
+            checkBackground();
+            
+            // Запуск першої взаємодії для AudioContext
+            document.body.addEventListener('click', function initAudio() {
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                document.body.removeEventListener('click', initAudio);
+            });
+
+            initGame();
+        };
+    </script>
+</body>
+</html>
