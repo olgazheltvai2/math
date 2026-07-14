@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Морський бій — Командна битва</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --sea-1: #a8e4ff;
+    --sea-2: #5ec8f2;
+    --sea-3: #2a9fd6;
+    --team1: #2a9fd6;
+    --team1-dark: #0a3d62;
+    --team2: #ff7a45;
+    --team2-dark: #c2410c;
+    --cell-size: 52px;
+    --cell-gap: 3px;
+  }
+
+  html, body {
+    height: 100%;
+    font-family: Arial, sans-serif;
+    color: #0a3d62;
+    overflow-x: hidden;
+  }
+
+  body {
+    min-height: 100vh;
+    background: linear-gradient(180deg, #dff4ff 0%, #a8e4ff 40%, #5ec8f2 100%);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    position: relative;
+  }
+
+  /* Напівпрозорий контейнер гри */
+  .game-container {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 26px;
+    max-width: 1920px;
+    width: 98%;
+    margin: 20px auto;
+    padding: 30px 20px;
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 12px 40px rgba(10,61,98,0.25);
+    min-height: 90vh;
+  }
+
+  /* Setup Modal */
+  .setup-row {
+    display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;
+  }
+  .setup-row input {
+    padding: 12px 16px; font-size: 1.2rem; font-family: Arial, sans-serif;
+    border: 2px solid #a8e4ff; border-radius: 12px; color: #0a3d62;
+    outline: none; transition: border-color 0.2s;
+  }
+  .setup-row input:focus { border-color: var(--team1); }
+  .multipliers {
+    display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-bottom: 24px;
+  }
+  .multipliers label {
+    background: #e6f6ff; padding: 10px 16px; border-radius: 10px; cursor: pointer;
+    font-size: 1.2rem; font-weight: bold; color: #0a3d62; transition: all 0.2s;
+    border: 2px solid transparent; display: flex; align-items: center; gap: 8px;
+  }
+  .multipliers label:hover { background: #cceeff; }
+  .multipliers input[type="checkbox"] { transform: scale(1.3); cursor: pointer; }
+
+  /* Хвилі */
+  .waves {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: 160px;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .wave {
+    position: absolute;
+    left: -10%;
+    width: 120%;
+    height: 100%;
+    background-repeat: repeat-x;
+    background-size: 500px 160px;
+  }
+  .wave1 {
+    background-image: radial-gradient(ellipse 250px 70px at 125px 70px, #fff 0 60%, transparent 62%);
+    animation: waveMove 9s linear infinite;
+    opacity: 0.75;
+  }
+  .wave2 {
+    background-image: radial-gradient(ellipse 250px 55px at 125px 55px, #fff 0 55%, transparent 57%);
+    animation: waveMove 14s linear infinite reverse;
+    opacity: 0.55;
+    bottom: -10px;
+  }
+  .wave3 {
+    background-image: radial-gradient(ellipse 250px 45px at 125px 45px, #e6f6ff 0 50%, transparent 52%);
+    animation: waveMove 20s linear infinite;
+    opacity: 0.45;
+    bottom: -25px;
+  }
+  @keyframes waveMove {
+    from { transform: translateX(0); }
+    to { transform: translateX(-500px); }
+  }
+
+  /* Хмаринки */
+  .clouds {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 200px;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .cloud {
+    position: absolute;
+    background: #fff;
+    border-radius: 50%;
+    filter: blur(2px);
+    opacity: 0.9;
+    box-shadow: 30px 10px 0 -5px #fff, 60px 0 0 -10px #fff, -30px 10px 0 -8px #fff;
+  }
+  .cloud.c1 { width: 90px; height: 35px; top: 30px; left: -150px; animation: cloudMove 80s linear infinite; }
+  .cloud.c2 { width: 110px; height: 40px; top: 90px; left: -200px; animation: cloudMove 110s linear infinite; animation-delay: -40s; }
+  .cloud.c3 { width: 70px; height: 28px; top: 55px; left: -100px; animation: cloudMove 95s linear infinite; animation-delay: -70s; }
+  @keyframes cloudMove {
+    from { transform: translateX(0); }
+    to { transform: translateX(calc(100vw + 300px)); }
+  }
+
+  /* Банер черги */
+  .turn-banner {
+    position: relative;
+    z-index: 2;
+    margin: 10px auto 14px;
+    max-width: 1200px;
+    padding: 18px 24px;
+    text-align: center;
+    border-radius: 22px;
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--team1) 0%, var(--team1-dark) 100%);
+    box-shadow: 0 10px 30px rgba(42,159,214,0.4);
+    transition: background 0.5s, box-shadow 0.5s, transform 0.3s;
+    animation: bannerPulse 2s ease-in-out infinite;
+  }
+  .turn-banner.team2 {
+    background: linear-gradient(135deg, var(--team2) 0%, var(--team2-dark) 100%);
+    box-shadow: 0 10px 30px rgba(255,122,69,0.4);
+  }
+  @keyframes bannerPulse {
+    0%,100% { transform: scale(1); }
+    50% { transform: scale(1.015); }
+  }
+  .turn-banner .emoji { font-size: 2.4rem; margin: 0 10px; vertical-align: middle; }
+
+  /* Панель статусу */
+  .status-bar {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 0 16px;
+    margin-bottom: 14px;
+  }
+  .status-pill {
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(8px);
+    border-radius: 30px;
+    padding: 10px 20px;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(42,159,214,0.25);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.05rem;
+    border: 2px solid transparent;
+    transition: all 0.3s;
+  }
+  .status-pill.t1 { border-color: var(--team1); }
+  .status-pill.t2 { border-color: var(--team2); }
+  .status-pill .count {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #0a3d62;
+  }
+  #message {
+    min-width: 260px;
+    text-align: center;
+    font-size: 1.1rem;
+  }
+  #message.hit { color: #d62828; }
+  #message.miss { color: #2a3d62; }
+  #message.sunk { color: #c2410c; font-weight: 800; }
+  #message.correct { color: #06a77d; font-weight: 800; }
+  #message.wrong { color: #d62828; font-weight: 800; }
+
+  /* Контейнер для кнопки виклику прикладу */
+  .action-container {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    margin-bottom: 15px;
+    min-height: 50px;
+  }
+
+  /* Поля */
+  .boards {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: nowrap; 
+    padding: 0 20px 50px;
+  }
+
+  .board-wrap {
+    background: rgba(255,255,255,0.8);
+    backdrop-filter: blur(10px);
+    border-radius: 22px;
+    padding: 16px 18px 18px;
+    box-shadow: 0 12px 34px rgba(10,61,98,0.2);
+    border: 3px solid transparent;
+    transition: all 0.4s;
+  }
+  .board-wrap.active-t1 {
+    border-color: var(--team1);
+    box-shadow: 0 12px 34px rgba(42,159,214,0.45), 0 0 0 4px rgba(42,159,214,0.15);
+  }
+  .board-wrap.active-t2 {
+    border-color: var(--team2);
+    box-shadow: 0 12px 34px rgba(255,122,69,0.45), 0 0 0 4px rgba(255,122,69,0.15);
+  }
+
+  .board-title {
+    text-align: center;
+    font-weight: 800;
+    font-size: 1.35rem;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    letter-spacing: 0.5px;
+  }
+  .board-title.t1 { color: var(--team1-dark); }
+  .board-title.t2 { color: var(--team2-dark); }
+  .board-title .emoji { font-size: 1.6rem; }
+
+  .board {
+    display: grid;
+    grid-template-columns: 34px repeat(10, var(--cell-size));
+    grid-template-rows: 34px repeat(10, var(--cell-size));
+    gap: var(--cell-gap);
+    user-select: none;
+  }
+  .coord {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 800;
+    color: #0a3d62;
+  }
+
+  .cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    background: linear-gradient(135deg, #cfeeff 0%, #9fdcf5 100%);
+    border-radius: 8px;
+    position: relative;
+    cursor: default;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7), 0 2px 4px rgba(42,159,214,0.25);
+    overflow: hidden;
+  }
+  .cell::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 40%, rgba(255,255,255,0.5) 50%, transparent 60%);
+    transform: translateX(-100%);
+    animation: shimmer 4.5s infinite;
+  }
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    60%,100% { transform: translateX(100%); }
+  }
+
+  .cell.clickable {
+    cursor: crosshair;
+  }
+  .cell.clickable:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 16px rgba(255,255,255,1), inset 0 0 0 2px #fff;
+    background: linear-gradient(135deg, #fff 0%, #cfeeff 100%);
+    z-index: 3;
+  }
+
+  .cell.miss {
+    background: radial-gradient(circle at center, #fff 0%, #bfe6f7 60%, #7ec8e3 100%);
+  }
+  .cell.hit {
+    background: radial-gradient(circle at center, #ffd166 0%, #ef476f 60%, #d62828 100%);
+    animation: hitPulse 0.7s ease-out;
+  }
+  .cell.sunk {
+    background: linear-gradient(135deg, #8d0801 0%, #d62828 50%, #8d0801 100%);
+    animation: sunkGlow 1.6s ease-in-out infinite;
+  }
+  @keyframes hitPulse {
+    0% { transform: scale(0.5); filter: brightness(2); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); filter: brightness(1); }
+  }
+  @keyframes sunkGlow {
+    0%,100% { box-shadow: 0 0 10px #d62828, inset 0 0 0 1px #fff; }
+    50% { box-shadow: 0 0 22px #ff6b6b, inset 0 0 0 2px #fff; }
+  }
+
+  /* Ефекти */
+  .effect {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+  .splash {
+    position: absolute;
+    width: 100%; height: 100%;
+    background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(191,230,247,0.6) 40%, transparent 70%);
+    animation: splashAnim 0.9s ease-out forwards;
+  }
+  @keyframes splashAnim {
+    0% { transform: scale(0.2); opacity: 0; }
+    40% { transform: scale(1.4); opacity: 1; }
+    100% { transform: scale(1.7); opacity: 0; }
+  }
+  .drop {
+    position: absolute;
+    width: 7px; height: 7px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 5px #fff;
+    animation: dropFly 0.9s ease-out forwards;
+  }
+  @keyframes dropFly {
+    0% { transform: translate(0,0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0.3); opacity: 0; }
+  }
+
+  .explosion {
+    position: absolute;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .explosion .ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0%, #ffd166 30%, #ef476f 60%, transparent 75%);
+    animation: boomRing 1s ease-out forwards;
+  }
+  .explosion .ring2 {
+    animation: boomRing 1s ease-out 0.18s forwards;
+    opacity: 0;
+  }
+  @keyframes boomRing {
+    0% { transform: scale(0.2); opacity: 0; }
+    30% { opacity: 1; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+  .spark {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 5px; height: 5px;
+    background: #ffd166;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #ffd166;
+    animation: sparkFly 0.9s ease-out forwards;
+  }
+  @keyframes sparkFly {
+    0% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--sx)), calc(-50% + var(--sy))) scale(0); opacity: 0; }
+  }
+
+  .cell .icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    z-index: 3;
+    pointer-events: none;
+  }
+  .cell.miss .icon::before { content: '•'; color: #0a3d62; font-size: 2rem; }
+  .cell.hit .icon::before { content: '🔥'; }
+  .cell.sunk .icon::before { content: '💀'; }
+
+  /* Модалка запитання */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,61,98,0.55);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s;
+  }
+  .modal-backdrop.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .modal {
+    background: linear-gradient(160deg, #ffffff 0%, #e6f6ff 100%);
+    border-radius: 26px;
+    padding: 32px 38px;
+    max-width: 640px;
+    width: 92%;
+    box-shadow: 0 24px 70px rgba(10,61,98,0.45);
+    text-align: center;
+    transform: scale(0.85);
+    transition: transform 0.35s cubic-bezier(.2,.9,.3,1.3);
+    border: 3px solid rgba(255,255,255,0.95);
+  }
+  .modal-backdrop.active .modal { transform: scale(1); }
+  .modal h2 {
+    color: #0a3d62;
+    margin-bottom: 10px;
+    font-size: 1.6rem;
+  }
+  .modal .who {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 14px;
+    padding: 8px 18px;
+    border-radius: 20px;
+    display: inline-block;
+    color: #fff;
+  }
+  .modal .who.t1 { background: linear-gradient(135deg, var(--team1), var(--team1-dark)); }
+  .modal .who.t2 { background: linear-gradient(135deg, var(--team2), var(--team2-dark)); }
+
+  .modal .question {
+    font-size: 4.2rem;
+    font-weight: 800;
+    color: #0a3d62;
+    margin: 18px 0;
+    letter-spacing: 4px;
+    text-shadow: 0 3px 6px rgba(42,159,214,0.25);
+    padding: 18px;
+    background: rgba(255,255,255,0.75);
+    border-radius: 18px;
+    border: 2px dashed #a8e4ff;
+  }
+  .answer-input {
+    width: 100%;
+    padding: 18px;
+    font-size: 2.4rem;
+    text-align: center;
+    font-family: Arial, sans-serif;
+    font-weight: 800;
+    border: 3px solid #a8e4ff;
+    border-radius: 16px;
+    outline: none;
+    background: #fff;
+    color: #0a3d62;
+    transition: border 0.2s, box-shadow 0.2s;
+    letter-spacing: 3px;
+  }
+  .answer-input:focus {
+    border-color: #2a9fd6;
+    box-shadow: 0 0 0 4px rgba(42,159,214,0.2);
+  }
+  .feedback {
+    margin-top: 14px;
+    font-size: 1.4rem;
+    font-weight: 800;
+    min-height: 36px;
+    transition: all 0.3s;
+  }
+  .feedback.correct { color: #06a77d; animation: feedbackPop 0.5s; }
+  .feedback.wrong { color: #d62828; animation: feedbackShake 0.5s; }
+  @keyframes feedbackPop {
+    0% { transform: scale(0.5); opacity: 0; }
+    60% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes feedbackShake {
+    0%,100% { transform: translateX(0); }
+    20%,60% { transform: translateX(-10px); }
+    40%,80% { transform: translateX(10px); }
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .btn {
+    padding: 14px 26px;
+    border: none;
+    border-radius: 14px;
+    font-size: 1.15rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    font-family: Arial, sans-serif;
+    min-width: 180px;
+  }
+  .btn:hover { transform: translateY(-2px); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, #2a9fd6 0%, #0a3d62 100%);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(42,159,214,0.4);
+  }
+  .btn-success {
+    background: linear-gradient(135deg, #06a77d 0%, #047857 100%);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(6,167,125,0.4);
+  }
+
+  /* Заставка передачі ходу */
+  .handoff-modal .modal {
+    padding: 50px 40px;
+    max-width: 720px;
+  }
+  .handoff-modal .big-emoji {
+    font-size: 5.5rem;
+    margin-bottom: 14px;
+    animation: bounce 1.2s ease-in-out infinite;
+  }
+  @keyframes bounce {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-18px); }
+  }
+  .handoff-modal h2 {
+    font-size: 2.6rem;
+    margin-bottom: 14px;
+    letter-spacing: 1px;
+    line-height: 1.2;
+  }
+  .handoff-modal h2.t1 {
+    background: linear-gradient(90deg, var(--team1), var(--team1-dark));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .handoff-modal h2.t2 {
+    background: linear-gradient(90deg, var(--team2), var(--team2-dark));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .handoff-modal p {
+    color: #0a3d62;
+    font-size: 1.25rem;
+    margin-bottom: 26px;
+    font-weight: 600;
+    opacity: 0.85;
+  }
+  .handoff-modal .btn {
+    font-size: 1.4rem;
+    padding: 18px 40px;
+  }
+
+  /* Фінальне вікно */
+  .final-modal .modal {
+    padding: 44px 36px;
+    max-width: 680px;
+  }
+  .final-modal .big-emoji {
+    font-size: 6rem;
+    margin-bottom: 10px;
+    animation: bounce 1.2s ease-in-out infinite;
+  }
+  .final-modal h2 {
+    font-size: 2.8rem;
+    margin-bottom: 14px;
+    letter-spacing: 1px;
+    background: linear-gradient(90deg, #06a77d, #2a9fd6, #06a77d);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .final-modal p {
+    color: #0a3d62;
+    font-size: 1.2rem;
+    margin-bottom: 24px;
+    font-weight: 600;
+  }
+  .final-modal .btn {
+    font-size: 1.3rem;
+    padding: 16px 32px;
+  }
+
+  /* Конфеті */
+  .confetti {
+    position: fixed;
+    top: -20px;
+    width: 12px; height: 16px;
+    z-index: 200;
+    pointer-events: none;
+    animation: confettiFall linear forwards;
+  }
+  @keyframes confettiFall {
+    to { transform: translateY(110vh) rotate(720deg); }
+  }
+
+  /* Адаптив */
+  @media (max-width: 1200px) {
+    :root { --cell-size: 44px; }
+    .turn-banner { font-size: 1.7rem; padding: 14px 18px; }
+    .modal .question { font-size: 3.2rem; }
+  }
+  @media (max-width: 900px) {
+    :root { --cell-size: 34px; }
+    .boards { gap: 18px; }
+    .board { grid-template-columns: 24px repeat(10, var(--cell-size)); grid-template-rows: 24px repeat(10, var(--cell-size)); }
+    .coord { font-size: 0.8rem; }
+    .turn-banner { font-size: 1.3rem; }
+    .board-title { font-size: 1.1rem; }
+    .modal .question { font-size: 2.4rem; }
+    .answer-input { font-size: 1.8rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="clouds">
+  <div class="cloud c1"></div>
+  <div class="cloud c2"></div>
+  <div class="cloud c3"></div>
+</div>
+
+<div class="waves">
+  <div class="wave wave1"></div>
+  <div class="wave wave2"></div>
+  <div class="wave wave3"></div>
+</div>
+
+<div class="game-container">
+  
+  <div class="turn-banner" id="turnBanner">
+    <span class="emoji">🔵</span>
+    <span id="turnText">Хід гравця 1</span>
+    <span class="emoji">🎯</span>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-pill t1">🔵 <span id="sunk1Label">Команда 1</span> — знищено: <span class="count" id="sunk1">0</span>/10</div>
+    <div class="status-pill" id="message">Отримай приклад, щоб зробити постріл</div>
+    <div class="status-pill t2">🔴 <span id="sunk2Label">Команда 2</span> — знищено: <span class="count" id="sunk2">0</span>/10</div>
+  </div>
+
+  <div class="action-container">
+    <button class="btn btn-primary" id="btnGetQuestion" style="display: none; font-size: 1.2rem; padding: 12px 30px;">🎯 Отримати приклад</button>
+  </div>
+
+  <div class="boards">
+    <div class="board-wrap" id="wrap1">
+      <div class="board-title t1"><span class="emoji">🚢</span> Флот: <span id="boardTitle1">Команда 1</span></div>
+      <div class="board" id="board1"></div>
+    </div>
+    <div class="board-wrap" id="wrap2">
+      <div class="board-title t2"><span class="emoji">🚢</span> Флот: <span id="boardTitle2">Команда 2</span></div>
+      <div class="board" id="board2"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Модалка Налаштувань перед грою -->
+<div class="modal-backdrop active" id="setupModal">
+  <div class="modal">
+    <h2>⚙️ Налаштування гри</h2>
+    
+    <div class="setup-row">
+       <input type="text" id="player1Name" placeholder="Введіть ім'я 1-го гравця" value="Гравець 1">
+       <input type="text" id="player2Name" placeholder="Введіть ім'я 2-го гравця" value="Гравець 2">
+    </div>
+    
+    <h3>Оберіть таблиці множення:</h3>
+    <div class="multipliers" id="multipliersContainer">
+        <label><input type="checkbox" value="2" checked> ×2</label>
+        <label><input type="checkbox" value="3" checked> ×3</label>
+        <label><input type="checkbox" value="4" checked> ×4</label>
+        <label><input type="checkbox" value="5" checked> ×5</label>
+        <label><input type="checkbox" value="6" checked> ×6</label>
+        <label><input type="checkbox" value="7" checked> ×7</label>
+        <label><input type="checkbox" value="8" checked> ×8</label>
+        <label><input type="checkbox" value="9" checked> ×9</label>
+    </div>
+    
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnStartGame" style="font-size: 1.4rem;">▶ Почати гру</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модалка прикладу -->
+<div class="modal-backdrop" id="questionModal">
+  <div class="modal">
+    <h2>🧠 Розв'яжи приклад!</h2>
+    <div class="who" id="modalWho">Команда 1</div>
+    <div class="question" id="questionText">7 × 8 = ?</div>
+    <input type="number" class="answer-input" id="answerInput" placeholder="Твоя відповідь" autocomplete="off" inputmode="numeric">
+    <div class="feedback" id="feedback"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnCheck">✓ Перевірити</button>
+    </div>
+  </div>
+</div>
+
+<!-- Заставка передачі ходу -->
+<div class="modal-backdrop handoff-modal" id="handoffModal">
+  <div class="modal">
+    <div class="big-emoji" id="handoffEmoji">🔄</div>
+    <h2 id="handoffTitle" class="t2">Передайте хід команді 2</h2>
+    <p>Переконайтесь, що ніхто не бачить поле суперника</p>
+    <button class="btn btn-success" id="btnContinue">▶ Продовжити</button>
+  </div>
+</div>
+
+<!-- Фінальне вікно -->
+<div class="modal-backdrop final-modal" id="finalModal">
+  <div class="modal">
+    <div class="big-emoji">🏆</div>
+    <h2 id="finalTitle">Перемогла команда 1!</h2>
+    <p id="finalText">Вітаємо переможців!</p>
+    <button class="btn btn-success" id="playAgain">🔄 Грати ще раз</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const SIZE = 10;
+  const LETTERS = ['А','Б','В','Г','Д','Е','Ж','З','И','К'];
+  const SHIPS = [4, 3, 3, 2, 2, 2, 1, 1, 1, 1];
+
+  let grid1, grid2;
+  let currentTeam = 1;
+  let phase = 'setup';
+  let gameOver = false;
+  let currentQuestion = null;
+  let shotLocked = false;
+  
+  // Додані змінні для імен та множників
+  let name1 = "Гравець 1";
+  let name2 = "Гравець 2";
+  let activeMultipliers = [2,3,4,5,6,7,8,9];
+
+  const rand = n => Math.floor(Math.random() * n);
+
+  function createGrid() {
+    const cells = [];
+    for (let r = 0; r < SIZE; r++) {
+      const row = [];
+      for (let c = 0; c < SIZE; c++) row.push({ ship: null, hit: false });
+      cells.push(row);
+    }
+    return { cells, ships: [] };
+  }
+
+  function canPlace(grid, r, c, size, horizontal) {
+    for (let i = 0; i < size; i++) {
+      const rr = horizontal ? r : r + i;
+      const cc = horizontal ? c + i : c;
+      if (rr >= SIZE || cc >= SIZE) return false;
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = rr + dr, nc = cc + dc;
+          if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE) continue;
+          if (grid.cells[nr][nc].ship !== null) return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function placeShip(grid, size) {
+    let attempts = 0;
+    while (attempts++ < 500) {
+      const horizontal = Math.random() < 0.5;
+      const r = rand(SIZE);
+      const c = rand(SIZE);
+      if (!canPlace(grid, r, c, size, horizontal)) continue;
+      const ship = { cells: [], hits: 0, size };
+      for (let i = 0; i < size; i++) {
+        const rr = horizontal ? r : r + i;
+        const cc = horizontal ? c + i : c;
+        grid.cells[rr][cc].ship = ship;
+        ship.cells.push({ r: rr, c: cc });
+      }
+      grid.ships.push(ship);
+      return true;
+    }
+    return false;
+  }
+
+  function placeAllShips(grid) {
+    for (const size of SHIPS) {
+      if (!placeShip(grid, size)) {
+        const fresh = createGrid();
+        fresh.ships = grid.ships;
+        return placeAllShips(fresh);
+      }
+    }
+    return grid;
+  }
+
+  function buildBoard(boardEl, team) {
+    boardEl.innerHTML = '';
+    const corner = document.createElement('div');
+    corner.className = 'coord corner';
+    boardEl.appendChild(corner);
+
+    for (let c = 0; c < SIZE; c++) {
+      const h = document.createElement('div');
+      h.className = 'coord';
+      h.textContent = LETTERS[c];
+      boardEl.appendChild(h);
+    }
+
+    for (let r = 0; r < SIZE; r++) {
+      const rh = document.createElement('div');
+      rh.className = 'coord';
+      rh.textContent = r + 1;
+      boardEl.appendChild(rh);
+
+      for (let c = 0; c < SIZE; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.row = r;
+        cell.dataset.col = c;
+        cell.dataset.team = team;
+        cell.addEventListener('click', () => onCellClick(team, r, c));
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function getCellEl(boardEl, r, c) {
+    const idx = (r + 1) * (SIZE + 1) + (c + 1);
+    return boardEl.children[idx];
+  }
+
+  function shoot(grid, boardEl, r, c) {
+    const cellData = grid.cells[r][c];
+    const cellEl = getCellEl(boardEl, r, c);
+    if (cellData.hit) return { repeat: true };
+
+    cellData.hit = true;
+    cellEl.classList.remove('clickable');
+
+    if (cellData.ship) {
+      cellData.ship.hits++;
+      cellEl.classList.add('hit');
+      showExplosion(cellEl);
+      playSound('hit');
+
+      if (cellData.ship.hits === cellData.ship.size) {
+        cellData.ship.cells.forEach(({ r: rr, c: cc }) => {
+          const el = getCellEl(boardEl, rr, cc);
+          el.classList.remove('hit');
+          el.classList.add('sunk');
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              const nr = rr + dr, nc = cc + dc;
+              if (nr < 0 || nr >= SIZE || nc < 0 || nc >= SIZE) continue;
+              const nData = grid.cells[nr][nc];
+              if (!nData.hit && !nData.ship) {
+                nData.hit = true;
+                const nEl = getCellEl(boardEl, nr, nc);
+                nEl.classList.add('miss');
+              }
+            }
+          }
+        });
+        return { result: 'sunk' };
+      }
+      return { result: 'hit' };
+    } else {
+      cellEl.classList.add('miss');
+      showSplash(cellEl);
+      playSound('miss');
+      return { result: 'miss' };
+    }
+  }
+
+  function showSplash(cellEl) {
+    const wrap = document.createElement('div');
+    wrap.className = 'effect';
+    const splash = document.createElement('div');
+    splash.className = 'splash';
+    wrap.appendChild(splash);
+    for (let i = 0; i < 8; i++) {
+      const d = document.createElement('div');
+      d.className = 'drop';
+      const angle = (i / 8) * Math.PI * 2;
+      d.style.setProperty('--dx', Math.cos(angle) * 28 + 'px');
+      d.style.setProperty('--dy', Math.sin(angle) * 28 + 'px');
+      wrap.appendChild(d);
+    }
+    cellEl.appendChild(wrap);
+    setTimeout(() => wrap.remove(), 1000);
+  }
+
+  function showExplosion(cellEl) {
+    const wrap = document.createElement('div');
+    wrap.className = 'effect';
+    const boom = document.createElement('div');
+    boom.className = 'explosion';
+    const r1 = document.createElement('div'); r1.className = 'ring';
+    const r2 = document.createElement('div'); r2.className = 'ring ring2';
+    boom.appendChild(r1); boom.appendChild(r2);
+    wrap.appendChild(boom);
+    for (let i = 0; i < 12; i++) {
+      const s = document.createElement('div');
+      s.className = 'spark';
+      const angle = (i / 12) * Math.PI * 2;
+      const dist = 22 + Math.random() * 16;
+      s.style.setProperty('--sx', Math.cos(angle) * dist + 'px');
+      s.style.setProperty('--sy', Math.sin(angle) * dist + 'px');
+      wrap.appendChild(s);
+    }
+    cellEl.appendChild(wrap);
+    setTimeout(() => wrap.remove(), 1100);
+  }
+
+  let audioCtx = null;
+  function getAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch(e) { return null; }
+    }
+    return audioCtx;
+  }
+  function playSound(type) {
+    const ctx = getAudio();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      if (type === 'hit') {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(400, now);
+        o.frequency.exponentialRampToValueAtTime(80, now + 0.4);
+        g.gain.setValueAtTime(0.25, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(now); o.stop(now + 0.5);
+      } else if (type === 'miss') {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(800, now);
+        o.frequency.exponentialRampToValueAtTime(300, now + 0.3);
+        g.gain.setValueAtTime(0.15, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(now); o.stop(now + 0.35);
+      } else if (type === 'sunk') {
+        for (let i = 0; i < 3; i++) {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'square';
+          o.frequency.setValueAtTime(200 - i*40, now + i*0.12);
+          o.frequency.exponentialRampToValueAtTime(50, now + i*0.12 + 0.3);
+          g.gain.setValueAtTime(0.2, now + i*0.12);
+          g.gain.exponentialRampToValueAtTime(0.001, now + i*0.12 + 0.35);
+          o.connect(g); g.connect(ctx.destination);
+          o.start(now + i*0.12); o.stop(now + i*0.12 + 0.4);
+        }
+      } else if (type === 'correct') {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(600, now);
+        o.frequency.linearRampToValueAtTime(900, now + 0.15);
+        g.gain.setValueAtTime(0.2, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(now); o.stop(now + 0.3);
+      } else if (type === 'wrong') {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(200, now);
+        o.frequency.linearRampToValueAtTime(120, now + 0.25);
+        g.gain.setValueAtTime(0.18, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(now); o.stop(now + 0.3);
+      } else if (type === 'win') {
+        const notes = [523, 659, 784, 1047];
+        notes.forEach((f, i) => {
+          const o = ctx.createOscillator();
+          const g = ctx.createGain();
+          o.type = 'triangle';
+          o.frequency.value = f;
+          g.gain.setValueAtTime(0.2, now + i*0.15);
+          g.gain.exponentialRampToValueAtTime(0.001, now + i*0.15 + 0.3);
+          o.connect(g); g.connect(ctx.destination);
+          o.start(now + i*0.15); o.stop(now + i*0.15 + 0.35);
+        });
+      }
+    } catch(e) {}
+  }
+
+  function onCellClick(targetTeam, r, c) {
+    if (gameOver || shotLocked) return;
+    if (phase !== 'aiming') {
+      flashMessage('Спочатку розв\'яжи приклад!', 'wrong');
+      return;
+    }
+    const expectedTarget = currentTeam === 1 ? 2 : 1;
+    if (targetTeam !== expectedTarget) {
+      flashMessage(`${currentTeam === 1 ? name1 : name2} стріляє по полю суперника!`, 'wrong');
+      return;
+    }
+
+    const targetGrid = targetTeam === 1 ? grid1 : grid2;
+    if (targetGrid.cells[r][c].hit) {
+      flashMessage('Цю клітинку вже обстріляно!', 'wrong');
+      return;
+    }
+
+    shotLocked = true;
+    const boardEl = targetTeam === 1 ? document.getElementById('board1') : document.getElementById('board2');
+    const res = shoot(targetGrid, boardEl, r, c);
+
+    if (res.repeat) {
+      flashMessage('Цю клітинку вже обстріляно!', 'wrong');
+      shotLocked = false;
+      return;
+    }
+
+    phase = 'result';
+    disableAllCells();
+
+    if (res.result === 'miss') {
+      flashMessage('💦 Промах! Хід переходить супернику.', 'miss');
+      updateSunk();
+      setTimeout(showHandoff, 1500);
+    } else if (res.result === 'hit') {
+      flashMessage('🔥 Влучив! Стріляй ще раз!', 'hit');
+      updateSunk();
+      setTimeout(prepareQuestionTrigger, 1500);
+    } else if (res.result === 'sunk') {
+      flashMessage('💀 Корабель знищено! Стріляй ще раз!', 'sunk');
+      playSound('sunk');
+      updateSunk();
+      if (checkWin(targetGrid)) {
+        setTimeout(() => endGame(currentTeam), 1500);
+        return;
+      }
+      setTimeout(prepareQuestionTrigger, 1800);
+    }
+  }
+
+  function generateQuestion() {
+    const a = activeMultipliers[rand(activeMultipliers.length)];
+    const b = 2 + rand(8);
+    // Змішуємо місцями для різноманітності
+    return Math.random() < 0.5 
+      ? { text: `${a} × ${b} = ?`, answer: a * b }
+      : { text: `${b} × ${a} = ?`, answer: a * b };
+  }
+
+  function prepareQuestionTrigger() {
+    if (gameOver) return;
+    phase = 'waiting_question';
+    shotLocked = false;
+    flashMessage(`Хід: ${currentTeam === 1 ? name1 : name2}. Тисни кнопку!`, 'correct');
+    document.getElementById('btnGetQuestion').style.display = 'inline-block';
+  }
+
+  function openQuestion() {
+    document.getElementById('btnGetQuestion').style.display = 'none';
+    currentQuestion = generateQuestion();
+    document.getElementById('questionText').textContent = currentQuestion.text;
+    const input = document.getElementById('answerInput');
+    input.value = '';
+    input.disabled = false;
+    const fb = document.getElementById('feedback');
+    fb.textContent = '';
+    fb.className = 'feedback';
+    const whoEl = document.getElementById('modalWho');
+    whoEl.textContent = currentTeam === 1 ? name1 : name2;
+    whoEl.className = 'who t' + currentTeam;
+    document.getElementById('btnCheck').disabled = false;
+    document.getElementById('questionModal').classList.add('active');
+    setTimeout(() => input.focus(), 300);
+  }
+
+  function closeQuestion() {
+    document.getElementById('questionModal').classList.remove('active');
+  }
+
+  function checkAnswer() {
+    const input = document.getElementById('answerInput');
+    const val = parseInt(input.value, 10);
+    const fb = document.getElementById('feedback');
+
+    if (isNaN(val)) {
+      fb.textContent = '⚠ Введи число!';
+      fb.className = 'feedback wrong';
+      playSound('wrong');
+      return;
+    }
+
+    if (val === currentQuestion.answer) {
+      fb.textContent = '✅ Правильно! Тепер обери клітинку на полі суперника';
+      fb.className = 'feedback correct';
+      playSound('correct');
+      input.disabled = true;
+      document.getElementById('btnCheck').disabled = true;
+      phase = 'aiming';
+      enableEnemyCells();
+      flashMessage(`${currentTeam === 1 ? name1 : name2}: обери клітинку для пострілу`, 'correct');
+      setTimeout(closeQuestion, 1200);
+    } else {
+      fb.textContent = '❌ Неправильно! Хід переходить супернику.';
+      fb.className = 'feedback wrong';
+      playSound('wrong');
+      input.disabled = true;
+      document.getElementById('btnCheck').disabled = true;
+      setTimeout(() => {
+        closeQuestion();
+        showHandoff();
+      }, 1500);
+    }
+  }
+
+  function disableAllCells() {
+    document.querySelectorAll('.cell').forEach(c => c.classList.remove('clickable'));
+  }
+
+  function enableEnemyCells() {
+    const targetTeam = currentTeam === 1 ? 2 : 1;
+    const boardEl = targetTeam === 1 ? document.getElementById('board1') : document.getElementById('board2');
+    const targetGrid = targetTeam === 1 ? grid1 : grid2;
+    boardEl.querySelectorAll('.cell').forEach(cell => {
+      const r = parseInt(cell.dataset.row, 10);
+      const c = parseInt(cell.dataset.col, 10);
+      if (!targetGrid.cells[r][c].hit) {
+        cell.classList.add('clickable');
+      }
+    });
+  }
+
+  function showHandoff() {
+    if (gameOver) return;
+    phase = 'handoff';
+    const nextTeam = currentTeam === 1 ? 2 : 1;
+    const title = document.getElementById('handoffTitle');
+    title.textContent = `Передайте хід: ${nextTeam === 1 ? name1 : name2}`;
+    title.className = 't' + nextTeam;
+    document.getElementById('handoffEmoji').textContent = nextTeam === 1 ? '🔵' : '🔴';
+    document.getElementById('handoffModal').classList.add('active');
+  }
+
+  function continueFromHandoff() {
+    document.getElementById('handoffModal').classList.remove('active');
+    currentTeam = currentTeam === 1 ? 2 : 1;
+    updateTurnUI();
+    prepareQuestionTrigger();
+  }
+
+  function checkWin(grid) {
+    return grid.ships.every(s => s.hits === s.size);
+  }
+
+  function updateSunk() {
+    const sunk1 = grid1.ships.filter(s => s.hits === s.size).length;
+    const sunk2 = grid2.ships.filter(s => s.hits === s.size).length;
+    document.getElementById('sunk1').textContent = sunk1;
+    document.getElementById('sunk2').textContent = sunk2;
+  }
+
+  function updateTurnUI() {
+    const banner = document.getElementById('turnBanner');
+    const text = document.getElementById('turnText');
+    const emojis = banner.querySelectorAll('.emoji');
+    text.textContent = `Хід: ${currentTeam === 1 ? name1 : name2}`;
+
+    document.getElementById('wrap1').classList.remove('active-t1', 'active-t2');
+    document.getElementById('wrap2').classList.remove('active-t1', 'active-t2');
+
+    if (currentTeam === 1) {
+      banner.classList.remove('team2');
+      emojis[0].textContent = '🔵';
+      document.getElementById('wrap2').classList.add('active-t1');
+    } else {
+      banner.classList.add('team2');
+      emojis[0].textContent = '🔴';
+      document.getElementById('wrap1').classList.add('active-t2');
+    }
+  }
+
+  function flashMessage(text, type) {
+    const el = document.getElementById('message');
+    el.textContent = text;
+    el.className = 'status-pill';
+    if (type) el.classList.add(type);
+  }
+
+  function endGame(winnerTeam) {
+    gameOver = true;
+    phase = 'gameover';
+    const modal = document.getElementById('finalModal');
+    const title = document.getElementById('finalTitle');
+    const text = document.getElementById('finalText');
+
+    title.textContent = `Переміг(ла) ${winnerTeam === 1 ? name1 : name2}!`;
+    text.textContent = `Вітаємо переможця! Усі кораблі суперника знищено!`;
+    document.getElementById('btnGetQuestion').style.display = 'none';
+    playSound('win');
+    setTimeout(() => modal.classList.add('active'), 400);
+    launchConfetti();
+  }
+
+  function launchConfetti() {
+    const colors = ['#ef476f','#ffd166','#06a77d','#2a9fd6','#f77f00','#ff7a45'];
+    for (let i = 0; i < 100; i++) {
+      const c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = Math.random() * 100 + 'vw';
+      c.style.background = colors[rand(colors.length)];
+      c.style.animationDuration = (2.5 + Math.random() * 2.5) + 's';
+      c.style.animationDelay = Math.random() * 1 + 's';
+      c.style.transform = `rotate(${rand(360)}deg)`;
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 6000);
+    }
+  }
+
+  function startGameWithSettings() {
+    const p1 = document.getElementById('player1Name').value.trim();
+    const p2 = document.getElementById('player2Name').value.trim();
+    if(p1) name1 = p1;
+    if(p2) name2 = p2;
+    
+    document.getElementById('sunk1Label').textContent = name1;
+    document.getElementById('sunk2Label').textContent = name2;
+    document.getElementById('boardTitle1').textContent = name1;
+    document.getElementById('boardTitle2').textContent = name2;
+
+    const checkedBoxes = Array.from(document.querySelectorAll('#multipliersContainer input:checked'));
+    if(checkedBoxes.length === 0) {
+      alert("Будь ласка, оберіть хоча б одну таблицю множення!");
+      return;
+    }
+    activeMultipliers = checkedBoxes.map(cb => parseInt(cb.value, 10));
+
+    document.getElementById('setupModal').classList.remove('active');
+    initGame();
+  }
+
+  function initGame() {
+    grid1 = placeAllShips(createGrid());
+    grid2 = placeAllShips(createGrid());
+    currentTeam = 1;
+    gameOver = false;
+    shotLocked = false;
+
+    buildBoard(document.getElementById('board1'), 1);
+    buildBoard(document.getElementById('board2'), 2);
+
+    updateSunk();
+    updateTurnUI();
+    disableAllCells();
+    flashMessage('Отримай приклад, щоб зробити постріл');
+
+    document.getElementById('finalModal').classList.remove('active');
+    document.getElementById('handoffModal').classList.remove('active');
+
+    prepareQuestionTrigger();
+  }
+
+  document.getElementById('btnStartGame').addEventListener('click', startGameWithSettings);
+  document.getElementById('btnGetQuestion').addEventListener('click', openQuestion);
+  document.getElementById('btnCheck').addEventListener('click', checkAnswer);
+  document.getElementById('answerInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') checkAnswer();
+  });
+  document.getElementById('btnContinue').addEventListener('click', continueFromHandoff);
+  document.getElementById('playAgain').addEventListener('click', () => {
+    document.getElementById('setupModal').classList.add('active');
+  });
+
+  document.addEventListener('click', () => { getAudio(); }, { once: true });
+
+})();
+</script>
+
+</body>
+</html>
