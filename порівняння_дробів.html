@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Порівняння дробів</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; min-height: 100vh; background-size: cover; background-position: center; background-attachment: fixed; transition: background-image 0.5s ease-in-out; display: flex; justify-content: center; align-items: center; overflow-x: hidden; }
+        #game-container { display: flex; flex-direction: row; background: rgba(255, 255, 255, 0.9); width: 1400px; max-width: 98%; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); position: relative; z-index: 10; gap: 30px; }
+        #workspace { position: relative; flex: 1; height: 600px; border: 2px dashed #aaa; border-radius: 10px; background: rgba(240, 240, 240, 0.8); overflow: hidden; }
+        .controls { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 300px; }
+        .inputs-row { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+        .fraction-input { display: flex; flex-direction: column; align-items: center; background: #f9f9f9; padding: 10px; border-radius: 10px; border: 2px solid #ddd; }
+        .fraction-input input { width: 60px; height: 50px; font-size: 28px; font-weight: bold; text-align: center; border: 2px solid #ccc; border-radius: 5px; }
+        .sign-input { width: 50px; height: 50px; font-size: 32px; font-weight: bold; text-align: center; border: 2px solid #333; border-radius: 5px; }
+        .fraction-input hr { width: 100%; border: 2px solid #333; margin: 5px 0; }
+        button.draw-btn { padding: 15px 30px; font-size: 20px; background-color: #4CAF50; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: background-color 0.3s; }
+        button.draw-btn:hover { background-color: #45a049; }
+        .circle-container { position: absolute; width: 300px; height: 300px; border-radius: 50%; border: 3px solid #333; cursor: grab; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.2); user-select: none; touch-action: none; transform-origin: center; }
+        .circle-container.dragging { cursor: grabbing; z-index: 100 !important; box-shadow: 0 10px 20px rgba(0,0,0,0.4); }
+        .rotate-handle { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); width: 30px; height: 30px; background: #555; border-radius: 50%; cursor: alias; display: none; }
+        .show-rotate .rotate-handle { display: block; }
+        .circle-label { position: absolute; bottom: -45px; font-weight: bold; font-size: 28px; background: rgba(255,255,255,0.9); padding: 5px 15px; border-radius: 8px; border: 2px solid #ccc; }
+        #theme-btn { position: fixed; bottom: 20px; right: 20px; z-index: 9999; width: 60px; height: 60px; border-radius: 50%; background: #ffffff; border: 2px solid #ddd; font-size: 30px; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; justify-content: center; align-items: center; transition: transform 0.2s; }
+        #theme-btn:hover { transform: scale(1.1); }
+        #theme-modal { position: fixed; bottom: 90px; right: 20px; z-index: 9998; background: #ffffff; width: 320px; max-height: 60vh; overflow-y: auto; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); display: none; padding: 15px; box-sizing: border-box; }
+        #theme-modal h3 { margin-top: 0; text-align: center; color: #333; font-size: 18px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .theme-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .theme-thumb { position: relative; height: 100px; background-size: cover; background-position: center; border-radius: 8px; cursor: pointer; border: 2px solid transparent; transition: border-color 0.2s, transform 0.2s; }
+        .theme-thumb:hover { border-color: #4CAF50; transform: scale(1.05); }
+        .theme-thumb span { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0, 0, 0, 0.7); color: #ffffff; text-align: center; font-size: 13px; padding: 5px 0; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="workspace"></div>
+        <div class="controls">
+            <button class="draw-btn" onclick="drawSectors()">Створити сектори</button>
+            <div class="inputs-row">
+                <div class="fraction-input">
+                    <input type="number" id="num1" value="1" min="0">
+                    <hr>
+                    <input type="number" id="den1" value="3" min="1">
+                </div>
+                <input type="text" id="signInput" class="sign-input" placeholder="?">
+                <div class="fraction-input">
+                    <input type="number" id="num2" value="1" min="0">
+                    <hr>
+                    <input type="number" id="den2" value="2" min="1">
+                </div>
+            </div>
+            <div style="margin-top: 15px;">
+                <input type="checkbox" id="rotateToggle"> <label for="rotateToggle" style="font-weight: bold;">Режим обертання</label>
+            </div>
+        </div>
+    </div>
+    <button id="theme-btn" onclick="toggleThemeModal()">⚙️</button>
+    <div id="theme-modal">
+        <h3>Оберіть фон</h3>
+        <div id="theme-gallery" class="theme-grid"></div>
+    </div>
+    <script>
+        let currentRotation1 = 0;
+        let currentRotation2 = 0;
+        function drawSectors() {
+            const num1 = parseFloat(document.getElementById('num1').value);
+            const den1 = parseFloat(document.getElementById('den1').value);
+            const num2 = parseFloat(document.getElementById('num2').value);
+            const den2 = parseFloat(document.getElementById('den2').value);
+            const rotateEnabled = document.getElementById('rotateToggle').checked;
+            if (isNaN(num1) || isNaN(den1) || isNaN(num2) || isNaN(den2) || den1 === 0 || den2 === 0) { alert("Будь ласка, введіть коректні числа."); return; }
+            const val1 = num1 / den1; const val2 = num2 / den2; const percent1 = val1 * 100; const percent2 = val2 * 100;
+            const workspace = document.getElementById('workspace'); workspace.innerHTML = ''; 
+            let color1, color2, zIndex1, zIndex2;
+            if (val1 > val2) { color1 = `rgba(255, 87, 34, 0.6)`; color2 = `rgba(3, 169, 244, 1)`; zIndex1 = 2; zIndex2 = 1; } 
+            else { color1 = `rgba(255, 87, 34, 1)`; color2 = `rgba(3, 169, 244, 0.6)`; zIndex1 = 1; zIndex2 = 2; }
+            currentRotation1 = rotateEnabled ? Math.floor(Math.random() * 360) : 0;
+            currentRotation2 = rotateEnabled ? Math.floor(Math.random() * 360) : 0;
+            const sector1 = createCircle(num1, den1, percent1, color1, zIndex1, currentRotation1, rotateEnabled, '#FF5722');
+            sector1.style.left = '50px'; sector1.style.top = '120px';
+            const sector2 = createCircle(num2, den2, percent2, color2, zIndex2, currentRotation2, rotateEnabled, '#03A9F4');
+            sector2.style.left = '450px'; sector2.style.top = '120px';
+            workspace.appendChild(sector1); workspace.appendChild(sector2);
+        }
+        function createCircle(num, den, percent, color, zIndex, rotation, isDraggable, labelColor) {
+            const container = document.createElement('div');
+            container.className = 'circle-container';
+            if (isDraggable) container.classList.add('show-rotate');
+            const slice = 360 / den;
+            const grid = `repeating-conic-gradient(from 0deg, #333 0deg, #333 2.5deg, transparent 2.5deg, transparent ${slice}deg)`;
+            const fill = `conic-gradient(${color} 0%, ${color} ${percent}%, transparent ${percent}%, transparent 100%)`;
+            container.style.background = `${grid}, ${fill}`; container.style.zIndex = zIndex; container.style.transform = `rotate(${rotation}deg)`;
+            container.innerHTML = `<div class="rotate-handle"></div><div class="circle-label" style="color: ${labelColor}; transform: rotate(-${rotation}deg)">${num}/${den}</div>`;
+            makeDraggable(container);
+            if (isDraggable) {
+                const handle = container.querySelector('.rotate-handle');
+                handle.addEventListener('mousedown', (e) => startRotate(e, container));
+                handle.addEventListener('touchstart', (e) => startRotate(e, container), {passive: false});
+            }
+            return container;
+        }
+        function startRotate(e, element) {
+            e.stopPropagation(); e.preventDefault();
+            const rect = element.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2; const centerY = rect.top + rect.height / 2;
+            function onRotate(e) {
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                const angle = Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI) + 90;
+                element.style.transform = `rotate(${angle}deg)`;
+            }
+            function endRotate() { document.removeEventListener('mousemove', onRotate); document.removeEventListener('mouseup', endRotate); document.removeEventListener('touchmove', onRotate); document.removeEventListener('touchend', endRotate); }
+            document.addEventListener('mousemove', onRotate); document.addEventListener('mouseup', endRotate); document.addEventListener('touchmove', onRotate, {passive: false}); document.addEventListener('touchend', endRotate);
+        }
+        function makeDraggable(element) {
+            let startX, startY, initialLeft, initialTop;
+            function onDragStart(e) {
+                if (e.target.classList.contains('rotate-handle')) return;
+                element.classList.add('dragging');
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                startX = clientX; startY = clientY; initialLeft = element.offsetLeft; initialTop = element.offsetTop;
+                document.addEventListener('mousemove', onDragMove); document.addEventListener('mouseup', onDragEnd); document.addEventListener('touchmove', onDragMove, {passive: false}); document.addEventListener('touchend', onDragEnd);
+            }
+            function onDragMove(e) {
+                if (!element.classList.contains('dragging')) return;
+                e.preventDefault();
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                const dx = clientX - startX; const dy = clientY - startY;
+                element.style.left = `${initialLeft + dx}px`; element.style.top = `${initialTop + dy}px`;
+            }
+            function onDragEnd() { element.classList.remove('dragging'); document.removeEventListener('mousemove', onDragMove); document.removeEventListener('mouseup', onDragEnd); document.removeEventListener('touchmove', onDragMove); document.removeEventListener('touchend', onDragEnd); }
+            element.addEventListener('mousedown', onDragStart); element.addEventListener('touchstart', onDragStart, {passive: false});
+        }
+        const BASE_BG_URL = "https://olgazheltvai2.github.io/images/backgrounds/"; const DEFAULT_BG = BASE_BG_URL + "background_1.webp";
+        function toggleThemeModal() { const modal = document.getElementById('theme-modal'); modal.style.display = (modal.style.display === 'block') ? 'none' : 'block'; }
+        async function loadBackgrounds() {
+            const gallery = document.getElementById('theme-gallery');
+            const savedBg = localStorage.getItem('mySavedGameBg') || DEFAULT_BG; document.body.style.backgroundImage = `url('${savedBg}')`;
+            for (let i = 1; i <= 1000; i++) {
+                const url = `${BASE_BG_URL}background_${i}.webp`;
+                try {
+                    const exists = await checkImageExists(url);
+                    if (exists) createThumbnail(url, i, gallery); else break;
+                } catch (error) { break; }
+            }
+        }
+        function checkImageExists(url) { return new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(true); img.onerror = () => resolve(false); img.src = url; }); }
+        function createThumbnail(url, index, container) {
+            const thumb = document.createElement('div'); thumb.className = 'theme-thumb'; thumb.style.backgroundImage = `url('${url}')`;
+            const label = document.createElement('span'); label.innerText = `Фон ${index}`; thumb.appendChild(label);
+            thumb.onclick = () => { document.body.style.backgroundImage = `url('${url}')`; localStorage.setItem('mySavedGameBg', url); };
+            container.appendChild(thumb);
+        }
+        window.onload = () => { loadBackgrounds(); drawSectors(); };
+    </script>
+</body>
+</html>
