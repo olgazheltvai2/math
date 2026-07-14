@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Знайди половинку (Ключі та Замки)</title>
+    <style>
+        /* Базові налаштування шрифту та сторінки */
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow-x: hidden;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Архітектура сторінки - напівпрозорий контейнер */
+        #game-container {
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 20px;
+            padding: 30px;
+            width: 90%;
+            max-width: 1000px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            position: relative;
+        }
+
+        /* Ігрові зони */
+        .grid-area {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 15px;
+        }
+        #keys-area {
+            background: rgba(255, 215, 0, 0.15);
+            border: 2px dashed #ffd700;
+        }
+        #locks-area {
+            background: rgba(100, 149, 237, 0.15);
+            border: 2px dashed #6495ed;
+        }
+
+        /* Ігрові елементи */
+        .item-card {
+            width: 80px;
+            height: 100px;
+            background: #fff;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: transform 0.2s, box-shadow 0.2s, opacity 0.5s;
+            user-select: none;
+            position: relative;
+        }
+        .item-card .emoji {
+            font-size: 36px;
+            margin-bottom: 5px;
+        }
+        .item-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+        }
+
+        /* Стани елементів */
+        .key.selected {
+            outline: 4px solid #ffaa00;
+            outline-offset: 2px;
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(255, 170, 0, 0.8);
+            z-index: 2;
+        }
+        
+        .matched {
+            pointer-events: none;
+            animation: matchAnim 0.8s forwards;
+        }
+
+        .shake {
+            animation: shakeAnim 0.4s;
+        }
+
+        /* Анімації */
+        @keyframes matchAnim {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.3) rotate(10deg); opacity: 0.8; filter: brightness(1.5); }
+            100% { transform: scale(0); opacity: 0; }
+        }
+
+        @keyframes shakeAnim {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+
+        /* Theme Manager (Меню та кнопка) */
+        #settings-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #fff;
+            border: 2px solid #ccc;
+            font-size: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+        #settings-btn:hover {
+            transform: scale(1.1) rotate(45deg);
+        }
+
+        #theme-modal {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            z-index: 9998;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            width: 320px;
+            max-height: 60vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: none; /* Приховано за замовчуванням */
+            padding: 15px;
+            border: 1px solid #ddd;
+        }
+        #theme-modal.active {
+            display: block;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 10px;
+        }
+
+        .theme-thumbnail {
+            width: 100%;
+            height: 90px;
+            border-radius: 8px;
+            background-size: cover;
+            background-position: center;
+            cursor: pointer;
+            position: relative;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.2s, outline 0.2s;
+            overflow: hidden;
+        }
+        .theme-thumbnail:hover {
+            transform: scale(1.05);
+            outline: 2px solid #007bff;
+        }
+        .theme-thumbnail.active-theme {
+            outline: 3px solid #28a745;
+            box-shadow: 0 0 10px rgba(40, 167, 69, 0.8);
+        }
+        .theme-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 12px;
+            padding: 4px 0;
+            text-align: center;
+            pointer-events: none;
+        }
+
+        /* Індикатор завантаження тем */
+        #theme-loader {
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .hidden {
+            display: none !important;
+        }
+        
+        /* Елемент перемоги (візуальний фідбек) */
+        #win-effect {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 150px;
+        }
+        .win-anim {
+            display: flex !important;
+            animation: winPop 2s forwards;
+        }
+        @keyframes winPop {
+            0% { transform: scale(0); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 1; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Ігрова архітектура -->
+    <div id="game-container">
+        <!-- Зона ключів (половинки) -->
+        <div id="keys-area" class="grid-area"></div>
+        
+        <!-- Зона замків (цілі числа) -->
+        <div id="locks-area" class="grid-area"></div>
+    </div>
+
+    <!-- Візуальний фідбек перемоги -->
+    <div id="win-effect">🎉</div>
+
+    <!-- Theme Manager UI -->
+    <button id="settings-btn" title="Налаштування фону">⚙️</button>
+    <div id="theme-modal">
+        <div id="theme-loader">Шукаю фони...</div>
+        <div id="theme-gallery"></div>
+    </div>
+
+    <script>
+        /*******************************************************
+         * THEME MANAGER (Система динамічних фонів)
+         *******************************************************/
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        const settingsBtn = document.getElementById('settings-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const themeLoader = document.getElementById('theme-loader');
+        
+        // Відкриття/закриття меню
+        settingsBtn.addEventListener('click', () => {
+            themeModal.classList.toggle('active');
+        });
+
+        // Встановлення фону
+        function setBackground(url) {
+            document.body.style.backgroundImage = `url('${url}')`;
+            localStorage.setItem('mySavedGameBg', url);
+            
+            // Візуальне виділення активної теми в галереї
+            document.querySelectorAll('.theme-thumbnail').forEach(thumb => {
+                if(thumb.dataset.url === url) {
+                    thumb.classList.add('active-theme');
+                } else {
+                    thumb.classList.remove('active-theme');
+                }
+            });
+        }
+
+        // Завантаження збереженого фону або дефолтного
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) {
+            setBackground(savedBg);
+        } else {
+            setBackground(`${baseUrl}background_1.webp`);
+        }
+
+        // Асинхронний пошук фонів від 1 до 1000
+        async function loadBackgrounds() {
+            let consecutiveErrors = 0;
+            let loadedCount = 0;
+
+            for (let i = 1; i <= 1000; i++) {
+                // Захист від нескінченного зависання: якщо 10 фонів підряд не знайдено, перериваємо цикл
+                if (consecutiveErrors >= 10) break;
+
+                const bgUrl = `${baseUrl}background_${i}.webp`;
+                
+                try {
+                    const exists = await checkImage(bgUrl);
+                    if (exists) {
+                        consecutiveErrors = 0; // Скидаємо лічильник помилок
+                        loadedCount++;
+                        createThumbnail(bgUrl, i);
+                    } else {
+                        consecutiveErrors++;
+                    }
+                } catch (e) {
+                    consecutiveErrors++;
+                }
+            }
+            themeLoader.classList.add('hidden');
+        }
+
+        // Перевірка існування картинки
+        function checkImage(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        }
+
+        // Створення мініатюри в галереї
+        function createThumbnail(url, index) {
+            const thumb = document.createElement('div');
+            thumb.className = 'theme-thumbnail';
+            thumb.dataset.url = url;
+            thumb.style.backgroundImage = `url('${url}')`;
+            
+            const label = document.createElement('div');
+            label.className = 'theme-label';
+            label.textContent = `Фон ${index}`;
+            
+            thumb.appendChild(label);
+            
+            thumb.addEventListener('click', () => {
+                setBackground(url);
+            });
+
+            // Якщо це поточний фон, виділяємо його
+            if (url === document.body.style.backgroundImage.replace(/url\(['"]?(.*?)['"]?\)/i, "$1")) {
+                thumb.classList.add('active-theme');
+            }
+
+            themeGallery.appendChild(thumb);
+        }
+
+        // Запускаємо завантаження фонів
+        loadBackgrounds();
+
+        /*******************************************************
+         * ЛОГІКА ГРИ (Половинки: 2-20 та 1-10)
+         *******************************************************/
+        const halves = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const fulls = [2, 4, 6, 8, 10, 12, 14, 16, 18, 20];
+
+        const keysArea = document.getElementById('keys-area');
+        const locksArea = document.getElementById('locks-area');
+
+        let selectedKey = null;
+        let matchedPairsCount = 0;
+        const totalPairs = halves.length;
+
+        // Перемішування масиву
+        function shuffle(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        // Ініціалізація ігрового поля
+        function initGame() {
+            keysArea.innerHTML = '';
+            locksArea.innerHTML = '';
+            matchedPairsCount = 0;
+            selectedKey = null;
+
+            const shuffledHalves = shuffle([...halves]);
+            const shuffledFulls = shuffle([...fulls]);
+
+            shuffledHalves.forEach(num => {
+                const keyEl = document.createElement('div');
+                keyEl.className = 'item-card key';
+                keyEl.dataset.val = num;
+                keyEl.innerHTML = `<span class="emoji">🔑</span><span>${num}</span>`;
+                keyEl.addEventListener('click', () => selectKey(keyEl));
+                keysArea.appendChild(keyEl);
+            });
+
+            shuffledFulls.forEach(num => {
+                const lockEl = document.createElement('div');
+                lockEl.className = 'item-card lock';
+                lockEl.dataset.val = num;
+                lockEl.innerHTML = `<span class="emoji">🔒</span><span>${num}</span>`;
+                lockEl.addEventListener('click', () => tryUnlock(lockEl));
+                locksArea.appendChild(lockEl);
+            });
+        }
+
+        // Логіка кліку на ключ
+        function selectKey(keyEl) {
+            if (keyEl.classList.contains('matched')) return;
+
+            // Знімаємо виділення з попереднього ключа
+            document.querySelectorAll('.key').forEach(k => k.classList.remove('selected'));
+            
+            // Якщо клікнули на той самий - просто знімаємо виділення
+            if (selectedKey === keyEl) {
+                selectedKey = null;
+                playSound(300, 'sine', 0.1); // Звук зняття виділення
+                return;
+            }
+
+            keyEl.classList.add('selected');
+            selectedKey = keyEl;
+            playSound(600, 'sine', 0.1); // Звук вибору
+        }
+
+        // Логіка кліку на замок
+        function tryUnlock(lockEl) {
+            if (lockEl.classList.contains('matched') || !selectedKey) return;
+
+            const halfVal = parseInt(selectedKey.dataset.val);
+            const fullVal = parseInt(lockEl.dataset.val);
+
+            if (halfVal * 2 === fullVal) {
+                // Вірно
+                playSuccessSound();
+                
+                // Змінюємо емодзі на відкритий замок
+                lockEl.querySelector('.emoji').textContent = '🔓';
+                
+                selectedKey.classList.remove('selected');
+                selectedKey.classList.add('matched');
+                lockEl.classList.add('matched');
+                
+                selectedKey = null;
+                matchedPairsCount++;
+
+                if (matchedPairsCount === totalPairs) {
+                    setTimeout(triggerWin, 800);
+                }
+            } else {
+                // Невірно
+                playErrorSound();
+                lockEl.classList.add('shake');
+                setTimeout(() => lockEl.classList.remove('shake'), 400);
+                
+                selectedKey.classList.remove('selected');
+                selectedKey = null;
+            }
+        }
+
+        function triggerWin() {
+            playWinChime();
+            const winEffect = document.getElementById('win-effect');
+            winEffect.classList.add('win-anim');
+            setTimeout(() => {
+                winEffect.classList.remove('win-anim');
+                initGame(); // Перезапуск після перемоги
+            }, 2000);
+        }
+
+        /*******************************************************
+         * АУДІО СИСТЕМА (Тихі генеровані звуки без слів)
+         *******************************************************/
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Базова функція генерації звуку
+        function playSound(frequency, type = 'sine', duration = 0.1, vol = 0.03) {
+            try {
+                initAudio();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = type;
+                oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+                // Налаштування ДУЖЕ тихих звуків (vol = 0.03) та м'якого загасання
+                gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + duration);
+            } catch (e) {
+                // Ігноруємо помилки аудіо (напр., якщо користувач ще не взаємодіяв зі сторінкою)
+            }
+        }
+
+        function playSuccessSound() {
+            playSound(800, 'sine', 0.1, 0.05);
+            setTimeout(() => playSound(1200, 'sine', 0.2, 0.05), 100);
+        }
+
+        function playErrorSound() {
+            playSound(200, 'triangle', 0.2, 0.05);
+            setTimeout(() => playSound(150, 'triangle', 0.3, 0.05), 150);
+        }
+
+        function playWinChime() {
+            let delay = 0;
+            [523.25, 659.25, 783.99, 1046.50].forEach(freq => {
+                setTimeout(() => playSound(freq, 'sine', 0.4, 0.05), delay);
+                delay += 150;
+            });
+        }
+
+        // Додаємо активацію аудіо на перший клік по сторінці
+        document.body.addEventListener('click', initAudio, { once: true });
+
+        // Запуск гри
+        initGame();
+
+    </script>
+</body>
+</html>
