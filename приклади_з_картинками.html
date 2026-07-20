@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Football Math - Advanced</title>
+    <style>
+        /* Підключення шрифту та налаштування базових стилів */
+        @font-face {
+            font-family: 'Propysy Bold';
+            src: local('Propysy Bold'), local('Arial Rounded MT Bold'), local('Comic Sans MS');
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        /* Забезпечення співвідношення сторін 16:9 та темного фону сторінки */
+        body {
+            background-color: #050505;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Propysy Bold', 'Arial Rounded MT Bold', sans-serif;
+            font-weight: bold;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        /* Основний контейнер гри - чітко 16:9 */
+        #game-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            max-width: 177.78vh; /* 16/9 * 100 */
+            max-height: 56.25vw; /* 9/16 * 100 */
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+            background-color: #1a2a3a;
+            box-shadow: 0 0 50px rgba(0,0,0,0.9);
+        }
+
+        /* Деталізований сюжетний фон (стадіон), розмитий */
+        #stadium-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            filter: blur(4px);
+            background: linear-gradient(to bottom, #001233 0%, #002855 35%, #023020 35%, #054a29 100%);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Анімовані прожектори стадіону */
+        .spotlight {
+            position: absolute;
+            top: -50px;
+            width: 250px;
+            height: 700px;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0) 100%);
+            transform-origin: top center;
+            mix-blend-mode: overlay;
+        }
+        .spotlight.left { left: 10%; animation: sweep-left 9s ease-in-out infinite alternate; }
+        .spotlight.right { right: 10%; animation: sweep-right 8s ease-in-out infinite alternate; }
+
+        @keyframes sweep-left { 0% { transform: rotate(10deg); } 100% { transform: rotate(40deg); } }
+        @keyframes sweep-right { 0% { transform: rotate(-10deg); } 100% { transform: rotate(-40deg); } }
+
+        /* Трибуни з фанатами */
+        .stands {
+            position: absolute;
+            top: 10%;
+            width: 100%;
+            height: 25%;
+            background-image: 
+                radial-gradient(circle at 10px 10px, #ffd700 2px, transparent 3px),
+                radial-gradient(circle at 25px 20px, #ff4136 2px, transparent 3px),
+                radial-gradient(circle at 40px 10px, #0074d9 2px, transparent 3px);
+            background-size: 50px 35px;
+            animation: flashFans 1.5s infinite alternate;
+        }
+
+        @keyframes flashFans { 0% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        /* Поле зі смугами трави */
+        .pitch {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 65%;
+            background: repeating-linear-gradient(
+                90deg,
+                #1b5e20 0%, #1b5e20 8%,
+                #2e7d32 8%, #2e7d32 16%
+            );
+            transform: perspective(600px) rotateX(50deg);
+            transform-origin: top;
+            box-shadow: inset 0 30px 60px rgba(0,0,0,0.6);
+        }
+
+        /* Центральна дошка (Тактична) - Жодних білих фонів */
+        #tactical-board {
+            position: absolute;
+            top: 50%;
+            left: 55%; /* Зсунута трохи вправо, щоб дати місце леву */
+            transform: translate(-50%, -50%);
+            width: 60%;
+            height: 80%;
+            background: radial-gradient(circle at center, #004d40 0%, #00251a 100%);
+            border: 18px solid #2e1503;
+            border-radius: 40px;
+            z-index: 10;
+            box-shadow: 
+                inset 0 0 40px rgba(0,0,0,0.9),
+                15px 25px 50px rgba(0,0,0,0.8),
+                0 0 0 6px #4e342e;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 3.5vh;
+            padding: 30px;
+        }
+
+        /* Тактичні лінії */
+        #tactical-board::before {
+            content: '';
+            position: absolute;
+            width: 85%;
+            height: 85%;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-radius: 15px;
+            pointer-events: none;
+        }
+        #tactical-board::after {
+            content: '';
+            position: absolute;
+            width: 35%;
+            height: 100%;
+            border-left: 4px solid rgba(255,255,255,0.3);
+            border-right: 4px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            pointer-events: none;
+            opacity: 0.3;
+        }
+
+        /* Збільшені стилі для рівнянь */
+        .equation-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 2vw;
+            font-size: 8.5vh; /* Крупніший шрифт */
+            color: #ffffff;
+            text-shadow: 3px 5px 8px rgba(0,0,0,0.7);
+            z-index: 2;
+        }
+
+        /* Збільшені слоти */
+        .symbol-slot {
+            width: 12vh;
+            height: 12vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 80%);
+            border: 4px dashed rgba(255,255,255,0.4);
+            border-radius: 25px;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            font-size: 9vh;
+        }
+        .symbol-slot:hover {
+            transform: scale(1.1) rotate(4deg);
+            background: rgba(255,255,255,0.25);
+            border-color: #ffca28;
+            box-shadow: 0 0 20px rgba(255, 202, 40, 0.6);
+        }
+        .symbol-slot svg {
+            width: 90%;
+            height: 90%;
+            pointer-events: none;
+            filter: drop-shadow(4px 6px 5px rgba(0,0,0,0.6));
+        }
+
+        /* Анімація появи числа */
+        @keyframes popNumber {
+            0% { transform: scale(0.1) rotate(-30deg); opacity: 0; }
+            60% { transform: scale(1.3) rotate(5deg); }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+        .solved-text {
+            animation: popNumber 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            color: #ffca28;
+            text-shadow: 4px 4px 0 #b71c1c, -2px -2px 0 #fff;
+        }
+
+        /* Анімація помилки */
+        @keyframes foulShake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-12px) rotate(-8deg); background-color: rgba(183, 28, 28, 0.7); }
+            40% { transform: translateX(12px) rotate(8deg); }
+            60% { transform: translateX(-8px) rotate(-4deg); background-color: rgba(183, 28, 28, 0.7); }
+            80% { transform: translateX(8px) rotate(4deg); }
+        }
+        .foul-error {
+            animation: foulShake 0.4s ease-in-out;
+            border-color: #ef5350 !important;
+            box-shadow: 0 0 25px rgba(239, 83, 80, 0.8) !important;
+        }
+
+        /* Кругове меню вибору */
+        #number-picker {
+            position: absolute;
+            display: none;
+            width: 42vh;
+            height: 42vh;
+            transform: translate(-50%, -50%);
+            z-index: 100;
+        }
+        .num-btn {
+            position: absolute;
+            width: 9.5vh;
+            height: 9.5vh;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #ffffff 0%, #bdbdbd 60%, #757575 100%);
+            border: 5px solid #212121;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 5.5vh;
+            color: #111;
+            cursor: pointer;
+            box-shadow: 0 12px 25px rgba(0,0,0,0.7), inset -4px -4px 6px rgba(0,0,0,0.4);
+            transition: transform 0.15s, background 0.2s;
+        }
+        .num-btn::before {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at center, #212121 15%, transparent 16%),
+                linear-gradient(45deg, transparent 48%, #212121 49%, #212121 51%, transparent 52%),
+                linear-gradient(-45deg, transparent 48%, #212121 49%, #212121 51%, transparent 52%);
+            opacity: 0.15;
+            pointer-events: none;
+            border-radius: 50%;
+        }
+        .num-btn:hover {
+            transform: scale(1.25) rotate(15deg);
+            background: radial-gradient(circle at 35% 35%, #ffecb3 0%, #ffca28 60%, #ff8f00 100%);
+            color: #000;
+        }
+
+        /* Кнопка регенерації (Стилізована) */
+        #regen-btn {
+            position: absolute;
+            bottom: 4vh;
+            right: 4vw;
+            width: 12vh;
+            height: 12vh;
+            background: radial-gradient(circle at 30% 30%, #4caf50 0%, #2e7d32 70%, #1b5e20 100%);
+            border: 6px solid #81c784;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.8), inset 0 6px 12px rgba(255,255,255,0.4);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 50;
+        }
+        #regen-btn:hover {
+            transform: rotate(180deg) scale(1.15);
+            background: radial-gradient(circle at 30% 30%, #66bb6a 0%, #388e3c 70%, #1b5e20 100%);
+            border-color: #a5d6a7;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.9), inset 0 6px 12px rgba(255,255,255,0.5);
+        }
+        #regen-btn:active {
+            transform: rotate(180deg) scale(0.95);
+        }
+        #regen-btn svg {
+            width: 60%;
+            height: 60%;
+            fill: #ffffff;
+            filter: drop-shadow(2px 3px 3px rgba(0,0,0,0.5));
+        }
+
+        /* Персонаж - Лев зліва */
+        #mascot-container {
+            position: absolute;
+            bottom: 2vh;
+            left: -3vw; /* Зсунуто вліво */
+            width: 28vw;
+            height: 65vh;
+            z-index: 15;
+            pointer-events: none;
+            filter: drop-shadow(12px 20px 20px rgba(0,0,0,0.8));
+        }
+
+        /* Анімації персонажа */
+        @keyframes breathe {
+            0%, 100% { transform: scaleY(1) translateY(0); }
+            50% { transform: scaleY(1.02) translateY(-1.5vh); }
+        }
+        /* Зменшена амплітуда хвоста в 3 рази */
+        @keyframes tailWhipMinimal {
+            0%, 100% { transform: rotate(5deg); }
+            50% { transform: rotate(18deg); } 
+        }
+        @keyframes goalCelebration {
+            0% { transform: translateY(0) scale(1); }
+            20% { transform: translateY(-12vh) scale(1.1) rotate(-5deg); }
+            40% { transform: translateY(0) scale(1); }
+            60% { transform: translateY(-8vh) scale(1.05) rotate(5deg); }
+            80% { transform: translateY(0) scale(1); }
+            100% { transform: translateY(0) scale(1); }
+        }
+        @keyframes sadMiss {
+            0%, 100% { transform: rotate(0); }
+            25% { transform: rotate(-6deg) translateX(-1vw); }
+            75% { transform: rotate(6deg) translateX(1vw); }
+        }
+
+        .lion-body-anim { animation: breathe 2.5s infinite; transform-origin: bottom center; }
+        .lion-tail { animation: tailWhipMinimal 3.5s ease-in-out infinite; transform-origin: 30px 250px; }
+        
+        .anim-goal { animation: goalCelebration 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important; }
+        .anim-sad { animation: sadMiss 0.6s ease-in-out !important; }
+
+        /* Конфетті */
+        .confetti-item {
+            position: absolute;
+            width: 5vh;
+            height: 5vh;
+            pointer-events: none;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-wrapper">
+        <!-- Сюжетний фон стадіону -->
+        <div id="stadium-bg">
+            <div class="spotlight left"></div>
+            <div class="spotlight right"></div>
+            <div class="stands"></div>
+            <div class="pitch"></div>
+        </div>
+
+        <!-- Лев зліва з рандомним поглядом та зменшеним рухом хвоста -->
+        <div id="mascot-container">
+            <svg id="mascot" viewBox="0 0 300 400" width="100%" height="100%">
+                <g class="lion-body-anim" id="lion-main">
+                    <!-- Хвіст -->
+                    <path class="lion-tail" d="M 120 280 Q 20 350 40 220 Q 50 180 30 160" fill="none" stroke="#f57c00" stroke-width="18" stroke-linecap="round"/>
+                    <circle class="lion-tail" cx="30" cy="160" r="16" fill="#5d4037"/>
+
+                    <!-- Задні лапи (Бутси) -->
+                    <path d="M 100 350 L 130 350 L 140 385 L 80 385 Z" fill="#eeeeee"/>
+                    <path d="M 170 350 L 200 350 L 220 385 L 160 385 Z" fill="#eeeeee"/>
+                    <circle cx="90" cy="390" r="6" fill="#212121"/><circle cx="110" cy="390" r="6" fill="#212121"/><circle cx="130" cy="390" r="6" fill="#212121"/>
+                    <circle cx="170" cy="390" r="6" fill="#212121"/><circle cx="190" cy="390" r="6" fill="#212121"/><circle cx="210" cy="390" r="6" fill="#212121"/>
+
+                    <!-- Тіло (Футболка) -->
+                    <path d="M 90 200 C 70 300, 230 300, 210 200 Z" fill="#1565c0"/> 
+                    <path d="M 95 200 C 80 250, 220 250, 205 200 Z" fill="#fbc02d"/> 
+
+                    <!-- Шорти -->
+                    <path d="M 95 280 L 140 280 L 140 345 L 88 335 Z" fill="#1565c0"/>
+                    <path d="M 160 280 L 205 280 L 212 335 L 160 345 Z" fill="#1565c0"/>
+
+                    <!-- Передні лапи -->
+                    <path d="M 90 210 Q 45 255 55 295" fill="none" stroke="#f57c00" stroke-width="26" stroke-linecap="round"/>
+                    <path d="M 210 210 Q 255 255 245 295" fill="none" stroke="#f57c00" stroke-width="26" stroke-linecap="round"/>
+
+                    <!-- Грива -->
+                    <path id="mane" d="M 150 45 C 230 25, 290 85, 260 160 C 235 215, 150 240, 95 195 C 30 145, 60 55, 150 45 Z" fill="#5d4037"/>
+                    <path d="M 150 60 C 205 45, 260 100, 225 150 C 205 195, 140 205, 105 170 C 50 125, 85 70, 150 60 Z" fill="#8d6e63"/>
+
+                    <!-- Голова -->
+                    <circle cx="150" cy="140" r="58" fill="#f57c00"/>
+                    
+                    <!-- Морда -->
+                    <ellipse cx="150" cy="165" rx="38" ry="28" fill="#ffe0b2"/>
+                    
+                    <!-- Очі (з зіницями, що рухаються) -->
+                    <g id="mascot-eyes">
+                        <!-- Білки -->
+                        <circle cx="123" cy="125" r="14" fill="#ffffff"/>
+                        <circle cx="177" cy="125" r="14" fill="#ffffff"/>
+                        
+                        <!-- Зіниці та бліки -->
+                        <g id="lion-pupils">
+                            <circle cx="123" cy="125" r="7" fill="#212121"/>
+                            <circle cx="177" cy="125" r="7" fill="#212121"/>
+                            <circle cx="120" cy="122" r="2.5" fill="#ffffff"/>
+                            <circle cx="174" cy="122" r="2.5" fill="#ffffff"/>
+                        </g>
+                    </g>
+                    
+                    <!-- Закриті очі (для помилки) -->
+                    <g id="mascot-eyes-sad" style="display: none;">
+                        <path d="M 105 130 Q 123 118 140 130" fill="none" stroke="#3e2723" stroke-width="6" stroke-linecap="round"/>
+                        <path d="M 160 130 Q 177 118 195 130" fill="none" stroke="#3e2723" stroke-width="6" stroke-linecap="round"/>
+                    </g>
+
+                    <!-- Ніс і рот -->
+                    <polygon points="135,155 165,155 150,172" fill="#3e2723"/>
+                    <path id="mascot-mouth" d="M 132 178 Q 150 195 168 178" fill="none" stroke="#3e2723" stroke-width="4.5" stroke-linecap="round"/>
+                </g>
+            </svg>
+        </div>
+
+        <!-- Центральна дошка -->
+        <div id="tactical-board"></div>
+
+        <!-- Вибір чисел -->
+        <div id="number-picker"></div>
+
+        <!-- Кнопка регенерації -->
+        <div id="regen-btn" onclick="initNewLevel()">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- SVG Шаблони -->
+    <template id="svg-ball">
+        <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="46" fill="#ffffff" stroke="#212121" stroke-width="4"/>
+            <path d="M 50 25 L 30 40 L 38 65 L 62 65 L 70 40 Z" fill="#212121"/>
+            <path d="M 50 25 L 50 4" stroke="#212121" stroke-width="4"/>
+            <path d="M 30 40 L 8 33" stroke="#212121" stroke-width="4"/>
+            <path d="M 70 40 L 92 33" stroke="#212121" stroke-width="4"/>
+            <path d="M 38 65 L 18 86" stroke="#212121" stroke-width="4"/>
+            <path d="M 62 65 L 82 86" stroke="#212121" stroke-width="4"/>
+            <circle cx="35" cy="30" r="16" fill="rgba(0,0,0,0.1)"/>
+        </svg>
+    </template>
+
+    <template id="svg-trophy">
+        <svg viewBox="0 0 100 100">
+            <path d="M 18 18 Q 50 85 82 18 Z" fill="#ffd700" stroke="#b8860b" stroke-width="3"/>
+            <rect x="40" y="65" width="20" height="22" fill="#daa520"/>
+            <path d="M 28 87 L 72 87 L 78 97 L 22 97 Z" fill="#5d4037"/>
+            <path d="M 23 25 C 5 25, 5 55, 23 55" fill="none" stroke="#ffd700" stroke-width="7"/>
+            <path d="M 77 25 C 95 25, 95 55, 77 55" fill="none" stroke="#ffd700" stroke-width="7"/>
+            <ellipse cx="50" cy="18" rx="32" ry="12" fill="#fff9c4"/>
+            <path d="M 45 25 L 55 25 L 50 62 Z" fill="rgba(255,255,255,0.35)"/>
+        </svg>
+    </template>
+
+    <template id="svg-boot">
+        <svg viewBox="0 0 100 100">
+            <path d="M 20 40 C 20 15, 40 15, 50 40 L 82 62 Q 98 72 90 82 L 18 82 C 8 82, 8 48, 20 40 Z" fill="#e53935" stroke="#b71c1c" stroke-width="3"/>
+            <path d="M 25 40 L 48 40" stroke="#ffffff" stroke-width="4" stroke-dasharray="5,3"/>
+            <path d="M 30 47 L 53 47" stroke="#ffffff" stroke-width="4" stroke-dasharray="5,3"/>
+            <path d="M 35 54 L 58 54" stroke="#ffffff" stroke-width="4" stroke-dasharray="5,3"/>
+            <polygon points="25,82 30,98 35,82" fill="#9e9e9e"/>
+            <polygon points="50,82 55,98 60,82" fill="#9e9e9e"/>
+            <polygon points="75,82 80,98 85,82" fill="#9e9e9e"/>
+            <path d="M 50 38 Q 62 38 78 60" fill="none" stroke="#212121" stroke-width="4"/>
+        </svg>
+    </template>
+
+    <script>
+        // Ініціалізація аудіо (тихі синтезовані звуки)
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function playSoundFx(type) {
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const t = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            if (type === 'whistle') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1200, t);
+                osc.frequency.linearRampToValueAtTime(1500, t + 0.1);
+                osc.frequency.linearRampToValueAtTime(1300, t + 0.3);
+                gain.gain.setValueAtTime(0.06, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+                osc.start(t);
+                osc.stop(t + 0.3);
+            } else if (type === 'foul') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, t);
+                osc.frequency.exponentialRampToValueAtTime(60, t + 0.3);
+                gain.gain.setValueAtTime(0.05, t);
+                gain.gain.linearRampToValueAtTime(0.001, t + 0.4);
+                osc.start(t);
+                osc.stop(t + 0.4);
+            } else if (type === 'goal') {
+                const freqs = [523.25, 659.25, 783.99, 1046.50];
+                freqs.forEach((f, i) => {
+                    const o = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    o.type = 'square';
+                    o.frequency.setValueAtTime(f, t + i * 0.1);
+                    g.gain.setValueAtTime(0, t);
+                    g.gain.setValueAtTime(0.04, t + i * 0.1);
+                    g.gain.exponentialRampToValueAtTime(0.001, t + 1.2 + i * 0.1);
+                    o.connect(g);
+                    g.connect(audioCtx.destination);
+                    o.start(t + i * 0.1);
+                    o.stop(t + 1.2 + i * 0.1);
+                });
+            } else if (type === 'click') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(900, t);
+                gain.gain.setValueAtTime(0.03, t);
+                gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+                osc.start(t);
+                osc.stop(t + 0.1);
+            }
+        }
+
+        // Логіка рандомного погляду лева
+        function updateLionGaze() {
+            const pupils = document.getElementById('lion-pupils');
+            if (pupils) {
+                const dx = (Math.random() - 0.5) * 8; // від -4 до 4 px
+                const dy = (Math.random() - 0.5) * 6; // від -3 до 3 px
+                pupils.style.transform = `translate(${dx}px, ${dy}px)`;
+                pupils.style.transition = 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            }
+            setTimeout(updateLionGaze, 1500 + Math.random() * 2500);
+        }
+        updateLionGaze();
+
+        let currLvl = null;
+        let targetVar = null;
+        const svgs = ['ball', 'trophy', 'boot'];
+
+        function shuffle(arr) {
+            return arr.sort(() => Math.random() - 0.5);
+        }
+
+        function generateData() {
+            let valid = false;
+            let A, B, C, X, Y, Z, op, eqs;
+
+            while (!valid) {
+                let nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                A = nums[0]; B = nums[1]; C = nums[2];
+
+                X = A + A;
+                if (X > 10) continue;
+
+                Y = A + B;
+                if (Y > 10) continue;
+
+                if (Math.random() > 0.5) {
+                    op = '+'; Z = B + C;
+                    if (Z > 10) continue;
+                    eqs = [
+                        { l: ['A', '+', 'A'], r: X },
+                        { l: ['A', '+', 'B'], r: Y },
+                        { l: ['B', op, 'C'], r: Z }
+                    ];
+                } else {
+                    op = '-'; Z = B - C;
+                    if (Z < 1) { 
+                        Z = C - B; 
+                        if (Z < 1) continue;
+                        eqs = [
+                            { l: ['A', '+', 'A'], r: X },
+                            { l: ['A', '+', 'B'], r: Y },
+                            { l: ['C', '-', 'B'], r: Z }
+                        ];
+                    } else {
+                        eqs = [
+                            { l: ['A', '+', 'A'], r: X },
+                            { l: ['A', '+', 'B'], r: Y },
+                            { l: ['B', op, 'C'], r: Z }
+                        ];
+                    }
+                }
+                valid = true;
+            }
+
+            const mappedSvgs = shuffle([...svgs]);
+            return {
+                eqs: shuffle(eqs),
+                map: { A: mappedSvgs[0], B: mappedSvgs[1], C: mappedSvgs[2] },
+                val: { A, B, C },
+                solved: { A: false, B: false, C: false }
+            };
+        }
+
+        function buildBoard() {
+            document.getElementById('number-picker').style.display = 'none';
+            targetVar = null;
+            const board = document.getElementById('tactical-board');
+            board.innerHTML = '';
+            
+            currLvl.eqs.forEach(eq => {
+                const row = document.createElement('div');
+                row.className = 'equation-row';
+
+                eq.l.forEach(item => {
+                    if (item === '+' || item === '-') {
+                        const span = document.createElement('span');
+                        span.textContent = item;
+                        row.appendChild(span);
+                    } else {
+                        const slot = document.createElement('div');
+                        slot.className = `symbol-slot v-${item}`;
+                        
+                        if (currLvl.solved[item]) {
+                            slot.innerHTML = `<span class="solved-text">${currLvl.val[item]}</span>`;
+                            slot.style.border = 'none';
+                            slot.style.background = 'transparent';
+                            slot.style.boxShadow = 'none';
+                            slot.style.pointerEvents = 'none';
+                        } else {
+                            const templateId = `svg-${currLvl.map[item]}`;
+                            const template = document.getElementById(templateId);
+                            slot.appendChild(template.content.cloneNode(true));
+                            slot.onclick = (e) => openNumPicker(e, item);
+                        }
+                        row.appendChild(slot);
+                    }
+                });
+
+                const eqSign = document.createElement('span');
+                eqSign.textContent = '=';
+                row.appendChild(eqSign);
+
+                const res = document.createElement('span');
+                res.textContent = eq.r;
+                row.appendChild(res);
+
+                board.appendChild(row);
+            });
+            drawNumPicker();
+        }
+
+        function drawNumPicker() {
+            const picker = document.getElementById('number-picker');
+            picker.innerHTML = '';
+            const r = picker.offsetWidth / 2 || window.innerHeight * 0.21; 
+            
+            for (let i = 1; i <= 9; i++) {
+                const btn = document.createElement('div');
+                btn.className = 'num-btn';
+                btn.textContent = i;
+                
+                const angle = (i - 1) * (360 / 9) * (Math.PI / 180) - Math.PI / 2;
+                const x = Math.round(r + (r * 0.75) * Math.cos(angle) - window.innerHeight * 0.0475);
+                const y = Math.round(r + (r * 0.75) * Math.sin(angle) - window.innerHeight * 0.0475);
+                
+                btn.style.left = `${x}px`;
+                btn.style.top = `${y}px`;
+                
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    checkVal(i);
+                };
+                picker.appendChild(btn);
+            }
+        }
+
+        function openNumPicker(event, varName) {
+            if (currLvl.solved[varName]) return;
+            playSoundFx('click');
+            targetVar = varName;
+            
+            const picker = document.getElementById('number-picker');
+            const rect = event.currentTarget.getBoundingClientRect();
+            
+            picker.style.left = `${rect.left + rect.width / 2}px`;
+            picker.style.top = `${rect.top + rect.height / 2}px`;
+            picker.style.display = 'block';
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#number-picker') && !e.target.closest('.symbol-slot') && !e.target.closest('#regen-btn')) {
+                document.getElementById('number-picker').style.display = 'none';
+                targetVar = null;
+            }
+        });
+
+        function doMascotAction(type) {
+            const lion = document.getElementById('lion-main');
+            const eyes = document.getElementById('mascot-eyes');
+            const eyesSad = document.getElementById('mascot-eyes-sad');
+            const mouth = document.getElementById('mascot-mouth');
+
+            lion.classList.remove('anim-goal', 'anim-sad');
+            void lion.offsetWidth; 
+
+            if (type === 'goal') {
+                lion.classList.add('anim-goal');
+                mouth.setAttribute('d', 'M 125 185 Q 150 215 175 185'); 
+                setTimeout(() => mouth.setAttribute('d', 'M 132 178 Q 150 195 168 178'), 1200);
+            } else if (type === 'foul') {
+                lion.classList.add('anim-sad');
+                eyes.style.display = 'none';
+                eyesSad.style.display = 'block';
+                mouth.setAttribute('d', 'M 140 188 Q 150 175 160 188'); 
+                setTimeout(() => {
+                    eyes.style.display = 'block';
+                    eyesSad.style.display = 'none';
+                    mouth.setAttribute('d', 'M 132 178 Q 150 195 168 178');
+                }, 600);
+            }
+        }
+
+        function throwConfetti() {
+            const cols = ['#1565c0', '#fbc02d', '#ffffff']; 
+            for(let i = 0; i < 45; i++) {
+                const p = document.createElement('div');
+                p.className = 'confetti-item';
+                
+                if (Math.random() > 0.5) {
+                    p.style.borderRadius = '50%';
+                    p.style.backgroundColor = '#ffffff';
+                    p.style.border = '2px solid #212121';
+                } else {
+                    p.style.backgroundColor = cols[Math.floor(Math.random() * cols.length)];
+                    p.style.clipPath = 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)';
+                }
+                
+                p.style.left = '55vw';
+                p.style.top = '50vh';
+                
+                const a = Math.random() * Math.PI * 2;
+                const v = 25 + Math.random() * 35;
+                const tx = Math.cos(a) * v * (window.innerHeight * 0.02);
+                const ty = Math.sin(a) * v * (window.innerHeight * 0.02) + (window.innerHeight * 0.35); 
+                const rot = Math.random() * 1080;
+                
+                p.animate([
+                    { transform: 'translate(0,0) scale(0.4) rotate(0deg)', opacity: 1 },
+                    { transform: `translate(${tx}px, ${ty}px) scale(1.6) rotate(${rot}deg)`, opacity: 0 }
+                ], {
+                    duration: 1600 + Math.random() * 1200,
+                    easing: 'cubic-bezier(0, .9, .57, 1)'
+                });
+                
+                document.body.appendChild(p);
+                setTimeout(() => p.remove(), 2800);
+            }
+        }
+
+        function checkVal(num) {
+            if (!targetVar) return;
+            document.getElementById('number-picker').style.display = 'none';
+
+            const correct = currLvl.val[targetVar];
+            const slots = document.querySelectorAll(`.v-${targetVar}`);
+
+            if (num === correct) {
+                playSoundFx('whistle');
+                currLvl.solved[targetVar] = true;
+
+                slots.forEach(slot => {
+                    slot.innerHTML = `<span class="solved-text">${num}</span>`;
+                    slot.style.pointerEvents = 'none';
+                    slot.style.background = 'transparent';
+                    slot.style.border = 'none';
+                    slot.style.boxShadow = 'none';
+                });
+
+                if (currLvl.solved.A && currLvl.solved.B && currLvl.solved.C) {
+                    setTimeout(() => {
+                        playSoundFx('goal');
+                        throwConfetti();
+                        doMascotAction('goal');
+                    }, 400);
+                }
+            } else {
+                playSoundFx('foul');
+                doMascotAction('foul');
+                slots.forEach(slot => {
+                    slot.classList.remove('foul-error');
+                    void slot.offsetWidth;
+                    slot.classList.add('foul-error');
+                });
+            }
+            targetVar = null;
+        }
+
+        function initNewLevel() {
+            currLvl = generateData();
+            buildBoard();
+        }
+
+        window.onload = initNewLevel;
+    </script>
+</body>
+</html>
