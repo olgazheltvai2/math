@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <title>Тренажер обчислень: Додавання та Віднімання</title>
+    <style>
+        /* Базові налаштування: великий шрифт Arial, як замовляли */
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh; 
+            background-size: cover; 
+            background-position: center; 
+            transition: background 0.3s; 
+            font-size: 26px; /* Значно крупніший шрифт */
+        }
+        
+        /* Контейнер гри на напівпрозорому фоні */
+        #game-container { 
+            background: rgba(255, 255, 255, 0.95); 
+            padding: 40px; 
+            border-radius: 20px; 
+            width: 95%; 
+            max-width: 1000px; 
+            text-align: center; 
+            box-shadow: 0 0 30px rgba(0,0,0,0.3); 
+        }
+
+        /* Елементи керування та вводу */
+        select, button, input { 
+            font-family: Arial, sans-serif; 
+            font-size: 26px; 
+            padding: 12px 20px; 
+            margin: 10px; 
+            border-radius: 12px; 
+            border: 2px solid #aaa; 
+        }
+        
+        select { background: #fff; cursor: pointer; max-width: 100%; }
+        
+        button { 
+            background-color: #4CAF50; 
+            color: white; 
+            cursor: pointer; 
+            font-weight: bold; 
+            border: none; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2); 
+            transition: 0.2s; 
+        }
+        button:hover { background-color: #45a049; transform: translateY(-2px); }
+        button.action-btn { background-color: #2196F3; }
+        button.action-btn:hover { background-color: #1976D2; }
+        
+        input { 
+            width: 90px; 
+            text-align: center; 
+            font-weight: bold; 
+            color: #333; 
+            transition: background 0.3s;
+        }
+
+        .problem-area { font-size: 70px; margin: 30px 0; font-weight: bold; color: #222; }
+        .step-row { margin: 20px 0; display: flex; justify-content: center; align-items: center; gap: 15px; flex-wrap: wrap; }
+        
+        /* Зона візуального пояснення */
+        .step-visualizer { 
+            background: #eef9f1; 
+            padding: 25px; 
+            border: 3px dashed #4CAF50; 
+            border-radius: 15px; 
+            margin-top: 30px; 
+            display: none; 
+            text-align: left; 
+            font-size: 28px; 
+            line-height: 1.6; 
+        }
+
+        /* --- Theme Manager UI --- */
+        #theme-btn { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            z-index: 9999; 
+            border-radius: 50%; 
+            width: 70px; 
+            height: 70px; 
+            border: none; 
+            cursor: pointer; 
+            font-size: 34px; 
+            background: white; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); 
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #theme-modal { 
+            display: none; 
+            position: fixed; 
+            bottom: 100px; 
+            right: 20px; 
+            width: 380px; 
+            max-height: 60vh; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 15px; 
+            overflow-y: auto; 
+            z-index: 9998; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.4); 
+        }
+        .bg-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        .bg-thumb { 
+            width: 100%; 
+            height: 110px; 
+            cursor: pointer; 
+            border: 3px solid #ddd; 
+            border-radius: 8px; 
+            background-size: cover; 
+            background-position: center; 
+            display: flex; 
+            align-items: flex-end; 
+            justify-content: center; 
+            color: white; 
+            text-shadow: 2px 2px 4px black; 
+            font-weight: bold; 
+            font-size: 20px; 
+            padding-bottom: 8px; 
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div>
+        <div style="margin-bottom: 15px;">
+            <label style="cursor:pointer; margin-right: 20px;">
+                <input type="radio" name="operation" value="add" checked onchange="updateMethodDropdown()"> <b>Додавання (+)</b>
+            </label>
+            <label style="cursor:pointer;">
+                <input type="radio" name="operation" value="sub" onchange="updateMethodDropdown()"> <b>Віднімання (-)</b>
+            </label>
+        </div>
+        <select id="method-select" onchange="generateProblem()">
+            <!-- Опції генеруються через JS -->
+        </select>
+    </div>
+    
+    <div id="problem-display" class="problem-area"></div>
+    
+    <div id="input-fields"></div>
+    
+    <div class="controls">
+        <button class="action-btn" onclick="checkAnswers()">Перевірити хід обчислення</button>
+        <button class="action-btn" onclick="showCalculation()">Показати як обчислювати наочно</button>
+        <button onclick="generateProblem()">Новий приклад</button>
+    </div>
+    
+    <div id="step-visualizer" class="step-visualizer"></div>
+</div>
+
+<!-- Theme Manager UI -->
+<button id="theme-btn" onclick="toggleThemeModal()">⚙️</button>
+<div id="theme-modal">
+    <div class="bg-grid" id="bg-grid"></div>
+</div>
+
+<script>
+    // --- Логіка гри: Додавання та Віднімання ---
+    let currentN1 = 0;
+    let currentN2 = 0;
+    let currentMethod = '';
+
+    function updateMethodDropdown() {
+        const op = document.querySelector('input[name="operation"]:checked').value;
+        const select = document.getElementById('method-select');
+        select.innerHTML = '';
+        
+        if (op === 'add') {
+            select.innerHTML = `
+                <option value="add_rozryad">Розкладання на розрядні доданки</option>
+                <option value="add_poslidovne">Послідовне (по частинах)</option>
+                <option value="add_okruglennya">Метод округлення</option>
+            `;
+        } else {
+            select.innerHTML = `
+                <option value="sub_poslidovne">Послідовне (по частинах)</option>
+                <option value="sub_okruglennya">Метод округлення</option>
+            `;
+        }
+        generateProblem();
+    }
+
+    function generateProblem() {
+        const method = document.getElementById('method-select').value;
+        let n1, n2, op;
+
+        if (method.startsWith('add_')) {
+            // Без перехода через десяток (сума одиниць <= 9, сума десятків <= 9)
+            let t1 = Math.floor(Math.random() * 7) + 1; // 1-7
+            let t2 = Math.floor(Math.random() * (9 - t1)) + 1; 
+            let o1, o2;
+            
+            if (method === 'add_okruglennya') {
+                o2 = Math.floor(Math.random() * 3) + 7; // 7, 8, 9 (щоб було що округлювати)
+                o1 = Math.floor(Math.random() * (10 - o2)); // гарантуємо що o1+o2 <= 9
+            } else {
+                o1 = Math.floor(Math.random() * 8) + 1; // 1-8
+                o2 = Math.floor(Math.random() * (9 - o1)) + 1; // гарантуємо що o1+o2 <= 9
+            }
+            
+            n1 = t1 * 10 + o1;
+            n2 = t2 * 10 + o2;
+            op = '+';
+        } else {
+            // Без перехода через десяток (одиниці n1 >= одиниці n2)
+            let t1 = Math.floor(Math.random() * 7) + 3; // 3-9
+            let t2 = Math.floor(Math.random() * (t1 - 1)) + 1; // гарантуємо що t1 > t2
+            let o1, o2;
+
+            if (method === 'sub_okruglennya') {
+                o2 = Math.floor(Math.random() * 3) + 7; // 7, 8, 9
+                o1 = Math.floor(Math.random() * (10 - o2)) + o2; // від o2 до 9 (гарантуємо o1 >= o2)
+            } else {
+                o2 = Math.floor(Math.random() * 8) + 1; // 1-8
+                o1 = Math.floor(Math.random() * (9 - o2)) + o2 + 1; // від o2+1 до 9
+                if (o1 > 9) o1 = 9;
+            }
+            
+            n1 = t1 * 10 + o1;
+            n2 = t2 * 10 + o2;
+            op = '-';
+        }
+        
+        currentN1 = n1;
+        currentN2 = n2;
+        currentMethod = method;
+
+        document.getElementById('problem-display').innerText = `${n1} ${op} ${n2} = ?`;
+        document.getElementById('step-visualizer').style.display = 'none';
+        
+        renderInputFields(method, n1, n2);
+    }
+
+    function renderInputFields(method, n1, n2) {
+        let html = '';
+        if (method === 'add_rozryad') {
+            let t1 = Math.floor(n1/10)*10, o1 = n1%10;
+            let t2 = Math.floor(n2/10)*10, o2 = n2%10;
+            html += `<div class="step-row">Додаємо десятки: <input data-ans="${t1}"> + <input data-ans="${t2}"> = <input data-ans="${t1+t2}"></div>`;
+            html += `<div class="step-row">Додаємо одиниці: <input data-ans="${o1}"> + <input data-ans="${o2}"> = <input data-ans="${o1+o2}"></div>`;
+            html += `<div class="step-row">Разом: <input data-ans="${t1+t2}"> + <input data-ans="${o1+o2}"> = <input data-ans="${n1+n2}"></div>`;
+        }
+        else if (method === 'add_poslidovne') {
+            let t2 = Math.floor(n2/10)*10, o2 = n2%10;
+            html += `<div class="step-row">Спочатку десятки: <input data-ans="${n1}"> + <input data-ans="${t2}"> = <input data-ans="${n1+t2}"></div>`;
+            html += `<div class="step-row">Потім одиниці: <input data-ans="${n1+t2}"> + <input data-ans="${o2}"> = <input data-ans="${n1+n2}"></div>`;
+        }
+        else if (method === 'add_okruglennya') {
+            let n2_r = Math.ceil(n2/10)*10;
+            let diff = n2_r - n2;
+            html += `<div class="step-row">Додаємо кругле: <input data-ans="${n1}"> + <input data-ans="${n2_r}"> = <input data-ans="${n1+n2_r}"></div>`;
+            html += `<div class="step-row">Віднімаємо зайве: <input data-ans="${n1+n2_r}"> - <input data-ans="${diff}"> = <input data-ans="${n1+n2}"></div>`;
+        }
+        else if (method === 'sub_poslidovne') {
+            let t2 = Math.floor(n2/10)*10, o2 = n2%10;
+            html += `<div class="step-row">Віднімаємо десятки: <input data-ans="${n1}"> - <input data-ans="${t2}"> = <input data-ans="${n1-t2}"></div>`;
+            html += `<div class="step-row">Віднімаємо одиниці: <input data-ans="${n1-t2}"> - <input data-ans="${o2}"> = <input data-ans="${n1-n2}"></div>`;
+        }
+        else if (method === 'sub_okruglennya') {
+            let n2_r = Math.ceil(n2/10)*10;
+            let diff = n2_r - n2;
+            html += `<div class="step-row">Віднімаємо кругле: <input data-ans="${n1}"> - <input data-ans="${n2_r}"> = <input data-ans="${n1-n2_r}"></div>`;
+            html += `<div class="step-row">Повертаємо різницю: <input data-ans="${n1-n2_r}"> + <input data-ans="${diff}"> = <input data-ans="${n1-n2}"></div>`;
+        }
+        document.getElementById('input-fields').innerHTML = html;
+    }
+
+    function checkAnswers() {
+        const inputs = document.querySelectorAll('#input-fields input');
+        inputs.forEach(input => {
+            if (input.value.trim() === input.dataset.ans) {
+                input.style.backgroundColor = '#d4edda'; // зелений для правильних
+            } else {
+                input.style.backgroundColor = '#f8d7da'; // червоний для неправильних
+            }
+        });
+    }
+
+    function showCalculation() {
+        let n1 = currentN1;
+        let n2 = currentN2;
+        let method = currentMethod;
+        let html = '';
+
+        if (method === 'add_rozryad') {
+            let t1 = Math.floor(n1/10)*10, o1 = n1%10;
+            let t2 = Math.floor(n2/10)*10, o2 = n2%10;
+            html += `<b>Крок 1:</b> Розкладаємо обидва числа на десятки та одиниці.<br>`;
+            html += `${n1} = <b><span style="color:blue">${t1}</span></b> і <b><span style="color:red">${o1}</span></b><br>`;
+            html += `${n2} = <b><span style="color:blue">${t2}</span></b> і <b><span style="color:red">${o2}</span></b><br><br>`;
+            html += `<b>Крок 2:</b> Додаємо десятки до десятків.<br>`;
+            html += `<b><span style="color:blue">${t1}</span></b> + <b><span style="color:blue">${t2}</span></b> = <b><span style="color:blue">${t1+t2}</span></b><br><br>`;
+            html += `<b>Крок 3:</b> Додаємо одиниці до одиниць.<br>`;
+            html += `<b><span style="color:red">${o1}</span></b> + <b><span style="color:red">${o2}</span></b> = <b><span style="color:red">${o1+o2}</span></b><br><br>`;
+            html += `<b>Крок 4:</b> Додаємо отримані результати.<br>`;
+            html += `<b><span style="color:blue">${t1+t2}</span></b> + <b><span style="color:red">${o1+o2}</span></b> = <b>${n1+n2}</b>`;
+        }
+        else if (method === 'add_poslidovne') {
+            let t2 = Math.floor(n2/10)*10, o2 = n2%10;
+            html += `<b>Крок 1:</b> Розкладаємо тільки ДРУГЕ число на десятки та одиниці.<br>`;
+            html += `${n2} = <b><span style="color:blue">${t2}</span></b> і <b><span style="color:red">${o2}</span></b><br><br>`;
+            html += `<b>Крок 2:</b> Додаємо десятки до першого числа.<br>`;
+            html += `${n1} + <b><span style="color:blue">${t2}</span></b> = <b>${n1+t2}</b><br><br>`;
+            html += `<b>Крок 3:</b> Додаємо одиниці до отриманого результату.<br>`;
+            html += `<b>${n1+t2}</b> + <b><span style="color:red">${o2}</span></b> = <b>${n1+n2}</b>`;
+        }
+        else if (method === 'add_okruglennya') {
+            let n2_r = Math.ceil(n2/10)*10;
+            let diff = n2_r - n2;
+            html += `<b>Крок 1:</b> Округлюємо друге число до ближчого круглого.<br>`;
+            html += `Найближче кругле до ${n2} це <b><span style="color:blue">${n2_r}</span></b>. Ми додали зайвих <b><span style="color:red">${diff}</span></b>.<br><br>`;
+            html += `<b>Крок 2:</b> Додаємо кругле число.<br>`;
+            html += `${n1} + <b><span style="color:blue">${n2_r}</span></b> = <b>${n1+n2_r}</b><br><br>`;
+            html += `<b>Крок 3:</b> Оскільки ми додали зайві ${diff}, тепер їх треба відняти.<br>`;
+            html += `<b>${n1+n2_r}</b> - <b><span style="color:red">${diff}</span></b> = <b>${n1+n2}</b>`;
+        }
+        else if (method === 'sub_poslidovne') {
+            let t2 = Math.floor(n2/10)*10, o2 = n2%10;
+            html += `<b>Крок 1:</b> Розкладаємо ДРУГЕ число на десятки та одиниці.<br>`;
+            html += `${n2} = <b><span style="color:blue">${t2}</span></b> і <b><span style="color:red">${o2}</span></b><br><br>`;
+            html += `<b>Крок 2:</b> Віднімаємо десятки від першого числа.<br>`;
+            html += `${n1} - <b><span style="color:blue">${t2}</span></b> = <b>${n1-t2}</b><br><br>`;
+            html += `<b>Крок 3:</b> Віднімаємо одиниці від отриманого результату.<br>`;
+            html += `<b>${n1-t2}</b> - <b><span style="color:red">${o2}</span></b> = <b>${n1-n2}</b>`;
+        }
+        else if (method === 'sub_okruglennya') {
+            let n2_r = Math.ceil(n2/10)*10;
+            let diff = n2_r - n2;
+            html += `<b>Крок 1:</b> Округлюємо друге число до ближчого круглого.<br>`;
+            html += `Найближче кругле до ${n2} це <b><span style="color:blue">${n2_r}</span></b>. Ми додали до нього <b><span style="color:red">${diff}</span></b>.<br><br>`;
+            html += `<b>Крок 2:</b> Віднімаємо кругле число.<br>`;
+            html += `${n1} - <b><span style="color:blue">${n2_r}</span></b> = <b>${n1-n2_r}</b><br><br>`;
+            html += `<b>Крок 3:</b> Оскільки ми відняли на ${diff} БІЛЬШЕ ніж треба, ми повинні їх повернути (додати).<br>`;
+            html += `<b>${n1-n2_r}</b> + <b><span style="color:red">${diff}</span></b> = <b>${n1-n2}</b>`;
+        }
+        
+        document.getElementById('step-visualizer').innerHTML = html;
+        document.getElementById('step-visualizer').style.display = 'block';
+    }
+
+
+    // --- Theme Manager Logic ---
+    const baseUrl = "https://olgazheltvai2.github.io/images/backgrounds/";
+    const modal = document.getElementById('theme-modal');
+    const bgGrid = document.getElementById('bg-grid');
+
+    function toggleThemeModal() {
+        modal.style.display = (modal.style.display === 'block') ? 'none' : 'block';
+    }
+
+    async function initBackgrounds() {
+        // Завантажуємо збережений фон відразу
+        let savedBg = localStorage.getItem('mySavedGameBg') || `${baseUrl}background_1.webp`;
+        document.body.style.backgroundImage = `url(${savedBg})`;
+
+        // Скрипт автоматично завантажує фони асинхронно
+        let errors = 0;
+        for (let i = 1; i <= 1000; i++) {
+            if (errors > 5) break; // Зупиняємо цикл, якщо кілька картинок підряд відсутні (економія ресурсів)
+            
+            let url = `${baseUrl}background_${i}.webp`;
+            
+            await new Promise((resolve) => {
+                let img = new Image();
+                img.onload = () => {
+                    errors = 0; // Скидаємо лічильник помилок
+                    let thumb = document.createElement('div');
+                    thumb.className = 'bg-thumb';
+                    thumb.style.backgroundImage = `url(${url})`;
+                    thumb.innerText = `Фон ${i}`;
+                    thumb.onclick = () => {
+                        document.body.style.backgroundImage = `url(${url})`;
+                        localStorage.setItem('mySavedGameBg', url);
+                    };
+                    bgGrid.appendChild(thumb);
+                    resolve();
+                };
+                img.onerror = () => {
+                    errors++;
+                    resolve();
+                };
+                img.src = url;
+            });
+        }
+    }
+
+    // Запускаємо ініціалізацію при старті
+    window.onload = () => {
+        initBackgrounds();
+        updateMethodDropdown();
+    };
+</script>
+</body>
+</html>
