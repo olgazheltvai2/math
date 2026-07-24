@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Склад Числа</title>
+    <style>
+        /* Скидання стилів та базові налаштування */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a0b2e 0%, #4b1d52 100%);
+            font-family: Arial, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* Контейнер гри */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Деталізований фон міста */
+        .city-background {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Анімація дихання машини */
+        @keyframes breathe {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-4px); }
+        }
+
+        /* Анімація обертання коліс */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Анімація виїзду машини */
+        @keyframes driveIn {
+            0% { transform: translateX(-150vw); }
+            100% { transform: translateX(0); }
+        }
+
+        /* Анімація від'їзду машини */
+        @keyframes driveOut {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(150vw); }
+        }
+
+        /* Анімація частинок диму */
+        @keyframes smokeFade {
+            0% { opacity: 0.7; transform: scale(0.5) translate(0, 0); }
+            100% { opacity: 0; transform: scale(3) translate(-30px, -40px); }
+        }
+
+        /* Анімація успіху (пульсація кольору) */
+        @keyframes successPulse {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(0, 255, 128, 0)); }
+            50% { filter: drop-shadow(0 0 30px rgba(0, 255, 128, 1)); }
+        }
+
+        /* Контейнер вантажівки */
+        .truck-container {
+            position: absolute;
+            bottom: 15vh;
+            left: 50vw;
+            margin-left: -350px; /* Половина ширини машини */
+            width: 700px;
+            height: 400px;
+            z-index: 10;
+            transition: transform 0.1s linear;
+        }
+
+        .truck-body-wrapper {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            animation: breathe 2s ease-in-out infinite;
+        }
+
+        .driving-in {
+            animation: driveIn 2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        .driving-out {
+            animation: driveOut 1.5s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+        }
+
+        /* Контейнер для диму */
+        #smoke-layer {
+            position: absolute;
+            bottom: 90px;
+            left: 20px;
+            width: 50px;
+            height: 50px;
+            z-index: 9;
+        }
+
+        .smoke-particle {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: radial-gradient(circle, rgba(200,200,220,0.8) 0%, rgba(150,150,170,0) 70%);
+            border-radius: 50%;
+            animation: smokeFade 1.5s linear forwards;
+            pointer-events: none;
+        }
+
+        /* Контейнер для математики на кузові */
+        .math-board {
+            position: absolute;
+            top: 60px;
+            left: 210px; /* Ідеально відцентровано по кузову */
+            width: 260px;
+            height: 220px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #ffe600;
+            font-weight: 900;
+            font-size: 5rem;
+            text-shadow: 3px 3px 0 #b35900, -1px -1px 0 #b35900, 1px -1px 0 #b35900, -1px 1px 0 #b35900, 1px 1px 0 #b35900;
+        }
+
+        .math-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            text-align: center;
+        }
+
+        .math-bottom {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+
+        /* Стилізація інпуту (уникаємо білих прямокутників) */
+        .math-input {
+            width: 90px;
+            height: 90px;
+            background: radial-gradient(circle, #ffaa00 0%, #cc5500 100%);
+            border: 4px dashed #ffe600;
+            border-radius: 20px;
+            color: #ffffff;
+            font-size: 4.5rem;
+            font-weight: 900;
+            text-align: center;
+            outline: none;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.5), 0 5px 15px rgba(0,0,0,0.4);
+            text-shadow: 2px 2px 0 #800000;
+            transition: all 0.2s;
+        }
+
+        .math-input:focus {
+            border-color: #00ffaa;
+            background: radial-gradient(circle, #ffcc00 0%, #ee7700 100%);
+            transform: scale(1.05);
+        }
+
+        /* Кнопки керування */
+        .controls {
+            position: absolute;
+            bottom: 4vh;
+            right: 4vw;
+            display: flex;
+            gap: 20px;
+            z-index: 20;
+        }
+
+        .btn {
+            background: linear-gradient(to bottom, #ff0077, #990044);
+            border: 3px solid #ff99cc;
+            border-radius: 15px;
+            padding: 15px;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #4d0022, 0 15px 20px rgba(0,0,0,0.5);
+            transition: all 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn:active {
+            transform: translateY(8px);
+            box-shadow: 0 0 0 #4d0022, 0 5px 10px rgba(0,0,0,0.5);
+        }
+
+        .btn svg {
+            width: 40px;
+            height: 40px;
+            fill: #fff;
+            filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.5));
+        }
+
+        .btn-skip {
+            background: linear-gradient(to bottom, #00bbff, #005599);
+            border-color: #99eeff;
+            box-shadow: 0 8px 0 #002244, 0 15px 20px rgba(0,0,0,0.5);
+        }
+        
+        .btn-skip:active {
+            box-shadow: 0 0 0 #002244, 0 5px 10px rgba(0,0,0,0.5);
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <!-- Складний сюжетний фон міста -->
+    <svg class="city-background" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMax slice">
+        <defs>
+            <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#190934" />
+                <stop offset="50%" stop-color="#4e2157" />
+                <stop offset="100%" stop-color="#e25d6b" />
+            </linearGradient>
+            <linearGradient id="roadGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2a2a35" />
+                <stop offset="100%" stop-color="#111118" />
+            </linearGradient>
+            <linearGradient id="buildGrad1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2c1a4d" />
+                <stop offset="100%" stop-color="#150b26" />
+            </linearGradient>
+            <linearGradient id="buildGrad2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#431e5c" />
+                <stop offset="100%" stop-color="#1e0c2b" />
+            </linearGradient>
+            <linearGradient id="buildGrad3" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#5a2357" />
+                <stop offset="100%" stop-color="#290f28" />
+            </linearGradient>
+            <pattern id="windows1" width="40" height="60" patternUnits="userSpaceOnUse">
+                <rect x="10" y="10" width="20" height="30" fill="#ffea00" opacity="0.8" rx="2" />
+            </pattern>
+            <pattern id="windows2" width="30" height="50" patternUnits="userSpaceOnUse">
+                <rect x="5" y="5" width="20" height="25" fill="#00ffff" opacity="0.7" rx="1" />
+            </pattern>
+            <pattern id="windows3" width="50" height="40" patternUnits="userSpaceOnUse">
+                <rect x="10" y="5" width="30" height="15" fill="#ff00a6" opacity="0.6" rx="3" />
+            </pattern>
+        </defs>
+
+        <!-- Небо -->
+        <rect width="1920" height="1080" fill="url(#skyGrad)" />
+        
+        <!-- Світило/Місяць -->
+        <circle cx="1500" cy="300" r="100" fill="#ffdd55" opacity="0.9" filter="drop-shadow(0 0 50px #ffdd55)" />
+
+        <!-- Дальній план міських будівель -->
+        <path d="M0,800 L0,500 L100,500 L100,600 L250,600 L250,450 L350,450 L350,550 L500,550 L500,400 L650,400 L650,650 L800,650 L800,350 L950,350 L950,550 L1100,550 L1100,450 L1250,450 L1250,600 L1400,600 L1400,300 L1550,300 L1550,500 L1700,500 L1700,450 L1850,450 L1850,700 L1920,700 L1920,800 Z" fill="url(#buildGrad1)" />
+        <path d="M0,800 L0,500 L100,500 L100,600 L250,600 L250,450 L350,450 L350,550 L500,550 L500,400 L650,400 L650,650 L800,650 L800,350 L950,350 L950,550 L1100,550 L1100,450 L1250,450 L1250,600 L1400,600 L1400,300 L1550,300 L1550,500 L1700,500 L1700,450 L1850,450 L1850,700 L1920,700 L1920,800 Z" fill="url(#windows2)" />
+
+        <!-- Середній план міських будівель -->
+        <path d="M50,850 L50,600 L200,600 L200,700 L400,700 L400,500 L550,500 L550,800 L700,800 L700,450 L900,450 L900,650 L1050,650 L1050,550 L1300,550 L1300,750 L1500,750 L1500,400 L1650,400 L1650,600 L1800,600 L1800,850 Z" fill="url(#buildGrad2)" />
+        <path d="M50,850 L50,600 L200,600 L200,700 L400,700 L400,500 L550,500 L550,800 L700,800 L700,450 L900,450 L900,650 L1050,650 L1050,550 L1300,550 L1300,750 L1500,750 L1500,400 L1650,400 L1650,600 L1800,600 L1800,850 Z" fill="url(#windows1)" />
+
+        <!-- Ближній план міських будівель -->
+        <path d="M-50,900 L-50,650 L150,650 L150,800 L300,800 L300,550 L450,550 L450,700 L650,700 L650,600 L850,600 L850,850 L1150,850 L1150,500 L1450,500 L1450,700 L1600,700 L1600,650 L1850,650 L1850,900 Z" fill="url(#buildGrad3)" />
+        <path d="M-50,900 L-50,650 L150,650 L150,800 L300,800 L300,550 L450,550 L450,700 L650,700 L650,600 L850,600 L850,850 L1150,850 L1150,500 L1450,500 L1450,700 L1600,700 L1600,650 L1850,650 L1850,900 Z" fill="url(#windows3)" />
+
+        <!-- Дорога -->
+        <rect x="0" y="850" width="1920" height="230" fill="url(#roadGrad)" />
+        <rect x="0" y="850" width="1920" height="15" fill="#444" />
+        
+        <!-- Розмітка дороги -->
+        <g stroke="#ffcc00" stroke-width="12" stroke-dasharray="80 100">
+            <line x1="0" y1="960" x2="1920" y2="960" />
+        </g>
+    </svg>
+
+    <!-- Основний контейнер машини -->
+    <div id="truck" class="truck-container driving-in">
+        <div class="truck-body-wrapper">
+            <!-- Дим -->
+            <div id="smoke-layer"></div>
+
+            <!-- SVG Вантажівки -->
+            <svg viewBox="0 0 700 400" width="100%" height="100%">
+                <defs>
+                    <linearGradient id="truckPaint" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#ff6600" />
+                        <stop offset="100%" stop-color="#990000" />
+                    </linearGradient>
+                    <linearGradient id="glassGrad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#aaeebb" />
+                        <stop offset="100%" stop-color="#226688" />
+                    </linearGradient>
+                    <linearGradient id="cargoGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#005599" />
+                        <stop offset="100%" stop-color="#001133" />
+                    </linearGradient>
+                    <linearGradient id="rimGrad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stop-color="#ffffff" />
+                        <stop offset="50%" stop-color="#aaaaaa" />
+                        <stop offset="100%" stop-color="#555555" />
+                    </linearGradient>
+                </defs>
+
+                <!-- Труба вихлопу (горизонтальна, прикріплена до бампера) -->
+                <rect x="70" y="290" width="60" height="15" fill="#555" rx="5" />
+                <rect x="60" y="285" width="20" height="25" fill="#333" rx="2" />
+
+                <!-- Причіп (Кузов для математики) -->
+                <rect x="150" y="40" width="380" height="260" fill="url(#cargoGrad)" rx="15" stroke="#00aaff" stroke-width="8" />
+                
+                <!-- Декоративні лінії на причепі (зв'язок чисел) -->
+                <path d="M340,130 L275,200" stroke="#00ffff" stroke-width="12" stroke-linecap="round" filter="drop-shadow(0 0 5px #00ffff)" />
+                <path d="M340,130 L405,200" stroke="#00ffff" stroke-width="12" stroke-linecap="round" filter="drop-shadow(0 0 5px #00ffff)" />
+                
+                <!-- Кабіна -->
+                <path d="M530,100 L630,100 Q670,100 680,140 L690,220 Q695,280 670,300 L530,300 Z" fill="url(#truckPaint)" />
+                <!-- Вікно -->
+                <path d="M540,115 L620,115 Q640,115 650,140 L665,210 L540,210 Z" fill="url(#glassGrad)" stroke="#222" stroke-width="4" />
+                <!-- Фара -->
+                <ellipse cx="680" cy="250" rx="10" ry="15" fill="#ffffaa" filter="drop-shadow(15px 0 20px #ffff00)" />
+                <!-- Радіаторна решітка -->
+                <rect x="685" y="210" width="10" height="70" fill="#333" />
+                <rect x="683" y="215" width="12" height="5" fill="#aaa" />
+                <rect x="683" y="235" width="12" height="5" fill="#aaa" />
+                <rect x="683" y="255" width="12" height="5" fill="#aaa" />
+                <!-- Бампер -->
+                <rect x="660" y="290" width="40" height="20" fill="#555" rx="5" />
+                <rect x="130" y="290" width="50" height="15" fill="#555" rx="5" />
+
+                <!-- Колеса (Групи для обертання) -->
+                <g class="wheel-group" style="transform-origin: 220px 320px;">
+                    <circle cx="220" cy="320" r="45" fill="#111" />
+                    <circle cx="220" cy="320" r="30" fill="url(#rimGrad)" />
+                    <circle cx="220" cy="320" r="10" fill="#222" />
+                    <!-- Спиці / малюнок диска для видимості обертання -->
+                    <line x1="220" y1="290" x2="220" y2="350" stroke="#333" stroke-width="6" />
+                    <line x1="190" y1="320" x2="250" y2="320" stroke="#333" stroke-width="6" />
+                    <line x1="199" y1="299" x2="241" y2="341" stroke="#333" stroke-width="6" />
+                    <line x1="241" y1="299" x2="199" y2="341" stroke="#333" stroke-width="6" />
+                </g>
+
+                <g class="wheel-group" style="transform-origin: 360px 320px;">
+                    <circle cx="360" cy="320" r="45" fill="#111" />
+                    <circle cx="360" cy="320" r="30" fill="url(#rimGrad)" />
+                    <circle cx="360" cy="320" r="10" fill="#222" />
+                    <line x1="360" y1="290" x2="360" y2="350" stroke="#333" stroke-width="6" />
+                    <line x1="330" y1="320" x2="390" y2="320" stroke="#333" stroke-width="6" />
+                    <line x1="339" y1="299" x2="381" y2="341" stroke="#333" stroke-width="6" />
+                    <line x1="381" y1="299" x2="339" y2="341" stroke="#333" stroke-width="6" />
+                </g>
+
+                <g class="wheel-group" style="transform-origin: 590px 320px;">
+                    <circle cx="590" cy="320" r="45" fill="#111" />
+                    <circle cx="590" cy="320" r="30" fill="url(#rimGrad)" />
+                    <circle cx="590" cy="320" r="10" fill="#222" />
+                    <line x1="590" y1="290" x2="590" y2="350" stroke="#333" stroke-width="6" />
+                    <line x1="560" y1="320" x2="620" y2="320" stroke="#333" stroke-width="6" />
+                    <line x1="569" y1="299" x2="611" y2="341" stroke="#333" stroke-width="6" />
+                    <line x1="611" y1="299" x2="569" y2="341" stroke="#333" stroke-width="6" />
+                </g>
+            </svg>
+
+            <!-- HTML Математика на кузові -->
+            <div class="math-board" id="math-board">
+                <div class="math-top" id="target-number">10</div>
+                <div class="math-bottom">
+                    <!-- Буде заповнено через JS (два інпути) -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Кнопки -->
+    <div class="controls">
+        <!-- Кнопка "Перегенерувати приклад" -->
+        <button class="btn btn-skip" id="btn-regenerate" title="Перегенерувати приклад">
+            <svg viewBox="0 0 24 24">
+                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+        </button>
+        <!-- Кнопка "Поїхати без вирішення" -->
+        <button class="btn" id="btn-drive-away" title="Поїхати без вирішення">
+            <svg viewBox="0 0 24 24">
+                <path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4z"/>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<script>
+    // Ініціалізація аудіо контексту для тихих звуків (генеруються синтезатором)
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    // Функція відтворення тихого звуку успіху
+    function playSuccessSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.type = 'triangle';
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.1);
+        osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.3);
+        
+        // Звук дуже тихий
+        gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.5);
+    }
+
+    // Функція відтворення тихого звуку двигуна при русі
+    function playEngineSound() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        osc.frequency.setValueAtTime(50, audioCtx.currentTime);
+        osc.frequency.linearRampToValueAtTime(80, audioCtx.currentTime + 1);
+        
+        gainNode.gain.setValueAtTime(0.02, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.0, audioCtx.currentTime + 1.5);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + 1.5);
+    }
+
+    // Елементи DOM
+    const truck = document.getElementById('truck');
+    const smokeLayer = document.getElementById('smoke-layer');
+    const mathBottom = document.querySelector('.math-bottom');
+    const targetNumberEl = document.getElementById('target-number');
+    const wheels = document.querySelectorAll('.wheel-group');
+    
+    let currentTarget = 0;
+    let isAnimating = false;
+    let smokeInterval;
+
+    // Генератор диму
+    function spawnSmoke() {
+        const smoke = document.createElement('div');
+        smoke.classList.add('smoke-particle');
+        // Легке випадкове зміщення
+        smoke.style.left = (Math.random() * 10 - 5) + 'px';
+        smoke.style.top = (Math.random() * 10 - 5) + 'px';
+        smokeLayer.appendChild(smoke);
+        
+        // Видалення після анімації
+        setTimeout(() => {
+            if(smoke.parentNode) smoke.parentNode.removeChild(smoke);
+        }, 1500);
+    }
+
+    // Керування димом та колесами
+    function startActiveAnimations() {
+        if(smokeInterval) clearInterval(smokeInterval);
+        smokeInterval = setInterval(spawnSmoke, 200);
+        // Коли машина приїхала та стоїть – колеса зупиняються
+        wheels.forEach(w => w.style.animation = 'none');
+    }
+
+    function startFastAnimations() {
+        if(smokeInterval) clearInterval(smokeInterval);
+        smokeInterval = setInterval(spawnSmoke, 80);
+        // Коли машина в дорозі – колеса крутяться
+        wheels.forEach(w => w.style.animation = 'spin 0.4s linear infinite');
+    }
+
+    // Логіка гри (Склад числа, два вікна вводу)
+    function generateProblem() {
+        // Вибираємо цільове число від 2 до 10
+        currentTarget = Math.floor(Math.random() * 9) + 2;
+        targetNumberEl.innerText = currentTarget;
+        
+        mathBottom.innerHTML = ''; // Очищаємо попереднє
+        
+        // Створюємо два інпути (один для вас, інший для дитини)
+        const inputLeft = document.createElement('input');
+        inputLeft.type = 'text';
+        inputLeft.className = 'math-input';
+        inputLeft.maxLength = 2;
+        inputLeft.autocomplete = 'off';
+        
+        const inputRight = document.createElement('input');
+        inputRight.type = 'text';
+        inputRight.className = 'math-input';
+        inputRight.maxLength = 2;
+        inputRight.autocomplete = 'off';
+
+        mathBottom.appendChild(inputLeft);
+        mathBottom.appendChild(inputRight);
+
+        // Функція перевірки суми двох інпутів
+        const checkBothInputs = () => {
+            const val1 = parseInt(inputLeft.value);
+            const val2 = parseInt(inputRight.value);
+            
+            // Якщо обидва поля містять числа
+            if (!isNaN(val1) && !isNaN(val2)) {
+                if (val1 + val2 === currentTarget) {
+                    inputLeft.disabled = true;
+                    inputRight.disabled = true;
+                    inputLeft.style.background = 'radial-gradient(circle, #00ffaa 0%, #00aa66 100%)';
+                    inputRight.style.background = 'radial-gradient(circle, #00ffaa 0%, #00aa66 100%)';
+                    truck.style.animation = 'successPulse 1s ease';
+                    playSuccessSound();
+                    
+                    setTimeout(() => {
+                        truck.style.animation = '';
+                        driveAwayAndReturn();
+                    }, 1000);
+                }
+            }
+        };
+
+        // Обробка вводу для лівого віконця
+        inputLeft.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+            checkBothInputs();
+        });
+        
+        // Обробка вводу для правого віконця
+        inputRight.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+            checkBothInputs();
+        });
+
+        // Фокус на перший інпут одразу
+        setTimeout(() => inputLeft.focus(), 500);
+    }
+
+    // Анімації зміни машин
+    function driveAwayAndReturn() {
+        if(isAnimating) return;
+        isAnimating = true;
+        
+        // Від'їзд
+        playEngineSound();
+        startFastAnimations();
+        truck.className = 'truck-container driving-out';
+        
+        setTimeout(() => {
+            // Машина поїхала, генеруємо нове завдання
+            generateProblem();
+            
+            // Заїзд
+            truck.className = 'truck-container driving-in';
+            playEngineSound();
+            
+            setTimeout(() => {
+                // Машина зупинилась
+                truck.className = 'truck-container';
+                startActiveAnimations();
+                isAnimating = false;
+            }, 2000);
+            
+        }, 1500);
+    }
+
+    // Слухачі кнопок
+    document.getElementById('btn-regenerate').addEventListener('click', () => {
+        if(!isAnimating) {
+            generateProblem();
+            // Граємо тихий звук кліку
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            osc.connect(audioCtx.destination);
+            osc.frequency.value = 800;
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
+        }
+    });
+
+    document.getElementById('btn-drive-away').addEventListener('click', () => {
+        if(!isAnimating) {
+            driveAwayAndReturn();
+        }
+    });
+
+    // Запуск гри при завантаженні
+    window.addEventListener('DOMContentLoaded', () => {
+        generateProblem();
+        
+        // Починаємо крутити колеса, поки машина виїжджає
+        startFastAnimations(); 
+        
+        // Чекаємо завершення анімації в'їзду
+        setTimeout(() => {
+            truck.className = 'truck-container';
+            startActiveAnimations();
+        }, 2000);
+        
+        // Спроба розблокувати аудіо після першого кліку
+        document.body.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }, { once: true });
+    });
+</script>
+</body>
+</html>
