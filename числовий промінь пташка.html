@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Пташка - Числовий промінь</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
         
@@ -16,7 +15,6 @@
             overflow: hidden;
             font-family: 'Propysy Bold', 'Propysy', 'Comic Sans MS', 'Chalkboard SE', sans-serif;
             font-weight: bold;
-            transition: background 0.5s ease;
         }
 
         /* Головний контейнер з пропорцією 16:9 */
@@ -30,7 +28,6 @@
             box-shadow: 0 0 50px rgba(0,0,0,0.8);
             border: 8px solid #3e2723;
             border-radius: 20px;
-            transition: all 0.5s ease;
         }
 
         /* SVG шар для деталізованого світу */
@@ -88,6 +85,7 @@
         }
         #target-berry { transform-origin: center; animation: pulseBerry 1.5s infinite ease-in-out; visibility: hidden; }
 
+        /* ПРИБРАНО transition, щоб не було смикань і відривів при JS-анімації */
         #bird { visibility: hidden; pointer-events: auto; cursor: pointer; }
 
         /* Трясіння при помилці */
@@ -129,7 +127,9 @@
 
         /* Адаптивність для мобільних екранів */
         @media (max-width: 768px) {
-            #input-panel { transform: translateX(-50%) scale(0.7); }
+            #input-panel {
+                transform: translateX(-50%) scale(0.7);
+            }
             #input-panel.active { top: 20px; }
         }
 
@@ -230,8 +230,7 @@
             </linearGradient>
         </defs>
 
-        <!-- Оригінальне небо -->
-        <rect id="sky-rect" width="1920" height="1080" fill="url(#skyGrad)" />
+        <rect width="1920" height="1080" fill="url(#skyGrad)" />
         <circle id="sun-glow" cx="200" cy="200" r="160" fill="url(#sunGrad)" />
         <circle cx="200" cy="200" r="100" fill="#fff176" />
         
@@ -277,7 +276,7 @@
         </g>
 
         <!-- Головний персонаж: Пташка -->
-        <g id="bird" onclick="clickBird()">
+        <g id="bird" onclick="clickBird(event)">
             <g id="bird-body" transform="translate(0, -100) scale(1.25)">
                 <!-- Лапки -->
                 <path d="M -15 35 L -25 55 M -15 35 L -5 55 M 15 35 L 5 55 M 15 35 L 25 55" stroke="#ffb300" stroke-width="6" stroke-linecap="round"/>
@@ -329,7 +328,7 @@
 <script>
     // === Змінні для синхронізації Firebase ===
     let isRemoteAction = false;
-    let sendAction = function(type, data = {}) {}; // Перезапишеться у блоці Firebase знизу
+    let sendAction = function(type, data = {}) {}; // Перезапишеться у блоці Firebase
 
     // === Аудіо система ===
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -387,13 +386,13 @@
     const berry = document.getElementById('target-berry');
     const inputPanel = document.getElementById('input-panel');
     const display = document.getElementById('display');
-    const gameContainer = document.getElementById('game-container');
     
     let gameState = 'PLACE_START'; // Стан: PLACE_START, PLACE_TARGET, SOLVE, DONE
     let startVal = null;
     let targetVal = null;
     let currentInput = "";
     const pointsData = [];
+    let lastStateChange = 0; // Захист від фантомних подвійних кліків
     
     // Побудова кривого числового променя
     function buildRay() {
@@ -458,11 +457,12 @@
         if (gameState === 'PLACE_START') {
             startVal = val;
             let pt = pointsData[val];
-            if(!pt) return; // Захист
+            if(!pt) return; 
             bird.setAttribute("transform", `translate(${pt.x}, ${pt.y})`);
             bird.style.visibility = "visible";
             playPop();
             gameState = 'PLACE_TARGET';
+            lastStateChange = Date.now(); // Захист від тач-екранів
             
         } else if (gameState === 'PLACE_TARGET') {
             if (val === startVal) {
@@ -471,7 +471,7 @@
             }
             targetVal = val;
             let pt = pointsData[val];
-            if(!pt) return; // Захист
+            if(!pt) return;
             berry.setAttribute("transform", `translate(${pt.x}, ${pt.y - 20})`);
             berry.style.visibility = "visible";
             
@@ -482,6 +482,7 @@
             inputPanel.classList.add('active'); 
             currentInput = "";
             updateDisplay();
+            lastStateChange = Date.now(); // Захист від тач-екранів
         }
     }
 
@@ -659,7 +660,14 @@
     }
 
     // Обробка натискання на пташку
-    function clickBird() {
+    function clickBird(event) {
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+        // Усуваємо фантомні подвійні кліки (synthetic clicks), коли після натискання на число відразу спрацьовує клік по пташці
+        if (Date.now() - lastStateChange < 400) return; 
+
         if (!isRemoteAction) sendAction('CLICK_BIRD');
         if (gameState === 'PLACE_TARGET' || gameState === 'SOLVE') {
             playPop();
@@ -673,19 +681,6 @@
     });
 </script>
 
-<!-- ========================================================================= -->
-<!-- МЕНЕДЖЕР ТЕМ (Динамічні фони) -->
-<!-- ========================================================================= -->
-<div id="theme-btn" style="position: fixed; bottom: 20px; right: 20px; font-size: 30px; cursor: pointer; z-index: 9999; background: white; border-radius: 50%; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">⚙️</div>
-        
-<div id="theme-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center;">
-    <div style="background: white; padding: 20px; border-radius: 15px; width: 80%; max-width: 800px; max-height: 60vh; display: flex; flex-direction: column;">
-        <h2 style="text-align: center; margin-bottom: 15px; color: black; font-family: Arial, sans-serif;">Оберіть фон</h2>
-        <div id="theme-gallery" style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; padding-right: 10px;">
-        </div>
-        <button onclick="document.getElementById('theme-modal').style.display='none'" style="margin-top: 15px; padding: 10px; font-size: 18px; cursor: pointer; border-radius: 10px; border: none; background: #f44336; color: white; font-family: Arial, sans-serif;">Закрити</button>
-    </div>
-</div>
 
 <!-- ========================================================================= -->
 <!-- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛУ ДОСТУПУ ТА FIREBASE -->
@@ -754,79 +749,9 @@
         }
     });
 
-    // ==========================================
-    // ЛОГІКА ТЕМ (Динамічні фони)
-    // ==========================================
-    const themeBtn = document.getElementById('theme-btn');
-    const themeModal = document.getElementById('theme-modal');
-    const themeGallery = document.getElementById('theme-gallery');
-
-    themeBtn.onclick = () => {
-        themeModal.style.display = 'flex';
-        if (themeGallery.innerHTML === '') loadThemes();
-    };
-
-    async function loadThemes() {
-        themeGallery.innerHTML = '<p style="color:black; font-family: Arial, sans-serif;">Завантаження...</p>';
-        let html = '';
-        let errorCount = 0;
-        
-        for (let i = 1; i <= 1000; i++) {
-            if (errorCount >= 3) break; // Зупинка, якщо картинки закінчились
-            let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
-            try {
-                let res = await fetch(url, { method: 'HEAD' });
-                if (res.ok) {
-                    errorCount = 0;
-                    html += `
-                        <div onclick="selectTheme('${url}')" style="position: relative; cursor: pointer; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.2); aspect-ratio: 16/9; background: url('${url}') center/cover;">
-                            <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6); color: white; text-align: center; padding: 5px; font-family: Arial, sans-serif; font-size: 14px;">Фон ${i}</div>
-                        </div>
-                    `;
-                } else {
-                    errorCount++;
-                }
-            } catch (e) {
-                errorCount++;
-            }
-        }
-        themeGallery.innerHTML = html || '<p style="color:black; font-family: Arial, sans-serif;">Фони не знайдено.</p>';
-    }
-
-    function selectTheme(url) {
-        db.ref('game_theme').set(url);
-        localStorage.setItem('mySavedGameBg', url);
-        themeModal.style.display = 'none';
-    }
-
-    function applyTheme(url) {
-        // Застосовуємо тему і робимо контейнер прозорим
-        document.body.style.backgroundImage = `url('${url}')`;
-        document.body.style.backgroundSize = 'cover';
-        document.body.style.backgroundPosition = 'center';
-        document.getElementById('game-container').style.background = 'transparent';
-        document.getElementById('game-container').style.boxShadow = 'none';
-        document.getElementById('game-container').style.border = 'none';
-        
-        // Ховаємо оригінальне мальоване небо
-        const skyRect = document.getElementById('sky-rect');
-        if (skyRect) skyRect.style.display = 'none';
-    }
-
-    db.ref('game_theme').on('value', snap => {
-        const url = snap.val();
-        if (url) applyTheme(url);
-    });
-
-    const savedBg = localStorage.getItem('mySavedGameBg');
-    if (savedBg) applyTheme(savedBg);
-
-
-    // ==========================================
     // 6. Синхронізація логіки гри (ІЗОЛЬОВАНА)
-    // ==========================================
     let lastHandledTimestamp = Date.now();
-    const GAME_ID = "bird_math_ray"; // Унікальний ID, щоб не ламалось від інших ігор!
+    const GAME_ID = "bird_math_ray"; // Унікальний ID, щоб не ламалось від інших ігор
 
     sendAction = function(type, data = {}) {
         const currentTimestamp = Date.now();
@@ -842,7 +767,7 @@
 
     db.ref('game_action').on('value', snap => {
         const val = snap.val();
-        // Захист від пустих даних або даних з інших ігор (Це лікує зависання і збої кліків)
+        // Захист від пустих даних або даних з інших ігор (Це лікує зависання)
         if (!val || typeof val !== 'object' || val.gameId !== GAME_ID) return; 
         
         if (val.senderId === tabId) return; // Ігноруємо власні ходи
