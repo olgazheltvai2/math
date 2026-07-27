@@ -8,7 +8,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
         
         body {
-            background-color: #121c12; /* Буде перекрито динамічним фоном */
+            background-color: #121c12;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -16,19 +16,19 @@
             overflow: hidden;
             font-family: 'Propysy Bold', 'Propysy', 'Comic Sans MS', 'Chalkboard SE', sans-serif;
             font-weight: bold;
-            transition: background 0.5s ease;
         }
 
-        /* Головний контейнер максимально прозорий згідно з вимогою */
+        /* Головний контейнер з пропорцією 16:9 та оригінальним фоном */
         #game-container {
             width: 100%;
             max-width: 100vw;
             aspect-ratio: 16 / 9;
             position: relative;
-            background: transparent;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
             overflow: hidden;
-            box-shadow: none;
-            border: none;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            border: 8px solid #3e2723;
+            border-radius: 20px;
         }
 
         /* SVG шар для деталізованого світу */
@@ -222,9 +222,14 @@
                 <stop offset="50%" stop-color="#5d4037"/>
                 <stop offset="100%" stop-color="#3e2723"/>
             </linearGradient>
+            <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#64b5f6"/>
+                <stop offset="100%" stop-color="#e3f2fd"/>
+            </linearGradient>
         </defs>
 
-        <!-- Небо прибрано, щоб контейнер був прозорим для зовнішнього динамічного фону -->
+        <!-- Оригінальне небо -->
+        <rect id="sky-rect" width="1920" height="1080" fill="url(#skyGrad)" />
         
         <circle id="sun-glow" cx="200" cy="200" r="160" fill="url(#sunGrad)" />
         <circle cx="200" cy="200" r="100" fill="#fff176" />
@@ -241,7 +246,11 @@
             </g>
         </g>
 
-        <!-- Задній план лісу прибрано для повної прозорості контейнера, залишаємо тільки саму гілку -->
+        <!-- Задній план лісу -->
+        <g opacity="0.6">
+            <path d="M-100 1080 L-100 650 Q 300 550 600 700 T 1300 600 T 2000 750 L2000 1080 Z" fill="#388e3c" />
+            <path d="M-100 1080 L-100 750 Q 400 650 800 800 T 1600 700 T 2000 850 L2000 1080 Z" fill="#1b5e20" />
+        </g>
 
         <!-- Головна гілка (Числовий промінь) -->
         <path d="M -50 700 Q 400 780 960 680 T 2000 650" fill="none" stroke="url(#woodGrad)" stroke-width="50" stroke-linecap="round" />
@@ -684,20 +693,6 @@
 </script>
 
 <!-- ========================================================================= -->
-<!-- МЕНЕДЖЕР ТЕМ (Динамічні фони) -->
-<!-- ========================================================================= -->
-<div id="theme-btn" style="position: fixed; bottom: 20px; right: 20px; font-size: 30px; cursor: pointer; z-index: 9999; background: white; border-radius: 50%; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); font-family: Arial, sans-serif;">⚙️</div>
-        
-<div id="theme-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; font-family: Arial, sans-serif;">
-    <div style="background: white; padding: 20px; border-radius: 15px; width: 80%; max-width: 800px; max-height: 60vh; display: flex; flex-direction: column;">
-        <h2 style="text-align: center; margin-bottom: 15px; color: black;">Оберіть фон</h2>
-        <div id="theme-gallery" style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; padding-right: 10px;">
-        </div>
-        <button onclick="document.getElementById('theme-modal').style.display='none'" style="margin-top: 15px; padding: 10px; font-size: 18px; cursor: pointer; border-radius: 10px; border: none; background: #f44336; color: white;">Закрити</button>
-    </div>
-</div>
-
-<!-- ========================================================================= -->
 <!-- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛУ ДОСТУПУ ТА FIREBASE -->
 <!-- ========================================================================= -->
 <div id="block-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 999999; justify-content: center; align-items: center; color: red; font-size: 5vw; font-family: Arial, sans-serif; font-weight: bold; text-align: center;">
@@ -769,69 +764,7 @@
         }
     });
 
-    // ==========================================
-    // ЛОГІКА ТЕМ (Динамічні фони)
-    // ==========================================
-    const themeBtn = document.getElementById('theme-btn');
-    const themeModal = document.getElementById('theme-modal');
-    const themeGallery = document.getElementById('theme-gallery');
-
-    themeBtn.onclick = () => {
-        themeModal.style.display = 'flex';
-        if (themeGallery.innerHTML === '') loadThemes();
-    };
-
-    async function loadThemes() {
-        themeGallery.innerHTML = '<p style="color:black;">Завантаження...</p>';
-        let html = '';
-        let errorCount = 0;
-        
-        for (let i = 1; i <= 1000; i++) {
-            if (errorCount >= 3) break; 
-            let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
-            try {
-                let res = await fetch(url, { method: 'HEAD' });
-                if (res.ok) {
-                    errorCount = 0;
-                    html += `
-                        <div onclick="selectTheme('${url}')" style="position: relative; cursor: pointer; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.2); aspect-ratio: 16/9; background: url('${url}') center/cover;">
-                            <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6); color: white; text-align: center; padding: 5px; font-size: 14px;">Фон ${i}</div>
-                        </div>
-                    `;
-                } else {
-                    errorCount++;
-                }
-            } catch (e) {
-                errorCount++;
-            }
-        }
-        themeGallery.innerHTML = html || '<p style="color:black;">Фони не знайдено.</p>';
-    }
-
-    function selectTheme(url) {
-        db.ref('game_theme').set(url);
-        localStorage.setItem('mySavedGameBg', url);
-        themeModal.style.display = 'none';
-    }
-
-    function applyTheme(url) {
-        document.body.style.backgroundImage = `url('${url}')`;
-        document.body.style.backgroundSize = 'cover';
-        document.body.style.backgroundPosition = 'center';
-    }
-
-    db.ref('game_theme').on('value', snap => {
-        const url = snap.val();
-        if (url) applyTheme(url);
-    });
-
-    const savedBg = localStorage.getItem('mySavedGameBg');
-    if (savedBg) applyTheme(savedBg);
-
-
-    // ==========================================
     // 6. Синхронізація логіки гри (ІЗОЛЬОВАНА + ЗАХИСТ ВІД ДЕСИНХРОНУ)
-    // ==========================================
     const GAME_ID = "bird_math_ray"; 
     let lastActionId = null; // Захищає від повторного виконання команд
 
