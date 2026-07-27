@@ -7,7 +7,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
         
         body {
-            background-color: #121c12;
+            background-color: transparent; /* Зроблено прозорим для зовнішніх фонів */
             display: flex;
             justify-content: center;
             align-items: center;
@@ -23,10 +23,10 @@
             max-width: 100vw;
             aspect-ratio: 16 / 9;
             position: relative;
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            background: transparent; /* Зроблено прозорим */
             overflow: hidden;
-            box-shadow: 0 0 50px rgba(0,0,0,0.8);
-            border: 8px solid #3e2723;
+            box-shadow: none; /* Прибрано для максимальної інтеграції з фоном */
+            border: none; /* Прибрано */
             border-radius: 20px;
         }
 
@@ -125,6 +125,14 @@
         /* Калькулятор опущено нижче */
         #input-panel.active { top: 80px; }
 
+        /* Адаптивність для мобільних екранів */
+        @media (max-width: 768px) {
+            #input-panel {
+                transform: translateX(-50%) scale(0.7);
+            }
+            #input-panel.active { top: 20px; }
+        }
+
         #display {
             width: 100%; height: 60px;
             background: linear-gradient(to bottom, #dcedc8, #aed581);
@@ -222,7 +230,7 @@
             </linearGradient>
         </defs>
 
-        <rect width="1920" height="1080" fill="url(#skyGrad)" />
+        <rect width="1920" height="1080" fill="transparent" />
         <circle id="sun-glow" cx="200" cy="200" r="160" fill="url(#sunGrad)" />
         <circle cx="200" cy="200" r="100" fill="#fff176" />
         
@@ -319,6 +327,10 @@
 </div>
 
 <script>
+    // === Змінні для синхронізації Firebase ===
+    let isRemoteAction = false;
+    let sendAction = function(type, data = {}) {}; // Перезапишеться у блоці Firebase знизу
+
     // === Аудіо система ===
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx = null;
@@ -446,7 +458,9 @@
 
     // Взаємодія з променем
     function handlePointClick(val) {
+        if (!isRemoteAction) sendAction('POINT_CLICK', { val });
         initAudio();
+        
         if (gameState === 'PLACE_START') {
             startVal = val;
             let pt = pointsData[val];
@@ -478,7 +492,9 @@
 
     // Клавіатура
     function pressKey(key) {
+        if (!isRemoteAction) sendAction('PRESS_KEY', { key });
         playClick();
+        
         if (key === 'del') {
             currentInput = currentInput.slice(0, -1);
         } else {
@@ -503,6 +519,7 @@
 
     // Перевірка
     function checkAnswer() {
+        if (!isRemoteAction) sendAction('CHECK_ANSWER');
         if (!currentInput || currentInput.length < 2) return;
         
         let op = currentInput[0];
@@ -654,6 +671,7 @@
 
     // Обробка натискання на пташку
     function clickBird() {
+        if (!isRemoteAction) sendAction('CLICK_BIRD');
         if (gameState === 'PLACE_TARGET' || gameState === 'SOLVE') {
             playPop();
             resetLevel();
@@ -664,6 +682,111 @@
     window.onload = () => {
         buildRay();
     };
+</script>
+
+<!-- ========================================================================= -->
+<!-- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛУ ДОСТУПУ (Firebase, Радар, Блокування, Логіка) -->
+<!-- ========================================================================= -->
+<div id="block-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 999999; justify-content: center; align-items: center; color: red; font-size: 5vw; font-family: sans-serif; font-weight: bold; text-align: center;">
+    Зачекай! Зараз не твій урок.
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+<script>
+    // 1. Ініціалізація Firebase
+    const firebaseConfig = {
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+        projectId: "lesson-13c44"
+    };
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // 2. Отримання та збереження імені
+    let myName = new URLSearchParams(window.location.search).get('user');
+    if (myName) {
+        sessionStorage.setItem('userName', myName);
+    } else {
+        myName = sessionStorage.getItem('userName');
+        if (!myName) {
+            myName = 'Гість_' + Math.floor(Math.random() * 1000);
+            sessionStorage.setItem('userName', myName);
+        }
+    }
+
+    // 3. Радар та унікальні вкладки
+    const tabId = Math.random().toString(36).substr(2, 9);
+    const userRef = db.ref(`online_users/${myName}/${tabId}`);
+    const connectedRef = db.ref('.info/connected');
+
+    connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+            userRef.set(true);
+            userRef.onDisconnect().remove();
+        }
+    });
+
+    window.addEventListener('beforeunload', () => {
+        userRef.remove();
+    });
+
+    // 4. Оновлення списку та блокування екрану
+    db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+        document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+    });
+
+    db.ref('force_refresh').on('value', (snap) => {
+        if (snap.val()) window.location.reload();
+    });
+
+    // 5. Повернення в Лобі (з імунітетом 1 секунда)
+    let isImmune = true;
+    setTimeout(() => isImmune = false, 1000);
+    db.ref('current_activity').on('value', (snap) => {
+        if (!isImmune && snap.val() === 'lobby') {
+            window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+        }
+    });
+
+    // 6. Синхронізація логіки гри
+    let lastHandledTimestamp = Date.now();
+
+    // Перевизначаємо функцію для відправки ходів
+    sendAction = function(type, data = {}) {
+        const currentTimestamp = Date.now();
+        lastHandledTimestamp = currentTimestamp;
+        db.ref('game_action').set({
+            senderId: tabId,
+            timestamp: currentTimestamp,
+            type: type,
+            data: data
+        });
+    };
+
+    // Слухаємо ходи з Firebase
+    db.ref('game_action').on('value', snap => {
+        const val = snap.val();
+        if (!val) return;
+        if (val.senderId === tabId) return; // Ігноруємо власні ходи
+        if (val.timestamp <= lastHandledTimestamp) return; // Ігноруємо старі ходи
+        
+        lastHandledTimestamp = val.timestamp;
+        isRemoteAction = true;
+        
+        try {
+            if (val.type === 'POINT_CLICK') handlePointClick(val.data.val);
+            if (val.type === 'PRESS_KEY') pressKey(val.data.key);
+            if (val.type === 'CHECK_ANSWER') checkAnswer();
+            if (val.type === 'CLICK_BIRD') clickBird();
+        } catch (e) {
+            console.error("Помилка синхронізації дії:", e);
+        }
+        
+        isRemoteAction = false;
+    });
 </script>
 
 </body>
