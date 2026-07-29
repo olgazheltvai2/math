@@ -3,45 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Лабіринт: Перегони</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Підключаємо Firebase -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <title>Лабіринт: Перегони (Без ключів)</title>
+    
+    <!-- Підключаємо PeerJS для прямого з'єднання браузерів без серверів -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            background-color: #f0f8ff;
+            margin: 0;
+            padding: 10px;
+        }
+
+        #setup-screen, #waiting-screen {
+            margin: 50px auto;
+            max-width: 400px;
+            padding: 25px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        textarea, input {
+            width: 100%;
+            margin-bottom: 15px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        button:hover { background-color: #2980b9; }
+        button:active { transform: scale(0.98); }
+        
+        .join-btn { background-color: #2ecc71; }
+        .join-btn:hover { background-color: #27ae60; }
+
+        #game-info {
+            font-size: 18px;
+            margin-bottom: 15px;
+            background: white;
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        /* Сітка лабіринту */
+        #maze-container {
+            display: grid;
+            grid-template-columns: repeat(15, 30px);
+            grid-template-rows: repeat(15, 30px);
+            gap: 2px;
+            justify-content: center;
+            margin: 0 auto;
+            background-color: #2c3e50;
+            padding: 5px;
+            border-radius: 8px;
+            width: fit-content;
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            background-color: #ecf0f1;
+            border-radius: 3px;
+        }
+
+        .center { 
+            background-color: #f1c40f; 
+            background-image: url('data:image/svg+xml;utf8,<svg text-anchor="middle" x="50%" y="70%" font-size="20" xmlns="http://www.w3.org/2000/svg"><text>🏆</text></svg>');
+        }
+
+        .obstacle { 
+            background-color: #e74c3c; 
+            background-image: url('data:image/svg+xml;utf8,<svg text-anchor="middle" x="50%" y="75%" font-size="16" xmlns="http://www.w3.org/2000/svg"><text>❓</text></svg>'); 
+        }
+
+        /* Гравці */
+        .player1 { background-color: #3498db; border-radius: 50%; box-shadow: 0 0 5px #3498db; }
+        .player2 { background-color: #e74c3c; border-radius: 50%; box-shadow: 0 0 5px #e74c3c; }
+
+        /* Модальне вікно для питань */
+        #question-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 350px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+
+        /* Кнопки для планшета */
+        .controls { margin-top: 20px; }
+        .controls button { 
+            width: 60px; 
+            height: 60px; 
+            margin: 5px; 
+            font-size: 24px; 
+            background-color: #ecf0f1;
+            color: #2c3e50;
+            box-shadow: 0 4px 0 #bdc3c7;
+        }
+        .controls button:active {
+            box-shadow: 0 0 0 #bdc3c7;
+            transform: translateY(4px);
+        }
+    </style>
 </head>
 <body>
 
-    <!-- Екран налаштування (для вчителя) -->
+    <!-- Екран налаштування (для вчителя/учня) -->
     <div id="setup-screen">
         <h2>Налаштування гри</h2>
-        <p>Введіть питання та відповіді у форматі: <b>Питання=Відповідь</b> (кожна пара з нового рядка)</p>
-        <textarea id="questions-input" rows="6" placeholder="2+2=4&#10;Скільки звуків у слові 'їжак'=5&#10;5*5=25"></textarea>
-        <br>
-        <button id="create-game-btn">Створити гру</button>
+        <div id="teacher-panel">
+            <p>Введіть питання у форматі: <b>Питання=Відповідь</b></p>
+            <textarea id="questions-input" rows="5">2+2=4&#10;5+5=10&#10;10-3=7</textarea>
+            <button id="create-game-btn">Створити гру (Вчитель)</button>
+        </div>
         <hr>
-        <p>Або приєднайтеся до існуючої гри:</p>
-        <input type="text" id="room-id-input" placeholder="Введіть ID кімнати">
-        <button id="join-game-btn">Приєднатися</button>
+        <p>Або приєднайтеся до гри:</p>
+        <input type="text" id="room-id-input" placeholder="Введіть код від вчителя" autocomplete="off">
+        <button id="join-game-btn" class="join-btn">Приєднатися (Учень)</button>
+    </div>
+
+    <!-- Екран очікування -->
+    <div id="waiting-screen" style="display: none;">
+        <h2>Кімната створена!</h2>
+        <p>Скажіть учню цей код:</p>
+        <h1 id="display-room-id" style="color: #3498db; letter-spacing: 2px;">Завантаження...</h1>
+        <p>Чекаємо на підключення гравця...</p>
     </div>
 
     <!-- Ігровий екран -->
     <div id="game-screen" style="display: none;">
-        <div id="game-info">Кімната: <strong id="display-room-id"></strong> | Ви: <strong id="player-role"></strong></div>
-        <div id="maze-container">
-            <!-- Сюди за допомогою JS буде згенеровано сітку лабіринту -->
-        </div>
+        <div id="game-info">Ви: <strong id="player-role"></strong></div>
+        <div id="maze-container"></div>
         
-        <!-- Екранні кнопки для учнів на планшетах -->
         <div class="controls">
-            <button id="btn-up">⬆️</button>
-            <br>
+            <button id="btn-up">⬆️</button><br>
             <button id="btn-left">⬅️</button>
             <button id="btn-down">⬇️</button>
             <button id="btn-right">➡️</button>
         </div>
     </div>
 
-    <!-- Модальне вікно для перешкоди (питання) -->
+    <!-- Вікно запитання -->
     <div id="question-modal" style="display: none;">
         <div class="modal-content">
             <h3 id="question-text">Запитання</h3>
@@ -51,12 +184,265 @@
         </div>
     </div>
 
-    <!-- Звуки (тиха музика та ефекти) -->
-    <audio id="bg-music" src="https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3" loop volume="0.1"></audio>
     <audio id="step-sfx" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_7c569f0653.mp3"></audio>
     <audio id="success-sfx" src="https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3"></audio>
-    <audio id="win-sfx" src="https://cdn.pixabay.com/download/audio/2021/08/09/audio_7f6c6d2524.mp3"></audio>
 
-    <script src="script.js"></script>
+    <script>
+        let peer = null;
+        let conn = null;
+        let isHost = false;
+        
+        let playerRole = null; // 'p1' (Синій) або 'p2' (Червоний)
+        let myX, myY;
+        let gameQuestions = [];
+        let obstaclesData = {};
+        
+        let p1Data = { x: 0, y: 7 };
+        let p2Data = { x: 14, y: 7 };
+        let currentObstacleKey = null;
+
+        const setupScreen = document.getElementById('setup-screen');
+        const waitingScreen = document.getElementById('waiting-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const mazeContainer = document.getElementById('maze-container');
+        const questionModal = document.getElementById('question-modal');
+
+        // ==========================================
+        // 1. СТВОРЕННЯ ГРИ (ХОСТ)
+        // ==========================================
+        document.getElementById('create-game-btn').addEventListener('click', () => {
+            const raw = document.getElementById('questions-input').value.split('\n');
+            gameQuestions = raw.map(q => {
+                const p = q.split('=');
+                return { q: p[0]?.trim(), a: p[1]?.trim() };
+            }).filter(q => q.q && q.a);
+
+            if (gameQuestions.length < 3) return alert("Мінімум 3 питання!");
+
+            setupScreen.style.display = 'none';
+            waitingScreen.style.display = 'block';
+
+            // Генеруємо короткий код для з'єднання
+            const roomId = 'game-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+            
+            peer = new Peer(roomId); // Створюємо сервер на вашому браузері
+            
+            peer.on('open', (id) => {
+                document.getElementById('display-room-id').innerText = id.replace('game-', '');
+            });
+
+            peer.on('connection', (connection) => {
+                conn = connection;
+                setupConnectionHandlers();
+                
+                // Коли учень підключився, генеруємо перешкоди і відправляємо йому дані
+                conn.on('open', () => {
+                    obstaclesData = generateObstacles();
+                    conn.send({ 
+                        type: 'init', 
+                        questions: gameQuestions, 
+                        obstacles: obstaclesData 
+                    });
+                    
+                    isHost = true;
+                    playerRole = 'p1';
+                    myX = p1Data.x; myY = p1Data.y;
+                    startGameUI();
+                });
+            });
+
+            peer.on('error', (err) => alert("Помилка з'єднання: " + err.type));
+        });
+
+        // ==========================================
+        // 2. ПРИЄДНАННЯ ДО ГРИ (ГІСТЬ)
+        // ==========================================
+        document.getElementById('join-game-btn').addEventListener('click', () => {
+            const code = document.getElementById('room-id-input').value.trim().toUpperCase();
+            if (!code) return alert("Введіть код!");
+
+            setupScreen.style.display = 'none';
+            peer = new Peer(); // Гість отримує випадковий ID
+
+            peer.on('open', () => {
+                // Підключаємося до вчителя
+                conn = peer.connect('game-' + code);
+                setupConnectionHandlers();
+            });
+
+            peer.on('error', (err) => {
+                alert("Не вдалося підключитися. Перевірте код!");
+                location.reload();
+            });
+        });
+
+        // ==========================================
+        // 3. ОБМІН ДАНИМИ МІЖ ГРАВЦЯМИ
+        // ==========================================
+        function setupConnectionHandlers() {
+            conn.on('data', (data) => {
+                // Учень отримує стартові дані
+                if (data.type === 'init') {
+                    gameQuestions = data.questions;
+                    obstaclesData = data.obstacles;
+                    isHost = false;
+                    playerRole = 'p2';
+                    myX = p2Data.x; myY = p2Data.y;
+                    startGameUI();
+                }
+                
+                // Хтось зробив крок
+                if (data.type === 'move') {
+                    if (data.role === 'p1') { p1Data.x = data.x; p1Data.y = data.y; }
+                    if (data.role === 'p2') { p2Data.x = data.x; p2Data.y = data.y; }
+                    drawMaze();
+                }
+
+                // Хтось вирішив приклад
+                if (data.type === 'clear') {
+                    obstaclesData[data.obsKey].active = false;
+                    drawMaze();
+                }
+
+                // Хтось переміг
+                if (data.type === 'win') {
+                    handleWin(data.role, false);
+                }
+            });
+        }
+
+        // ==========================================
+        // 4. ІГРОВА ЛОГІКА
+        // ==========================================
+        function generateObstacles() {
+            return {
+                'p1_obs1': { x: 3, y: 7, active: true },
+                'p1_obs2': { x: 5, y: 5, active: true },
+                'p1_obs3': { x: 5, y: 9, active: true },
+                'p2_obs1': { x: 11, y: 7, active: true },
+                'p2_obs2': { x: 9, y: 5, active: true },
+                'p2_obs3': { x: 9, y: 9, active: true }
+            };
+        }
+
+        function startGameUI() {
+            waitingScreen.style.display = 'none';
+            setupScreen.style.display = 'none';
+            gameScreen.style.display = 'block';
+            document.getElementById('player-role').innerText = playerRole === 'p1' ? 'Гравець 1 (Синій)' : 'Гравець 2 (Червоний)';
+            drawMaze();
+        }
+
+        function drawMaze() {
+            mazeContainer.innerHTML = '';
+            for (let y = 0; y < 15; y++) {
+                for (let x = 0; x < 15; x++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+
+                    if (x === 7 && y === 7) cell.classList.add('center');
+
+                    Object.entries(obstaclesData).forEach(([key, obs]) => {
+                        if (obs.x === x && obs.y === y && obs.active) cell.classList.add('obstacle');
+                    });
+
+                    if (p1Data.x === x && p1Data.y === y) cell.classList.add('player1');
+                    if (p2Data.x === x && p2Data.y === y) cell.classList.add('player2');
+
+                    mazeContainer.appendChild(cell);
+                }
+            }
+        }
+
+        // Рух
+        window.addEventListener('keydown', (e) => {
+            if (questionModal.style.display === 'flex') return;
+            let nx = myX, ny = myY;
+            if (e.key === 'ArrowUp') ny--;
+            if (e.key === 'ArrowDown') ny++;
+            if (e.key === 'ArrowLeft') nx--;
+            if (e.key === 'ArrowRight') nx++;
+            if (nx !== myX || ny !== myY) tryMove(nx, ny);
+        });
+
+        document.getElementById('btn-up').addEventListener('click', () => tryMove(myX, myY - 1));
+        document.getElementById('btn-down').addEventListener('click', () => tryMove(myX, myY + 1));
+        document.getElementById('btn-left').addEventListener('click', () => tryMove(myX - 1, myY));
+        document.getElementById('btn-right').addEventListener('click', () => tryMove(myX + 1, myY));
+
+        function tryMove(nx, ny) {
+            if (nx < 0 || nx > 14 || ny < 0 || ny > 14) return;
+
+            let hitObs = null;
+            Object.entries(obstaclesData).forEach(([key, obs]) => {
+                if (obs.x === nx && obs.y === ny && obs.active && key.startsWith(playerRole)) hitObs = key;
+            });
+
+            if (hitObs) {
+                triggerQuestion(hitObs);
+                return;
+            }
+
+            myX = nx; myY = ny;
+            
+            // Оновлюємо локально і малюємо
+            if (playerRole === 'p1') { p1Data.x = nx; p1Data.y = ny; } 
+            else { p2Data.x = nx; p2Data.y = ny; }
+            drawMaze();
+
+            // Надсилаємо іншому гравцю
+            conn.send({ type: 'move', role: playerRole, x: myX, y: myY });
+            document.getElementById('step-sfx').play().catch(()=>{});
+
+            // Перевірка перемоги
+            if (nx === 7 && ny === 7) {
+                handleWin(playerRole, true);
+            }
+        }
+
+        function triggerQuestion(obsKey) {
+            currentObstacleKey = obsKey;
+            const q = gameQuestions[Math.floor(Math.random() * gameQuestions.length)];
+            
+            document.getElementById('question-text').innerText = q.q;
+            document.getElementById('question-text').dataset.answer = q.a;
+            document.getElementById('answer-input').value = '';
+            document.getElementById('feedback-msg').innerText = '';
+            questionModal.style.display = 'flex';
+            document.getElementById('answer-input').focus();
+        }
+
+        document.getElementById('submit-answer-btn').addEventListener('click', checkAnswer);
+        document.getElementById('answer-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') checkAnswer();
+        });
+
+        function checkAnswer() {
+            const ua = document.getElementById('answer-input').value.trim().toLowerCase();
+            const ca = document.getElementById('question-text').dataset.answer.toLowerCase();
+
+            if (ua === ca) {
+                document.getElementById('success-sfx').play().catch(()=>{});
+                questionModal.style.display = 'none';
+                
+                // Оновлюємо локально і відправляємо противнику
+                obstaclesData[currentObstacleKey].active = false;
+                drawMaze();
+                conn.send({ type: 'clear', obsKey: currentObstacleKey });
+            } else {
+                document.getElementById('feedback-msg').innerText = 'Неправильно, спробуй ще!';
+            }
+        }
+
+        function handleWin(winner, iAmWinner) {
+            if (iAmWinner) conn.send({ type: 'win', role: playerRole });
+            
+            setTimeout(() => {
+                if(winner === playerRole) alert('🎉 Ви перемогли! Ви першим дісталися центру.');
+                else alert('На жаль, противник виявився швидшим!');
+                location.reload(); 
+            }, 300);
+        }
+    </script>
 </body>
 </html>
