@@ -91,20 +91,22 @@
             border-radius: 15px;
         }
 
-        /* Збільшені картки */
+        /* Збільшені картки (з білим фоном для прозорих зображень) */
         .card {
             width: 180px;
             height: 260px;
             border-radius: 15px;
             border: 3px solid rgba(255, 255, 255, 0.7);
-            background-color: #1a1a1a;
-            background-size: cover;
+            background-color: #ffffff; /* Білий фон для карток */
+            background-size: 100% 100%; /* Розтягування на весь розмір */
             background-position: center;
-            box-shadow: 8px 8px 20px rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(255, 255, 255, 0.3);
+            background-repeat: no-repeat;
+            box-shadow: 8px 8px 20px rgba(0, 0, 0, 0.7), inset 0 0 15px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .card.deck-card {
+            background-color: #1a1a1a; /* Рубашка залишається темною */
             background-image: repeating-linear-gradient(
                 45deg,
                 #606dbc,
@@ -321,8 +323,8 @@
         /* Адаптивність (Mobile Friendly) */
         @media (max-width: 900px) {
             #game-container {
-                flex-direction: column; /* На телефонах повертаємо в колонку, бо не влізе */
-                padding: 120px 10px 20px 10px; /* Відступ згори для кнопок */
+                flex-direction: column; 
+                padding: 120px 10px 20px 10px;
                 justify-content: space-around;
             }
             .card { width: 120px; height: 170px; border-width: 2px; }
@@ -334,8 +336,6 @@
             #area-player2 { order: 1; }
             .table-area { order: 2; margin: 20px 0; }
             #area-player1 { order: 3; }
-            
-            /* На мобільних робимо гравця 2 згори, стіл по центру, гравця 1 знизу, щоб було зручно */
         }
     </style>
 </head>
@@ -425,7 +425,6 @@
             document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
         });
 
-        // Виправлено: перевірка із приведенням до рядка, щоб уникнути зациклення
         db.ref('force_refresh').on('value', (snap) => {
             const val = snap.val();
             if (val && String(val) !== sessionStorage.getItem('last_refresh')) {
@@ -437,7 +436,6 @@
         let immunity = true;
         setTimeout(() => { immunity = false; }, 1000);
 
-        // Виправлено: правильне формування URL для лобі
         db.ref('current_activity').on('value', (snap) => {
             if (!immunity && snap.val() === 'lobby') {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
@@ -497,7 +495,7 @@
         }
 
         // -------------------------------------------------------------
-        // ЛОГІКА ГРИ "П'ЯНИЦЯ" ТА СИНХРОНІЗАЦІЯ Firebase (Повний стан)
+        // ЛОГІКА ГРИ "П'ЯНИЦЯ" ТА СИНХРОНІЗАЦІЯ Firebase
         // -------------------------------------------------------------
         
         const cardScores = {
@@ -515,9 +513,17 @@
             deck2: [],
             table1: [],
             table2: [],
-            phase: 'draw', // 'draw', 'collect1', 'collect2'
+            phase: 'draw', 
             aiMode: true
         };
+
+        // Захисна функція для коректного зчитування масивів із Firebase 
+        // (запобігає появі null елементів та чорних карток)
+        function normalizeArray(data) {
+            if (!data) return [];
+            if (Array.isArray(data)) return data.filter(v => v !== null && v !== undefined);
+            return Object.values(data).filter(v => v !== null && v !== undefined);
+        }
 
         function shuffle(array) {
             let currentIndex = array.length, randomIndex;
@@ -548,16 +554,15 @@
             db.ref('game_state').set(localGameState);
         }
 
-        // Слухаємо повний стан гри для максимальної надійності
         db.ref('game_state').on('value', (snap) => {
             const state = snap.val();
             if (state) {
                 localGameState = state;
-                // Гарантуємо наявність масивів навіть якщо Firebase видалив порожні
-                localGameState.deck1 = localGameState.deck1 || [];
-                localGameState.deck2 = localGameState.deck2 || [];
-                localGameState.table1 = localGameState.table1 || [];
-                localGameState.table2 = localGameState.table2 || [];
+                // Надійно очищуємо масиви від потенційних багів Firebase
+                localGameState.deck1 = normalizeArray(state.deck1);
+                localGameState.deck2 = normalizeArray(state.deck2);
+                localGameState.table1 = normalizeArray(state.table1);
+                localGameState.table2 = normalizeArray(state.table2);
                 
                 updateUI();
                 checkAiAutoPlay();
@@ -571,7 +576,6 @@
             if (playerNum === 1 && localGameState.deck1.length === 0) return;
             if (playerNum === 2 && localGameState.deck2.length === 0) return;
             
-            // Якщо гравець вже поклав карту, чекаємо на іншого
             if (playerNum === 1 && localGameState.table1.length > localGameState.table2.length) return;
             if (playerNum === 2 && localGameState.table2.length > localGameState.table1.length) return;
 
@@ -581,7 +585,6 @@
                 localGameState.table2.push(localGameState.deck2.shift());
             }
             
-            // Якщо обидва поклали, визначаємо переможця
             if (localGameState.table1.length > 0 && localGameState.table1.length === localGameState.table2.length) {
                 evaluateTable();
             }
@@ -600,7 +603,6 @@
             } else if (score2 > score1) {
                 localGameState.phase = 'collect2';
             } else {
-                // Війна (Нічия) - карти залишаються на столі
                 localGameState.phase = 'draw';
             }
         }
@@ -625,7 +627,6 @@
             if (localGameState.phase === 'collect1') {
                 collectCards(1);
             } else if (localGameState.phase === 'collect2') {
-                // Якщо не режим ШІ або якщо хочемо прискорити ШІ
                 collectCards(2);
             }
         }
@@ -635,12 +636,10 @@
             clearTimeout(aiTimeout);
             if (!localGameState.aiMode) return;
 
-            // Якщо Гравець 1 поклав, і черга Комп'ютера
             if (localGameState.phase === 'draw' && localGameState.table1.length > localGameState.table2.length && localGameState.deck2.length > 0) {
                 aiTimeout = setTimeout(() => drawCard(2), 800);
             }
 
-            // Якщо Комп'ютер виграв, він автоматично забирає карти
             if (localGameState.phase === 'collect2') {
                 aiTimeout = setTimeout(() => collectCards(2), 1500);
             }
@@ -651,15 +650,12 @@
         }
 
         function updateUI() {
-            // Оновлення лічильників
             document.getElementById('count-1').innerText = localGameState.deck1.length;
             document.getElementById('count-2').innerText = localGameState.deck2.length;
 
-            // Видимість колод
             document.getElementById('deck-wrapper-1').style.visibility = localGameState.deck1.length > 0 ? 'visible' : 'hidden';
             document.getElementById('deck-wrapper-2').style.visibility = localGameState.deck2.length > 0 ? 'visible' : 'hidden';
 
-            // Оновлення карток на столі
             const el1 = document.getElementById('table-card-1');
             const el2 = document.getElementById('table-card-2');
             
@@ -671,6 +667,7 @@
                 el1.style.backgroundImage = getTopCardVisual(localGameState.table1[localGameState.table1.length - 1]);
             } else {
                 el1.style.visibility = 'hidden';
+                el1.style.backgroundImage = 'none';
             }
 
             if (localGameState.table2.length > 0) {
@@ -678,9 +675,9 @@
                 el2.style.backgroundImage = getTopCardVisual(localGameState.table2[localGameState.table2.length - 1]);
             } else {
                 el2.style.visibility = 'hidden';
+                el2.style.backgroundImage = 'none';
             }
 
-            // Фідбек виграшу/програшу
             if (localGameState.phase === 'collect1') {
                 el1.classList.add('win');
                 el2.classList.add('lose');
@@ -689,7 +686,6 @@
                 el1.classList.add('lose');
             }
 
-            // Підказка про збір карт
             const hint = document.getElementById('collect-hint');
             if (localGameState.phase === 'collect1' || (localGameState.phase === 'collect2' && !localGameState.aiMode)) {
                 hint.style.display = 'block';
@@ -697,7 +693,6 @@
                 hint.style.display = 'none';
             }
 
-            // Оновлення UI режиму гри
             const modeBtn = document.getElementById('btn-mode');
             const labelPlayer2 = document.getElementById('label-player-2');
             if (localGameState.aiMode) {
