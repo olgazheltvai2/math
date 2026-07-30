@@ -89,6 +89,21 @@
             background: rgba(0,0,0,0.5);
             padding: 5px 20px;
             border-radius: 15px;
+            cursor: text;
+            border: 2px dashed transparent;
+            transition: border 0.3s, background 0.3s;
+            min-width: 150px;
+            text-align: center;
+        }
+
+        .player-label:hover {
+            border-color: rgba(255,255,255,0.4);
+        }
+
+        .player-label:focus {
+            outline: none;
+            border-color: #0f0;
+            background: rgba(0,0,0,0.8);
         }
 
         /* Збільшені картки (з білим фоном для прозорих зображень) */
@@ -348,9 +363,9 @@
 
     <div id="game-container">
         
-        <!-- Зона гравця 1 (Зліва / Знизу на мобільних) -->
+        <!-- Зона гравця 1 -->
         <div class="player-area" id="area-player1">
-            <div class="player-label">Гравець 1</div>
+            <div class="player-label" id="label-player-1" contenteditable="true" onblur="updatePlayerName(1, this.innerText)" onkeydown="handleNameKeydown(event, 1, this)">Гравець 1</div>
             <div class="deck-wrapper" id="deck-wrapper-1" onclick="drawCard(1)">
                 <div class="card deck-card"></div>
                 <div class="card-count" id="count-1">0</div>
@@ -364,9 +379,9 @@
             <div class="card" id="table-card-2" style="visibility: hidden;"></div>
         </div>
 
-        <!-- Зона гравця 2 (Справа / Згори на мобільних) -->
+        <!-- Зона гравця 2 -->
         <div class="player-area" id="area-player2">
-            <div class="player-label" id="label-player-2">Комп'ютер</div>
+            <div class="player-label" id="label-player-2" contenteditable="true" onblur="updatePlayerName(2, this.innerText)" onkeydown="handleNameKeydown(event, 2, this)">Комп'ютер</div>
             <div class="deck-wrapper" id="deck-wrapper-2" onclick="drawCard(2)">
                 <div class="card deck-card"></div>
                 <div class="card-count" id="count-2">0</div>
@@ -514,10 +529,11 @@
             table1: [],
             table2: [],
             phase: 'draw', 
-            aiMode: true
+            aiMode: true,
+            name1: "Гравець 1",
+            name2: "Комп'ютер"
         };
 
-        // Захисна функція для коректного зчитування масивів із Firebase 
         function normalizeArray(data) {
             if (!data) return [];
             if (Array.isArray(data)) return data.filter(v => v !== null && v !== undefined);
@@ -543,25 +559,49 @@
                 table1: [],
                 table2: [],
                 phase: 'draw',
-                aiMode: localGameState.aiMode !== undefined ? localGameState.aiMode : true
+                aiMode: localGameState.aiMode !== undefined ? localGameState.aiMode : true,
+                name1: localGameState.name1 || "Гравець 1",
+                name2: localGameState.name2 || (localGameState.aiMode ? "Комп'ютер" : "Гравець 2")
             };
             db.ref('game_state').set(newState);
         }
 
         function toggleAiMode() {
             localGameState.aiMode = !localGameState.aiMode;
+            if (localGameState.aiMode) {
+                localGameState.name2 = "Комп'ютер";
+            } else {
+                localGameState.name2 = "Гравець 2";
+            }
             db.ref('game_state').set(localGameState);
+        }
+
+        function updatePlayerName(playerNum, newName) {
+            if (playerNum === 1) {
+                localGameState.name1 = newName.trim() || "Гравець 1";
+            } else {
+                localGameState.name2 = newName.trim() || "Гравець 2";
+            }
+            db.ref('game_state').set(localGameState);
+        }
+
+        function handleNameKeydown(event, playerNum, el) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                el.blur();
+            }
         }
 
         db.ref('game_state').on('value', (snap) => {
             const state = snap.val();
             if (state) {
                 localGameState = state;
-                // Надійно очищуємо масиви від потенційних багів Firebase
                 localGameState.deck1 = normalizeArray(state.deck1);
                 localGameState.deck2 = normalizeArray(state.deck2);
                 localGameState.table1 = normalizeArray(state.table1);
                 localGameState.table2 = normalizeArray(state.table2);
+                localGameState.name1 = state.name1 || "Гравець 1";
+                localGameState.name2 = state.name2 || (state.aiMode ? "Комп'ютер" : "Гравець 2");
                 
                 updateUI();
                 checkAiAutoPlay();
@@ -638,13 +678,9 @@
             if (localGameState.phase === 'draw' && localGameState.table1.length > localGameState.table2.length && localGameState.deck2.length > 0) {
                 aiTimeout = setTimeout(() => drawCard(2), 800);
             }
-
-            if (localGameState.phase === 'collect2') {
-                aiTimeout = setTimeout(() => collectCards(2), 1500);
-            }
+            // Автозбір карток комп'ютером прибрано. Тепер чекає на клік користувача.
         }
 
-        /* ОСЬ ТУТ ВИПРАВЛЕНО ШЛЯХ ДО ЗОБРАЖЕНЬ */
         function getTopCardVisual(cardId) {
             return `url('kartka_${cardId}.webp')`;
         }
@@ -655,6 +691,16 @@
 
             document.getElementById('deck-wrapper-1').style.visibility = localGameState.deck1.length > 0 ? 'visible' : 'hidden';
             document.getElementById('deck-wrapper-2').style.visibility = localGameState.deck2.length > 0 ? 'visible' : 'hidden';
+
+            const labelPlayer1 = document.getElementById('label-player-1');
+            const labelPlayer2 = document.getElementById('label-player-2');
+            
+            if (document.activeElement !== labelPlayer1) {
+                labelPlayer1.innerText = localGameState.name1;
+            }
+            if (document.activeElement !== labelPlayer2) {
+                labelPlayer2.innerText = localGameState.name2;
+            }
 
             const el1 = document.getElementById('table-card-1');
             const el2 = document.getElementById('table-card-2');
@@ -687,22 +733,19 @@
             }
 
             const hint = document.getElementById('collect-hint');
-            if (localGameState.phase === 'collect1' || (localGameState.phase === 'collect2' && !localGameState.aiMode)) {
+            if (localGameState.phase === 'collect1' || localGameState.phase === 'collect2') {
                 hint.style.display = 'block';
             } else {
                 hint.style.display = 'none';
             }
 
             const modeBtn = document.getElementById('btn-mode');
-            const labelPlayer2 = document.getElementById('label-player-2');
             if (localGameState.aiMode) {
                 modeBtn.innerText = "Режим: Комп'ютер";
                 modeBtn.classList.add('active');
-                labelPlayer2.innerText = "Комп'ютер";
             } else {
                 modeBtn.innerText = "Режим: 2 гравці";
                 modeBtn.classList.remove('active');
-                labelPlayer2.innerText = "Гравець 2";
             }
         }
     </script>
