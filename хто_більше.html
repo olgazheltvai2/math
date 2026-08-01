@@ -28,7 +28,7 @@
         /* Ігровий контейнер - Широкий, розділений на 2 частини */
         #game-container {
             width: 98%;
-            max-width: 1400px; /* Зроблено ширшим */
+            max-width: 1400px;
             margin-top: 30px;
             margin-bottom: 80px;
             background: rgba(255, 255, 255, 0.15);
@@ -39,7 +39,7 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
             border: 1px solid rgba(255, 255, 255, 0.3);
             display: flex;
-            flex-direction: row; /* Розташування зліва направо */
+            flex-direction: row;
             justify-content: space-between;
             gap: 20px;
         }
@@ -196,10 +196,10 @@
         }
         .card-front {
             transform: rotateY(180deg);
-            background-color: white; /* Fallback */
+            background-color: white;
         }
         .card-back {
-            background-color: #3949ab; /* Fallback */
+            background-color: #3949ab;
         }
 
         /* Анімація перемішування */
@@ -244,7 +244,7 @@
             cursor: not-allowed;
         }
 
-        /* Кнопка дії (Перемішати) */
+        /* Кнопка дії */
         #action-btn {
             margin-top: 50px;
             padding: 15px 50px;
@@ -267,7 +267,7 @@
             cursor: not-allowed;
         }
 
-        /* --- НОВИЙ ФІДБЕК (Світіння та частинки) --- */
+        /* Фідбек (Світіння та частинки) */
         .glow-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -410,6 +410,27 @@
             cursor: pointer;
             font-weight: bold;
         }
+
+        /* Заглушка екрану */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            color: #ff3333;
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
     </style>
 </head>
 <body>
@@ -423,14 +444,12 @@
         <!-- Ліва Панель (Гравці та лічильник) -->
         <div id="left-panel">
             <div class="players-control">
-                <input type="text" id="new-player-name" placeholder="Введіть ім'я..." autocomplete="off" onkeypress="if(event.key==='Enter') addPlayer()">
-                <button onclick="addPlayer()">Додати гравця</button>
+                <input type="text" id="new-player-name" placeholder="Введіть ім'я..." autocomplete="off" onkeypress="if(event.key==='Enter') addPlayerAction()">
+                <button onclick="addPlayerAction()">Додати гравця</button>
             </div>
 
             <!-- Візуальний лічильник -->
-            <div id="visual-scoreboard">
-                <!-- Сюди динамічно додаватимуться колонки гравців -->
-            </div>
+            <div id="visual-scoreboard"></div>
         </div>
 
         <!-- Права Панель (Ігрове поле) -->
@@ -446,9 +465,9 @@
 
                 <!-- Оператори -->
                 <div class="operators">
-                    <button class="op-btn" id="btn-less" onclick="makeGuess('<')" disabled>&lt;</button>
-                    <button class="op-btn" id="btn-equal" onclick="makeGuess('=')" disabled>=</button>
-                    <button class="op-btn" id="btn-more" onclick="makeGuess('>')" disabled>&gt;</button>
+                    <button class="op-btn" id="btn-less" onclick="makeGuessAction('<')" disabled>&lt;</button>
+                    <button class="op-btn" id="btn-equal" onclick="makeGuessAction('=')" disabled>=</button>
+                    <button class="op-btn" id="btn-more" onclick="makeGuessAction('>')" disabled>&gt;</button>
                 </div>
 
                 <!-- Картка 2 (Спочатку закрита) -->
@@ -460,10 +479,8 @@
                 </div>
             </div>
 
-            <!-- Кнопка дії -->
-            <button id="action-btn" onclick="startRound()">Почати гру</button>
+            <button id="action-btn" onclick="startRoundAction()">Почати гру</button>
         </div>
-
     </div>
 
     <!-- Theme Manager -->
@@ -474,27 +491,43 @@
         <button class="close-modal-btn" onclick="document.getElementById('theme-modal').style.display='none'">Закрити</button>
     </div>
 
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
     <script>
         // ==========================================
-        // 1. ПІДГОТОВКА КАРТОК
+        // 1. ІДЕНТИФІКАЦІЯ (Локально)
+        // ==========================================
+        let myName = sessionStorage.getItem('userName');
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('user')) {
+            myName = urlParams.get('user');
+            sessionStorage.setItem('userName', myName);
+        } else if (!myName) {
+            myName = "Гість_" + Math.floor(Math.random() * 1000);
+            sessionStorage.setItem('userName', myName);
+        }
+
+        // ==========================================
+        // 2. ПІДГОТОВКА КАРТОК (ПОВЕРНЕННЯ ТВОЇХ КАРТИНОК)
         // ==========================================
         const totalCards = 7;
         const cardImages = {};
         
-        // Генерація "Сорочки"
+        // Генерація "Сорочки" кодом залишається для зручності
         const backSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="300" viewBox="0 0 200 300"><rect width="200" height="300" rx="20" fill="#1e88e5"/><path d="M0 0 L200 300 M200 0 L0 300" stroke="#1565c0" stroke-width="20"/><circle cx="100" cy="150" r="50" fill="#fff" opacity="0.2"/><circle cx="100" cy="150" r="30" fill="none" stroke="#fff" stroke-width="5" opacity="0.5"/></svg>`;
         const cardBackBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(backSvg)));
 
-        // Використання локальних файлів
+        // Використовуємо локальні картинки з твоєї папки
         for (let i = 1; i <= totalCards; i++) {
-            cardImages[i] = `kartka_${i}.webp`;
+            cardImages[i] = `./kartka_${i}.webp`;
         }
 
         document.getElementById('card1-back').style.backgroundImage = `url("${cardBackBase64}")`;
         document.getElementById('card2-back').style.backgroundImage = `url("${cardBackBase64}")`;
 
         // ==========================================
-        // 2. ЗВУК (Web Audio API - дуже тихі)
+        // 3. ЗВУК (Web Audio API - дуже тихі)
         // ==========================================
         let audioCtx;
         function initAudio() {
@@ -514,20 +547,18 @@
             gain.connect(audioCtx.destination);
 
             if (isCorrect) {
-                // Тихий мелодійний "дзінь"
                 osc.type = 'sine';
                 osc.frequency.setValueAtTime(600, audioCtx.currentTime);
                 osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
-                gain.gain.setValueAtTime(0.015, audioCtx.currentTime); // Дуже тихо!
+                gain.gain.setValueAtTime(0.015, audioCtx.currentTime); 
                 gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
                 osc.start();
                 osc.stop(audioCtx.currentTime + 0.3);
             } else {
-                // Тихий глухий звук помилки
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(200, audioCtx.currentTime);
                 osc.frequency.exponentialRampToValueAtTime(50, audioCtx.currentTime + 0.2);
-                gain.gain.setValueAtTime(0.02, audioCtx.currentTime); // Дуже тихо!
+                gain.gain.setValueAtTime(0.02, audioCtx.currentTime); 
                 gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
                 osc.start();
                 osc.stop(audioCtx.currentTime + 0.2);
@@ -535,7 +566,7 @@
         }
 
         // ==========================================
-        // 3. РАНДОМ КАРТОК (Система "Мішечків")
+        // 4. РАНДОМ КАРТОК (Система "Мішечків")
         // ==========================================
         let deck1 = [];
         let deck2 = [];
@@ -549,20 +580,15 @@
 
         function drawCardFromDeck(deckNum) {
             let deck = deckNum === 1 ? deck1 : deck2;
-            
-            // Якщо колода порожня, наповнюємо і тасуємо заново
             if (deck.length === 0) {
-                for (let i = 1; i <= totalCards; i++) {
-                    deck.push(i);
-                }
+                for (let i = 1; i <= totalCards; i++) deck.push(i);
                 shuffle(deck);
             }
-            
             return deck.pop();
         }
 
         // ==========================================
-        // 4. ЛОГІКА ГРИ (ЛОКАЛЬНА)
+        // 5. ЛОГІКА ГРИ (Повністю локальна)
         // ==========================================
         let players = [];
         let activePlayerIndex = -1;
@@ -576,16 +602,101 @@
         const opButtons = document.querySelectorAll('.op-btn');
         const scoreboard = document.getElementById('visual-scoreboard');
 
-        function addPlayer() {
-            initAudio(); // Ініціалізація аудіо при взаємодії користувача
+        function addPlayerAction() {
+            initAudio(); 
             const input = document.getElementById('new-player-name');
             const name = input.value.trim();
             if (name && !players.find(p => p.name === name)) {
-                players.push({ name: name, score: 0 });
+                const newPlayers = [...players, { name: name, score: 0 }];
+                const newActive = newPlayers.length === 1 ? 0 : activePlayerIndex;
                 input.value = '';
-                if (players.length === 1) activePlayerIndex = 0;
-                renderScoreboard();
+                applyPlayerUpdate(newPlayers, newActive);
             }
+        }
+
+        function setActivePlayerAction(index) {
+            applyPlayerUpdate(players, index);
+        }
+
+        function startRoundAction() {
+            initAudio();
+            if (players.length === 0) {
+                alert("Додайте хоча б одного гравця!");
+                return;
+            }
+            if (gameState === 'playing') return;
+
+            const c1 = drawCardFromDeck(1);
+            const c2 = drawCardFromDeck(2);
+            executeStartRound(c1, c2);
+        }
+
+        function makeGuessAction(guess) {
+            if (gameState !== 'playing') return;
+            
+            let isCorrect = false;
+            if (guess === '<' && currentCard1Value < currentCard2Value) isCorrect = true;
+            if (guess === '=' && currentCard1Value === currentCard2Value) isCorrect = true;
+            if (guess === '>' && currentCard1Value > currentCard2Value) isCorrect = true;
+
+            const newPlayers = JSON.parse(JSON.stringify(players));
+            if (isCorrect && activePlayerIndex !== -1) {
+                newPlayers[activePlayerIndex].score++;
+            }
+
+            executeMakeGuess(guess, isCorrect, newPlayers);
+        }
+
+        function applyPlayerUpdate(newPlayers, newActiveIndex) {
+            players = newPlayers || [];
+            activePlayerIndex = newActiveIndex;
+            renderScoreboard();
+        }
+
+        function executeStartRound(c1, c2) {
+            gameState = 'playing';
+            actionBtn.disabled = true;
+            opButtons.forEach(b => b.disabled = true);
+            
+            c1Container.classList.remove('is-flipped');
+            c2Container.classList.remove('is-flipped');
+
+            setTimeout(() => {
+                c1Container.classList.add('shuffling');
+                c2Container.classList.add('shuffling');
+
+                setTimeout(() => {
+                    c1Container.classList.remove('shuffling');
+                    c2Container.classList.remove('shuffling');
+
+                    currentCard1Value = c1;
+                    currentCard2Value = c2;
+
+                    document.getElementById('card1-front').style.backgroundImage = `url("${cardImages[currentCard1Value]}")`;
+                    document.getElementById('card2-front').style.backgroundImage = `url("${cardImages[currentCard2Value]}")`;
+
+                    c1Container.classList.add('is-flipped');
+                    
+                    opButtons.forEach(b => b.disabled = false);
+                    actionBtn.innerText = "Оберіть знак...";
+
+                }, 1000);
+            }, 300);
+        }
+
+        function executeMakeGuess(guess, isCorrect, newPlayers) {
+            gameState = 'guessed';
+            opButtons.forEach(b => b.disabled = true);
+            c2Container.classList.add('is-flipped');
+
+            setTimeout(() => {
+                triggerFeedback(isCorrect);
+                applyPlayerUpdate(newPlayers, activePlayerIndex);
+                
+                actionBtn.innerText = "Наступний раунд";
+                actionBtn.disabled = false;
+                gameState = 'idle';
+            }, 600);
         }
 
         function renderScoreboard() {
@@ -593,10 +704,7 @@
             players.forEach((p, index) => {
                 const wrapper = document.createElement('div');
                 wrapper.className = 'player-column-wrapper' + (index === activePlayerIndex ? ' active' : '');
-                wrapper.onclick = () => {
-                    activePlayerIndex = index;
-                    renderScoreboard();
-                };
+                wrapper.onclick = () => setActivePlayerAction(index);
 
                 const column = document.createElement('div');
                 column.className = 'score-column';
@@ -616,81 +724,14 @@
             });
         }
 
-        function startRound() {
-            initAudio();
-            if (players.length === 0) {
-                alert("Додайте хоча б одного гравця!");
-                return;
-            }
-            if (gameState === 'playing') return;
-
-            gameState = 'playing';
-            actionBtn.disabled = true;
-            opButtons.forEach(b => b.disabled = true);
-            
-            c1Container.classList.remove('is-flipped');
-            c2Container.classList.remove('is-flipped');
-
-            setTimeout(() => {
-                c1Container.classList.add('shuffling');
-                c2Container.classList.add('shuffling');
-
-                setTimeout(() => {
-                    c1Container.classList.remove('shuffling');
-                    c2Container.classList.remove('shuffling');
-
-                    // Беремо з перемішаних колод, щоб уникати повторів
-                    currentCard1Value = drawCardFromDeck(1);
-                    currentCard2Value = drawCardFromDeck(2);
-
-                    document.getElementById('card1-front').style.backgroundImage = `url("${cardImages[currentCard1Value]}")`;
-                    document.getElementById('card2-front').style.backgroundImage = `url("${cardImages[currentCard2Value]}")`;
-
-                    c1Container.classList.add('is-flipped');
-                    
-                    opButtons.forEach(b => b.disabled = false);
-                    actionBtn.innerText = "Оберіть знак...";
-
-                }, 1000);
-            }, 300);
-        }
-
-        function makeGuess(guess) {
-            if (gameState !== 'playing') return;
-            gameState = 'guessed';
-            opButtons.forEach(b => b.disabled = true);
-
-            c2Container.classList.add('is-flipped');
-
-            let isCorrect = false;
-            if (guess === '<' && currentCard1Value < currentCard2Value) isCorrect = true;
-            if (guess === '=' && currentCard1Value === currentCard2Value) isCorrect = true;
-            if (guess === '>' && currentCard1Value > currentCard2Value) isCorrect = true;
-
-            setTimeout(() => {
-                triggerFeedback(isCorrect);
-                
-                if (isCorrect) {
-                    players[activePlayerIndex].score++;
-                    renderScoreboard();
-                }
-                
-                actionBtn.innerText = "Наступний раунд";
-                actionBtn.disabled = false;
-                gameState = 'idle';
-            }, 600);
-        }
-
         // ==========================================
-        // 5. ВІЗУАЛЬНІ ЕФЕКТИ (Конфетті та Вибухи)
+        // 6. ВІЗУАЛЬНІ ЕФЕКТИ (Конфетті та Вибухи)
         // ==========================================
         function triggerFeedback(isCorrect) {
             playSound(isCorrect);
-            
             const glow = document.getElementById('feedback-glow');
             glow.className = `glow-overlay show ${isCorrect ? 'correct' : 'wrong'}`;
             setTimeout(() => { glow.classList.remove('show'); }, 1000);
-
             createParticles(isCorrect);
         }
 
@@ -702,7 +743,6 @@
             for (let i = 0; i < numParticles; i++) {
                 const p = document.createElement('div');
                 p.className = 'particle';
-                
                 const size = Math.random() * 10 + 5;
                 p.style.width = size + 'px';
                 p.style.height = size + 'px';
@@ -710,12 +750,10 @@
                 p.style.top = centerY + 'px';
 
                 if (isCorrect) {
-                    // Конфетті
                     const colors = ['#f44336', '#e91e63', '#9c27b0', '#3f51b5', '#2196f3', '#4caf50', '#ffeb3b', '#ff9800'];
                     p.style.background = colors[Math.floor(Math.random() * colors.length)];
                     p.style.borderRadius = (Math.random() > 0.5) ? '50%' : '2px';
                 } else {
-                    // Вибух
                     const colors = ['#ff5722', '#ff9800', '#ffc107', '#424242'];
                     p.style.background = colors[Math.floor(Math.random() * colors.length)];
                     p.style.borderRadius = '50%';
@@ -732,15 +770,12 @@
                 p.style.setProperty('--rot', rot + 'deg');
 
                 document.body.appendChild(p);
-
-                setTimeout(() => {
-                    p.remove();
-                }, 1000);
+                setTimeout(() => { p.remove(); }, 1000);
             }
         }
 
         // ==========================================
-        // 6. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (ТІЛЬКИ ЛОКАЛЬНА)
+        // 7. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Локальна без Firebase)
         // ==========================================
         const themeGallery = document.getElementById('theme-gallery');
         const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
@@ -785,7 +820,6 @@
         if (savedBg) {
             document.body.style.backgroundImage = `url('${savedBg}')`;
         }
-
         loadBackgrounds();
 
     </script>
