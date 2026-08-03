@@ -183,11 +183,8 @@
 </head>
 <body>
 
-    <!-- Екран-заглушка -->
-    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
-
     <!-- Версія гри -->
-    <div id="version">v1.2.0 (Firebase Sync)</div>
+    <div id="version">v1.3.0 (Firebase Sync)</div>
 
     <!-- Основний контейнер гри -->
     <div class="transparent-container">
@@ -215,7 +212,7 @@
                 </div>
             </div>
 
-            <!-- Зона взаємодії (без тексту) -->
+            <!-- Зона взаємодії -->
             <div class="interaction-area">
                 
                 <div class="operations" id="operations">
@@ -260,11 +257,13 @@
         </div>
     </div>
 
+    <!-- ========================================== -->
+    <!-- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ -->
+    <!-- ========================================== -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
 
     <script>
-        // ==========================================
-        // 1. Ідентифікація, Радар та Блокування
-        // ==========================================
+        // 1. Отримання та збереження імені
         const urlParams = new URLSearchParams(window.location.search);
         let myName = urlParams.get('user');
         
@@ -273,9 +272,10 @@
             myName = 'Гість_' + Math.floor(Math.random() * 1000);
         }
         sessionStorage.setItem('myName', myName);
+        
+        // 2. Радар та унікальні вкладки
         const myTabId = 'tab_' + Math.random().toString(36).substr(2, 9);
 
-        // Firebase Setup (lesson-13c44)
         const firebaseConfig = {
             databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
             projectId: "lesson-13c44"
@@ -283,7 +283,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Радар
         const connectedRef = db.ref('.info/connected');
         const myRadarRef = db.ref(`online_users/${myName}/${myTabId}`);
         connectedRef.on('value', (snap) => {
@@ -294,11 +293,10 @@
         });
         window.addEventListener('beforeunload', () => myRadarRef.remove());
 
-        // Глобальний онлайн (для видалення фантомів)
         let onlineUsersObj = {};
         db.ref('online_users').on('value', snap => { onlineUsersObj = snap.val() || {}; });
 
-        // Блокування та Оновлення
+        // 3. Оновлення списку та блокування
         db.ref('force_refresh').on('value', snap => {
             if (snap.val() === true) window.location.reload();
         });
@@ -306,7 +304,7 @@
             document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
         });
 
-        // Імунітет та Лобі
+        // 4. Повернення в Лобі (з імунітетом при старті)
         let initImmunity = true;
         setTimeout(() => initImmunity = false, 1500);
         db.ref('current_activity').on('value', snap => {
@@ -316,7 +314,7 @@
         });
 
         // ==========================================
-        // 2. Система динамічних фонів (Theme Manager)
+        // Система динамічних фонів (Theme Manager)
         // ==========================================
         const savedBg = localStorage.getItem('mySavedGameBg');
         if(savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
@@ -334,7 +332,6 @@
         
         function loadNextBackgroundsBatch() {
             let limit = currentBgIndex + 30;
-            
             function checkOne(idx) {
                 if(idx > limit) return;
                 const img = new Image();
@@ -351,9 +348,7 @@
                     themeGrid.appendChild(div);
                     checkOne(idx + 1);
                 };
-                img.onerror = () => {
-                    checkOne(idx + 1);
-                };
+                img.onerror = () => { checkOne(idx + 1); };
                 img.src = url;
             }
             checkOne(currentBgIndex);
@@ -361,9 +356,8 @@
         }
         loadNextBackgroundsBatch();
 
-
         // ==========================================
-        // 3. Аудіо та Анімації
+        // Аудіо та Анімації
         // ==========================================
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playBeep(type) {
@@ -402,7 +396,7 @@
         }
 
         // ==========================================
-        // 4. Логіка Гри
+        // Логіка Гри та Синхронізація
         // ==========================================
         let gameState = {
             players: {}, turnOrder: [], currentTurnIndex: 0,
@@ -411,27 +405,39 @@
         };
         let isGameInitialized = false;
 
-        // Приєднання до гри
         function joinGame() {
             if(!gameState.players[myName]) {
                 gameState.players[myName] = { hand: [], score: 0 };
                 if(!gameState.turnOrder.includes(myName)) gameState.turnOrder.push(myName);
+                
+                // ВИПРАВЛЕННЯ: Додаємо карти, якщо гравець приєднався під час гри
+                if(gameState.status === 'playing') {
+                    while(gameState.deck && gameState.deck.length > 0 && gameState.players[myName].hand.length < 3) {
+                        gameState.players[myName].hand.push(gameState.deck.pop());
+                    }
+                }
                 broadcastState('JOIN');
+            } else if (gameState.status === 'playing' && gameState.players[myName].hand.length === 0) {
+                 // Запобіжник: якщо гравець є, але в нього 0 карт (при підключенні до розпочатої гри)
+                 while(gameState.deck && gameState.deck.length > 0 && gameState.players[myName].hand.length < 3) {
+                     gameState.players[myName].hand.push(gameState.deck.pop());
+                 }
+                 broadcastState('JOIN_DEAL');
             }
         }
 
-        // Синхронізація (З перевіркою ініціалізації)
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
             if(val) {
-                if(val.senderId !== myName || val.forceMe) {
+                const isRemoteAction = (val.senderId !== myName);
+                if(isRemoteAction || val.forceMe) {
                     gameState = val.data;
                     renderGame();
                 }
             }
             if(!isGameInitialized) {
                 isGameInitialized = true;
-                if(!gameState.players[myName]) joinGame();
+                joinGame();
             }
         });
 
@@ -442,7 +448,6 @@
             renderGame();
         }
 
-        // Старт гри (Роздача)
         function startGame() {
             playBeep('click');
             let deck = [];
@@ -457,7 +462,6 @@
             let newPlayers = {};
             activePlayers.forEach(p => {
                 newPlayers[p] = { hand: [], score: 0 };
-                // Роздаємо по 3 карти кожному
                 for(let c=0; c<3; c++) {
                     if(deck.length > 0) newPlayers[p].hand.push(deck.pop());
                 }
@@ -479,10 +483,9 @@
             gameState.players = newPlayers;
             gameState.turnOrder = activePlayers;
             if(gameState.currentTurnIndex >= activePlayers.length) gameState.currentTurnIndex = 0;
-            broadcastState('REMOVE_OFFLINE');
+            broadcastState('REMOVE_OFFLINE', true);
         }
 
-        // Хід гравця - вибір карти
         function playCard(handIndex) {
             if(gameState.turnOrder[gameState.currentTurnIndex] !== myName) return;
             if(gameState.pendingCalculations) return;
@@ -532,12 +535,10 @@
             if(isNaN(inputVal)) return;
 
             if(inputVal === gameState.pendingCalculations.expectedSum) {
-                // Правильно
                 playBeep('win');
                 showFeedback(true);
                 gameState.currentSum = inputVal;
                 
-                // Перевірка правил
                 if(gameState.currentSum === 10) {
                     gameState.players[myName].score += gameState.centerStack.length;
                     gameState.centerStack = [];
@@ -552,7 +553,6 @@
                     gameState.currentSum = 0;
                 }
 
-                // Гарантовано добираємо карти, поки на руці не стане 3 (якщо колода не порожня)
                 while(gameState.deck.length > 0 && gameState.players[myName].hand.length < 3) {
                     gameState.players[myName].hand.push(gameState.deck.pop());
                 }
@@ -564,7 +564,6 @@
                 broadcastState('SUBMIT_CORRECT');
 
             } else {
-                // Неправильно
                 playBeep('error');
                 showFeedback(false);
                 const inputGrp = document.getElementById('input-group');
@@ -574,15 +573,13 @@
             }
         }
 
-
         // ==========================================
-        // 5. Рендер Інтерфейсу
+        // Рендер Інтерфейсу
         // ==========================================
         function renderGame() {
             if(!gameState || !gameState.turnOrder) return;
             const isMyTurn = gameState.turnOrder[gameState.currentTurnIndex] === myName;
 
-            // Екран очікування (Старт)
             const startScreen = document.getElementById('start-screen');
             if(gameState.status === 'waiting') {
                 startScreen.style.display = 'flex';
@@ -590,7 +587,6 @@
                 startScreen.style.display = 'none';
             }
 
-            // Опоненти
             const oppArea = document.getElementById('opponents-area');
             oppArea.innerHTML = '';
             gameState.turnOrder.forEach(p => {
@@ -607,20 +603,19 @@
                 oppArea.appendChild(div);
             });
 
-            // Колода
             const deckCount = document.getElementById('deck-count');
-            if(gameState.deck.length > 0) {
+            if(gameState.deck && gameState.deck.length > 0) {
                 deckCount.style.display = 'flex';
                 deckCount.innerText = gameState.deck.length;
+                document.getElementById('deck-card').style.opacity = '1';
             } else {
                 deckCount.style.display = 'none';
                 document.getElementById('deck-card').style.opacity = '0.3';
             }
 
-            // Стіпка
             const stack = document.getElementById('center-stack');
-            stack.className = 'card ' + (gameState.centerStack.length === 0 ? 'empty' : 'large');
-            if(gameState.centerStack.length > 0) {
+            stack.className = 'card ' + (gameState.centerStack && gameState.centerStack.length === 0 ? 'empty' : 'large');
+            if(gameState.centerStack && gameState.centerStack.length > 0) {
                 const top = gameState.centerStack[gameState.centerStack.length-1];
                 stack.style.backgroundImage = `url('kartka_${top}.webp')`;
                 stack.innerHTML = `<div class="stack-count">${gameState.centerStack.length}</div>`;
@@ -629,10 +624,9 @@
                 stack.innerHTML = '';
             }
 
-            // Моя рука
             const myHand = document.getElementById('my-hand');
             myHand.innerHTML = '';
-            if(gameState.players[myName]) {
+            if(gameState.players[myName] && gameState.players[myName].hand) {
                 gameState.players[myName].hand.forEach((card, idx) => {
                     const cDiv = document.createElement('div');
                     cDiv.className = 'card large';
@@ -647,7 +641,6 @@
             document.getElementById('my-turn-indicator').innerText = isMyTurn && gameState.status === 'playing' ? '🟢 Мій хід!' : '⏳ Чекаю...';
             document.getElementById('my-turn-indicator').style.color = isMyTurn && gameState.status === 'playing' ? '#2ecc71' : 'white';
 
-            // UI Інтерфейс (Операції та Ввід)
             const opsDiv = document.getElementById('operations');
             const inpDiv = document.getElementById('input-group');
             opsDiv.style.display = 'none';
@@ -671,7 +664,6 @@
             }
         }
 
-        // Enter для submitSum
         document.getElementById('sum-input').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') submitSum();
         });
