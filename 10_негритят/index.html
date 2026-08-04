@@ -59,7 +59,7 @@
 
         .cards-center { display: flex; justify-content: center; align-items: center; gap: 30px; }
         
-        /* Картки */
+        /* Картки (Збережено contain для оригінальних пропорцій) */
         .card {
             width: 80px; height: 110px; border-radius: 15px; 
             background-size: contain; background-position: center; background-repeat: no-repeat;
@@ -207,7 +207,7 @@
 <body>
 
     <!-- Яскраво видима версія гри -->
-    <div id="version">v1.9.0 (Start Fix & Audio Failsafe)</div>
+    <div id="version">v1.9.1 (Crash Fix)</div>
 
     <!-- Основний контейнер гри -->
     <div class="transparent-container">
@@ -380,7 +380,7 @@
         loadNextBackgroundsBatch();
 
         // ==========================================
-        // Аудіо та Анімації (Екстремально безпечний блок)
+        // Аудіо та Анімації
         // ==========================================
         let audioCtx;
         try {
@@ -422,7 +422,7 @@
                     osc.start(); osc.stop(audioCtx.currentTime + 0.3);
                 }
             } catch(e) {
-                console.warn("Помилка відтворення звуку пригнічена", e);
+                console.warn("Помилка звуку", e);
             }
         }
 
@@ -447,7 +447,6 @@
         // Логіка Гри та Синхронізація
         // ==========================================
         
-        // ФУНКЦІЯ-ЗАПОБІЖНИК: Відновлює порожні масиви
         function normalizeGameState(state) {
             if (!state) return state;
             if (!state.centerStack) state.centerStack = [];
@@ -471,6 +470,7 @@
         let isGameInitialized = false;
 
         function joinGame() {
+            let stateChanged = false;
             if(!gameState.players[myName]) {
                 gameState.players[myName] = { hand: [], score: 0 };
                 if(!gameState.turnOrder.includes(myName)) gameState.turnOrder.push(myName);
@@ -480,27 +480,31 @@
                         gameState.players[myName].hand.push(gameState.deck.pop());
                     }
                 }
-                broadcastState('JOIN');
+                stateChanged = true;
             } else if (gameState.status === 'playing' && gameState.players[myName].hand.length === 0) {
                  while(gameState.deck && gameState.deck.length > 0 && gameState.players[myName].hand.length < 3) {
                      gameState.players[myName].hand.push(gameState.deck.pop());
                  }
-                 broadcastState('JOIN_DEAL');
+                 stateChanged = true;
             }
+            if (stateChanged) broadcastState('JOIN');
         }
 
         let lastUpdateId = "";
 
-        // Надійна синхронізація з блокуванням старих даних (Race Condition Fix)
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
             if(val) {
-                // Якщо це відлуння нашої ж дії, але з більш старим ID — ігноруємо, щоб не скинуло екран
                 if (val.senderId === myName && val.updateId && val.updateId !== lastUpdateId) {
                     return;
                 }
                 gameState = normalizeGameState(val.data);
                 renderGame();
+                
+                // Якщо гра йде, а гравець опинився без карт/запису (наприклад, після оновлення сторінки)
+                if (gameState.status === 'playing' && (!gameState.players[myName] || gameState.players[myName].hand.length === 0)) {
+                    joinGame();
+                }
             }
             if(!isGameInitialized) {
                 isGameInitialized = true;
@@ -516,7 +520,7 @@
                 timestamp: Date.now(), 
                 type: actionType, 
                 data: gameState
-            }).catch(e => console.error(e));
+            }).catch(e => console.error("Помилка запису в базу", e));
             renderGame(); 
         }
 
@@ -529,9 +533,13 @@
                 }
                 deck.sort(() => Math.random() - 0.5);
 
-                // Захист від втрати гравця при старті
                 let activePlayers = Object.keys(gameState.players).filter(p => onlineUsersObj[p]);
-                if(!activePlayers.includes(myName)) activePlayers.push(myName);
+                
+                // ЗАПОБІЖНИК: Той, хто натискає старт, гарантовано опиняється в грі.
+                // Це виправляє зависання, якщо радар не встиг оновитися.
+                if(!activePlayers.includes(myName)) {
+                    activePlayers.push(myName);
+                }
 
                 let newPlayers = {};
                 activePlayers.forEach(p => {
@@ -547,8 +555,8 @@
                     status: "playing", pendingCalculations: null
                 };
                 broadcastState('START');
-            } catch(e) {
-                console.error("Критична помилка при старті гри:", e);
+            } catch (error) {
+                console.error("Помилка під час старту:", error);
             }
         }
 
@@ -599,8 +607,8 @@
                     setupInputPhase(gameState.currentSum + card);
                 }
                 broadcastState('PLAY_CARD');
-            } catch(e) {
-                console.error("Помилка при спробі зіграти карту:", e);
+            } catch(error) {
+                console.error("Помилка при спробі зіграти карту:", error);
             }
         }
 
@@ -669,8 +677,8 @@
                     showFeedback(false);
                     triggerShake('input-group');
                 }
-            } catch(e) {
-                console.error("Помилка під час відправки суми:", e);
+            } catch(error) {
+                console.error("Помилка під час відправки суми:", error);
             }
         }
 
@@ -728,18 +736,25 @@
 
             const myHand = document.getElementById('my-hand');
             myHand.innerHTML = '';
-            if(gameState.players[myName] && gameState.players[myName].hand) {
-                gameState.players[myName].hand.forEach((card, idx) => {
-                    const cDiv = document.createElement('div');
-                    cDiv.className = 'card large';
-                    cDiv.style.backgroundImage = `url('kartka_${card}.webp')`;
-                    cDiv.onclick = () => playCard(idx);
-                    if((!isMyTurn && gameState.status === 'playing') || gameState.pendingCalculations) {
-                        cDiv.style.filter = 'brightness(0.5)';
-                    }
-                    myHand.appendChild(cDiv);
-                });
-                document.getElementById('my-score-display').innerText = `🏆 ${gameState.players[myName].score}`;
+            
+            // Надійний рендер балів
+            const scoreDisplay = document.getElementById('my-score-display');
+            if(gameState.players[myName]) {
+                scoreDisplay.innerText = `🏆 ${gameState.players[myName].score}`;
+                if (gameState.players[myName].hand) {
+                    gameState.players[myName].hand.forEach((card, idx) => {
+                        const cDiv = document.createElement('div');
+                        cDiv.className = 'card large';
+                        cDiv.style.backgroundImage = `url('kartka_${card}.webp')`;
+                        cDiv.onclick = () => playCard(idx);
+                        if((!isMyTurn && gameState.status === 'playing') || gameState.pendingCalculations) {
+                            cDiv.style.filter = 'brightness(0.5)';
+                        }
+                        myHand.appendChild(cDiv);
+                    });
+                }
+            } else {
+                scoreDisplay.innerText = `🏆 0`;
             }
 
             const myAreaContainer = document.getElementById('my-area-container');
