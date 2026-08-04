@@ -59,7 +59,7 @@
 
         .cards-center { display: flex; justify-content: center; align-items: center; gap: 30px; }
         
-        /* Картки (Збережено contain для оригінальних пропорцій) */
+        /* Картки (contain для збереження оригінальних пропорцій) */
         .card {
             width: 80px; height: 110px; border-radius: 15px; 
             background-size: contain; background-position: center; background-repeat: no-repeat;
@@ -207,7 +207,7 @@
 <body>
 
     <!-- Яскраво видима версія гри -->
-    <div id="version">v1.9.1 (Crash Fix)</div>
+    <div id="version">v1.10.0 (Absolute Sync)</div>
 
     <!-- Основний контейнер гри -->
     <div class="transparent-container">
@@ -444,7 +444,7 @@
         }
 
         // ==========================================
-        // Логіка Гри та Синхронізація
+        // Логіка Гри та Абсолютна Синхронізація
         // ==========================================
         
         function normalizeGameState(state) {
@@ -465,7 +465,7 @@
         let gameState = {
             players: {}, turnOrder: [], currentTurnIndex: 0,
             deck: [], centerStack: [], currentSum: 0, lastPlayer: "",
-            status: "waiting", pendingCalculations: null
+            status: "waiting", pendingCalculations: null, actionCount: 0
         };
         let isGameInitialized = false;
 
@@ -490,18 +490,21 @@
             if (stateChanged) broadcastState('JOIN');
         }
 
-        let lastUpdateId = "";
-
+        // РІШЕННЯ ПРОБЛЕМИ: Жорсткий лічильник для фільтрації старих відлунь Firebase
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
-            if(val) {
-                if (val.senderId === myName && val.updateId && val.updateId !== lastUpdateId) {
-                    return;
+            if(val && val.data) {
+                const incomingCount = val.data.actionCount || 0;
+                const currentCount = gameState.actionCount || 0;
+                
+                // Якщо Firebase намагається завантажити старий стан гри (Race Condition) - блокуємо
+                if (incomingCount < currentCount) {
+                    return; 
                 }
+                
                 gameState = normalizeGameState(val.data);
                 renderGame();
                 
-                // Якщо гра йде, а гравець опинився без карт/запису (наприклад, після оновлення сторінки)
                 if (gameState.status === 'playing' && (!gameState.players[myName] || gameState.players[myName].hand.length === 0)) {
                     joinGame();
                 }
@@ -513,10 +516,10 @@
         });
 
         function broadcastState(actionType) {
-            lastUpdateId = Math.random().toString(36).substring(2, 10);
+            gameState.actionCount = (gameState.actionCount || 0) + 1; // Кожен хід збільшує лічильник
+            
             db.ref('game_action').set({
                 senderId: myName, 
-                updateId: lastUpdateId,
                 timestamp: Date.now(), 
                 type: actionType, 
                 data: gameState
@@ -526,6 +529,9 @@
 
         function startGame() {
             try {
+                // Запобіжник від подвійного/багатократного кліку
+                if(gameState.status === 'playing') return;
+
                 playBeep('click');
                 let deck = [];
                 for(let i=0; i<=10; i++) {
@@ -533,10 +539,10 @@
                 }
                 deck.sort(() => Math.random() - 0.5);
 
-                let activePlayers = Object.keys(gameState.players).filter(p => onlineUsersObj[p]);
+                let activePlayers = Object.keys(gameState.players || {}).filter(p => onlineUsersObj[p]);
                 
-                // ЗАПОБІЖНИК: Той, хто натискає старт, гарантовано опиняється в грі.
-                // Це виправляє зависання, якщо радар не встиг оновитися.
+                // ЗАПОБІЖНИК: Той, хто натискає старт, гарантовано опиняється в грі,
+                // навіть якщо радар не встиг оновитися через мікрозатримку інтернету.
                 if(!activePlayers.includes(myName)) {
                     activePlayers.push(myName);
                 }
@@ -549,10 +555,13 @@
                     }
                 });
 
+                // Бережемо попередній лічильник, щоб не скинути синхронізацію
+                let currentCount = gameState.actionCount || 0;
+
                 gameState = {
                     players: newPlayers, turnOrder: activePlayers, currentTurnIndex: 0,
                     deck: deck, centerStack: [], currentSum: 0, lastPlayer: activePlayers[0],
-                    status: "playing", pendingCalculations: null
+                    status: "playing", pendingCalculations: null, actionCount: currentCount
                 };
                 broadcastState('START');
             } catch (error) {
@@ -614,6 +623,7 @@
 
         function setupOperationPhase(ops) {
             gameState.pendingCalculations = { step: 'choose_op', availableOps: ops };
+            broadcastState('SETUP_OP');
         }
 
         function selectOperation(op) {
@@ -631,6 +641,7 @@
 
         function setupInputPhase(expected) {
             gameState.pendingCalculations = { step: 'input_sum', expectedSum: expected };
+            broadcastState('SETUP_INPUT');
         }
 
         function submitSum() {
@@ -737,7 +748,6 @@
             const myHand = document.getElementById('my-hand');
             myHand.innerHTML = '';
             
-            // Надійний рендер балів
             const scoreDisplay = document.getElementById('my-score-display');
             if(gameState.players[myName]) {
                 scoreDisplay.innerText = `🏆 ${gameState.players[myName].score}`;
