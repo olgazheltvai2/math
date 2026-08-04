@@ -59,7 +59,7 @@
 
         .cards-center { display: flex; justify-content: center; align-items: center; gap: 30px; }
         
-        /* Картки (Тут використовується contain для збереження оригінальних пропорцій) */
+        /* Картки */
         .card {
             width: 80px; height: 110px; border-radius: 15px; 
             background-size: contain; background-position: center; background-repeat: no-repeat;
@@ -184,7 +184,6 @@
             position: absolute; font-size: 100px; pointer-events: none; opacity: 0; z-index: 100;
         }
         
-        /* ПОКРАЩЕНА, ВЕЛИКА І ЯСКРАВА ВЕРСІЯ ГРИ */
         #version { 
             position: fixed; top: 15px; left: 15px; 
             background: rgba(0, 0, 0, 0.8); color: #2ecc71; 
@@ -208,7 +207,7 @@
 <body>
 
     <!-- Яскраво видима версія гри -->
-    <div id="version">v1.8.0 (Audio & Sync Fix)</div>
+    <div id="version">v1.9.0 (Start Fix & Audio Failsafe)</div>
 
     <!-- Основний контейнер гри -->
     <div class="transparent-container">
@@ -381,7 +380,7 @@
         loadNextBackgroundsBatch();
 
         // ==========================================
-        // Аудіо та Анімації (Безпечний запуск)
+        // Аудіо та Анімації (Екстремально безпечний блок)
         // ==========================================
         let audioCtx;
         try {
@@ -391,9 +390,14 @@
         }
 
         function playBeep(type) {
-            if(!audioCtx) return;
             try {
-                if(audioCtx.state === 'suspended') audioCtx.resume();
+                if(!audioCtx) return;
+                if(audioCtx.state === 'suspended') {
+                    let resumePromise = audioCtx.resume();
+                    if(resumePromise !== undefined) {
+                        resumePromise.catch(e => console.warn(e));
+                    }
+                }
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
                 osc.connect(gain); gain.connect(audioCtx.destination);
@@ -418,7 +422,7 @@
                     osc.start(); osc.stop(audioCtx.currentTime + 0.3);
                 }
             } catch(e) {
-                console.warn("Помилка відтворення звуку", e);
+                console.warn("Помилка відтворення звуку пригнічена", e);
             }
         }
 
@@ -485,10 +489,16 @@
             }
         }
 
-        // Оновлена, спрощена і 100% надійна система синхронізації
+        let lastUpdateId = "";
+
+        // Надійна синхронізація з блокуванням старих даних (Race Condition Fix)
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
             if(val) {
+                // Якщо це відлуння нашої ж дії, але з більш старим ID — ігноруємо, щоб не скинуло екран
+                if (val.senderId === myName && val.updateId && val.updateId !== lastUpdateId) {
+                    return;
+                }
                 gameState = normalizeGameState(val.data);
                 renderGame();
             }
@@ -499,37 +509,47 @@
         });
 
         function broadcastState(actionType) {
+            lastUpdateId = Math.random().toString(36).substring(2, 10);
             db.ref('game_action').set({
-                senderId: myName, timestamp: Date.now(), type: actionType, data: gameState
-            });
+                senderId: myName, 
+                updateId: lastUpdateId,
+                timestamp: Date.now(), 
+                type: actionType, 
+                data: gameState
+            }).catch(e => console.error(e));
             renderGame(); 
         }
 
         function startGame() {
-            playBeep('click');
-            let deck = [];
-            for(let i=0; i<=10; i++) {
-                for(let j=0; j<8; j++) deck.push(i);
-            }
-            deck.sort(() => Math.random() - 0.5);
-
-            const activePlayers = Object.keys(gameState.players).filter(p => onlineUsersObj[p]);
-            if(activePlayers.length === 0) activePlayers.push(myName);
-
-            let newPlayers = {};
-            activePlayers.forEach(p => {
-                newPlayers[p] = { hand: [], score: 0 };
-                for(let c=0; c<3; c++) {
-                    if(deck.length > 0) newPlayers[p].hand.push(deck.pop());
+            try {
+                playBeep('click');
+                let deck = [];
+                for(let i=0; i<=10; i++) {
+                    for(let j=0; j<8; j++) deck.push(i);
                 }
-            });
+                deck.sort(() => Math.random() - 0.5);
 
-            gameState = {
-                players: newPlayers, turnOrder: activePlayers, currentTurnIndex: 0,
-                deck: deck, centerStack: [], currentSum: 0, lastPlayer: activePlayers[0],
-                status: "playing", pendingCalculations: null
-            };
-            broadcastState('START');
+                // Захист від втрати гравця при старті
+                let activePlayers = Object.keys(gameState.players).filter(p => onlineUsersObj[p]);
+                if(!activePlayers.includes(myName)) activePlayers.push(myName);
+
+                let newPlayers = {};
+                activePlayers.forEach(p => {
+                    newPlayers[p] = { hand: [], score: 0 };
+                    for(let c=0; c<3; c++) {
+                        if(deck.length > 0) newPlayers[p].hand.push(deck.pop());
+                    }
+                });
+
+                gameState = {
+                    players: newPlayers, turnOrder: activePlayers, currentTurnIndex: 0,
+                    deck: deck, centerStack: [], currentSum: 0, lastPlayer: activePlayers[0],
+                    status: "playing", pendingCalculations: null
+                };
+                broadcastState('START');
+            } catch(e) {
+                console.error("Критична помилка при старті гри:", e);
+            }
         }
 
         function removeOfflinePlayers() {
@@ -544,40 +564,44 @@
         }
 
         function playCard(handIndex) {
-            if(!gameState.centerStack) gameState.centerStack = [];
-            if(!gameState.players[myName].hand) gameState.players[myName].hand = [];
+            try {
+                if(!gameState.centerStack) gameState.centerStack = [];
+                if(!gameState.players[myName].hand) gameState.players[myName].hand = [];
 
-            if(gameState.turnOrder[gameState.currentTurnIndex] !== myName) {
-                playBeep('error');
-                triggerShake('my-hand');
-                const activeOpponent = document.querySelector('.opponent.active-turn');
-                if(activeOpponent) {
-                    activeOpponent.classList.add('highlight-error');
-                    setTimeout(() => activeOpponent.classList.remove('highlight-error'), 400);
+                if(gameState.turnOrder[gameState.currentTurnIndex] !== myName) {
+                    playBeep('error');
+                    triggerShake('my-hand');
+                    const activeOpponent = document.querySelector('.opponent.active-turn');
+                    if(activeOpponent) {
+                        activeOpponent.classList.add('highlight-error');
+                        setTimeout(() => activeOpponent.classList.remove('highlight-error'), 400);
+                    }
+                    return;
                 }
-                return;
-            }
-            
-            if(gameState.pendingCalculations) {
-                playBeep('error');
-                triggerShake('input-group');
-                return;
-            }
+                
+                if(gameState.pendingCalculations) {
+                    playBeep('error');
+                    triggerShake('input-group');
+                    return;
+                }
 
-            playBeep('click');
-            const card = gameState.players[myName].hand.splice(handIndex, 1)[0];
-            gameState.centerStack.push(card); 
+                playBeep('click');
+                const card = gameState.players[myName].hand.splice(handIndex, 1)[0];
+                gameState.centerStack.push(card); 
 
-            if(card === 0) {
-                setupInputPhase(0);
-            } else if(card === 5) {
-                setupOperationPhase(['+', '-']);
-            } else if(card === 2) {
-                setupOperationPhase(['+', '*', '/']);
-            } else {
-                setupInputPhase(gameState.currentSum + card);
+                if(card === 0) {
+                    setupInputPhase(0);
+                } else if(card === 5) {
+                    setupOperationPhase(['+', '-']);
+                } else if(card === 2) {
+                    setupOperationPhase(['+', '*', '/']);
+                } else {
+                    setupInputPhase(gameState.currentSum + card);
+                }
+                broadcastState('PLAY_CARD');
+            } catch(e) {
+                console.error("Помилка при спробі зіграти карту:", e);
             }
-            broadcastState('PLAY_CARD');
         }
 
         function setupOperationPhase(ops) {
@@ -602,47 +626,51 @@
         }
 
         function submitSum() {
-            if(gameState.turnOrder[gameState.currentTurnIndex] !== myName) return;
-            if(!gameState.pendingCalculations || gameState.pendingCalculations.step !== 'input_sum') return;
+            try {
+                if(gameState.turnOrder[gameState.currentTurnIndex] !== myName) return;
+                if(!gameState.pendingCalculations || gameState.pendingCalculations.step !== 'input_sum') return;
 
-            const inputVal = parseFloat(document.getElementById('sum-input').value);
-            if(isNaN(inputVal)) return;
+                const inputVal = parseFloat(document.getElementById('sum-input').value);
+                if(isNaN(inputVal)) return;
 
-            if(!gameState.deck) gameState.deck = [];
+                if(!gameState.deck) gameState.deck = [];
 
-            if(inputVal === gameState.pendingCalculations.expectedSum) {
-                playBeep('win');
-                showFeedback(true);
-                gameState.currentSum = inputVal;
-                
-                if(gameState.currentSum === 10) {
-                    gameState.players[myName].score += gameState.centerStack.length;
-                    gameState.centerStack = [];
-                    gameState.currentSum = 0;
-                } else if(gameState.currentSum > 10) {
-                    if(gameState.players[gameState.lastPlayer]) {
-                        gameState.players[gameState.lastPlayer].score += gameState.centerStack.length;
-                    } else {
+                if(inputVal === gameState.pendingCalculations.expectedSum) {
+                    playBeep('win');
+                    showFeedback(true);
+                    gameState.currentSum = inputVal;
+                    
+                    if(gameState.currentSum === 10) {
                         gameState.players[myName].score += gameState.centerStack.length;
+                        gameState.centerStack = [];
+                        gameState.currentSum = 0;
+                    } else if(gameState.currentSum > 10) {
+                        if(gameState.players[gameState.lastPlayer]) {
+                            gameState.players[gameState.lastPlayer].score += gameState.centerStack.length;
+                        } else {
+                            gameState.players[myName].score += gameState.centerStack.length;
+                        }
+                        gameState.centerStack = [];
+                        gameState.currentSum = 0;
                     }
-                    gameState.centerStack = [];
-                    gameState.currentSum = 0;
+
+                    while(gameState.deck.length > 0 && gameState.players[myName].hand.length < 3) {
+                        gameState.players[myName].hand.push(gameState.deck.pop());
+                    }
+
+                    gameState.lastPlayer = myName;
+                    gameState.currentTurnIndex = (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
+                    gameState.pendingCalculations = null;
+                    document.getElementById('sum-input').value = '';
+                    broadcastState('SUBMIT_CORRECT');
+
+                } else {
+                    playBeep('error');
+                    showFeedback(false);
+                    triggerShake('input-group');
                 }
-
-                while(gameState.deck.length > 0 && gameState.players[myName].hand.length < 3) {
-                    gameState.players[myName].hand.push(gameState.deck.pop());
-                }
-
-                gameState.lastPlayer = myName;
-                gameState.currentTurnIndex = (gameState.currentTurnIndex + 1) % gameState.turnOrder.length;
-                gameState.pendingCalculations = null;
-                document.getElementById('sum-input').value = '';
-                broadcastState('SUBMIT_CORRECT');
-
-            } else {
-                playBeep('error');
-                showFeedback(false);
-                triggerShake('input-group');
+            } catch(e) {
+                console.error("Помилка під час відправки суми:", e);
             }
         }
 
