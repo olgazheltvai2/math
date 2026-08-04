@@ -36,7 +36,7 @@
         .opponent.active-turn { box-shadow: 0 0 15px #2ecc71; border: 2px solid #2ecc71; transform: scale(1.05); }
         .opponent.highlight-error { transform: scale(1.2); box-shadow: 0 0 25px #e74c3c; border-color: #e74c3c; }
         .opponent-name { font-size: 1.2rem; }
-        .opponent-icons { display: flex; gap: 10px; font-size: 1.2rem; }
+        .opponent-icons { display: flex; gap: 10px; font-size: 1.1rem; align-items: center; }
         .opponent-score { color: #f1c40f; }
 
         /* Центр столу */
@@ -65,8 +65,13 @@
         }
         .cards-group { display: flex; gap: 15px; }
         .divider { width: 2px; height: 160px; background: rgba(255,255,255,0.3); border-radius: 2px; }
-        .center-pile-container { display: flex; flex-direction: column; align-items: center; gap: 10px; position: relative; }
-        .deck-text { color: white; font-weight: bold; background: rgba(0,0,0,0.5); padding: 5px 12px; border-radius: 15px; font-size: 14px; border: 1px solid rgba(255,255,255,0.2); }
+        
+        .center-pile-container { display: flex; flex-direction: column; align-items: center; gap: 8px; position: relative; }
+        .deck-text { color: white; font-weight: bold; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 12px; font-size: 13px; border: 1px solid rgba(255,255,255,0.2); }
+        
+        /* Ряд столу для стопки та великого числа без червоного кружка */
+        .stack-row { display: flex; align-items: center; gap: 15px; }
+        .stack-number-display { font-size: 32px; font-weight: bold; color: #f1c40f; text-shadow: 0 2px 5px rgba(0,0,0,0.8); }
 
         /* Картки (Збільшені, без рамок, contain) */
         .card {
@@ -80,12 +85,6 @@
         .card.large { width: 140px; height: 200px; }
         .card.empty { border: 2px dashed rgba(255,255,255,0.5); background: rgba(0,0,0,0.2); box-shadow: none; cursor: default;}
         .card.empty:hover { transform: none; }
-        
-        .stack-count { 
-            position: absolute; top: -10px; right: -10px; background: #e74c3c; color: white; 
-            border-radius: 50%; width: 35px; height: 35px; display: flex; justify-content: center; align-items: center; 
-            font-weight: bold; border: 2px solid white; font-size: 16px; box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-        }
 
         /* Зона вводу та операцій */
         .interaction-area {
@@ -123,12 +122,11 @@
             background: rgba(0, 0, 0, 0.6);
         }
         
-        /* Верхня панель моєї зони для розміщення кнопок і статистики в один ряд */
         .my-top-bar {
             width: 100%; display: flex; justify-content: space-between; align-items: center;
         }
         .my-controls-inline { display: flex; gap: 10px; }
-        .my-stats { display: flex; gap: 15px; color: white; font-size: 1.6rem; font-weight: bold; align-items: center;}
+        .my-stats { display: flex; gap: 15px; color: white; font-size: 1.5rem; font-weight: bold; align-items: center;}
         
         /* Кнопки керування */
         .ctrl-btn {
@@ -210,7 +208,7 @@
             .my-area { padding: 10px; gap: 5px; }
             .input-group input { width: 60px; font-size: 20px; }
             .big-start-btn { padding: 15px 30px; font-size: 24px; }
-            .stack-count { width: 25px; height: 25px; font-size: 12px; }
+            .stack-number-display { font-size: 24px; }
             .divider { display: none; }
         }
     </style>
@@ -218,7 +216,7 @@
 <body>
 
     <!-- Версія гри у лівому нижньому куті -->
-    <div id="version">v1.13.0</div>
+    <div id="version">v1.14.0</div>
 
     <!-- Основний контейнер гри -->
     <div class="transparent-container">
@@ -247,10 +245,13 @@
                 <!-- Розділювач -->
                 <div class="divider" id="layout-divider" style="display: none;"></div>
 
-                <!-- Центральна стопка з лічильником залишку колоди над нею -->
+                <!-- Центральна стопка з кількістю карт та числом поряд -->
                 <div class="center-pile-container" id="center-pile-container" style="display: none;">
-                    <div id="deck-remaining-text" class="deck-text">🎴 Залишилось: 0</div>
-                    <div id="center-stack" class="card empty"></div>
+                    <div id="deck-remaining-text" class="deck-text">🍃 В колоді: 0</div>
+                    <div class="stack-row">
+                        <div id="center-stack" class="card empty"></div>
+                        <div id="stack-number" class="stack-number-display"></div>
+                    </div>
                 </div>
             </div>
 
@@ -276,7 +277,7 @@
         <div class="my-area" id="my-area-container">
             <div class="my-top-bar">
                 <div class="my-stats" id="my-stats">
-                    <div id="my-score-display">🏆 0</div>
+                    <div id="my-score-display">🏆 Мої перемоги: 0</div>
                     <div id="my-turn-indicator">⏳</div>
                 </div>
                 <div class="my-controls-inline">
@@ -718,7 +719,7 @@
                 startScreen.style.display = 'none';
             }
 
-            // Опоненти (без джокера та зайвого кубка)
+            // Опоненти (лише ім'я та перемоги противника словами)
             const oppArea = document.getElementById('opponents-area');
             oppArea.innerHTML = '';
             gameState.turnOrder.forEach(p => {
@@ -733,7 +734,7 @@
                     <div class="opponent-name">👤 ${p}</div>
                     <div class="opponent-icons">
                         <span title="Карт на руці">🃏 x${oppCards}</span>
-                        <span class="opponent-score" title="Перемоги суперника">🏆 x${oppScore}</span>
+                        <span class="opponent-score" title="Перемоги суперника">🏆 Перемоги суперника: ${oppScore}</span>
                     </div>
                 `;
                 oppArea.appendChild(div);
@@ -767,31 +768,37 @@
                 // Центральна стопка
                 const stack = document.getElementById('center-stack');
                 stack.className = 'card ' + (gameState.centerStack && gameState.centerStack.length === 0 ? 'empty' : 'large');
+                
+                const stackNumber = document.getElementById('stack-number');
                 if(gameState.centerStack && gameState.centerStack.length > 0) {
                     const top = gameState.centerStack[gameState.centerStack.length-1];
                     stack.style.backgroundImage = `url('kartka_${top}.webp')`;
-                    stack.innerHTML = `<div class="stack-count">${gameState.centerStack.length}</div>`;
+                    stack.innerHTML = '';
+                    stackNumber.innerText = gameState.centerStack.length;
+                    stackNumber.style.display = 'block';
                 } else {
                     stack.style.backgroundImage = 'none';
                     stack.innerHTML = '';
+                    stackNumber.innerText = '';
+                    stackNumber.style.display = 'none';
                 }
 
-                // Текст над центральною стопкою
+                // Текст залишку колоди під листочком
                 const deckText = document.getElementById('deck-remaining-text');
                 const deckCount = gameState.deck ? gameState.deck.length : 0;
-                deckText.innerText = `🎴 В колоді: ${deckCount}`;
+                deckText.innerText = `🍃 В колоді: ${deckCount}`;
                 
             } else {
                 centerPileContainer.style.display = 'none';
                 layoutDivider.style.display = 'none';
             }
 
-            // Статистика гравця (тільки власні перемоги)
+            // Статистика гравця (власні перемоги словами)
             const scoreDisplay = document.getElementById('my-score-display');
             if(gameState.players[myName]) {
-                scoreDisplay.innerText = `🏆 ${gameState.players[myName].score}`;
+                scoreDisplay.innerText = `🏆 Мої перемоги: ${gameState.players[myName].score}`;
             } else {
-                scoreDisplay.innerText = `🏆 0`;
+                scoreDisplay.innerText = `🏆 Мої перемоги: 0`;
             }
 
             const myAreaContainer = document.getElementById('my-area-container');
