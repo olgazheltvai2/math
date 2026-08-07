@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Збираємо Монстра</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transition: background 0.5s ease-in-out;
+            font-family: Arial, sans-serif;
+            background-color: #87CEEB; /* Фолбек */
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: transparent;
+        }
+
+        #shared-text {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 60px;
+            font-size: 18px;
+            font-family: Arial, sans-serif;
+            padding: 10px;
+            border-radius: 10px;
+            border: 2px solid #333;
+            background: rgba(255, 255, 255, 0.8);
+            resize: none;
+            z-index: 10;
+        }
+
+        .draggable {
+            position: absolute;
+            cursor: pointer;
+            user-select: none;
+            touch-action: none;
+            z-index: 5;
+        }
+
+        @keyframes starPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+
+        .star {
+            position: absolute;
+            font-size: 40px;
+            cursor: pointer;
+            z-index: 6;
+            animation: starPulse 2s infinite;
+        }
+
+        .star:hover {
+            animation: none;
+            transform: scale(1.5);
+        }
+
+        .item-hidden {
+            display: none;
+        }
+
+        .reveal-effect {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Екран старту */
+        #start-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            color: white;
+            font-size: 40px;
+            cursor: pointer;
+            text-shadow: 2px 2px 5px black;
+        }
+
+        /* Кнопка завершення складання */
+        #finish-btn {
+            display: none;
+            position: absolute;
+            top: 20px;
+            left: calc(50% + 170px);
+            padding: 15px 40px;
+            font-size: 24px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            border: 2px solid white;
+            font-weight: bold;
+        }
+        #finish-btn:hover {
+            background: #45a049;
+        }
+
+        /* Theme Manager UI */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 40px;
+            cursor: pointer;
+            z-index: 9999;
+            background: rgba(255,255,255,0.7);
+            border-radius: 50%;
+            padding: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        #theme-modal {
+            display: none;
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            width: 320px;
+            max-height: 60vh;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            z-index: 10000;
+        }
+
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .theme-thumb {
+            position: relative;
+            width: 100%;
+            height: 100px;
+            background-size: cover;
+            background-position: center;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border 0.2s;
+        }
+
+        .theme-thumb:hover {
+            border-color: #007bff;
+        }
+
+        .theme-label {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            right: 5px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            font-size: 12px;
+            text-align: center;
+            padding: 2px;
+            border-radius: 4px;
+            pointer-events: none;
+        }
+
+        /* Блок контролю */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 999999;
+            justify-content: center;
+            align-items: center;
+            color: red;
+            font-size: 50px;
+            font-weight: bold;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        @media (max-width: 800px) {
+            #finish-btn {
+                left: auto;
+                right: 10px;
+                padding: 10px 20px;
+                font-size: 16px;
+            }
+            #shared-text {
+                left: 40%;
+                width: 50%;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .star { font-size: 30px; }
+            #theme-modal { width: 90%; right: 5%; bottom: 80px; }
+        }
+    </style>
+    
+    <!-- Firebase (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body>
+
+    <div id="start-overlay" onclick="startGameClick()">Натисніть щоб почати гру</div>
+
+    <div id="game-container">
+        <!-- Текст тепер без placeholder -->
+        <textarea id="shared-text" placeholder=""></textarea>
+        
+        <!-- Монстр (значно нижче, збільшений, без transform для ідеального драг енд дропу) -->
+        <img src="монстр.png" id="monster" class="draggable" style="left: -500px; top: 70vh; width: 320px;">
+        
+        <!-- Контейнер для зірочок і предметів -->
+        <div id="items-container"></div>
+
+        <!-- Кнопка фінішу -->
+        <div id="finish-btn" onclick="finishGameClick()">Готово!</div>
+    </div>
+
+    <!-- Theme Manager -->
+    <div id="theme-btn" onclick="toggleThemeModal()">⚙️</div>
+    <div id="theme-modal">
+        <h3 style="text-align:center; margin-top:0;">Виберіть фон</h3>
+        <div id="theme-gallery"></div>
+    </div>
+
+    <!-- Блок заглушка -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <script>
+        // ==========================================
+        // Ініціалізація Firebase та Базових Даних
+        // ==========================================
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Ідентифікація
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        if (!myName) myName = sessionStorage.getItem('myName');
+        if (!myName) {
+            myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('myName', myName);
+        const tabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+        const localSenderId = myName + '_' + tabId;
+        
+        let isRemoteAction = false;
+        let gameStarted = false;
+        let finaleTriggered = false;
+        let revealedItemsCount = 0;
+        const totalItems = 7;
+
+        // ==========================================
+        // Аудіо (Web Audio API для тихих звуків)
+        // ==========================================
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playFootstep() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.02, audioCtx.currentTime); // Дуже тихо
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function playRevealSound() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(500, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(1000, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(0.02, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+
+        function playVictoryMusic() {
+            if(!audioCtx) return;
+            const notes = [261.63, 329.63, 392.00, 523.25]; // C, E, G, C
+            notes.forEach((freq, index) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, audioCtx.currentTime + index * 0.2);
+                gain.gain.linearRampToValueAtTime(0.03, audioCtx.currentTime + index * 0.2 + 0.05);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + index * 0.2 + 0.4);
+                osc.start(audioCtx.currentTime + index * 0.2);
+                osc.stop(audioCtx.currentTime + index * 0.2 + 0.5);
+            });
+        }
+
+        // ==========================================
+        // Логіка Гри
+        // ==========================================
+        const itemsList = [
+            'шарф.png', 'окуляри.png', 'шапка.png', 
+            'зброя1.png', 'зброя2.png', 'зброя3.png', 'зброя4.png'
+        ];
+        
+        // Рівномірні позиції для зірочок (у відсотках vw/vh)
+        const starPositions = [
+            {x: 15, y: 20}, {x: 80, y: 20},
+            {x: 30, y: 40}, {x: 70, y: 40},
+            {x: 10, y: 65}, {x: 85, y: 65},
+            {x: 50, y: 30}
+        ];
+
+        const container = document.getElementById('items-container');
+        const monster = document.getElementById('monster');
+        const sharedText = document.getElementById('shared-text');
+
+        // Розставляємо зірочки за рівномірною сіткою
+        itemsList.forEach((src, index) => {
+            const pos = starPositions[index];
+            
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.innerHTML = '⭐';
+            star.style.left = `${pos.x}vw`;
+            star.style.top = `${pos.y}vh`;
+            star.id = `star-${index}`;
+            
+            const img = document.createElement('img');
+            img.src = src;
+            img.className = 'draggable item-hidden';
+            img.id = `item-${index}`;
+            img.style.left = `${pos.x}vw`;
+            img.style.top = `${pos.y}vh`;
+            img.style.width = '140px'; // Пропорційно збільшені предмети
+
+            star.onclick = () => {
+                revealItemLocal(index);
+                sendAction('REVEAL', { index: index });
+            };
+
+            container.appendChild(star);
+            container.appendChild(img);
+        });
+
+        function revealItemLocal(index) {
+            const star = document.getElementById(`star-${index}`);
+            const img = document.getElementById(`item-${index}`);
+            if (star && img && !img.classList.contains('reveal-effect')) {
+                star.style.display = 'none';
+                img.classList.remove('item-hidden');
+                img.classList.add('reveal-effect');
+                initAudio();
+                playRevealSound();
+                revealedItemsCount++;
+                checkFinaleReady();
+            }
+        }
+
+        // Замість миттєвого завершення просто показуємо кнопку "Готово!"
+        function checkFinaleReady() {
+            if (revealedItemsCount === totalItems && !finaleTriggered) {
+                document.getElementById('finish-btn').style.display = 'block';
+            }
+        }
+
+        function finishGameClick() {
+            triggerFinaleLocal();
+            sendAction('FINALE', {});
+        }
+
+        function triggerFinaleLocal() {
+            if (finaleTriggered) return;
+            finaleTriggered = true;
+            document.getElementById('finish-btn').style.display = 'none';
+            initAudio();
+            playVictoryMusic();
+            
+            // Створюємо єдиний невидимий контейнер (склеюємо об'єкти)
+            const wrapper = document.createElement('div');
+            wrapper.id = 'finale-wrapper';
+            wrapper.style.position = 'absolute';
+            wrapper.style.left = '0px';
+            wrapper.style.top = '0px';
+            wrapper.style.width = '100vw';
+            wrapper.style.height = '100vh';
+            wrapper.style.zIndex = '100';
+            document.getElementById('game-container').appendChild(wrapper);
+            
+            const allElements = [monster, ...document.querySelectorAll('.draggable:not(.item-hidden)')];
+            
+            // Переносимо елементи у врапер, фіксуючи їхні екранні піксельні координати
+            allElements.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                el.style.left = rect.left + 'px';
+                el.style.top = rect.top + 'px';
+                el.style.transform = 'none'; 
+                el.style.margin = '0';
+                wrapper.appendChild(el);
+            });
+            
+            // Рухаємо цілісний врапер, щоб картинка була 100% монолітною
+            let moveAmount = 0;
+            function walkOffScreen() {
+                moveAmount += 2; 
+                wrapper.style.left = moveAmount + 'px';
+                
+                if (moveAmount % 30 === 0) playFootstep();
+
+                if (moveAmount < window.innerWidth + 500) {
+                    requestAnimationFrame(walkOffScreen);
+                }
+            }
+            requestAnimationFrame(walkOffScreen);
+        }
+
+        let waitingForMonsterTarget = false;
+
+        function startGameClick() {
+            document.getElementById('start-overlay').style.display = 'none';
+            initAudio();
+            waitingForMonsterTarget = true; // Тепер чекаємо кліку на полі для виводу монстра
+            sendAction('START', {});
+        }
+
+        function callMonsterLocal(targetX, targetY) {
+            gameStarted = true;
+            waitingForMonsterTarget = false;
+            
+            const rect = monster.getBoundingClientRect();
+            let mWidth = rect.width || 320;
+            let mHeight = rect.height || 320;
+
+            // Точка кліку (targetY) стає центром монстра
+            monster.style.top = (targetY - mHeight / 2) + 'px';
+            
+            let currentX = -500;
+            const finalX = targetX - mWidth / 2;
+            
+            function animateMonsterIn() {
+                currentX += 10;
+                monster.style.left = currentX + 'px';
+                if (currentX % 50 === 0) playFootstep();
+                
+                if (currentX < finalX) {
+                    requestAnimationFrame(animateMonsterIn);
+                } else {
+                    monster.style.left = finalX + 'px'; // фіксація позиції
+                }
+            }
+            requestAnimationFrame(animateMonsterIn);
+        }
+
+        // ==========================================
+        // Синхронізація (Firebase)
+        // ==========================================
+        function sendAction(type, data) {
+            if(isRemoteAction || !db) return;
+            db.ref('game_action').set({
+                senderId: localSenderId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if(!val) return;
+            if(val.senderId === localSenderId) return; // Ігноруємо власні дії
+            
+            isRemoteAction = true;
+            
+            if (val.type === 'START') {
+                document.getElementById('start-overlay').style.display = 'none';
+                initAudio();
+                waitingForMonsterTarget = true;
+            } else if (val.type === 'CALL_MONSTER') {
+                initAudio();
+                callMonsterLocal(val.data.x, val.data.y);
+            } else if (val.type === 'REVEAL') {
+                revealItemLocal(val.data.index);
+            } else if (val.type === 'MOVE') {
+                const el = document.getElementById(val.data.id);
+                if (el) {
+                    el.style.left = val.data.x;
+                    el.style.top = val.data.y;
+                }
+            } else if (val.type === 'TEXT') {
+                sharedText.value = val.data.text;
+            } else if (val.type === 'FINALE' && !finaleTriggered) {
+                triggerFinaleLocal();
+            }
+
+            isRemoteAction = false;
+        });
+
+        // ==========================================
+        // Drag & Drop Кліком / Тапом
+        // ==========================================
+        let attachedElement = null;
+        let offsetX = 0, offsetY = 0;
+
+        function attachOrDrop(e) {
+            if (finaleTriggered) return;
+            
+            // Ігноруємо кліки по UI елементах
+            if (e.target.id === 'finish-btn' || e.target.id === 'theme-btn' || e.target.closest('#theme-modal') || e.target.id === 'shared-text') return;
+
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+            // 1. Поява монстра (якщо чекаємо кліку на полі)
+            if (waitingForMonsterTarget) {
+                callMonsterLocal(clientX, clientY);
+                sendAction('CALL_MONSTER', { x: clientX, y: clientY });
+                return; 
+            }
+
+            // 2. Драг енд дроп
+            if (attachedElement) {
+                // Відпускаємо (клікнули другий раз)
+                if (e.type.includes('touch')) {
+                    attachedElement.style.left = (clientX - offsetX) + 'px';
+                    attachedElement.style.top = (clientY - offsetY) + 'px';
+                }
+                
+                sendAction('MOVE', {
+                    id: attachedElement.id,
+                    x: attachedElement.style.left,
+                    y: attachedElement.style.top
+                });
+                attachedElement.style.zIndex = 5;
+                attachedElement = null;
+            } else {
+                // Причіплюємо (клікнули перший раз)
+                let target = e.target;
+                if (target.classList.contains('draggable') && !target.classList.contains('item-hidden')) {
+                    attachedElement = target;
+                    const rect = attachedElement.getBoundingClientRect();
+                    offsetX = clientX - rect.left;
+                    offsetY = clientY - rect.top;
+                    attachedElement.style.zIndex = 1000;
+                    e.preventDefault(); 
+                }
+            }
+        }
+
+        function moveAttached(e) {
+            if (!attachedElement || finaleTriggered) return;
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            
+            attachedElement.style.left = (clientX - offsetX) + 'px';
+            attachedElement.style.top = (clientY - offsetY) + 'px';
+
+            sendAction('MOVE', {
+                id: attachedElement.id,
+                x: attachedElement.style.left,
+                y: attachedElement.style.top
+            });
+        }
+
+        // Використовуємо mousedown і touchstart як аналог кліку
+        document.addEventListener('mousedown', attachOrDrop);
+        document.addEventListener('mousemove', moveAttached);
+        document.addEventListener('touchstart', attachOrDrop, {passive: false});
+        document.addEventListener('touchmove', moveAttached, {passive: false});
+
+        // Синхронізація тексту
+        sharedText.addEventListener('input', () => {
+            sendAction('TEXT', { text: sharedText.value });
+        });
+
+        // ==========================================
+        // Theme Manager
+        // ==========================================
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        let themesLoaded = false;
+        const bgPrefix = 'https://olgazheltvai2.github.io/images/backgrounds/background_';
+
+        function toggleThemeModal() {
+            themeModal.style.display = themeModal.style.display === 'block' ? 'none' : 'block';
+            if (!themesLoaded) loadThemes();
+        }
+
+        async function loadThemes() {
+            themesLoaded = true;
+            // Асинхронна генерація та перевірка
+            for (let i = 1; i <= 1000; i++) {
+                let url = `${bgPrefix}${i}.webp`;
+                let img = new Image();
+                img.onload = () => {
+                    let div = document.createElement('div');
+                    div.className = 'theme-thumb';
+                    div.style.backgroundImage = `url('${url}')`;
+                    div.innerHTML = `<div class="theme-label">Фон ${i}</div>`;
+                    div.onclick = () => {
+                        applyTheme(url);
+                        db.ref('game_theme').set(url);
+                    };
+                    themeGallery.appendChild(div);
+                };
+                img.onerror = () => { i = 1001; }; // Зупиняємо цикл, якщо фон не знайдено
+                img.src = url;
+            }
+        }
+
+        function applyTheme(url) {
+            document.body.style.backgroundImage = `url('${url}')`;
+            localStorage.setItem('mySavedGameBg', url);
+        }
+
+        // Слухаємо зміни фону з Firebase
+        db.ref('game_theme').on('value', snap => {
+            if (snap.val()) applyTheme(snap.val());
+        });
+
+        // Відновлюємо з локального сховища при старті
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) applyTheme(savedBg);
+
+        // ==========================================
+        // Універсальний Блок Контролю (Ідентифікація, Радар, Блокування)
+        // ==========================================
+        let startImmunity = true;
+        setTimeout(() => { startImmunity = false; }, 1000);
+
+        if (db) {
+            const connectedRef = db.ref('.info/connected');
+            const userRef = db.ref(`online_users/${myName}/${tabId}`);
+
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    userRef.set(true);
+                    userRef.onDisconnect().remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                userRef.remove();
+            });
+
+            db.ref('force_refresh').on('value', (snap) => {
+                if (snap.val() && !startImmunity) {
+                    window.location.reload();
+                }
+            });
+
+            const blockOverlay = document.getElementById('block-overlay');
+            db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+                if (snap.val() === true) {
+                    blockOverlay.style.display = 'flex';
+                } else {
+                    blockOverlay.style.display = 'none';
+                }
+            });
+
+            db.ref('current_activity').on('value', (snap) => {
+                if (!startImmunity && snap.val() === 'lobby') {
+                    window.location.href = `https://olgazheltvai2.github.io/rizne/lobby.html?user=${encodeURIComponent(myName)}`;
+                }
+            });
+        }
+    </script>
+</body>
+</html>
