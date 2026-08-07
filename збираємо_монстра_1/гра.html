@@ -8,24 +8,34 @@
         body {
             margin: 0;
             overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #111; /* Колір полів навколо екрану 16:9 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        /* Жорсткий контейнер 16:9 для ідеальної синхронізації на будь-якому екрані */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 56.25vw; /* 16:9 aspect ratio */
+            max-height: 100vh;
+            max-width: 177.78vh; /* 16/9 = 1.7778 */
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
             transition: background 0.5s ease-in-out;
-            font-family: Arial, sans-serif;
+            overflow: hidden;
             background-color: #87CEEB; /* Фолбек */
-        }
-        
-        #game-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            background: transparent;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
 
         #shared-text {
             position: absolute;
-            top: 20px;
+            top: 5%;
             left: 50%;
             transform: translateX(-50%);
             width: 300px;
@@ -84,7 +94,7 @@
         #start-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -99,10 +109,10 @@
         #finish-btn {
             display: none;
             position: absolute;
-            top: 20px;
+            top: 5%;
             left: calc(50% + 170px);
-            padding: 15px 40px;
-            font-size: 24px;
+            padding: 10px 30px;
+            font-size: 20px;
             background: #4CAF50;
             color: white;
             border-radius: 10px;
@@ -200,13 +210,13 @@
         @media (max-width: 800px) {
             #finish-btn {
                 left: auto;
-                right: 10px;
-                padding: 10px 20px;
+                right: 5%;
+                padding: 10px 15px;
                 font-size: 16px;
             }
             #shared-text {
                 left: 40%;
-                width: 50%;
+                width: 40%;
             }
         }
 
@@ -222,19 +232,16 @@
 </head>
 <body>
 
-    <div id="start-overlay" onclick="startGameClick()">Натисніть щоб почати гру</div>
+    <div id="start-overlay" onclick="startGameClick(event)">Натисніть щоб почати гру</div>
 
     <div id="game-container">
-        <!-- Текст тепер без placeholder -->
         <textarea id="shared-text" placeholder=""></textarea>
         
-        <!-- Монстр (значно нижче, збільшений, без transform для ідеального драг енд дропу) -->
-        <img src="монстр.png" id="monster" class="draggable" style="left: -500px; top: 70vh; width: 320px;">
+        <!-- Розміри монстра і предметів тепер у відсотках від контейнера -->
+        <img src="монстр.png" id="monster" class="draggable" style="left: -50%; top: 70%; width: 20%;">
         
-        <!-- Контейнер для зірочок і предметів -->
         <div id="items-container"></div>
 
-        <!-- Кнопка фінішу -->
         <div id="finish-btn" onclick="finishGameClick()">Готово!</div>
     </div>
 
@@ -256,7 +263,9 @@
             databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
             projectId: "lesson-13c44"
         };
-        firebase.initializeApp(firebaseConfig);
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
         const db = firebase.database();
 
         // Ідентифікація
@@ -275,6 +284,7 @@
         let finaleTriggered = false;
         let revealedItemsCount = 0;
         const totalItems = 7;
+        const container = document.getElementById('game-container');
 
         // ==========================================
         // Аудіо (Web Audio API для тихих звуків)
@@ -296,7 +306,7 @@
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(150, audioCtx.currentTime);
             osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-            gain.gain.setValueAtTime(0.02, audioCtx.currentTime); // Дуже тихо
+            gain.gain.setValueAtTime(0.02, audioCtx.currentTime);
             gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
             osc.start();
             osc.stop(audioCtx.currentTime + 0.1);
@@ -319,7 +329,7 @@
 
         function playVictoryMusic() {
             if(!audioCtx) return;
-            const notes = [261.63, 329.63, 392.00, 523.25]; // C, E, G, C
+            const notes = [261.63, 329.63, 392.00, 523.25];
             notes.forEach((freq, index) => {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
@@ -336,14 +346,14 @@
         }
 
         // ==========================================
-        // Логіка Гри
+        // Логіка Гри (Усі координати тепер у відсотках)
         // ==========================================
         const itemsList = [
             'шарф.png', 'окуляри.png', 'шапка.png', 
             'зброя1.png', 'зброя2.png', 'зброя3.png', 'зброя4.png'
         ];
         
-        // Рівномірні позиції для зірочок (у відсотках vw/vh)
+        // Позиції у відсотках відносно 16:9 контейнера
         const starPositions = [
             {x: 15, y: 20}, {x: 80, y: 20},
             {x: 30, y: 40}, {x: 70, y: 40},
@@ -351,36 +361,35 @@
             {x: 50, y: 30}
         ];
 
-        const container = document.getElementById('items-container');
+        const itemsContainer = document.getElementById('items-container');
         const monster = document.getElementById('monster');
         const sharedText = document.getElementById('shared-text');
 
-        // Розставляємо зірочки за рівномірною сіткою
         itemsList.forEach((src, index) => {
             const pos = starPositions[index];
             
             const star = document.createElement('div');
             star.className = 'star';
             star.innerHTML = '⭐';
-            star.style.left = `${pos.x}vw`;
-            star.style.top = `${pos.y}vh`;
+            star.style.left = `${pos.x}%`;
+            star.style.top = `${pos.y}%`;
             star.id = `star-${index}`;
             
             const img = document.createElement('img');
             img.src = src;
             img.className = 'draggable item-hidden';
             img.id = `item-${index}`;
-            img.style.left = `${pos.x}vw`;
-            img.style.top = `${pos.y}vh`;
-            img.style.width = '140px'; // Пропорційно збільшені предмети
+            img.style.left = `${pos.x}%`;
+            img.style.top = `${pos.y}%`;
+            img.style.width = '10%'; // Відсоток від ширини контейнера
 
             star.onclick = () => {
                 revealItemLocal(index);
                 sendAction('REVEAL', { index: index });
             };
 
-            container.appendChild(star);
-            container.appendChild(img);
+            itemsContainer.appendChild(star);
+            itemsContainer.appendChild(img);
         });
 
         function revealItemLocal(index) {
@@ -397,7 +406,6 @@
             }
         }
 
-        // Замість миттєвого завершення просто показуємо кнопку "Готово!"
         function checkFinaleReady() {
             if (revealedItemsCount === totalItems && !finaleTriggered) {
                 document.getElementById('finish-btn').style.display = 'block';
@@ -416,38 +424,31 @@
             initAudio();
             playVictoryMusic();
             
-            // Створюємо єдиний невидимий контейнер (склеюємо об'єкти)
             const wrapper = document.createElement('div');
             wrapper.id = 'finale-wrapper';
             wrapper.style.position = 'absolute';
-            wrapper.style.left = '0px';
-            wrapper.style.top = '0px';
-            wrapper.style.width = '100vw';
-            wrapper.style.height = '100vh';
+            wrapper.style.left = '0%';
+            wrapper.style.top = '0%';
+            wrapper.style.width = '100%';
+            wrapper.style.height = '100%';
             wrapper.style.zIndex = '100';
-            document.getElementById('game-container').appendChild(wrapper);
+            container.appendChild(wrapper);
             
             const allElements = [monster, ...document.querySelectorAll('.draggable:not(.item-hidden)')];
             
-            // Переносимо елементи у врапер, фіксуючи їхні екранні піксельні координати
             allElements.forEach(el => {
-                const rect = el.getBoundingClientRect();
-                el.style.left = rect.left + 'px';
-                el.style.top = rect.top + 'px';
-                el.style.transform = 'none'; 
-                el.style.margin = '0';
+                // Конвертуємо поточні відсотки у враппер
                 wrapper.appendChild(el);
             });
             
-            // Рухаємо цілісний врапер, щоб картинка була 100% монолітною
             let moveAmount = 0;
             function walkOffScreen() {
-                moveAmount += 2; 
-                wrapper.style.left = moveAmount + 'px';
+                moveAmount += 0.2; // Швидкість у відсотках
+                wrapper.style.left = moveAmount + '%';
                 
-                if (moveAmount % 30 === 0) playFootstep();
+                if (Math.round(moveAmount * 10) % 30 === 0) playFootstep();
 
-                if (moveAmount < window.innerWidth + 500) {
+                if (moveAmount < 150) {
                     requestAnimationFrame(walkOffScreen);
                 }
             }
@@ -456,39 +457,50 @@
 
         let waitingForMonsterTarget = false;
 
-        function startGameClick() {
+        function startGameClick(e) {
+            if (e) {
+                e.stopPropagation();
+                e.preventDefault();
+            }
             document.getElementById('start-overlay').style.display = 'none';
             initAudio();
-            waitingForMonsterTarget = true; // Тепер чекаємо кліку на полі для виводу монстра
+            // Затримка, щоб клік по кнопці не викликав монстра моментально
+            setTimeout(() => {
+                waitingForMonsterTarget = true;
+            }, 100);
             sendAction('START', {});
         }
 
-        function callMonsterLocal(targetX, targetY) {
+        let monsterAnimId;
+        function callMonsterLocal(targetPctX, targetPctY) {
             gameStarted = true;
             waitingForMonsterTarget = false;
             
-            const rect = monster.getBoundingClientRect();
-            let mWidth = rect.width || 320;
-            let mHeight = rect.height || 320;
-
-            // Точка кліку (targetY) стає центром монстра
-            monster.style.top = (targetY - mHeight / 2) + 'px';
+            cancelAnimationFrame(monsterAnimId); // Зупиняємо попередній рух, якщо такий був
             
-            let currentX = -500;
-            const finalX = targetX - mWidth / 2;
+            let mRect = monster.getBoundingClientRect();
+            let cRect = container.getBoundingClientRect();
+            let mHeightPct = (mRect.height / cRect.height) * 100;
+            let mWidthPct = 20; // width: 20% вказано в стилях
+
+            monster.style.top = (targetPctY - (mHeightPct / 2)) + '%';
+            
+            let currentPctX = -30;
+            const finalPctX = targetPctX - (mWidthPct / 2);
             
             function animateMonsterIn() {
-                currentX += 10;
-                monster.style.left = currentX + 'px';
-                if (currentX % 50 === 0) playFootstep();
+                currentPctX += 0.5; // Рух у відсотках
+                monster.style.left = currentPctX + '%';
                 
-                if (currentX < finalX) {
-                    requestAnimationFrame(animateMonsterIn);
+                if (Math.round(currentPctX * 10) % 30 === 0) playFootstep();
+                
+                if (currentPctX < finalPctX) {
+                    monsterAnimId = requestAnimationFrame(animateMonsterIn);
                 } else {
-                    monster.style.left = finalX + 'px'; // фіксація позиції
+                    monster.style.left = finalPctX + '%'; 
                 }
             }
-            requestAnimationFrame(animateMonsterIn);
+            monsterAnimId = requestAnimationFrame(animateMonsterIn);
         }
 
         // ==========================================
@@ -507,14 +519,14 @@
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
             if(!val) return;
-            if(val.senderId === localSenderId) return; // Ігноруємо власні дії
+            if(val.senderId === localSenderId) return;
             
             isRemoteAction = true;
             
             if (val.type === 'START') {
                 document.getElementById('start-overlay').style.display = 'none';
                 initAudio();
-                waitingForMonsterTarget = true;
+                setTimeout(() => { waitingForMonsterTarget = true; }, 100);
             } else if (val.type === 'CALL_MONSTER') {
                 initAudio();
                 callMonsterLocal(val.data.x, val.data.y);
@@ -536,33 +548,38 @@
         });
 
         // ==========================================
-        // Drag & Drop Кліком / Тапом
+        // Drag & Drop Кліком / Тапом (Усі розрахунки у %)
         // ==========================================
         let attachedElement = null;
-        let offsetX = 0, offsetY = 0;
+        let attachOffsetX = 0, attachOffsetY = 0; // у відсотках
+
+        function getRelativePos(clientX, clientY) {
+            const rect = container.getBoundingClientRect();
+            let x = ((clientX - rect.left) / rect.width) * 100;
+            let y = ((clientY - rect.top) / rect.height) * 100;
+            return {x, y};
+        }
 
         function attachOrDrop(e) {
             if (finaleTriggered) return;
             
-            // Ігноруємо кліки по UI елементах
             if (e.target.id === 'finish-btn' || e.target.id === 'theme-btn' || e.target.closest('#theme-modal') || e.target.id === 'shared-text') return;
 
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            let pos = getRelativePos(clientX, clientY);
 
-            // 1. Поява монстра (якщо чекаємо кліку на полі)
             if (waitingForMonsterTarget) {
-                callMonsterLocal(clientX, clientY);
-                sendAction('CALL_MONSTER', { x: clientX, y: clientY });
+                callMonsterLocal(pos.x, pos.y);
+                sendAction('CALL_MONSTER', { x: pos.x, y: pos.y });
                 return; 
             }
 
-            // 2. Драг енд дроп
             if (attachedElement) {
-                // Відпускаємо (клікнули другий раз)
+                // Відпускаємо
                 if (e.type.includes('touch')) {
-                    attachedElement.style.left = (clientX - offsetX) + 'px';
-                    attachedElement.style.top = (clientY - offsetY) + 'px';
+                    attachedElement.style.left = (pos.x - attachOffsetX) + '%';
+                    attachedElement.style.top = (pos.y - attachOffsetY) + '%';
                 }
                 
                 sendAction('MOVE', {
@@ -573,13 +590,20 @@
                 attachedElement.style.zIndex = 5;
                 attachedElement = null;
             } else {
-                // Причіплюємо (клікнули перший раз)
+                // Причіплюємо
                 let target = e.target;
                 if (target.classList.contains('draggable') && !target.classList.contains('item-hidden')) {
                     attachedElement = target;
-                    const rect = attachedElement.getBoundingClientRect();
-                    offsetX = clientX - rect.left;
-                    offsetY = clientY - rect.top;
+                    
+                    const elRect = attachedElement.getBoundingClientRect();
+                    const cRect = container.getBoundingClientRect();
+                    
+                    let elLeftPct = ((elRect.left - cRect.left) / cRect.width) * 100;
+                    let elTopPct = ((elRect.top - cRect.top) / cRect.height) * 100;
+                    
+                    attachOffsetX = pos.x - elLeftPct;
+                    attachOffsetY = pos.y - elTopPct;
+                    
                     attachedElement.style.zIndex = 1000;
                     e.preventDefault(); 
                 }
@@ -591,8 +615,9 @@
             const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
             const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
             
-            attachedElement.style.left = (clientX - offsetX) + 'px';
-            attachedElement.style.top = (clientY - offsetY) + 'px';
+            let pos = getRelativePos(clientX, clientY);
+            attachedElement.style.left = (pos.x - attachOffsetX) + '%';
+            attachedElement.style.top = (pos.y - attachOffsetY) + '%';
 
             sendAction('MOVE', {
                 id: attachedElement.id,
@@ -601,13 +626,11 @@
             });
         }
 
-        // Використовуємо mousedown і touchstart як аналог кліку
         document.addEventListener('mousedown', attachOrDrop);
         document.addEventListener('mousemove', moveAttached);
         document.addEventListener('touchstart', attachOrDrop, {passive: false});
         document.addEventListener('touchmove', moveAttached, {passive: false});
 
-        // Синхронізація тексту
         sharedText.addEventListener('input', () => {
             sendAction('TEXT', { text: sharedText.value });
         });
@@ -627,7 +650,6 @@
 
         async function loadThemes() {
             themesLoaded = true;
-            // Асинхронна генерація та перевірка
             for (let i = 1; i <= 1000; i++) {
                 let url = `${bgPrefix}${i}.webp`;
                 let img = new Image();
@@ -642,22 +664,21 @@
                     };
                     themeGallery.appendChild(div);
                 };
-                img.onerror = () => { i = 1001; }; // Зупиняємо цикл, якщо фон не знайдено
+                img.onerror = () => { i = 1001; }; 
                 img.src = url;
             }
         }
 
         function applyTheme(url) {
-            document.body.style.backgroundImage = `url('${url}')`;
+            // Тепер фон застосовується до контейнера 16:9, а не до body
+            container.style.backgroundImage = `url('${url}')`;
             localStorage.setItem('mySavedGameBg', url);
         }
 
-        // Слухаємо зміни фону з Firebase
         db.ref('game_theme').on('value', snap => {
             if (snap.val()) applyTheme(snap.val());
         });
 
-        // Відновлюємо з локального сховища при старті
         const savedBg = localStorage.getItem('mySavedGameBg');
         if (savedBg) applyTheme(savedBg);
 
