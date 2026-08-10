@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Рахівниця</title>
+    
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+            background-color: #e0e0e0;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            overflow: hidden; /* Забороняємо скрол всього вікна */
+        }
+
+        #main-layout {
+            display: flex;
+            flex-direction: row;
+            width: 100vw;
+            height: 100vh;
+            align-items: stretch;
+        }
+
+        #workspace {
+            flex: 1;
+            display: flex;
+            flex-direction: row; /* Завжди стоять поряд */
+            justify-content: center;
+            align-items: center;
+            gap: 3vw;
+            padding: 2vw 100px 2vw 2vw; /* Відступ справа під панель кнопок */
+            box-sizing: border-box;
+        }
+
+        /* Права панель управління режимами */
+        #right-controls {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .icon-btn {
+            background: rgba(255, 255, 255, 0.85);
+            border: 3px solid #6b4423;
+            border-radius: 12px;
+            font-size: 1.5rem; /* Менший розмір */
+            cursor: pointer;
+            width: 55px;
+            height: 55px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.3);
+            transition: transform 0.1s, background 0.2s;
+        }
+        
+        .icon-btn:active {
+            transform: scale(0.95);
+        }
+        
+        .icon-btn.active {
+            background: #ffecb3;
+            border-color: #d2691e;
+        }
+
+        .abacus-block {
+            display: flex;
+            flex-direction: column; /* Рахівниця зверху, вікно знизу */
+            align-items: center;
+            gap: 2vh;
+            flex: 1;
+            width: 100%;
+            max-width: 1200px; /* Максимальний розмір */
+        }
+
+        /* Виправлення для 1 режиму: жорстке обмеження ширини відносно висоти, щоб кульки не роздувались */
+        .abacus-block.single-mode .abacus-container {
+            max-width: calc(75vh * 1.25);
+        }
+
+        .abacus-container {
+            width: 100%;
+            aspect-ratio: 1.25 / 1; /* Робить форму, при якій рядки далеко один від одного */
+            max-height: 75vh;
+            border: 1.5vh solid #5d3a1a;
+            border-radius: 10px;
+            background: transparent;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.5), 0 10px 25px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-evenly;
+            padding: 1.5vh;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        .abacus-container::before {
+            content: '';
+            position: absolute;
+            top: -1.5vh; left: -1.5vh; right: -1.5vh; bottom: -1.5vh;
+            border: 1.5vh solid transparent;
+            border-image: linear-gradient(45deg, #4a2e15, #8b5a2b, #4a2e15) 1;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .row {
+            position: relative;
+            height: 6%; /* Зменшено висоту контейнера струни для візуального збільшення відстані */
+            width: 100%;
+        }
+
+        .wire {
+            position: absolute;
+            top: 50%;
+            left: -5px;
+            right: -5px;
+            height: clamp(3px, 0.6vh, 6px);
+            background: linear-gradient(to bottom, #d3d3d3, #808080, #d3d3d3);
+            transform: translateY(-50%);
+            box-shadow: 0 2px 2px rgba(0,0,0,0.4);
+            z-index: 1;
+        }
+
+        .bead {
+            position: absolute;
+            top: 50%;
+            width: 7%; /* Ширина кульки */
+            aspect-ratio: 1 / 1;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #ffccaa, #d2691e 40%, #8b4513);
+            transform: translateY(-50%);
+            transition: left 0.15s ease-out;
+            cursor: pointer;
+            box-shadow: 2px 3px 5px rgba(0,0,0,0.5), inset -2px -2px 5px rgba(0,0,0,0.3);
+            z-index: 2;
+        }
+        
+        .bead:active {
+            filter: brightness(1.2);
+        }
+
+        .number-input {
+            width: 35%;
+            min-width: 120px;
+            max-width: 300px;
+            height: 12vh;
+            min-height: 70px;
+            flex-shrink: 0;
+            font-size: 8vh;
+            text-align: center;
+            border: clamp(3px, 0.5vh, 6px) solid #5d3a1a;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.85);
+            color: #222;
+            outline: none;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.4);
+            transition: background 0.2s, border-color 0.2s;
+        }
+        
+        .number-input:focus {
+            background: rgba(255, 255, 255, 1);
+            border-color: #d2691e;
+        }
+
+        /* Theme settings button */
+        #settings-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid #333;
+            font-size: 26px;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+        #settings-btn:hover {
+            transform: scale(1.1);
+        }
+
+        /* Theme Modal */
+        #theme-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 10000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+        .theme-modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 85%;
+            max-width: 800px;
+            position: relative;
+        }
+        .theme-modal-close {
+            position: absolute;
+            top: 10px; right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            margin-top: 20px;
+            padding-right: 5px;
+        }
+        .theme-thumb {
+            height: 100px;
+            background-size: cover;
+            background-position: center;
+            border-radius: 8px;
+            cursor: pointer;
+            position: relative;
+            border: 3px solid transparent;
+            transition: transform 0.2s;
+        }
+        .theme-thumb:hover {
+            transform: scale(1.05);
+            border-color: #d2691e;
+        }
+        .theme-thumb span {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            text-align: center;
+            padding: 5px 0;
+            font-size: 14px;
+            border-bottom-left-radius: 5px;
+            border-bottom-right-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="main-layout">
+        <div id="workspace">
+            <div id="block1" class="abacus-block">
+                <div id="abacus1" class="abacus-container"></div>
+                <input type="text" id="input1" class="number-input" oninput="handleInput(1, this.value)">
+            </div>
+            <div id="block2" class="abacus-block" style="display:none;">
+                <div id="abacus2" class="abacus-container"></div>
+                <input type="text" id="input2" class="number-input" oninput="handleInput(2, this.value)">
+            </div>
+        </div>
+
+        <div id="right-controls">
+            <button id="btn-mode-1" class="icon-btn active" onclick="setMode(1)">🧮</button>
+            <button id="btn-mode-2" class="icon-btn" onclick="setMode(2)">🧮🧮</button>
+        </div>
+    </div>
+
+    <!-- Theme Manager Modal -->
+    <button id="settings-btn" onclick="document.getElementById('theme-modal').style.display='flex'">⚙️</button>
+    <div id="theme-modal" onclick="if(event.target===this) this.style.display='none'">
+        <div class="theme-modal-content">
+            <div class="theme-modal-close" onclick="document.getElementById('theme-modal').style.display='none'">✖</div>
+            <div id="theme-gallery"></div>
+        </div>
+    </div>
+
+    <!-- Game Logic & Firebase Sync -->
+    <script>
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+
+        let myTabId = sessionStorage.getItem('tabId');
+        if (!myTabId) {
+            myTabId = Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem('tabId', myTabId);
+        }
+
+        let isRemoteAction = false;
+        
+        let gameState = {
+            mode: 1,
+            a1: [0,0,0,0,0,0,0,0,0,0],
+            a2: [0,0,0,0,0,0,0,0,0,0],
+            i1: "",
+            i2: ""
+        };
+
+        function sendAction() {
+            if (isRemoteAction) return;
+            db.ref('game_action').set({
+                senderId: myTabId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: 'SYNC_STATE',
+                data: gameState
+            });
+        }
+
+        db.ref('game_action').on('value', (snap) => {
+            const val = snap.val();
+            if (!val) return;
+            if (val.senderId === myTabId) return;
+            
+            isRemoteAction = true;
+            if (val.type === 'SYNC_STATE' && val.data) {
+                gameState = val.data;
+                applyStateToUI();
+            }
+            isRemoteAction = false;
+        });
+
+        function renderAbacus(containerId, stateArray) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            for(let r = 0; r < 10; r++) {
+                let rowDiv = document.createElement('div');
+                rowDiv.className = 'row';
+                
+                let wire = document.createElement('div');
+                wire.className = 'wire';
+                rowDiv.appendChild(wire);
+
+                let leftCount = stateArray[r];
+                
+                for(let i = 0; i < 10; i++) {
+                    let bead = document.createElement('div');
+                    bead.className = 'bead';
+                    
+                    if (i < leftCount) {
+                        bead.style.left = (i * 7.5) + '%';
+                    } else {
+                        bead.style.left = (100 - (10 - i) * 7.5) + '%';
+                    }
+                    
+                    bead.onclick = () => handleBeadClick(containerId, r, i);
+                    rowDiv.appendChild(bead);
+                }
+                container.appendChild(rowDiv);
+            }
+        }
+
+        function handleBeadClick(containerId, r, i) {
+            if (isRemoteAction) return;
+            
+            let stateArray = containerId === 'abacus1' ? gameState.a1 : gameState.a2;
+            let currentLeftCount = stateArray[r];
+
+            if (i < currentLeftCount) {
+                stateArray[r] = i; 
+            } else {
+                stateArray[r] = i + 1;
+            }
+
+            renderAbacus(containerId, stateArray);
+            sendAction();
+        }
+
+        function setMode(modeNum) {
+            if (isRemoteAction) return;
+            gameState.mode = modeNum;
+            applyStateToUI();
+            sendAction();
+        }
+
+        function handleInput(num, val) {
+            if (isRemoteAction) return;
+            if (num === 1) gameState.i1 = val;
+            else gameState.i2 = val;
+            sendAction();
+        }
+
+        function applyStateToUI() {
+            document.getElementById('btn-mode-1').classList.toggle('active', gameState.mode === 1);
+            document.getElementById('btn-mode-2').classList.toggle('active', gameState.mode === 2);
+            
+            const block1 = document.getElementById('block1');
+            const block2 = document.getElementById('block2');
+
+            if (gameState.mode === 1) {
+                block2.style.display = 'none';
+                block1.classList.add('single-mode'); // Додаємо клас для обмеження розміру
+            } else {
+                block2.style.display = 'flex';
+                block1.classList.remove('single-mode'); // Прибираємо клас для 2 режиму
+            }
+            
+            renderAbacus('abacus1', gameState.a1);
+            renderAbacus('abacus2', gameState.a2);
+            
+            const in1 = document.getElementById('input1');
+            const in2 = document.getElementById('input2');
+            
+            if (document.activeElement !== in1) in1.value = gameState.i1;
+            if (document.activeElement !== in2) in2.value = gameState.i2;
+        }
+
+        applyStateToUI();
+
+        /* ================= Theme Manager Логіка ================= */
+        const savedBg = localStorage.getItem('mySavedGameBg');
+        if (savedBg) {
+            document.body.style.backgroundImage = `url(${savedBg})`;
+        }
+
+        db.ref('game_theme').on('value', (snap) => {
+            const url = snap.val();
+            if (url) {
+                document.body.style.backgroundImage = `url(${url})`;
+                localStorage.setItem('mySavedGameBg', url);
+            }
+        });
+
+        async function checkImage(url) {
+            return new Promise(resolve => {
+                let img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        }
+
+        async function loadThemes() {
+            const gallery = document.getElementById('theme-gallery');
+            gallery.innerHTML = '';
+            
+            for(let i = 1; i <= 1000; i++) {
+                let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                let exists = await checkImage(url);
+                
+                if (!exists) break;
+                
+                let div = document.createElement('div');
+                div.className = 'theme-thumb';
+                div.style.backgroundImage = `url(${url})`;
+                div.innerHTML = `<span>Фон ${i}</span>`;
+                div.onclick = () => {
+                    db.ref('game_theme').set(url);
+                    document.getElementById('theme-modal').style.display = 'none';
+                };
+                gallery.appendChild(div);
+            }
+        }
+        
+        loadThemes();
+
+    </script>
+
+    <!-- Універсальний блок контролю (Ідентифікація, Радар та Блокування) -->
+    <div id="block-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:999999; justify-content:center; align-items:center;">
+        <h1 style="color:red; font-size:4vw; text-align:center; font-family:Arial, sans-serif; text-transform:uppercase;">Зачекай! Зараз не твій урок.</h1>
+    </div>
+    
+    <script>
+        (function() {
+            let myName = sessionStorage.getItem('myName');
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlUser = urlParams.get('user');
+
+            if (urlUser) {
+                myName = urlUser;
+                sessionStorage.setItem('myName', myName);
+            } else if (!myName) {
+                myName = "Гість_" + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('myName', myName);
+            }
+
+            const myTab = sessionStorage.getItem('tabId') || Math.random().toString(36).substring(2, 15);
+            sessionStorage.setItem('tabId', myTab);
+
+            const userRef = db.ref(`online_users/${myName}/${myTab}`);
+            const connectedRef = db.ref('.info/connected');
+
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    userRef.onDisconnect().remove().then(() => {
+                        userRef.set(true);
+                    });
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                userRef.remove();
+            });
+
+            let isFirstRefreshCheck = true;
+            db.ref('force_refresh').on('value', (snap) => {
+                if (!isFirstRefreshCheck && snap.val()) {
+                    location.reload();
+                }
+                isFirstRefreshCheck = false;
+            });
+
+            const blockOverlay = document.getElementById('block-overlay');
+            db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+                if (snap.val() === true) {
+                    blockOverlay.style.display = 'flex';
+                } else {
+                    blockOverlay.style.display = 'none';
+                }
+            });
+
+            let isFirstActivityCheck = true;
+            db.ref('current_activity').on('value', (snap) => {
+                const activity = snap.val();
+                if (!isFirstActivityCheck && activity === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+                isFirstActivityCheck = false;
+            });
+        })();
+    </script>
+</body>
+</html>
