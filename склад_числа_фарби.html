@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Склад числа - Чарівні фарби</title>
+    <style>
+        /* Скидання базових стилів та налаштування на весь екран */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+            background-color: #2b1d14;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* SVG фону та інших шарів */
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui-layer {
+            z-index: 10;
+        }
+
+        #overlay-layer {
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        /* Екран-заглушка для блокування */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            color: #ff4c4c;
+            font-size: 50px;
+            font-weight: bold;
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        /* Стилізація інтерактивних елементів */
+        .paint-blob {
+            cursor: pointer;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .paint-blob:hover {
+            transform: scale(1.5) !important;
+        }
+
+        .btn-regenerate {
+            cursor: pointer;
+            transition: transform 0.2s;
+            transform-origin: 80px 80px;
+        }
+
+        .btn-regenerate:hover {
+            transform: rotate(-15deg) scale(1.1);
+        }
+
+        .jar-clickable {
+            cursor: pointer;
+            transition: filter 0.2s;
+        }
+
+        .jar-clickable:hover {
+            filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+        }
+
+        /* Плавний перехід кольору рідини */
+        #liquid {
+            transition: fill 1.5s ease-in-out;
+        }
+
+        /* Нова анімація для неправильної відповіді (Труситься і сіріє) */
+        @keyframes shakeWrong {
+            0%, 100% { transform: scale(1.3) translateX(0); }
+            20%, 60% { transform: scale(1.3) translateX(-15px); }
+            40%, 80% { transform: scale(1.3) translateX(15px); }
+        }
+
+        .wrong-shake {
+            animation: shakeWrong 0.5s ease-in-out;
+            filter: grayscale(80%) opacity(0.5);
+            pointer-events: none;
+        }
+
+        /* Анімація потоку фарби */
+        .pour-stream {
+            animation: pourAnim 1.5s forwards;
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+        }
+
+        @keyframes pourAnim {
+            0% { stroke-dashoffset: 1000; opacity: 1; }
+            30% { stroke-dashoffset: 0; opacity: 1; }
+            70% { stroke-dashoffset: 0; opacity: 1; }
+            100% { stroke-dashoffset: 0; opacity: 0; }
+        }
+
+        /* Стилі для тексту завдання */
+        .task-text {
+            font-size: 65px;
+            font-weight: bold;
+            fill: #ffffff;
+            paint-order: stroke;
+            stroke: #000000;
+            stroke-width: 6px;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+        
+        .next-text {
+            font-size: 35px;
+            font-weight: bold;
+            fill: #ffffaa;
+            paint-order: stroke;
+            stroke: #000000;
+            stroke-width: 4px;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.7; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+            100% { opacity: 0.7; transform: scale(1); }
+        }
+
+        .blob-text {
+            font-size: 55px;
+            font-weight: bold;
+            fill: #ffffff;
+            paint-order: stroke;
+            stroke: #000000;
+            stroke-width: 5px;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+        }
+
+        /* Адаптивність */
+        @media (max-width: 768px) {
+            .task-text { font-size: 80px; }
+            .blob-text { font-size: 70px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+<div id="game-container">
+    <svg id="bg-layer" preserveAspectRatio="xMidYMid slice" viewBox="0 0 1920 1080">
+        <defs>
+            <linearGradient id="wallGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#3d5a80" />
+                <stop offset="100%" stop-color="#98c1d9" />
+            </linearGradient>
+            <linearGradient id="woodTable" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#6f4e37" />
+                <stop offset="100%" stop-color="#4a3020" />
+            </linearGradient>
+            <radialGradient id="jarGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="0.6"/>
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+            </radialGradient>
+            <pattern id="wallpaper" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+                <circle cx="50" cy="50" r="15" fill="#e0fbfc" opacity="0.1"/>
+                <path d="M20 20 Q 50 0 80 20 T 80 80 T 20 80 T 20 20" fill="none" stroke="#e0fbfc" stroke-width="2" opacity="0.05"/>
+            </pattern>
+            <filter id="dropShadow" x="-20%" y="-20%" width="150%" height="150%">
+                <feDropShadow dx="10" dy="15" stdDeviation="10" flood-color="#000000" flood-opacity="0.5"/>
+            </filter>
+            <filter id="glow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+        </defs>
+
+        <rect width="1920" height="700" fill="url(#wallGrad)" />
+        <rect width="1920" height="700" fill="url(#wallpaper)" />
+
+        <g opacity="0.6" transform="translate(1300, 150)">
+            <rect x="120" y="200" width="20" height="400" fill="#3e2723" />
+            <rect x="60" y="250" width="140" height="10" fill="#4e342e" />
+            <rect x="0" y="0" width="260" height="300" fill="#f5f5dc" stroke="#5d4037" stroke-width="8" transform="rotate(-5)" filter="url(#dropShadow)" />
+            <path d="M 50 150 Q 100 50 150 200 T 250 100" fill="none" stroke="#ff5252" stroke-width="15" stroke-linecap="round" transform="rotate(-5)" />
+            <path d="M 20 200 Q 150 250 180 50" fill="none" stroke="#448aff" stroke-width="20" stroke-linecap="round" transform="rotate(-5)" />
+        </g>
+
+        <rect x="0" y="650" width="1920" height="430" fill="url(#woodTable)" />
+        <path d="M 0 680 L 1920 680 M 0 750 L 1920 750 M 0 820 L 1920 820 M 0 890 L 1920 890 M 0 960 L 1920 960 M 0 1030 L 1920 1030" stroke="#3d2314" stroke-width="5" />
+        
+        <g transform="translate(200, 750) rotate(15)" filter="url(#dropShadow)">
+            <rect x="0" y="10" width="250" height="15" fill="#8d6e63" rx="5" />
+            <rect x="250" y="8" width="40" height="19" fill="#9e9e9e" rx="2" />
+            <path d="M 290 8 Q 340 0 330 17 Q 340 35 290 27 Z" fill="#ff9800" />
+        </g>
+        <g transform="translate(1500, 850) rotate(-25)" filter="url(#dropShadow)">
+            <rect x="0" y="10" width="300" height="20" fill="#5d4037" rx="10" />
+            <rect x="300" y="5" width="50" height="30" fill="#cfd8dc" rx="4" />
+            <path d="M 350 5 Q 420 -10 400 20 Q 420 50 350 35 Z" fill="#e91e63" />
+        </g>
+
+        <path d="M 500 950 C 400 800, 700 700, 960 750 C 1200 800, 1500 750, 1450 950 C 1400 1100, 600 1100, 500 950 Z" fill="#d7ccc8" stroke="#a1887f" stroke-width="10" filter="url(#dropShadow)" />
+        <circle cx="1300" cy="850" r="40" fill="url(#woodTable)" stroke="#a1887f" stroke-width="5" />
+        <circle cx="1300" cy="850" r="40" fill="#2b1d14" opacity="0.6" />
+    </svg>
+
+    <svg id="ui-layer" viewBox="0 0 1920 1080">
+        <g transform="translate(150, 150)">
+            <g class="btn-regenerate" onclick="generateTask()">
+                <rect x="0" y="0" width="160" height="160" fill="#fff9c4" rx="15" filter="url(#dropShadow)" transform="rotate(-10)" />
+                <path d="M 20 0 L 20 160 M 40 0 L 40 160" stroke="#ffcccb" stroke-width="2" transform="rotate(-10)" />
+                <g transform="translate(80, 70) rotate(-10)">
+                    <path d="M -30 -10 A 35 35 0 1 1 -10 -30 L -10 -45 M -10 -30 L -25 -30" fill="none" stroke="#5c6bc0" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+                </g>
+            </g>
+        </g>
+
+        <!-- Центральна ємність (Банка) - Зроблена клікабельною для переходу далі -->
+        <g id="jar-container" class="jar-clickable" transform="translate(960, 480)" filter="url(#dropShadow)" onclick="nextTaskClick()">
+            <path d="M -180 -150 L -180 150 Q -180 200 0 200 Q 180 200 180 150 L 180 -150 Z" fill="#ffffff" opacity="0.3" />
+            <path id="liquid" d="M -175 -50 L -175 150 Q -175 195 0 195 Q 175 195 175 150 L 175 -50 Q 0 -20 -175 -50 Z" fill="#3498db" />
+            <text id="task-display" class="task-text" x="0" y="70">8 це 2 і _</text>
+            <text id="next-display" class="next-text" x="0" y="140" style="display: none;">Натисни, щоб продовжити!</text>
+            <path d="M -150 -130 L -150 120 Q -150 160 -50 180" fill="none" stroke="#ffffff" stroke-width="15" stroke-linecap="round" opacity="0.6" />
+            <path d="M 150 -100 L 150 80" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="round" opacity="0.4" />
+            <path d="M -180 -150 L -180 150 Q -180 200 0 200 Q 180 200 180 150 L 180 -150 Z" fill="none" stroke="#e0f2f1" stroke-width="10" opacity="0.8" />
+            <ellipse cx="0" cy="-150" rx="180" ry="30" fill="none" stroke="#e0f2f1" stroke-width="15" opacity="0.9" />
+            <ellipse cx="0" cy="-150" rx="170" ry="20" fill="none" stroke="#ffffff" stroke-width="5" opacity="0.5" />
+        </g>
+
+        <g id="options-container"></g>
+    </svg>
+
+    <svg id="overlay-layer" viewBox="0 0 1920 1080">
+        <g id="pour-container"></g>
+    </svg>
+</div>
+
+<script>
+    // --- АУДІО ДВИЖОК (Web Audio API) ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function initAudio() {
+        if (!audioCtx) {
+            audioCtx = new AudioContext();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }
+
+    // Новий тихий, м'який звук успіху (Дзвіночок)
+    function playSuccessSound() {
+        initAudio();
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, t);
+        osc.frequency.exponentialRampToValueAtTime(1200, t + 0.3);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.04, t + 0.05); // Зроблено дуже тихо
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.5);
+    }
+
+    // Новий тихий звук помилки (Глухий стукіт/Boop)
+    function playErrorSound() {
+        initAudio();
+        const t = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(300, t);
+        osc.frequency.exponentialRampToValueAtTime(150, t + 0.2);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.04, t + 0.02); // Зроблено дуже тихо
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.3);
+    }
+
+    // --- ЛОГІКА ГРИ ---
+    // 20 унікальних комбінацій кольорів
+    const colorMixes = [
+        { base: '#0055ff', add: '#ffff00', res: '#00cc44' }, // 1. Синій + Жовтий = Зелений
+        { base: '#ff2222', add: '#ffff00', res: '#ff8800' }, // 2. Червоний + Жовтий = Помаранчевий
+        { base: '#ff2222', add: '#0055ff', res: '#9900cc' }, // 3. Червоний + Синій = Фіолетовий
+        { base: '#ffffff', add: '#ff2222', res: '#ff99aa' }, // 4. Білий + Червоний = Рожевий
+        { base: '#ffff00', add: '#00cc44', res: '#aacc00' }, // 5. Жовтий + Зелений = Салатовий
+        { base: '#00cc44', add: '#0055ff', res: '#00aaaa' }, // 6. Зелений + Синій = Бірюзовий
+        { base: '#ff8800', add: '#ff2222', res: '#e64a19' }, // 7. Помаранчевий + Червоний = Темно-оранжевий
+        { base: '#ffffff', add: '#000000', res: '#888888' }, // 8. Білий + Чорний = Сірий
+        { base: '#ff99aa', add: '#0055ff', res: '#cc88ff' }, // 9. Рожевий + Синій = Світло-фіолетовий
+        { base: '#aacc00', add: '#0055ff', res: '#228b22' }, // 10. Салатовий + Синій = Лісовий зелений
+        { base: '#ff8800', add: '#ffff00', res: '#ffcc00' }, // 11. Помаранчевий + Жовтий = Золотий
+        { base: '#9900cc', add: '#ffffff', res: '#dda0dd' }, // 12. Фіолетовий + Білий = Світло-ліловий
+        { base: '#00aaaa', add: '#ffffff', res: '#afeeee' }, // 13. Бірюзовий + Білий = Світло-блакитний
+        { base: '#e64a19', add: '#000000', res: '#8b0000' }, // 14. Темно-ор. + Чорний = Темно-червоний
+        { base: '#00cc44', add: '#ffffff', res: '#98fb98' }, // 15. Зелений + Білий = Блідо-зелений
+        { base: '#0055ff', add: '#ffffff', res: '#87ceeb' }, // 16. Синій + Білий = Небесно-блакитний
+        { base: '#ffff00', add: '#ffffff', res: '#ffffe0' }, // 17. Жовтий + Білий = Світло-жовтий
+        { base: '#ff2222', add: '#000000', res: '#800000' }, // 18. Червоний + Чорний = Бордовий
+        { base: '#0055ff', add: '#000000', res: '#000080' }, // 19. Синій + Чорний = Темно-синій
+        { base: '#ffff00', add: '#ff00ff', res: '#ff8888' }  // 20. Жовтий + Маджента = Кораловий
+    ];
+
+    let availableMixes = [];
+    const randomColors = ['#ff00ff', '#00ffff', '#ff5500', '#88ff00', '#5500ff', '#ff0055', '#bbff00', '#333333', '#00ff88', '#ff44aa'];
+
+    let targetNum, knownPart, missingPart;
+    let currentColorMix;
+    let isAnimating = false;
+    let isRemoteAction = false;
+    let isWaitingForNext = false;
+
+    const blobPaths = [
+        "M -40 -30 C -20 -60, 30 -50, 50 -20 C 70 10, 60 50, 30 60 C 0 70, -30 60, -50 30 C -60 0, -50 -10, -40 -30 Z",
+        "M -50 -10 C -50 -40, -10 -60, 20 -50 C 50 -40, 60 -10, 50 20 C 40 60, 0 70, -30 50 C -50 30, -60 10, -50 -10 Z",
+        "M -30 -40 C 0 -60, 40 -50, 50 -10 C 60 30, 30 60, -10 60 C -40 50, -60 20, -50 -10 C -40 -30, -40 -30, -30 -40 Z",
+        "M -45 0 C -45 -35, -15 -55, 25 -45 C 55 -35, 65 5, 45 35 C 25 65, -15 55, -35 25 C -55 -5, -45 0, -45 0 Z"
+    ];
+
+    function getRandomInt(min, max) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function generateTask(remoteData = null) {
+        if (isAnimating) return;
+        initAudio();
+        
+        isWaitingForNext = false;
+        document.getElementById('next-display').style.display = 'none';
+        
+        document.getElementById('options-container').innerHTML = '';
+        document.getElementById('pour-container').innerHTML = '';
+        
+        let options = [];
+
+        if (remoteData) {
+            targetNum = remoteData.targetNum;
+            knownPart = remoteData.knownPart;
+            missingPart = remoteData.missingPart;
+            currentColorMix = remoteData.currentColorMix;
+            options = remoteData.options;
+        } else {
+            // Перевірка та оновлення черги комбінацій
+            if (availableMixes.length === 0) {
+                availableMixes = Array.from({length: colorMixes.length}, (_, i) => i);
+                availableMixes.sort(() => Math.random() - 0.5); // Перемішуємо індекси від 0 до 19
+            }
+            let mixIndex = availableMixes.pop();
+            currentColorMix = colorMixes[mixIndex];
+
+            targetNum = getRandomInt(4, 10);
+            knownPart = getRandomInt(1, targetNum - 1);
+            missingPart = targetNum - knownPart;
+
+            options = [{ num: missingPart, correct: true, color: currentColorMix.add }];
+            while (options.length < 4) {
+                let randNum = getRandomInt(1, 10);
+                if (randNum !== missingPart && !options.find(o => o.num === randNum)) {
+                    let rColor = randomColors[getRandomInt(0, randomColors.length - 1)];
+                    while (rColor === currentColorMix.add || options.find(o => o.color === rColor)) {
+                        rColor = randomColors[getRandomInt(0, randomColors.length - 1)];
+                    }
+                    options.push({ num: randNum, correct: false, color: rColor });
+                }
+            }
+            options.sort(() => Math.random() - 0.5);
+
+            if (!isRemoteAction && typeof sendAction === 'function') {
+                sendAction({
+                    type: 'newTask',
+                    targetNum, knownPart, missingPart, currentColorMix, options
+                });
+            }
+        }
+
+        document.getElementById('liquid').style.fill = currentColorMix.base;
+        document.getElementById('task-display').textContent = `${targetNum} це ${knownPart} і _`;
+
+        const positions = [
+            { x: 650, y: 880 }, { x: 820, y: 920 },
+            { x: 1000, y: 950 }, { x: 1180, y: 870 }
+        ];
+
+        const container = document.getElementById('options-container');
+
+        options.forEach((opt, index) => {
+            const pos = positions[index];
+            const pathData = blobPaths[index % blobPaths.length];
+
+            const wrapper = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            wrapper.setAttribute("transform", `translate(${pos.x}, ${pos.y})`);
+
+            const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            group.setAttribute("id", `blob-${index}`);
+            group.setAttribute("class", "paint-blob");
+            group.setAttribute("style", "transform: scale(1.3); transform-origin: 0px 0px;");
+            group.setAttribute("onclick", `checkAnswer(${opt.correct}, '${opt.color}', ${pos.x}, ${pos.y}, ${index})`);
+
+            const shadow = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            shadow.setAttribute("d", pathData);
+            shadow.setAttribute("fill", "#000000");
+            shadow.setAttribute("opacity", "0.3");
+            shadow.setAttribute("transform", "translate(5, 5)");
+            group.appendChild(shadow);
+
+            const blob = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            blob.setAttribute("d", pathData);
+            blob.setAttribute("fill", opt.color);
+            blob.setAttribute("filter", "url(#glow)");
+            group.appendChild(blob);
+            
+            const highlight = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            highlight.setAttribute("d", "M -20 -20 Q 0 -30 20 -10");
+            highlight.setAttribute("fill", "none");
+            highlight.setAttribute("stroke", "#ffffff");
+            highlight.setAttribute("stroke-width", "5");
+            highlight.setAttribute("stroke-linecap", "round");
+            highlight.setAttribute("opacity", "0.6");
+            group.appendChild(highlight);
+
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("class", "blob-text");
+            text.setAttribute("x", "0");
+            text.setAttribute("y", "5");
+            text.textContent = opt.num;
+            group.appendChild(text);
+
+            wrapper.appendChild(group);
+            container.appendChild(wrapper);
+        });
+    }
+
+    function checkAnswer(isCorrect, color, startX, startY, blobIndex) {
+        if (isAnimating || isWaitingForNext) return;
+        
+        if (!isRemoteAction && typeof sendAction === 'function') {
+            sendAction({ type: 'answer', isCorrect, color, startX, startY, blobIndex });
+        }
+
+        isAnimating = true;
+
+        if (isCorrect) {
+            playSuccessSound();
+            animatePour(startX, startY, color, () => {
+                document.getElementById('liquid').style.fill = currentColorMix.res;
+                document.getElementById('task-display').textContent = `${targetNum} це ${knownPart} і ${missingPart}`;
+                
+                // Після завершення анімації чекаємо на клік користувача
+                isAnimating = false;
+                isWaitingForNext = true;
+                document.getElementById('next-display').style.display = 'block';
+            });
+        } else {
+            playErrorSound();
+            // Нова анімація: трусимо конкретну неправильну пляму
+            const wrongBlob = document.getElementById(`blob-${blobIndex}`);
+            if (wrongBlob) {
+                wrongBlob.classList.add('wrong-shake');
+                setTimeout(() => {
+                    wrongBlob.classList.remove('wrong-shake');
+                    isAnimating = false;
+                }, 500); // Час збігається з CSS анімацією
+            } else {
+                isAnimating = false;
+            }
+        }
+    }
+
+    function animatePour(startX, startY, color, callback) {
+        const pourContainer = document.getElementById('pour-container');
+        const endX = 960;
+        const endY = 300; 
+
+        const pourPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const d = `M ${startX} ${startY} Q ${startX} ${startY - 300} ${endX} ${endY} L ${endX} 600`;
+        
+        pourPath.setAttribute("d", d);
+        pourPath.setAttribute("fill", "none");
+        pourPath.setAttribute("stroke", color);
+        pourPath.setAttribute("stroke-width", "35");
+        pourPath.setAttribute("stroke-linecap", "round");
+        pourPath.setAttribute("class", "pour-stream");
+        pourPath.setAttribute("filter", "url(#glow)");
+
+        pourContainer.appendChild(pourPath);
+
+        setTimeout(() => {
+            if(callback) callback();
+        }, 800);
+    }
+
+    // Клік по банці для переходу до наступного завдання
+    function nextTaskClick() {
+        if (isWaitingForNext && !isAnimating) {
+            if (!isRemoteAction && typeof sendAction === 'function') {
+                sendAction({ type: 'forceNext' });
+            }
+            generateTask();
+        }
+    }
+
+    window.onload = generateTask;
+</script>
+
+<!-- Firebase SDK (v8 compat) -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+<script>
+    // --- Універсальний блок контролю та Синхронізація ---
+    const firebaseConfig = {
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+        projectId: "lesson-13c44"
+    };
+    
+    let db;
+    let myName;
+    let myTabId;
+    
+    try {
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        db = firebase.database();
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        myName = urlParams.get('user') || sessionStorage.getItem('userName');
+        if (!myName) {
+            myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('userName', myName);
+        
+        myTabId = sessionStorage.getItem('tabId');
+        if (!myTabId) {
+            myTabId = 'tab_' + Math.random().toString(36).substr(2, 9);
+            sessionStorage.setItem('tabId', myTabId);
+        }
+        
+        const myConnectionRef = db.ref(`online_users/${myName}/${myTabId}`);
+        const connectedRef = db.ref('.info/connected');
+        
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                myConnectionRef.set(true);
+                myConnectionRef.onDisconnect().remove();
+            }
+        });
+        
+        window.addEventListener('beforeunload', () => {
+            myConnectionRef.remove();
+        });
+        
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            const overlay = document.getElementById('block-overlay');
+            if (snap.val() === true) {
+                overlay.style.display = 'flex';
+            } else {
+                overlay.style.display = 'none';
+            }
+        });
+        
+        db.ref('force_refresh').on('value', (snap) => {
+            if (snap.val() === true) {
+                window.location.reload();
+            }
+        });
+        
+        let immunity = true;
+        setTimeout(() => immunity = false, 1000);
+        
+        db.ref('current_activity').on('value', (snap) => {
+            if (!immunity && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === myTabId) return;
+            
+            isRemoteAction = true;
+            if (val.data.type === 'newTask') {
+                generateTask(val.data);
+            } else if (val.data.type === 'answer') {
+                checkAnswer(val.data.isCorrect, val.data.color, val.data.startX, val.data.startY, val.data.blobIndex);
+            } else if (val.data.type === 'forceNext') {
+                isWaitingForNext = false;
+                generateTask();
+            }
+            
+            setTimeout(() => { isRemoteAction = false; }, 100);
+        });
+        
+    } catch (e) {
+        console.error("Firebase init failed, running locally", e);
+    }
+    
+    function sendAction(actionData) {
+        if (isRemoteAction || !db || !myTabId) return;
+        db.ref('game_action').set({
+            senderId: myTabId,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            data: actionData
+        });
+    }
+</script>
+</body>
+</html>
