@@ -264,10 +264,12 @@
     <svg id="overlay-layer" viewBox="0 0 1920 1080">
         <g id="pour-container"></g>
     </svg>
+    
+    <div style="position: absolute; bottom: 10px; right: 15px; color: rgba(255,255,255,0.5); font-size: 16px; font-weight: bold; z-index: 100;">Версія 1.3</div>
 </div>
 
 <script>
-    // --- АУДІО ДВИЖОК (Web Audio API) ---
+    // --- АУДІО ДВИЖОК ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
 
@@ -338,15 +340,7 @@
         { base: '#ffff00', add: '#ff00ff', res: '#ff8888' }  
     ];
 
-    let availableMixes = [];
     const randomColors = ['#ff00ff', '#00ffff', '#ff5500', '#88ff00', '#5500ff', '#ff0055', '#bbff00', '#333333', '#00ff88', '#ff44aa'];
-
-    let targetNum, knownPart, missingPart;
-    let currentColorMix;
-    let isAnimating = false;
-    let isRemoteAction = false;
-    let isWaitingForNext = false;
-
     const blobPaths = [
         "M -40 -30 C -20 -60, 30 -50, 50 -20 C 70 10, 60 50, 30 60 C 0 70, -30 60, -50 30 C -60 0, -50 -10, -40 -30 Z",
         "M -50 -10 C -50 -40, -10 -60, 20 -50 C 50 -40, 60 -10, 50 20 C 40 60, 0 70, -30 50 C -50 30, -60 10, -50 -10 Z",
@@ -354,18 +348,25 @@
         "M -45 0 C -45 -35, -15 -55, 25 -45 C 55 -35, 65 5, 45 35 C 25 65, -15 55, -35 25 C -55 -5, -45 0, -45 0 Z"
     ];
 
+    let availableMixes = [];
+    let targetNum, knownPart, missingPart;
+    let currentColorMix;
+    
+    // Синхронізаційні змінні
+    let isAnimating = false;
+    let isWaitingForNext = false;
+    let currentTaskId = null;
+    let lastAnswerId = null;
+
     function getRandomInt(min, max) {
         return Math.floor(Math.random() * (max - min + 1)) + min;
     }
 
     function generateTask(remoteData = null) {
-        if (isAnimating && !remoteData) return; 
         initAudio();
-        
         isAnimating = false; 
         isWaitingForNext = false;
         document.getElementById('next-display').style.display = 'none';
-        
         document.getElementById('options-container').innerHTML = '';
         document.getElementById('pour-container').innerHTML = '';
         
@@ -377,6 +378,7 @@
             missingPart = remoteData.missingPart;
             currentColorMix = remoteData.currentColorMix;
             options = remoteData.options;
+            currentTaskId = remoteData.taskId; // Запам'ятовуємо ID поточного завдання
         } else {
             if (availableMixes.length === 0) {
                 availableMixes = Array.from({length: colorMixes.length}, (_, i) => i);
@@ -406,9 +408,13 @@
                 [options[i], options[j]] = [options[j], options[i]];
             }
 
-            if (!isRemoteAction && typeof sendAction === 'function') {
+            // Створюємо унікальний ID для нового завдання
+            currentTaskId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+            if (typeof sendAction === 'function') {
                 sendAction({
                     type: 'newTask',
+                    taskId: currentTaskId,
                     targetNum, knownPart, missingPart, currentColorMix, options
                 });
             }
@@ -471,11 +477,13 @@
         });
     }
 
-    function checkAnswer(isCorrect, color, startX, startY, blobIndex) {
-        if (!isRemoteAction && (isAnimating || isWaitingForNext)) return;
+    function checkAnswer(isCorrect, color, startX, startY, blobIndex, isRemote = false) {
+        // Якщо дія локальна, перевіряємо чи можна її виконати
+        if (!isRemote && (isAnimating || isWaitingForNext)) return;
         
-        if (!isRemoteAction && typeof sendAction === 'function') {
-            sendAction({ type: 'answer', isCorrect, color, startX, startY, blobIndex });
+        if (!isRemote && typeof sendAction === 'function') {
+            const answerId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            sendAction({ type: 'answer', answerId, isCorrect, color, startX, startY, blobIndex });
         }
 
         isAnimating = true;
@@ -530,12 +538,12 @@
 
     function nextTaskClick() {
         if (isWaitingForNext && !isAnimating) {
-            isWaitingForNext = false;
             generateTask();
         }
     }
 </script>
 
+<!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -606,34 +614,46 @@
             }
         });
 
+        // СУВОРИЙ СЛУХАЧ ДІЙ
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
-            if (!val || val.senderId === myTabId) return;
+            if (!val || !val.data) return;
             
-            isRemoteAction = true;
-            if (val.data.type === 'newTask') {
-                isWaitingForNext = false; 
-                generateTask(val.data);
-            } else if (val.data.type === 'answer') {
-                checkAnswer(val.data.isCorrect, val.data.color, val.data.startX, val.data.startY, val.data.blobIndex);
+            // Якщо це відправили ми самі — ігноруємо, бо дія вже виконана локально
+            if (val.senderId === myTabId) return;
+            
+            const data = val.data;
+
+            if (data.type === 'newTask') {
+                // Якщо прийшло нове завдання, і його ID відрізняється від нашого
+                if (currentTaskId !== data.taskId) {
+                    generateTask(data);
+                }
+            } else if (data.type === 'answer') {
+                // Якщо прийшла відповідь, і ми її ще не обробляли
+                if (lastAnswerId !== data.answerId) {
+                    lastAnswerId = data.answerId;
+                    checkAnswer(data.isCorrect, data.color, data.startX, data.startY, data.blobIndex, true);
+                }
             }
-            
-            setTimeout(() => { isRemoteAction = false; }, 100);
         });
 
-        // Запуск гри з перевіркою існуючого завдання в базі
+        // ІНІЦІАЛІЗАЦІЯ ПРИ ЗАПУСКУ
+        // Даємо Firebase 1.5 секунди, щоб підтягнути існуюче завдання, якщо воно вже є на сервері
         setTimeout(() => {
-            if (db) {
+            if (!currentTaskId) { // Якщо on('value') не приніс завдання
                 db.ref('game_action').once('value').then(snap => {
                     const val = snap.val();
-                    if (!val || !val.data || val.data.type !== 'newTask') {
-                        generateTask();
+                    if (val && val.data && val.data.type === 'newTask') {
+                        generateTask(val.data);
+                    } else {
+                        generateTask(); // Створюємо перше завдання, якщо сервер порожній
                     }
+                }).catch(() => {
+                    generateTask(); // Запускаємо локально при помилці
                 });
-            } else {
-                generateTask();
             }
-        }, 800);
+        }, 1500);
         
     } catch (e) {
         console.error("Firebase init failed, running locally", e);
@@ -641,7 +661,7 @@
     }
     
     function sendAction(actionData) {
-        if (isRemoteAction || !db || !myTabId) return;
+        if (!db || !myTabId) return;
         db.ref('game_action').set({
             senderId: myTabId,
             timestamp: firebase.database.ServerValue.TIMESTAMP,
