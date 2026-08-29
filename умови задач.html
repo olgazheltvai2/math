@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Умова задачі - Школа</title>
+    <!-- Підключення Firebase (compat версія) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --font-mod: 0px;
+        }
+
+        /* Основні налаштування: уникнення білого кольору, шрифт Arial */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #5c3a21; /* Основа під парту */
+            touch-action: none; /* Блокування скролу для Drag & Drop */
+        }
+
+        /* Текстура дерев'яної шкільної парти (через CSS градієнти) */
+        .desk-background {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0;
+            background: 
+                repeating-linear-gradient(
+                    90deg,
+                    rgba(0,0,0,0.1),
+                    rgba(0,0,0,0.1) 2px,
+                    transparent 2px,
+                    transparent 15px
+                ),
+                linear-gradient(to bottom, #8d5524, #6d421b);
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.8);
+        }
+
+        /* Ігровий контейнер */
+        .game-container {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Верхня панель (навігація) */
+        .top-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto 15px auto;
+        }
+
+        /* Мінімалістичні кнопки навігації (стилізовані під дерев'яні кнопки/фішки) */
+        .nav-btn {
+            width: 60px; height: 60px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #e0a96d, #b97a45);
+            border: 3px solid #4a2c11;
+            box-shadow: 3px 3px 10px rgba(0,0,0,0.5), inset 2px 2px 4px rgba(255,255,255,0.4);
+            display: flex;
+            justify-content: center; align-items: center;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.2s;
+        }
+        .nav-btn:active { transform: scale(0.9); }
+        .nav-btn:hover { filter: brightness(1.15); }
+        .nav-icon { fill: #4a2c11; width: 30px; height: 30px; }
+
+        /* Робоча зона: дві колонки */
+        .workspace {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: stretch;
+            width: 100%;
+            max-width: 1300px;
+            margin: 0 auto;
+            gap: 30px;
+            flex-grow: 1;
+        }
+
+        /* Ліва колонка: Коркова дошка зі словами */
+        .left-col {
+            flex: 1;
+            display: flex;
+            align-items: center;
+        }
+
+        .corkboard {
+            width: 100%;
+            min-height: 400px;
+            background: 
+                radial-gradient(circle, transparent 20%, #8d6e63 20%, #8d6e63 80%, transparent 80%, transparent),
+                radial-gradient(circle, transparent 20%, #8d6e63 20%, #8d6e63 80%, transparent 80%, transparent) 25px 25px,
+                linear-gradient(#a1887f 2px, transparent 2px) 0 -1px,
+                linear-gradient(90deg, #a1887f 2px, #bcaaa4 2px) -1px 0;
+            background-size: 50px 50px, 50px 50px, 25px 25px, 25px 25px;
+            background-color: #bcaaa4;
+            border: 12px solid #4e342e;
+            border-radius: 15px;
+            box-shadow: 10px 10px 20px rgba(0,0,0,0.7), inset 0 0 30px rgba(0,0,0,0.6);
+            padding: 30px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            justify-content: center;
+            align-content: flex-start;
+            position: relative;
+        }
+
+        /* Права колонка: Зошит */
+        .right-col {
+            flex: 1.2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notebook {
+            width: 100%;
+            max-width: 700px;
+            height: 90%;
+            /* Стилізація під зошит у клітинку з червоним полем */
+            background-color: #fdf5e6; /* Кремовий/вінтажний папір, не чисто білий */
+            background-image: 
+                linear-gradient(90deg, #ff5252 2px, transparent 2px), /* Червоне поле */
+                linear-gradient(#90caf9 2px, transparent 2px), /* Горизонтальні лінії клітинки */
+                linear-gradient(90deg, #90caf9 2px, transparent 2px); /* Вертикальні лінії клітинки */
+            background-size: 100% 100%, 60px 60px, 60px 60px;
+            background-position: 80px 0, 0 0, 0 0;
+            border-radius: 5px 25px 25px 5px;
+            box-shadow: 
+                15px 15px 25px rgba(0,0,0,0.6),
+                inset 5px 0 10px rgba(0,0,0,0.1);
+            position: relative;
+            padding: 40px 20px 40px 100px; /* Відступ під поля */
+            display: flex;
+            flex-direction: column;
+            gap: 40px; /* Відстань між рядками умови */
+        }
+
+        /* Спіраль зошита зліва */
+        .notebook::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 10px; bottom: 0; width: 30px;
+            background: repeating-radial-gradient(circle at 15px 15px, #424242 0, #424242 4px, transparent 5px, transparent 60px);
+            z-index: 2;
+        }
+
+        /* Рядок у зошиті (зона для скидання слів) */
+        .notebook-row {
+            width: 100%;
+            min-height: 80px;
+            background: rgba(255, 235, 59, 0.15); /* Легке підсвічування рядка */
+            border: 3px dashed transparent;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            padding: 10px;
+            box-sizing: border-box;
+            transition: all 0.3s;
+        }
+
+        .notebook-row.hovered {
+            background: rgba(139, 195, 74, 0.3);
+            border-color: #7cb342;
+            transform: scale(1.02);
+        }
+
+        /* Окреме слово (стилізовано під яскраві вирізки/наліпки) */
+        .word {
+            background: linear-gradient(135deg, #fff9c4, #fbc02d);
+            border: 3px solid #f57f17;
+            border-radius: 8px;
+            padding: 15px 25px;
+            font-size: calc(34px + var(--font-mod)); /* Змінний розмір шрифту */
+            font-weight: bold;
+            color: #212121;
+            text-shadow: 1px 1px 0 rgba(255,255,255,0.8);
+            cursor: grab;
+            user-select: none;
+            box-shadow: 3px 5px 10px rgba(0,0,0,0.4);
+            touch-action: none;
+            text-align: center;
+            position: relative;
+            transform: rotate(calc(-3deg + 6deg * var(--rand))); /* Легкий нахил на дошці */
+        }
+        
+        /* Кнопка-гвоздик для дизайну слова на дошці */
+        .word::after {
+            content: '';
+            position: absolute;
+            top: 5px; left: 50%;
+            transform: translateX(-50%);
+            width: 12px; height: 12px;
+            background: radial-gradient(circle, #ef5350, #b71c1c);
+            border-radius: 50%;
+            box-shadow: 1px 2px 3px rgba(0,0,0,0.5);
+            display: block;
+        }
+
+        .word.invisible { opacity: 0; pointer-events: none; }
+        
+        .word-clone {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+            box-shadow: 5px 15px 25px rgba(0,0,0,0.6);
+            transform: scale(1.1) rotate(0deg) !important; /* Рівно при перетягуванні */
+        }
+        .word-clone::after { display: none; } /* Прибираємо гвоздик при перетягуванні */
+
+        /* Слово, що вже в зошиті */
+        .word-in-zone {
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            color: #1a237e; /* Колір чорнила ручки */
+            font-size: calc(42px + var(--font-mod)); /* Змінний розмір шрифту */
+            padding: 0;
+            text-shadow: none;
+            transform: rotate(0deg) !important;
+            animation: writeIn 0.3s ease-out forwards;
+        }
+        .word-in-zone::after { display: none; }
+
+        @keyframes writeIn {
+            0% { opacity: 0; transform: scale(0.8) translateY(-10px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        /* Частинки для фідбеку (чорнильні плями) */
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            z-index: 999;
+        }
+
+        /* Адаптивність */
+        @media (max-width: 900px) {
+            .workspace { flex-direction: column; }
+            .left-col, .right-col { width: 100%; }
+            .notebook { padding: 30px 15px 30px 70px; }
+            .notebook-row { min-height: 60px; }
+            .word { font-size: calc(28px + var(--font-mod)); padding: 10px 15px; }
+            .word-in-zone { font-size: calc(34px + var(--font-mod)); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="desk-background"></div>
+
+    <div class="game-container">
+        
+        <div class="top-panel">
+            <div class="font-controls" style="display: flex; gap: 10px;">
+                <div class="nav-btn" id="btn-font-minus" title="Зменшити шрифт">
+                    <span style="color: #4a2c11; font-size: 24px; font-weight: bold; pointer-events: none;">A-</span>
+                </div>
+                <div class="nav-btn" id="btn-font-plus" title="Збільшити шрифт">
+                    <span style="color: #4a2c11; font-size: 24px; font-weight: bold; pointer-events: none;">A+</span>
+                </div>
+            </div>
+            
+            <div class="nav-group" style="display: flex; gap: 15px;">
+                <div class="nav-btn" id="btn-prev">
+                    <svg class="nav-icon" viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg>
+                </div>
+                <div class="nav-btn" id="btn-next">
+                    <svg class="nav-icon" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="workspace">
+            <!-- Коркова дошка зі словами (Джерело) -->
+            <div class="left-col">
+                <div class="corkboard" id="words-container"></div>
+            </div>
+
+            <!-- Зошит (Місце для складання умови) -->
+            <div class="right-col">
+                <div class="notebook">
+                    <div class="notebook-row" data-row="0" id="row-0"></div>
+                    <div class="notebook-row" data-row="1" id="row-1"></div>
+                    <div class="notebook-row" data-row="2" id="row-2"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Універсальний блок контролю (Екран-заглушка) -->
+    <div id="block-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; color: red; font-size: 40px; font-weight: bold; font-family: Arial, sans-serif; text-align: center;">
+        Зачекай!<br>Зараз не твій урок.
+    </div>
+
+<script>
+    // --- FIREBASE ТА УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ ---
+    let db = null;
+    let myName = "Гість";
+    const tabId = Math.random().toString(36).substr(2, 9);
+    let isRemoteAction = false;
+    let lastActionId = '';
+
+    try {
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+
+        // Ідентифікація (отримання імені)
+        myName = sessionStorage.getItem('userName');
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('user')) {
+            myName = urlParams.get('user');
+            sessionStorage.setItem('userName', myName);
+        } else if (!myName) {
+            myName = "Гість_" + Math.floor(Math.random() * 1000);
+            sessionStorage.setItem('userName', myName);
+        }
+
+        // Радар
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', (snap) => {
+            if (snap.val() === true) {
+                userRef.set(true);
+                userRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        // Блокування користувача
+        const blockOverlay = document.getElementById('block-overlay');
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            blockOverlay.style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // Примусове оновлення
+        db.ref('force_refresh').on('value', (snap) => {
+            if (snap.val()) window.location.reload();
+        });
+
+        // Повернення в лобі (з імунітетом 1 сек)
+        let immunity = true;
+        setTimeout(() => immunity = false, 1000);
+        db.ref('current_activity').on('value', (snap) => {
+            if (!immunity && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // Синхронізація гри (слухач)
+        db.ref('game_action').on('value', (snap) => {
+            const val = snap.val();
+            if (!val || val.tabId === tabId || val.actionId === lastActionId) return;
+            
+            lastActionId = val.actionId;
+            isRemoteAction = true; // Захист від зациклення
+
+            if (val.type === 'change_level') {
+                if (currentLevel !== val.data.level) {
+                    currentLevel = val.data.level;
+                    initLevel();
+                }
+            } else if (val.type === 'word_dropped') {
+                const wordEl = document.querySelector(`.word[data-idx="${val.data.wordIdx}"]`);
+                const targetRow = document.querySelector(`.notebook-row[data-row="${val.data.rowIndex}"]`);
+                
+                if (wordEl && targetRow && !wordEl.classList.contains('word-in-zone')) {
+                    sfx.correct();
+                    const finalWord = document.createElement('div');
+                    finalWord.className = 'word word-in-zone';
+                    finalWord.textContent = wordEl.textContent;
+                    finalWord.dataset.idx = val.data.wordIdx;
+                    targetRow.appendChild(finalWord);
+
+                    Array.from(targetRow.children)
+                        .sort((a,b) => parseInt(a.dataset.idx) - parseInt(b.dataset.idx))
+                        .forEach(el => targetRow.appendChild(el));
+
+                    wordEl.remove();
+                    foundWordsCount++;
+
+                    if(foundWordsCount === totalTargetWords) {
+                        winLevel();
+                    }
+                }
+            }
+            isRemoteAction = false;
+        });
+
+    } catch (error) {
+        console.warn('Firebase не підключено. Гра працюватиме локально.', error);
+    }
+
+    // Функція відправки дій (Firebase)
+    function sendGameAction(type, data) {
+        if (!db) return;
+        const actionId = Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        db.ref('game_action').set({
+            senderId: myName,
+            tabId: tabId,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            actionId: actionId,
+            type: type,
+            data: data
+        });
+    }
+
+    // --- ЛОКАЛЬНЕ КЕРУВАННЯ ШРИФТОМ ---
+    let baseFontSizeModifier = 0;
+    document.getElementById('btn-font-minus').addEventListener('click', () => {
+        baseFontSizeModifier -= 2;
+        document.documentElement.style.setProperty('--font-mod', baseFontSizeModifier + 'px');
+    });
+    document.getElementById('btn-font-plus').addEventListener('click', () => {
+        baseFontSizeModifier += 2;
+        document.documentElement.style.setProperty('--font-mod', baseFontSizeModifier + 'px');
+    });
+
+
+    // Масив з 10 задач
+    // rows: масив з 3 масивів (індекси слів для 1, 2 і 3 рядків зошита)
+    const tasks = [
+        { t: ["На", "гілці", "сиділо", "5", "папуг.", "Прилетіло", "ще", "3.", "Скільки", "стало?"], rows: [[2, 3], [5, 7], [8, 9]] },
+        { t: ["У", "лісі", "було", "8", "грибів.", "Білка", "з'їла", "2.", "Скільки", "залишилось?"], rows: [[2, 3], [6, 7], [8, 9]] },
+        { t: ["Під", "кущем", "лежало", "4", "кокоси.", "Впало", "ще", "4.", "Скільки", "всього?"], rows: [[2, 3], [5, 7], [8, 9]] },
+        { t: ["Грілося", "9", "черепах.", "У", "воду", "попливли", "5.", "Скільки", "залишилось?"], rows: [[0, 1], [5, 6], [7, 8]] },
+        { t: ["Слон", "випив", "6", "відер,", "а", "потім", "ще", "3.", "Скільки", "всього?"], rows: [[1, 2], [6, 7], [8, 9]] },
+        { t: ["У", "гнізді", "було", "7", "яєць.", "Вилупились", "4", "пташенята.", "Скільки", "залишилось?"], rows: [[2, 3], [5, 6], [8, 9]] },
+        { t: ["Лев", "пройшов", "2", "кілометри,", "потім", "ще", "5.", "Скільки", "всього?"], rows: [[1, 2], [5, 6], [7, 8]] },
+        { t: ["На", "галявині", "росло", "10", "квітів.", "Зірвали", "3.", "Скільки", "залишилось?"], rows: [[2, 3], [5, 6], [7, 8]] },
+        { t: ["Зебра", "знайшла", "1", "яблуко,", "потім", "ще", "8.", "Скільки", "всього?"], rows: [[1, 2], [5, 6], [7, 8]] },
+        { t: ["На", "дереві", "висіло", "6", "ліан.", "Обірвалися", "6.", "Скільки", "залишилось?"], rows: [[2, 3], [5, 6], [7, 8]] }
+    ];
+
+    let currentLevel = 0;
+    let foundWordsCount = 0;
+    let totalTargetWords = 0;
+
+    // DOM Елементи
+    const wordsContainer = document.getElementById('words-container');
+    const notebookRows = [document.getElementById('row-0'), document.getElementById('row-1'), document.getElementById('row-2')];
+
+    // --- АУДІО (Web Audio API) ---
+    // Генерація звуків без зовнішніх файлів
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    function playTone(freq, type, duration, vol=0.1) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type; 
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain); 
+        gain.connect(audioCtx.destination);
+        osc.start(); 
+        osc.stop(audioCtx.currentTime + duration);
+    }
+    
+    const sfx = {
+        correct: () => { 
+            playTone(800, 'sine', 0.1, 0.2); 
+            setTimeout(()=>playTone(1200, 'sine', 0.15, 0.2), 100); 
+        },
+        wrong: () => { 
+            playTone(200, 'sawtooth', 0.15, 0.15); 
+            setTimeout(()=>playTone(150, 'sawtooth', 0.2, 0.15), 100); 
+        },
+        win: () => { 
+            [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => setTimeout(()=>playTone(f, 'sine', 0.2, 0.2), i*120)); 
+        }
+    };
+
+    // --- ВІЗУАЛЬНІ ЕФЕКТИ (Чорнильні бризки/Зірочки) ---
+    function fireParticles(x, y) {
+        // Кольори, що нагадують яскраві гелеві ручки
+        const colors = ['#1a237e', '#b71c1c', '#004d40', '#4a148c', '#ff6d00'];
+        for(let i=0; i<35; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle'; 
+            document.body.appendChild(p);
+            const size = Math.random() * 10 + 5;
+            p.style.width = p.style.height = size + 'px';
+            p.style.backgroundColor = colors[Math.floor(Math.random()*colors.length)];
+            p.style.left = x + 'px'; 
+            p.style.top = y + 'px';
+            
+            const angle = Math.random() * Math.PI * 2;
+            const vel = Math.random() * 120 + 40;
+            
+            p.animate([
+                { transform: 'translate(0,0) scale(1)', opacity: 1 },
+                { transform: `translate(${Math.cos(angle)*vel}px, ${Math.sin(angle)*vel - 80}px) scale(0)`, opacity: 0 }
+            ], { 
+                duration: Math.random()*500 + 500, 
+                easing: 'cubic-bezier(0, .9, .57, 1)' 
+            }).onfinish = () => p.remove();
+        }
+    }
+
+    // --- ІНІЦІАЛІЗАЦІЯ РІВНЯ ---
+    function initLevel() {
+        wordsContainer.innerHTML = '';
+        notebookRows.forEach(r => r.innerHTML = '');
+        
+        const task = tasks[currentLevel];
+        foundWordsCount = 0;
+        totalTargetWords = task.rows.reduce((acc, row) => acc + row.length, 0);
+
+        task.t.forEach((text, index) => {
+            const el = document.createElement('div');
+            el.className = 'word'; 
+            el.textContent = text; 
+            el.dataset.idx = index;
+            // Випадковий нахил для візуального хаосу на дошці
+            el.style.setProperty('--rand', Math.random());
+            
+            el.addEventListener('pointerdown', handleDragStart);
+            wordsContainer.appendChild(el);
+        });
+    }
+
+    // --- СИСТЕМА DRAG AND DROP (Pointer Events) ---
+    let dragEl = null, clone = null, startX, startY, offX, offY;
+
+    function handleDragStart(e) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        
+        dragEl = e.target;
+        dragEl.setPointerCapture(e.pointerId);
+        
+        const r = dragEl.getBoundingClientRect();
+        startX = r.left; 
+        startY = r.top;
+        offX = e.clientX - r.left; 
+        offY = e.clientY - r.top;
+        
+        // Створюємо клон, що слідує за мишею/пальцем
+        clone = dragEl.cloneNode(true);
+        clone.className = 'word word-clone';
+        clone.style.left = startX + 'px'; 
+        clone.style.top = startY + 'px';
+        clone.style.width = r.width + 'px'; 
+        clone.style.height = r.height + 'px';
+        document.body.appendChild(clone);
+        
+        dragEl.classList.add('invisible');
+        
+        document.addEventListener('pointermove', handleDragMove);
+        document.addEventListener('pointerup', handleDragEnd);
+    }
+
+    function handleDragMove(e) {
+        if(!clone) return;
+        clone.style.left = (e.clientX - offX) + 'px';
+        clone.style.top = (e.clientY - offY) + 'px';
+        
+        // Перевірка наведення на рядки зошита
+        notebookRows.forEach(r => r.classList.remove('hovered'));
+        // Приховуємо клон на мить, щоб знайти елемент ПІД ним
+        clone.style.visibility = 'hidden';
+        const hitZone = document.elementFromPoint(e.clientX, e.clientY);
+        clone.style.visibility = 'visible';
+        
+        const row = hitZone ? hitZone.closest('.notebook-row') : null;
+        if(row) row.classList.add('hovered');
+    }
+
+    function handleDragEnd(e) {
+        document.removeEventListener('pointermove', handleDragMove);
+        document.removeEventListener('pointerup', handleDragEnd);
+        notebookRows.forEach(r => r.classList.remove('hovered'));
+        
+        if(!clone || !dragEl) return;
+
+        const cx = e.clientX, cy = e.clientY;
+        dragEl.releasePointerCapture(e.pointerId);
+        
+        clone.style.visibility = 'hidden';
+        const hitZone = document.elementFromPoint(cx, cy);
+        clone.style.visibility = 'visible';
+        
+        const targetRow = hitZone ? hitZone.closest('.notebook-row') : null;
+
+        if(targetRow) {
+            const rowIndex = parseInt(targetRow.dataset.row);
+            const wordIdx = parseInt(dragEl.dataset.idx);
+            
+            // Перевіряємо, чи має це слово бути в цьому рядку
+            if(tasks[currentLevel].rows[rowIndex].includes(wordIdx)) {
+                sfx.correct();
+                
+                // Додаємо слово у зошит (змінюється стиль на "рукописний")
+                const finalWord = document.createElement('div');
+                finalWord.className = 'word word-in-zone';
+                finalWord.textContent = dragEl.textContent;
+                finalWord.dataset.idx = wordIdx;
+                targetRow.appendChild(finalWord);
+
+                // Сортування слів у рядку відповідно до їх порядку у вихідному тексті
+                Array.from(targetRow.children)
+                    .sort((a,b) => parseInt(a.dataset.idx) - parseInt(b.dataset.idx))
+                    .forEach(el => targetRow.appendChild(el));
+
+                clone.remove();
+                foundWordsCount++;
+                
+                // Передача події іншим пристроям
+                if (!isRemoteAction) {
+                    sendGameAction('word_dropped', { wordIdx: wordIdx, rowIndex: rowIndex });
+                }
+                
+                // Перевірка на перемогу в рівні
+                if(foundWordsCount === totalTargetWords) {
+                    winLevel();
+                }
+                
+                cleanupDrag();
+                return;
+            }
+        }
+        
+        // Якщо кинули повз або помилилися рядком - повертаємо назад
+        sfx.wrong();
+        clone.style.transition = 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+        clone.style.left = startX + 'px';
+        clone.style.top = startY + 'px';
+        
+        const c = clone, d = dragEl;
+        setTimeout(() => { 
+            c.remove(); 
+            d.classList.remove('invisible'); 
+        }, 300);
+        
+        cleanupDrag();
+    }
+
+    function cleanupDrag() { 
+        dragEl = null; 
+        clone = null; 
+    }
+
+    let winTimeout;
+    function winLevel() {
+        sfx.win();
+        const rect = document.querySelector('.notebook').getBoundingClientRect();
+        fireParticles(rect.left + rect.width/2, rect.top + rect.height/2);
+        
+        const wasRemote = isRemoteAction; // Фіксуємо, щоб не множити подію зміни рівня
+        
+        clearTimeout(winTimeout);
+        // Автоматичний перехід на наступний рівень
+        winTimeout = setTimeout(() => {
+            currentLevel = (currentLevel + 1) % tasks.length;
+            initLevel();
+            // Передаємо зміну рівня тільки якщо це наша дія перемоги, щоб не було нескінченного циклу
+            if (!wasRemote) {
+                sendGameAction('change_level', { level: currentLevel });
+            }
+        }, 2000);
+    }
+
+    // --- ОБРОБКА КНОПОК ---
+    document.getElementById('btn-next').addEventListener('click', () => {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        currentLevel = (currentLevel + 1) % tasks.length; 
+        initLevel();
+        if (!isRemoteAction) sendGameAction('change_level', { level: currentLevel });
+    });
+    
+    document.getElementById('btn-prev').addEventListener('click', () => {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        currentLevel = (currentLevel - 1 + tasks.length) % tasks.length; 
+        initLevel();
+        if (!isRemoteAction) sendGameAction('change_level', { level: currentLevel });
+    });
+
+    // Запуск першого завдання
+    initLevel();
+</script>
+</body>
+</html>
