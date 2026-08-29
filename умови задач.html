@@ -39,6 +39,7 @@
                 ),
                 linear-gradient(to bottom, #8d5524, #6d421b);
             box-shadow: inset 0 0 50px rgba(0,0,0,0.8);
+            transition: all 0.5s ease;
         }
 
         /* Ігровий контейнер */
@@ -356,9 +357,13 @@
             blockOverlay.style.display = snap.val() ? 'flex' : 'none';
         });
 
-        // Примусове оновлення
+        // Примусове оновлення (ВИПРАВЛЕНО: Захист від нескінченного циклу)
+        let isFirstRefreshCheck = true;
         db.ref('force_refresh').on('value', (snap) => {
-            if (snap.val()) window.location.reload();
+            if (!isFirstRefreshCheck && snap.val() === true) {
+                window.location.reload();
+            }
+            isFirstRefreshCheck = false;
         });
 
         // Повернення в лобі (з імунітетом 1 сек)
@@ -368,6 +373,11 @@
             if (!immunity && snap.val() === 'lobby') {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
+        });
+
+        // Синхронізація теми (Theme Manager)
+        db.ref('game_theme').on('value', (snap) => {
+            if (snap.val()) setTheme(snap.val(), false);
         });
 
         // Синхронізація гри (слухач)
@@ -441,7 +451,6 @@
 
 
     // Масив з 10 задач
-    // rows: масив з 3 масивів (індекси слів для 1, 2 і 3 рядків зошита)
     const tasks = [
         { t: ["На", "гілці", "сиділо", "5", "папуг.", "Прилетіло", "ще", "3.", "Скільки", "стало?"], rows: [[2, 3], [5, 7], [8, 9]] },
         { t: ["У", "лісі", "було", "8", "грибів.", "Білка", "з'їла", "2.", "Скільки", "залишилось?"], rows: [[2, 3], [6, 7], [8, 9]] },
@@ -464,7 +473,6 @@
     const notebookRows = [document.getElementById('row-0'), document.getElementById('row-1'), document.getElementById('row-2')];
 
     // --- АУДІО (Web Audio API) ---
-    // Генерація звуків без зовнішніх файлів
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     
     function playTone(freq, type, duration, vol=0.1) {
@@ -497,7 +505,6 @@
 
     // --- ВІЗУАЛЬНІ ЕФЕКТИ (Чорнильні бризки/Зірочки) ---
     function fireParticles(x, y) {
-        // Кольори, що нагадують яскраві гелеві ручки
         const colors = ['#1a237e', '#b71c1c', '#004d40', '#4a148c', '#ff6d00'];
         for(let i=0; i<35; i++) {
             const p = document.createElement('div');
@@ -536,7 +543,6 @@
             el.className = 'word'; 
             el.textContent = text; 
             el.dataset.idx = index;
-            // Випадковий нахил для візуального хаосу на дошці
             el.style.setProperty('--rand', Math.random());
             
             el.addEventListener('pointerdown', handleDragStart);
@@ -559,7 +565,6 @@
         offX = e.clientX - r.left; 
         offY = e.clientY - r.top;
         
-        // Створюємо клон, що слідує за мишею/пальцем
         clone = dragEl.cloneNode(true);
         clone.className = 'word word-clone';
         clone.style.left = startX + 'px'; 
@@ -579,9 +584,7 @@
         clone.style.left = (e.clientX - offX) + 'px';
         clone.style.top = (e.clientY - offY) + 'px';
         
-        // Перевірка наведення на рядки зошита
         notebookRows.forEach(r => r.classList.remove('hovered'));
-        // Приховуємо клон на мить, щоб знайти елемент ПІД ним
         clone.style.visibility = 'hidden';
         const hitZone = document.elementFromPoint(e.clientX, e.clientY);
         clone.style.visibility = 'visible';
@@ -610,18 +613,15 @@
             const rowIndex = parseInt(targetRow.dataset.row);
             const wordIdx = parseInt(dragEl.dataset.idx);
             
-            // Перевіряємо, чи має це слово бути в цьому рядку
             if(tasks[currentLevel].rows[rowIndex].includes(wordIdx)) {
                 sfx.correct();
                 
-                // Додаємо слово у зошит (змінюється стиль на "рукописний")
                 const finalWord = document.createElement('div');
                 finalWord.className = 'word word-in-zone';
                 finalWord.textContent = dragEl.textContent;
                 finalWord.dataset.idx = wordIdx;
                 targetRow.appendChild(finalWord);
 
-                // Сортування слів у рядку відповідно до їх порядку у вихідному тексті
                 Array.from(targetRow.children)
                     .sort((a,b) => parseInt(a.dataset.idx) - parseInt(b.dataset.idx))
                     .forEach(el => targetRow.appendChild(el));
@@ -629,12 +629,10 @@
                 clone.remove();
                 foundWordsCount++;
                 
-                // Передача події іншим пристроям
                 if (!isRemoteAction) {
                     sendGameAction('word_dropped', { wordIdx: wordIdx, rowIndex: rowIndex });
                 }
                 
-                // Перевірка на перемогу в рівні
                 if(foundWordsCount === totalTargetWords) {
                     winLevel();
                 }
@@ -644,7 +642,6 @@
             }
         }
         
-        // Якщо кинули повз або помилилися рядком - повертаємо назад
         sfx.wrong();
         clone.style.transition = 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
         clone.style.left = startX + 'px';
@@ -670,14 +667,12 @@
         const rect = document.querySelector('.notebook').getBoundingClientRect();
         fireParticles(rect.left + rect.width/2, rect.top + rect.height/2);
         
-        const wasRemote = isRemoteAction; // Фіксуємо, щоб не множити подію зміни рівня
+        const wasRemote = isRemoteAction; 
         
         clearTimeout(winTimeout);
-        // Автоматичний перехід на наступний рівень
         winTimeout = setTimeout(() => {
             currentLevel = (currentLevel + 1) % tasks.length;
             initLevel();
-            // Передаємо зміну рівня тільки якщо це наша дія перемоги, щоб не було нескінченного циклу
             if (!wasRemote) {
                 sendGameAction('change_level', { level: currentLevel });
             }
@@ -701,6 +696,88 @@
 
     // Запуск першого завдання
     initLevel();
+
+
+    // ==========================================
+    // --- ТЕМИ (Theme Manager) ---
+    // ==========================================
+    const themeBtn = document.createElement('div');
+    themeBtn.innerHTML = '⚙️';
+    themeBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;width:50px;height:50px;border-radius:50%;background:rgba(0,0,0,0.6);color:white;font-size:30px;display:flex;justify-content:center;align-items:center;cursor:pointer;z-index:10000;border:2px solid white;';
+    document.body.appendChild(themeBtn);
+
+    const themeOverlay = document.createElement('div');
+    themeOverlay.style.cssText = 'display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:10000;';
+    document.body.appendChild(themeOverlay);
+
+    const themeModal = document.createElement('div');
+    themeModal.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:800px;max-height:60vh;background:white;border-radius:10px;z-index:10001;overflow-y:auto;padding:20px;box-shadow:0 0 20px rgba(0,0,0,0.5); font-family: Arial, sans-serif;';
+    
+    themeModal.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+            <h2 style="margin:0;color:#333;">Оберіть фон</h2>
+            <span id="close-theme-btn" style="font-size:28px;cursor:pointer;color:#333;">&times;</span>
+        </div>
+        <div id="theme-grid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:15px;"></div>
+    `;
+    document.body.appendChild(themeModal);
+
+    const closeBtn = document.getElementById('close-theme-btn');
+    themeBtn.onclick = () => { themeModal.style.display = 'block'; themeOverlay.style.display = 'block'; loadThemes(); };
+    closeBtn.onclick = themeOverlay.onclick = () => { themeModal.style.display = 'none'; themeOverlay.style.display = 'none'; };
+
+    let themesLoaded = false;
+    function loadThemes() {
+        if (themesLoaded) return;
+        themesLoaded = true;
+        const grid = document.getElementById('theme-grid');
+        for (let i = 1; i <= 1000; i++) {
+            const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+            const item = document.createElement('div');
+            item.style.cssText = 'position:relative;cursor:pointer;border-radius:5px;overflow:hidden;border:2px solid transparent; height:100px; background:#ddd;';
+            item.onmouseenter = () => item.style.borderColor = '#2196F3';
+            item.onmouseleave = () => item.style.borderColor = 'transparent';
+            
+            const img = document.createElement('img');
+            img.src = url;
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;';
+            img.onerror = () => { item.style.display = 'none'; }; // Ховаємо, якщо фону не існує
+            
+            const title = document.createElement('span');
+            title.innerText = `Фон ${i}`;
+            title.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:white;text-align:center;padding:5px;font-size:14px;';
+            
+            item.appendChild(img);
+            item.appendChild(title);
+            item.onclick = () => setTheme(url, true);
+            grid.appendChild(item);
+        }
+    }
+
+    function setTheme(url, sync = false) {
+        // Відключаємо непрозору текстуру парти, щоб розгорнути фон
+        const desk = document.querySelector('.desk-background');
+        if (desk) {
+            desk.style.background = 'transparent';
+            desk.style.boxShadow = 'none';
+        }
+        document.body.style.backgroundImage = `url('${url}')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        
+        localStorage.setItem('mySavedGameBg', url);
+        if (sync && db) {
+            db.ref('game_theme').set(url);
+        }
+        themeModal.style.display = 'none';
+        themeOverlay.style.display = 'none';
+    }
+
+    // Відновлення фону локально при старті
+    const savedTheme = localStorage.getItem('mySavedGameBg');
+    if (savedTheme) {
+        setTimeout(() => setTheme(savedTheme, false), 50);
+    }
 </script>
 </body>
 </html>
