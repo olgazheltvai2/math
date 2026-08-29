@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Павучок та Математичні Квіточки</title>
+    
+    <!-- Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* Скидання стилів та налаштування повноекранного режиму */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif;
+            user-select: none;
+        }
+
+        /* Контейнер гри зі співвідношенням 16:9 та оригінальним фоном */
+        #game-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 56.25vw;
+            max-height: 100vh;
+            max-width: 177.78vh;
+            background: linear-gradient(135deg, #a8e063 0%, #56ab2f 100%);
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0,0,0,0.6);
+        }
+
+        svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Мінімалістичні кнопки навігації */
+        .nav-btn {
+            position: absolute;
+            bottom: 3%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.7);
+            color: white;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 30px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.5);
+            transform: scale(1.15);
+        }
+
+        .nav-btn:active {
+            transform: scale(0.95);
+        }
+
+        #next-btn { right: 2%; }
+
+        /* Фікс проблеми "втікання" квіточок */
+        .flower-wrapper {
+            cursor: pointer;
+        }
+
+        .flower-scale {
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-origin: 0 0;
+        }
+
+        .flower-wrapper:hover .flower-scale {
+            transform: scale(1.1);
+        }
+
+        /* Анімація помилки */
+        .flower-wrapper.shake .flower-scale {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-5px, 0, 0) scale(1.1); }
+            20%, 80% { transform: translate3d(6px, 0, 0) scale(1.1); }
+            30%, 50%, 70% { transform: translate3d(-8px, 0, 0) scale(1.1); }
+            40%, 60% { transform: translate3d(8px, 0, 0) scale(1.1); }
+        }
+
+        /* Листочки, що з'являються після проходження */
+        .flower-leaf {
+            opacity: 0;
+            transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-origin: 0 0;
+            transform: scale(0);
+        }
+
+        .flower-wrapper.visited .flower-leaf {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .flower-wrapper.visited {
+            cursor: default;
+        }
+
+        .flower-wrapper.visited:hover .flower-scale {
+            transform: scale(1);
+        }
+
+        /* Павучок та павутина */
+        #spider-group {
+            transition: transform 1s cubic-bezier(0.45, 0, 0.15, 1);
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        /* Ворушіння лапками павука */
+        .leg { transform-origin: 0px 0px; }
+        .leg-left { animation: wiggle-left 1.5s infinite alternate ease-in-out; }
+        .leg-right { animation: wiggle-right 1.5s infinite alternate ease-in-out; }
+        .leg-left-alt { animation: wiggle-left 1.3s infinite alternate-reverse ease-in-out; }
+        .leg-right-alt { animation: wiggle-right 1.4s infinite alternate-reverse ease-in-out; }
+
+        @keyframes wiggle-left {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(10deg); }
+        }
+        @keyframes wiggle-right {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(-10deg); }
+        }
+
+        /* Стиль тексту */
+        .math-text {
+            font-size: 65px;
+            font-weight: bold;
+            fill: #4a2c00;
+            pointer-events: none;
+            text-shadow: 2px 2px 0px rgba(255,255,255,0.9);
+            transition: all 0.3s ease;
+        }
+
+        /* Живий фон */
+        .bg-element {
+            animation: float-bg 8s infinite alternate ease-in-out;
+        }
+        @keyframes float-bg {
+            0% { transform: translateY(0px) rotate(0deg); }
+            100% { transform: translateY(-15px) rotate(2deg); }
+        }
+
+        /* Крильця метеликів */
+        .butterfly-wing {
+            animation: flap 0.12s infinite alternate;
+        }
+        @keyframes flap {
+            0% { transform: scaleX(1); }
+            100% { transform: scaleX(0.2); }
+        }
+
+        /* Універсальний блок контролю - Заглушка */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 999999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #block-overlay-text {
+            color: #ff4c4c;
+            font-size: 5vw;
+            font-weight: bold;
+            text-align: center;
+            font-family: sans-serif;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.8);
+        }
+
+        /* Адаптивність */
+        @media (max-width: 768px) {
+            .math-text { font-size: 50px; }
+            .nav-btn { width: 40px; height: 40px; font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <svg id="game-canvas" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <!-- Тінь для елементів -->
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="3" dy="6" stdDeviation="4" flood-color="#000" flood-opacity="0.3"/>
+            </filter>
+
+            <!-- Градієнти -->
+            <radialGradient id="flower-center" cx="30%" cy="30%" r="70%">
+                <stop offset="0%" stop-color="#FFF9C4"/>
+                <stop offset="100%" stop-color="#FBC02D"/>
+            </radialGradient>
+
+            <linearGradient id="spider-body" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#2c3e50"/>
+                <stop offset="100%" stop-color="#1a252f"/>
+            </linearGradient>
+
+            <linearGradient id="leaf-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#66BB6A"/>
+                <stop offset="100%" stop-color="#2E7D32"/>
+            </linearGradient>
+            
+            <!-- Патерн для фону -->
+            <pattern id="grass-pattern" width="100" height="100" patternUnits="userSpaceOnUse">
+                <path d="M10,100 Q15,70 30,50 Q20,80 20,100 Z" fill="#4CAF50" opacity="0.3"/>
+                <path d="M60,100 Q55,60 40,30 Q50,70 70,100 Z" fill="#81C784" opacity="0.2"/>
+            </pattern>
+        </defs>
+
+        <!-- Сюжетний фон (Оригінальний) -->
+        <g id="background-layer">
+            <rect width="1600" height="900" fill="url(#grass-pattern)" />
+            
+            <!-- Декоративні кущі та камінці -->
+            <g class="bg-element" transform="translate(1400, 800)">
+                <circle cx="0" cy="0" r="250" fill="#43A047" opacity="0.6"/>
+                <circle cx="-100" cy="-100" r="150" fill="#388E3C" opacity="0.7"/>
+            </g>
+            <g class="bg-element" style="animation-delay: -2s;" transform="translate(150, 150)">
+                <path d="M0,0 Q50,-50 100,0 Q150,50 100,100 Q50,150 0,100 Q-50,50 0,0" fill="#9CCC65" opacity="0.4"/>
+            </g>
+            
+            <!-- Світлові промені -->
+            <path d="M -200,-200 L 800,900 L 1200,900 Z" fill="#FFFFFF" opacity="0.05" />
+            <path d="M 400,-200 L 1400,900 L 1600,900 Z" fill="#FFFFFF" opacity="0.03" />
+        </g>
+
+        <!-- Шар для намальованої павутини -->
+        <g id="web-layer"></g>
+
+        <!-- Стартовий листочок -->
+        <g id="start-leaf" transform="translate(120, 780)" filter="url(#shadow)">
+            <path d="M 0,0 C -80,-50 -120,-150 -50,-220 C 20,-280 120,-200 150,-100 C 180,-20 80,50 0,0 Z" 
+                  fill="url(#leaf-grad)" stroke="#1B5E20" stroke-width="5"/>
+            <path d="M -20,-30 C 20,-100 80,-160 120,-210" fill="none" stroke="#A5D6A7" stroke-width="4" stroke-linecap="round"/>
+            <path d="M 10,-90 L -30,-110 M 40,-130 L 10,-170 M 70,-170 L 40,-200" fill="none" stroke="#A5D6A7" stroke-width="3" stroke-linecap="round"/>
+        </g>
+
+        <!-- Шар для інтерактивних квіточок -->
+        <g id="flowers-layer"></g>
+
+        <!-- Павучок -->
+        <g id="spider-wrapper">
+            <g id="spider-group" transform="translate(120, 700)" filter="url(#shadow)">
+                <!-- Лапки -->
+                <g stroke="url(#spider-body)" stroke-width="9" stroke-linecap="round" fill="none">
+                    <path class="leg leg-left" d="M -15,0 Q -60,-50 -90,-20" />
+                    <path class="leg leg-left-alt" d="M -15,10 Q -70,0 -100,30" />
+                    <path class="leg leg-left" d="M -15,20 Q -60,50 -80,80" />
+                    <path class="leg leg-left-alt" d="M -10,30 Q -40,70 -50,100" />
+                    
+                    <path class="leg leg-right" d="M 15,0 Q 60,-50 90,-20" />
+                    <path class="leg leg-right-alt" d="M 15,10 Q 70,0 100,30" />
+                    <path class="leg leg-right" d="M 15,20 Q 60,50 80,80" />
+                    <path class="leg leg-right-alt" d="M 10,30 Q 40,70 50,100" />
+                </g>
+
+                <!-- Тіло -->
+                <ellipse cx="0" cy="25" rx="35" ry="45" fill="url(#spider-body)" />
+                <circle cx="0" cy="-10" r="26" fill="url(#spider-body)" />
+                
+                <!-- Очі -->
+                <circle cx="-11" cy="-15" r="9" fill="white" />
+                <circle cx="11" cy="-15" r="9" fill="white" />
+                
+                <!-- Зіниці -->
+                <circle id="pupil-left" cx="-11" cy="-15" r="4" fill="black" />
+                <circle id="pupil-right" cx="11" cy="-15" r="4" fill="black" />
+                
+                <!-- Бліки -->
+                <circle cx="-13" cy="-18" r="2" fill="white" />
+                <circle cx="9" cy="-18" r="2" fill="white" />
+            </g>
+        </g>
+
+        <!-- Шар для метеликів -->
+        <g id="butterflies-layer"></g>
+
+    </svg>
+
+    <button class="nav-btn" id="next-btn" aria-label="Далі">❯</button>
+</div>
+
+<!-- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Екран-заглушка) -->
+<div id="block-overlay">
+    <div id="block-overlay-text">Зачекай! Зараз не твій урок.</div>
+</div>
+
+<script>
+    // --- ІНІЦІАЛІЗАЦІЯ FIREBASE ---
+    const firebaseConfig = {
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+        projectId: "lesson-13c44"
+    };
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // --- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Логіка) ---
+    const urlParams = new URLSearchParams(window.location.search);
+    let myName = urlParams.get('user') || sessionStorage.getItem('myName');
+    if (!myName) {
+        myName = "Гість_" + Math.floor(Math.random() * 1000);
+    }
+    sessionStorage.setItem('myName', myName);
+
+    // Радар та вкладки
+    const tabId = Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+    const myRef = db.ref(`online_users/${myName}/${tabId}`);
+    const connectedRef = db.ref('.info/connected');
+
+    connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+            myRef.set(true);
+            myRef.onDisconnect().remove();
+        }
+    });
+
+    window.addEventListener('beforeunload', () => {
+        myRef.remove();
+    });
+
+    // Блокування доступу
+    db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+        const overlay = document.getElementById('block-overlay');
+        if (snap.val() === true) {
+            overlay.style.display = 'flex';
+        } else {
+            overlay.style.display = 'none';
+        }
+    });
+
+    // Примусове оновлення (З фіксом від зациклення)
+    let skipFirstRefresh = true;
+    db.ref('force_refresh').on('value', (snap) => {
+        if (skipFirstRefresh) {
+            skipFirstRefresh = false;
+            return;
+        }
+        if (snap.val()) {
+            window.location.reload();
+        }
+    });
+
+    // Повернення в лобі з імунітетом
+    let immunity = true;
+    setTimeout(() => { immunity = false; }, 1000);
+    db.ref('current_activity').on('value', (snap) => {
+        if (!immunity && snap.val() === 'lobby') {
+            window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+        }
+    });
+
+    // --- СИНХРОНІЗАЦІЯ ХОДІВ ---
+    db.ref('game_action').on('value', (snap) => {
+        const action = snap.val();
+        if (!action) return;
+        
+        // Запобігання зацикленню
+        if (action.senderId === tabId) return; 
+        if (Date.now() - action.timestamp > 15000) return; 
+
+        if (action.type === 'FLOWER_CLICK') {
+            const flowerEl = document.querySelector(`.flower-wrapper[data-answer="${action.data.answer}"]`);
+            if (flowerEl) {
+                handleFlowerClick(flowerEl, action.data.x, action.data.y, action.data.answer, true);
+            }
+        } else if (action.type === 'NEW_LEVEL') {
+            gameHistory.push(action.data.levelData);
+            currentLevelIndex = gameHistory.length - 1;
+            loadLevel(action.data.levelData);
+        }
+    });
+
+    function sendAction(type, data) {
+        db.ref('game_action').set({
+            senderId: tabId,
+            timestamp: Date.now(),
+            type: type,
+            data: data
+        });
+    }
+
+    // --- АУДІО ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function initAudio() {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const masterVolume = 0.01; 
+        const now = audioCtx.currentTime;
+
+        if (type === 'correct') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+            gainNode.gain.setValueAtTime(masterVolume, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+            osc.start(now);
+            osc.stop(now + 0.4);
+        } else if (type === 'wrong') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, now);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+            gainNode.gain.setValueAtTime(masterVolume * 1.5, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+            osc.start(now);
+            osc.stop(now + 0.25);
+        } else if (type === 'win') {
+            osc.type = 'triangle';
+            const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+            notes.forEach((freq, i) => {
+                const step = now + i * 0.12;
+                osc.frequency.setValueAtTime(freq, step);
+            });
+            gainNode.gain.setValueAtTime(masterVolume, now);
+            gainNode.gain.linearRampToValueAtTime(0, now + 1.0);
+            osc.start(now);
+            osc.stop(now + 1.0);
+        }
+    }
+
+    // --- ЛОГІКА ГРИ ---
+    const START_POS = { x: 120, y: 700 };
+    const GAME_WIDTH = 1600;
+    const GAME_HEIGHT = 900;
+    
+    const FLOWER_COLORS = ['#FF5252', '#FF4081', '#E040FB', '#7C4DFF', '#536DFE', '#448AFF', '#18FFFF', '#69F0AE', '#EEFF41', '#FFAB40'];
+
+    let gameHistory = [];
+    let currentLevelIndex = -1;
+    let currentExpectedAnswer = 1;
+    let spiderPos = { ...START_POS };
+    let isMoving = false;
+
+    function generateDiverseProblem(targetResult) {
+        let options = [];
+        for (let a = 1; a < targetResult; a++) {
+            options.push(`${a} + ${targetResult - a}`);
+        }
+        for (let a = targetResult + 1; a <= 10; a++) {
+            options.push(`${a} - ${a - targetResult}`);
+        }
+        if (options.length === 0) return targetResult.toString(); 
+        
+        return options[Math.floor(Math.random() * options.length)];
+    }
+
+    // ВДОСКОНАЛЕНА ГЕНЕРАЦІЯ ХАОТИЧНИХ ПОЗИЦІЙ (Захист від накладання без жорсткої сітки)
+    function generateSafePositions(count) {
+        const positions = [];
+        const MIN_DIST = 220; // Мінімальна безпечна відстань між центрами квіток
+        const PADDING_X = 140; // Відступ від країв зліва та справа
+        const PADDING_Y = 140; // Відступ від країв зверху та знизу
+        const SPIDER_SAFE_RADIUS = 300; // Радіус безпеки навколо стартової позиції павучка
+        
+        let attempts = 0;
+        const maxAttempts = 2000;
+
+        while (positions.length < count && attempts < maxAttempts) {
+            attempts++;
+            
+            // Випадкова позиція в межах безпечної зони
+            const x = PADDING_X + Math.random() * (GAME_WIDTH - PADDING_X * 2);
+            const y = PADDING_Y + Math.random() * (GAME_HEIGHT - PADDING_Y * 2);
+
+            // Перевіряємо відстань до павучка (щоб квітка не налізла на нього на старті)
+            const distToSpider = Math.hypot(x - START_POS.x, y - START_POS.y);
+            if (distToSpider < SPIDER_SAFE_RADIUS) continue;
+
+            // Перевіряємо відстань до всіх вже створених квіток
+            let collision = false;
+            for (let i = 0; i < positions.length; i++) {
+                const dist = Math.hypot(x - positions[i].x, y - positions[i].y);
+                if (dist < MIN_DIST) {
+                    collision = true;
+                    break;
+                }
+            }
+
+            // Якщо зіткнень немає - зберігаємо позицію
+            if (!collision) {
+                positions.push({ x, y });
+            }
+        }
+        
+        return positions;
+    }
+
+    function createNewLevelData() {
+        const targets = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const positions = generateSafePositions(10);
+        const shuffledColors = [...FLOWER_COLORS].sort(() => Math.random() - 0.5);
+        
+        const flowers = targets.map((target, index) => {
+            return {
+                id: target,
+                text: generateDiverseProblem(target),
+                x: positions[index].x,
+                y: positions[index].y,
+                color: shuffledColors[index]
+            };
+        });
+
+        return { flowers };
+    }
+
+    function drawFlower(flowerData) {
+        const gWrapper = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        gWrapper.setAttribute("class", "flower-wrapper");
+        gWrapper.setAttribute("transform", `translate(${flowerData.x}, ${flowerData.y})`);
+        gWrapper.setAttribute("data-answer", flowerData.id);
+        
+        const hitbox = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hitbox.setAttribute("r", "80");
+        hitbox.setAttribute("fill", "transparent");
+        gWrapper.appendChild(hitbox);
+
+        const gScale = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        gScale.setAttribute("class", "flower-scale");
+        
+        const leaves = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        leaves.setAttribute("class", "flower-leaf");
+        leaves.innerHTML = `
+            <path d="M 0,0 C -50,-50 -100,0 -50,50 Z" fill="#2E7D32" stroke="#1B5E20" stroke-width="2"/>
+            <path d="M 0,0 C 50,-50 100,0 50,50 Z" fill="#388E3C" stroke="#1B5E20" stroke-width="2"/>
+        `;
+        gScale.appendChild(leaves);
+
+        const petals = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        petals.setAttribute("filter", "url(#shadow)");
+        for (let i = 0; i < 8; i++) {
+            const angle = i * 45;
+            const petal = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            petal.setAttribute("d", "M 0,0 C -25,-30 -25,-70 0,-80 C 25,-70 25,-30 0,0 Z");
+            petal.setAttribute("fill", flowerData.color);
+            petal.setAttribute("transform", `rotate(${angle})`);
+            petals.appendChild(petal);
+        }
+        gScale.appendChild(petals);
+
+        const center = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        center.setAttribute("cx", "0");
+        center.setAttribute("cy", "0");
+        center.setAttribute("r", "50");
+        center.setAttribute("fill", "url(#flower-center)");
+        center.setAttribute("stroke", "#F57F17");
+        center.setAttribute("stroke-width", "5");
+        gScale.appendChild(center);
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("class", "math-text");
+        text.setAttribute("x", "0");
+        text.setAttribute("y", "5");
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("dominant-baseline", "middle");
+        text.textContent = flowerData.text;
+        gScale.appendChild(text);
+
+        gWrapper.appendChild(gScale);
+
+        gWrapper.addEventListener("click", () => handleFlowerClick(gWrapper, flowerData.x, flowerData.y, flowerData.id, false));
+
+        return gWrapper;
+    }
+
+    function moveSpiderTo(targetX, targetY) {
+        isMoving = true;
+        const spiderInner = document.getElementById("spider-group");
+        const webLayer = document.getElementById("web-layer");
+        
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", spiderPos.x);
+        line.setAttribute("y1", spiderPos.y);
+        line.setAttribute("x2", targetX);
+        line.setAttribute("y2", targetY);
+        line.setAttribute("stroke", "rgba(255, 255, 255, 0.7)");
+        line.setAttribute("stroke-width", "4");
+        line.setAttribute("stroke-linecap", "round");
+        
+        const length = Math.hypot(targetX - spiderPos.x, targetY - spiderPos.y);
+        line.style.strokeDasharray = length;
+        line.style.strokeDashoffset = length;
+        line.style.transition = "stroke-dashoffset 1s linear";
+        
+        webLayer.appendChild(line);
+        
+        requestAnimationFrame(() => {
+            line.style.strokeDashoffset = 0;
+            spiderInner.style.transform = `translate(${targetX}px, ${targetY}px)`;
+        });
+
+        spiderPos = { x: targetX, y: targetY };
+        
+        setTimeout(() => {
+            isMoving = false;
+        }, 1050);
+    }
+
+    // Анімація вильоту метеликів
+    function spawnButterflies() {
+        const layer = document.getElementById("butterflies-layer");
+        layer.innerHTML = ""; 
+        const bColors = ['#FF4081', '#00E5FF', '#FFFF00', '#B2FF59', '#EA80FC'];
+        
+        for (let i = 0; i < 5; i++) {
+            const b = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            b.innerHTML = `
+                <path d="M 0,0 Q 25,-40 50,-15 Q 25,15 0,0" fill="${bColors[i]}" class="butterfly-wing" style="transform-origin: 0px 0px;" />
+                <path d="M 0,0 Q -25,-40 -50,-15 Q -25,15 0,0" fill="${bColors[i]}" class="butterfly-wing" style="transform-origin: 0px 0px;" />
+                <ellipse cx="0" cy="0" rx="5" ry="18" fill="#333" />
+            `;
+            layer.appendChild(b);
+            
+            const startY = 200 + Math.random() * 500;
+            const endY = 100 + Math.random() * 700;
+            const midY = (startY + endY) / 2 + (Math.random() - 0.5) * 500;
+            const duration = 4000 + Math.random() * 3000;
+            
+            b.animate([
+                { transform: `translate(-150px, ${startY}px) scale(0.6) rotate(15deg)` },
+                { transform: `translate(800px, ${midY}px) scale(1.2) rotate(-10deg)` },
+                { transform: `translate(1750px, ${endY}px) scale(0.6) rotate(20deg)` }
+            ], {
+                duration: duration,
+                delay: Math.random() * 1500,
+                fill: 'both',
+                easing: 'ease-in-out'
+            });
+        }
+    }
+
+    function handleFlowerClick(flowerEl, x, y, answer, isRemote = false) {
+        initAudio();
+        if (isMoving || flowerEl.classList.contains("visited")) return;
+
+        if (!isRemote) {
+            sendAction('FLOWER_CLICK', { answer, x, y });
+        }
+
+        if (answer === currentExpectedAnswer) {
+            playSound('correct');
+            flowerEl.classList.add("visited");
+            
+            // Зміна тексту на ВІДПОВІДЬ крупно
+            const textEl = flowerEl.querySelector('.math-text');
+            textEl.textContent = answer;
+            textEl.style.fontSize = "85px";
+            textEl.style.fill = "#FFD700"; 
+            textEl.style.fontWeight = "900";
+
+            moveSpiderTo(x, y);
+            currentExpectedAnswer++;
+            
+            if (currentExpectedAnswer > 10) {
+                setTimeout(() => {
+                    playSound('win');
+                    spawnButterflies(); 
+                }, 1000);
+            }
+        } else {
+            playSound('wrong');
+            flowerEl.classList.remove("shake");
+            void flowerEl.offsetWidth; 
+            flowerEl.classList.add("shake");
+        }
+    }
+
+    // Анімація очей 
+    setInterval(() => {
+        const pupilL = document.getElementById("pupil-left");
+        const pupilR = document.getElementById("pupil-right");
+        const dx = (Math.random() - 0.5) * 8;
+        const dy = (Math.random() - 0.5) * 8;
+        const transformStr = `translate(${dx}, ${dy})`;
+        pupilL.setAttribute("transform", transformStr);
+        pupilR.setAttribute("transform", transformStr);
+    }, 2000);
+
+    function loadLevel(levelData) {
+        const flowersLayer = document.getElementById("flowers-layer");
+        const webLayer = document.getElementById("web-layer");
+        const butterfliesLayer = document.getElementById("butterflies-layer");
+        const spiderInner = document.getElementById("spider-group");
+        
+        flowersLayer.innerHTML = '';
+        webLayer.innerHTML = '';
+        butterfliesLayer.innerHTML = '';
+        
+        currentExpectedAnswer = 1;
+        spiderPos = { ...START_POS };
+        spiderInner.style.transition = "none";
+        spiderInner.style.transform = `translate(${START_POS.x}px, ${START_POS.y}px)`;
+        
+        requestAnimationFrame(() => {
+            spiderInner.style.transition = "transform 1s cubic-bezier(0.45, 0, 0.15, 1)";
+        });
+
+        levelData.flowers.forEach(fData => {
+            const flowerEl = drawFlower(fData);
+            flowersLayer.appendChild(flowerEl);
+        });
+    }
+
+    // Навігація: Далі (генерація та синхронізація нового рівня)
+    document.getElementById("next-btn").addEventListener("click", () => {
+        initAudio();
+        const newLevel = createNewLevelData();
+        gameHistory.push(newLevel);
+        currentLevelIndex = gameHistory.length - 1;
+        sendAction('NEW_LEVEL', { levelData: newLevel });
+        loadLevel(newLevel);
+    });
+
+    // Ініціалізація
+    window.addEventListener("DOMContentLoaded", () => {
+        const startLevel = createNewLevelData();
+        gameHistory.push(startLevel);
+        currentLevelIndex = 0;
+        loadLevel(startLevel);
+    });
+
+</script>
+</body>
+</html>
