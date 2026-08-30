@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <!--
   ГРА "3D ЛАБІРИНТ" — від першого лиця
-  Версія: v1.7.5 (Повноцінна гра + панель вчителя через onclick)
+  Версія: v1.7.6 (Оптимізовано копіювання з Miro, повна синхронізація рухів та стану)
 -->
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Лабіринт v1.7.5</title>
+<title>Лабіринт v1.7.6</title>
 <!-- Підключення Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -259,12 +259,12 @@
     <div id="themeGrid"></div>
   </div>
 
-  <div id="ver">v1.7.5</div>
+  <div id="ver">v1.7.6</div>
 </div>
 
 <script>
 // =====================================================================
-//  1. ГЛОБАЛЬНІ ФУНКЦІЇ ПАНЕЛІ ВЧИТЕЛЯ (доступні з onclick)
+//  1. ГЛОБАЛЬНІ ФУНКЦІЇ ПАНЕЛІ ВЧИТЕЛЯ
 // =====================================================================
 var teacherPanel = document.getElementById("teacherPanel");
 var bulkInput = document.getElementById("bulkQuestionsInput");
@@ -313,76 +313,62 @@ function buildEditor(){
   bulkInput.value = text.trim();
 }
 
-// Відкриття панелі
 function openTeacherPanel() {
-  console.log("openTeacherPanel викликана");
   buildEditor();
   teacherPanel.classList.add("show");
-  teacherPanel.style.display = "flex";
-  teacherPanel.style.opacity = "1";
-  teacherPanel.style.pointerEvents = "auto";
 }
 
-// Закриття панелі
 function closeTeacherPanel() {
-  console.log("closeTeacherPanel викликана");
   teacherPanel.classList.remove("show");
-  teacherPanel.style.display = "none";
-  teacherPanel.style.opacity = "0";
-  teacherPanel.style.pointerEvents = "none";
 }
 
-// Скидання питань
 function resetQuestions() {
   localStorage.removeItem(LS_QUESTIONS_KEY);
   buildEditor();
 }
 
-// Збереження і закриття
 function saveAndClose() {
-  // 1. Закриваємо панель негайно
   closeTeacherPanel();
-  // 2. Зберігаємо дані через невелику затримку
   setTimeout(() => {
     try {
-      const lines = bulkInput.value.split('\n').filter(l => l.trim() !== '');
+      // Розбиваємо рядки. Усуваємо всі невидимі артефакти Miro та замінюємо non-breaking spaces
+      const rawLines = bulkInput.value.split(/\r?\n/);
       const newBank = [];
+      let lineIdx = 0;
+
       for (let i = 0; i < TOTAL_MONSTERS; i++) {
         const type = MONSTER_TYPES[i] || MONSTER_TYPES[0];
         let added = false;
-        if (i < lines.length) {
-          const parts = lines[i].split(';').map(p => p.trim()).filter(p => p);
-          if (parts.length >= 2) {
-            newBank.push({
-              type: type,
-              question: parts[0],
-              options: parts.slice(1),
-              correct: 0
-            });
-            added = true;
+        
+        while (lineIdx < rawLines.length && !added) {
+          // Жорстке очищення рядка від невидимих символів нульової ширини
+          let line = rawLines[lineIdx].replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\u00A0/g, ' ').trim();
+          lineIdx++;
+          
+          if (line !== '') {
+            const parts = line.split(';').map(p => p.trim()).filter(p => p !== '');
+            if (parts.length >= 2) {
+              newBank.push({ type: type, question: parts[0], options: parts.slice(1), correct: 0 });
+              added = true;
+            }
           }
         }
+        
         if (!added) {
           newBank.push(JSON.parse(JSON.stringify(DEFAULT_QUESTIONS[i])));
         }
       }
+      
       saveQuestions(newBank);
-      // Оновлюємо банк питань у грі (якщо він десь зберігається)
       if (typeof window.questionBank !== 'undefined') {
         window.questionBank = newBank;
       }
-      console.log("Питання збережено успішно");
-    } catch (error) {
-      console.error("Помилка збереження:", error);
-    }
+    } catch (error) { console.error("Помилка збереження:", error); }
   }, 30);
 }
 
-// Закриття по Escape
 document.addEventListener("keydown", function(e) {
-  if (e.key === "Escape" && teacherPanel.classList.contains("show")) {
-    closeTeacherPanel();
-  }
+  if (e.key === "Escape" && teacherPanel.classList.contains("show")) closeTeacherPanel();
 });
 
 // =====================================================================
@@ -393,10 +379,8 @@ if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 const urlParams = new URLSearchParams(window.location.search);
-let myName = urlParams.get('user');
-if(myName) sessionStorage.setItem('gameUser', myName);
-else myName = sessionStorage.getItem('gameUser');
-if(!myName){ myName = "Гість_" + Math.floor(Math.random()*1000); sessionStorage.setItem('gameUser', myName); }
+let myName = urlParams.get('user') || sessionStorage.getItem('gameUser') || ("Гість_" + Math.floor(Math.random()*1000));
+sessionStorage.setItem('gameUser', myName);
 
 const tabId = Math.random().toString(36).substr(2,9);
 const myRef = db.ref(`online_users/${myName}/${tabId}`);
@@ -406,11 +390,9 @@ db.ref('.info/connected').on('value', snap => {
 window.addEventListener('beforeunload', () => myRef.remove());
 
 db.ref('force_refresh').on('value', snap => { 
-  if(snap.val() === true) {
-    if(sessionStorage.getItem('just_refreshed') !== 'true') {
-      sessionStorage.setItem('just_refreshed', 'true'); window.location.reload();
-    }
-  } else { sessionStorage.removeItem('just_refreshed'); }
+  if(snap.val() === true && sessionStorage.getItem('just_refreshed') !== 'true') {
+    sessionStorage.setItem('just_refreshed', 'true'); window.location.reload();
+  } else if(snap.val() !== true) sessionStorage.removeItem('just_refreshed');
 });
 db.ref(`blocked_users/${myName}`).on('value', snap => {
   document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
@@ -419,12 +401,8 @@ db.ref(`blocked_users/${myName}`).on('value', snap => {
 let isFirstActivityRead = true;
 db.ref('current_activity').on('value', snap => {
   if (isFirstActivityRead) { isFirstActivityRead = false; return; }
-  if(snap.val() === 'lobby'){ window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName); }
+  if(snap.val() === 'lobby') window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
 });
-
-function sendGameAction(type, data) {
-  db.ref('game_action').set({ senderId: myName, timestamp: firebase.database.ServerValue.TIMESTAMP, type: type, data: data });
-}
 
 // =====================================================================
 //  3. THEME MANAGER
@@ -467,8 +445,6 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
 
   const MAZE_COLS = 19; const MAZE_ROWS = 19;
   const PLAYER_R = 0.22; const MOVE_SPEED = 2.4; const ROT_SPEED = 2.1;
-
-  // Використовуємо глобальний банк питань (з панелі)
   window.questionBank = loadQuestions();
 
   /* ---- Генерація лабіринту ---- */
@@ -515,14 +491,65 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
 
   /* ---- Стан гравця ---- */
   let posX = 1.5, posY = 1.5; let dirX = 1, dirY = 0; let planeX = 0, planeY = 0.66;
-  (function pickStartDir(){
-    if(map[1][2]===0){ dirX=1; dirY=0; planeX=0; planeY=0.66; return; }
-    if(map[2][1]===0){ dirX=0; dirY=1; planeX=-0.66; planeY=0; return; }
-  })();
+  if(map[1][2]!==0 && map[2][1]===0){ dirX=0; dirY=1; planeX=-0.66; planeY=0; }
 
   let stepsCount = 0; let lastCellKey = null; let lastHeadingLabel = null;
   let nextMonsterThreshold = 3; let monstersDefeated = 0; let gameWon = false;
   let activeMonster = null; let exitLight = null; let quizActive = false; let quizLocked = false;
+  let currentQuizOrder = [];
+
+  /* ---- Синхронізація (Спільний стан гри) ---- */
+  let lastSyncTime = 0;
+  function syncGameState(force = false) {
+    const now = Date.now();
+    if (!force && now - lastSyncTime < 80) return; // Обмеження ~12 fps для плавності без спаму
+    lastSyncTime = now;
+    
+    db.ref('maze_state').set({
+      senderId: myName,
+      pos: { x: posX, y: posY, dx: dirX, dy: dirY, px: planeX, py: planeY },
+      monster: activeMonster ? { type: activeMonster.type, x: activeMonster.x, y: activeMonster.y, alive: activeMonster.alive, qIndex: activeMonster.qIndex } : null,
+      quiz: quizActive,
+      quizOrder: currentQuizOrder,
+      won: gameWon,
+      defeated: monstersDefeated
+    });
+  }
+
+  // Слухач спільних змін від інших пристроїв
+  db.ref('maze_state').on('value', snap => {
+    const data = snap.val();
+    if (!data || data.senderId === myName) return; 
+
+    // Синхронізація рухів
+    if (data.pos) {
+      posX = data.pos.x; posY = data.pos.y;
+      dirX = data.pos.dx; dirY = data.pos.dy;
+      planeX = data.pos.px; planeY = data.pos.py;
+    }
+    
+    // Синхронізація монстрів
+    if (data.monster) {
+      activeMonster = data.monster;
+    } else {
+      activeMonster = null;
+    }
+    
+    monstersDefeated = data.defeated || 0;
+    updateProgressDots();
+    
+    // Синхронізація стану вікторини
+    if (data.quiz && !quizActive && activeMonster) {
+      currentQuizOrder = data.quizOrder || [];
+      openQuiz(true); // Відкриваємо дистанційно, використовуючи спільний порядок відповідей
+    } else if (!data.quiz && quizActive) {
+      closeQuiz();
+    }
+
+    if (data.won && !gameWon) {
+      gameWon = true; soundWin(); winScreen.classList.add("show");
+    }
+  });
 
   function canStand(x,y,r){
     const pts=[[x-r,y-r],[x+r,y-r],[x-r,y+r],[x+r,y+r]];
@@ -548,6 +575,7 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   }
   function headingLabel(){ const h = headingVector(); return h.dx + "," + h.dy; }
   function getCurrentCell(){ const tx=Math.floor(posX), ty=Math.floor(posY); return { cx:(tx-1)/2, cy:(ty-1)/2, tx, ty }; }
+  
   function findStraightRun(cx, cy, hx, hy, maxSteps){
     const run=[];
     for(let k=1;k<=maxSteps;k++){
@@ -560,28 +588,28 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
     }
     return run;
   }
+  
   function tryAttemptSpawn(isTurnSpawn){
     if(activeMonster || exitLight) return;
-    const {cx,cy} = getCurrentCell();
-    const h = headingVector();
+    const {cx,cy} = getCurrentCell(); const h = headingVector();
     if(h.dx===0 && h.dy===0) return;
     let run = findStraightRun(cx, cy, h.dx, h.dy, 15);
     if(run.length >= 1){
-      const spawnIdx = Math.max(0, run.length - 1); 
-      const cell = run[spawnIdx];
+      const cell = run[Math.max(0, run.length - 1)];
       if(monstersDefeated >= TOTAL_MONSTERS){
         exitLight = { x: 2*cell.cx+1+0.5, y: 2*cell.cy+1+0.5 };
       } else {
         const type = MONSTER_TYPES[monstersDefeated];
         activeMonster = { type, x: 2*cell.cx+1+0.5, y: 2*cell.cy+1+0.5, alive:true, qIndex: monstersDefeated };
+        syncGameState(true);
       }
     }
   }
+  
   function onEnterNewCell(){
     const tx=Math.floor(posX), ty=Math.floor(posY);
     if(tx%2!==1 || ty%2!==1) return;
-    const cx=(tx-1)/2, cy=(ty-1)/2;
-    const key = cx+"_"+cy;
+    const cx=(tx-1)/2, cy=(ty-1)/2; const key = cx+"_"+cy;
     const currentHeading = headingLabel();
     if(lastCellKey !== null && key !== lastCellKey) stepsCount++;
     lastCellKey = key;
@@ -597,12 +625,10 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   /* ---- Ввід ---- */
   const keys = { fwd:false, back:false, left:false, right:false };
   window.addEventListener("keydown", (e)=>{
-    // Якщо панель вчителя відкрита – не передаємо керування грі, але дозволяємо Escape
     if(document.getElementById("teacherPanel").classList.contains("show")){
-      if(e.key === "Escape") { closeTeacherPanel(); }
-      return;
+      if(e.key === "Escape") closeTeacherPanel(); return;
     }
-    if(quizActive){ return; }
+    if(quizActive) return;
     if(e.key==="ArrowUp"||e.key==="w"||e.key==="W") keys.fwd=true;
     if(e.key==="ArrowDown"||e.key==="s"||e.key==="S") keys.back=true;
     if(e.key==="ArrowLeft"||e.key==="a"||e.key==="A") keys.left=true;
@@ -628,20 +654,7 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   bindHold("btnRight", ()=>keys.right=true, ()=>keys.right=false);
 
   document.getElementById("nextBtn").addEventListener("click", ()=>{
-    if(quizActive && activeMonster && activeMonster.alive) {
-      resolveMonster(true, true);
-      sendGameAction('resolve_monster', { correct: true, index: activeMonster.qIndex });
-    }
-  });
-
-  db.ref('game_action').on('value', snap => {
-    const action = snap.val();
-    if (!action || action.senderId === myName) return;
-    if (action.type === 'resolve_monster' && activeMonster && activeMonster.alive) {
-      if (activeMonster.qIndex === action.data.index) {
-        resolveMonster(action.data.correct, true, true);
-      }
-    }
+    if(quizActive && activeMonster && activeMonster.alive) { resolveMonster(true, true); }
   });
 
   /* ---- Рендеринг ---- */
@@ -775,34 +788,49 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   const viewEl = document.getElementById("view");
   const flashEl = document.getElementById("flash");
 
-  function openQuiz(){
+  function openQuiz(isRemote = false){
     quizActive=true; quizLocked=false;
     const q = window.questionBank[activeMonster.qIndex] || DEFAULT_QUESTIONS[activeMonster.qIndex];
     quizQuestionEl.textContent = q.question; quizOptionsEl.innerHTML="";
-    const order = Array.from({length: q.options.length}, (_, i) => i);
-    for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
-    order.forEach((optIdx)=>{
+    
+    // Якщо це локальний запуск, генеруємо порядок відповідей та ділимося з Firebase. Якщо з Firebase - беремо спільний порядок
+    if(!isRemote) {
+        currentQuizOrder = Array.from({length: q.options.length}, (_, i) => i);
+        for(let i=currentQuizOrder.length-1;i>0;i--){ 
+            const j=Math.floor(Math.random()*(i+1)); 
+            [currentQuizOrder[i],currentQuizOrder[j]]=[currentQuizOrder[j],currentQuizOrder[i]]; 
+        }
+        syncGameState(true);
+    }
+    
+    currentQuizOrder.forEach((optIdx)=>{
       const btn=document.createElement("button"); btn.className="optBtn"; btn.type="button"; btn.textContent = q.options[optIdx];
       btn.addEventListener("click", ()=>{ if(quizLocked) return; quizLocked=true; resolveMonster(optIdx===q.correct, false); });
       quizOptionsEl.appendChild(btn);
     });
     quizModal.classList.add("show");
   }
-  function closeQuiz(){ quizActive=false; quizModal.classList.remove("show"); }
   
-  function resolveMonster(correct, skipped, isRemote = false){
+  function closeQuiz(){ 
+    quizActive=false; quizModal.classList.remove("show"); 
+    syncGameState(true);
+  }
+  
+  function resolveMonster(correct, skipped){
     if(correct){
       flashEl.className="flash good"; flashEl.classList.add("good");
-      if(!skipped && !isRemote) soundCorrect();
+      if(!skipped) soundCorrect();
       setTimeout(()=>{ flashEl.className="flash"; }, 260);
       activeMonster.alive=false; monstersDefeated++; updateProgressDots(); closeQuiz();
       activeMonster=null;
       nextMonsterThreshold = stepsCount + 4 + Math.floor(Math.random()*2);
+      syncGameState(true);
     } else {
-      if(!isRemote) soundWrong();
+      soundWrong();
       viewEl.classList.remove("shake"); void viewEl.offsetWidth; viewEl.classList.add("shake");
       flashEl.classList.add("bad"); setTimeout(()=>{ flashEl.classList.remove("bad"); }, 260);
       movePlayer(-dirX*0.25, -dirY*0.25);
+      syncGameState(true);
       setTimeout(()=>{ quizLocked=false; }, 500);
     }
   }
@@ -812,7 +840,10 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   function checkExitReached(){
     if(!exitLight || gameWon) return;
     const d = Math.hypot(posX-exitLight.x, posY-exitLight.y);
-    if(d<0.9){ gameWon=true; soundWin(); winScreen.classList.add("show"); }
+    if(d<0.9){ 
+        gameWon=true; soundWin(); winScreen.classList.add("show"); 
+        syncGameState(true);
+    }
   }
 
   /* ---- Прогрес ---- */
@@ -838,14 +869,27 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
 
   /* ---- Головний цикл ---- */
   let lastTime=performance.now();
+  let lastSentPosX=0, lastSentPosY=0, lastSentDirX=0;
+  
+  function checkAndSyncMovement() {
+    if(Math.abs(posX - lastSentPosX) > 0.01 || Math.abs(posY - lastSentPosY) > 0.01 || Math.abs(dirX - lastSentDirX) > 0.01) {
+        syncGameState();
+        lastSentPosX = posX; lastSentPosY = posY; lastSentDirX = dirX;
+    }
+  }
+
   function gameLoop(now){
     const dt=Math.min(0.05,(now-lastTime)/1000); lastTime=now;
     if(!quizActive && !gameWon){
-      if(keys.left) rotate(-ROT_SPEED*dt);
-      if(keys.right) rotate(ROT_SPEED*dt);
-      if(keys.fwd) movePlayer(dirX*MOVE_SPEED*dt, dirY*MOVE_SPEED*dt);
-      if(keys.back) movePlayer(-dirX*MOVE_SPEED*dt*0.7, -dirY*MOVE_SPEED*dt*0.7);
+      let moved = false;
+      if(keys.left) { rotate(-ROT_SPEED*dt); moved=true; }
+      if(keys.right) { rotate(ROT_SPEED*dt); moved=true; }
+      if(keys.fwd) { movePlayer(dirX*MOVE_SPEED*dt, dirY*MOVE_SPEED*dt); moved=true; }
+      if(keys.back) { movePlayer(-dirX*MOVE_SPEED*dt*0.7, -dirY*MOVE_SPEED*dt*0.7); moved=true; }
+      
       onEnterNewCell();
+      if(moved) checkAndSyncMovement();
+      
       if(activeMonster && activeMonster.alive){
         const d=Math.hypot(posX-activeMonster.x, posY-activeMonster.y);
         if(d<=1.35 && !quizActive){ openQuiz(); }
