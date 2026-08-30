@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<!--
+  ГРА "3D ЛАБІРИНТ" — від першого лиця
+  Версія: v1.7.5 (Повноцінна гра + панель вчителя через onclick)
+-->
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Лабіринт v1.7.5</title>
+<!-- Підключення Firebase -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<style>
+  :root{
+    --glass-bg: rgba(10,8,20,0.55);
+    --glass-border: rgba(180,150,255,0.25);
+    --accent: #d9a441;
+    --accent2: #7ee6c4;
+    --danger: #e05a4e;
+    --text: #f1e9d8;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; user-select:none; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background:#050308; font-family: Arial, Helvetica, sans-serif; color:var(--text);
+    touch-action:none;
+    background-size: cover; background-position: center; transition: background-image 0.5s ease;
+  }
+  #gameRoot{ position:fixed; inset:0; width:100%; height:100%; overflow:hidden; }
+  #view{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #view.shake{ animation: shakeAnim 0.35s ease; }
+  @keyframes shakeAnim{
+    0%{transform:translate(0,0);} 20%{transform:translate(-6px,3px);} 40%{transform:translate(6px,-3px);}
+    60%{transform:translate(-4px,2px);} 80%{transform:translate(4px,-2px);} 100%{transform:translate(0,0);}
+  }
+  #vignette{ position:absolute; inset:0; pointer-events:none; box-shadow: inset 0 0 18vw 4vw rgba(0,0,0,0.65); }
+  #flash{ position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity .25s ease; }
+  #flash.good{ background:radial-gradient(circle, rgba(126,230,196,0.55), transparent 70%); opacity:1; }
+  #flash.bad{ background:radial-gradient(circle, rgba(224,90,78,0.55), transparent 70%); opacity:1; }
+
+  #guide{ position:absolute; left:14px; bottom:14px; width:64px; height:64px; pointer-events:none; z-index:40; filter:drop-shadow(0 0 6px rgba(217,164,65,0.6)); }
+  #guide svg{ width:100%; height:100%; animation: guideBob 2.6s ease-in-out infinite; }
+  @keyframes guideBob{ 0%,100%{ transform:translateY(0px); } 50%{ transform:translateY(-5px); } }
+  .guidePupil{ transition: transform .35s ease; }
+
+  #controls{ position:absolute; inset:0; pointer-events:none; z-index:30; }
+  .ctlBtn{
+    position:absolute; pointer-events:auto; width:64px; height:64px; border-radius:50%;
+    background:rgba(20,14,30,0.35); border:1px solid rgba(230,210,255,0.25);
+    display:flex; align-items:center; justify-content:center; color:var(--text);
+    font-size:26px; backdrop-filter: blur(2px);
+  }
+  .ctlBtn:active{ background:rgba(217,164,65,0.35); }
+  #btnLeft{ left:18px; bottom:100px; }
+  #btnRight{ left:96px; bottom:100px; }
+  #btnFwd{ right:24px; bottom:110px; width:82px; height:82px; }
+  #btnBack{ right:34px; bottom:24px; width:56px; height:56px; opacity:0.85; }
+
+  #nextBtn{
+    position:absolute; right:10px; top:10px; width:34px; height:34px; border-radius:50%;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.35);
+    display:flex; align-items:center; justify-content:center; font-size:16px; z-index:45; pointer-events:auto; cursor:pointer;
+  }
+  #quickTeacherBtn{
+    position:absolute; left:10px; top:10px; width:34px; height:34px; border-radius:50%;
+    background:transparent; border:none; color:rgba(255,255,255,0.15);
+    display:flex; align-items:center; justify-content:center; font-size:18px; z-index:45; pointer-events:auto; cursor:pointer;
+    transition: color 0.2s;
+  }
+  #quickTeacherBtn:hover { color:rgba(255,255,255,0.5); }
+
+  #progress{ position:absolute; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:4px; z-index:20; pointer-events:none; }
+  .dot{ width:6px; height:6px; border-radius:50%; background:rgba(255,255,255,0.15); }
+  .dot.done{ background:var(--accent); box-shadow:0 0 5px var(--accent); }
+
+  #quizModal{
+    position:absolute; left:50%; bottom:6%; transform:translate(-50%, 20px); width:min(560px,92vw);
+    background:var(--glass-bg); border:1px solid var(--glass-border); border-radius:18px; padding:16px 18px;
+    backdrop-filter: blur(10px); z-index:50; opacity:0; pointer-events:none; transition:opacity .3s ease, transform .3s ease;
+  }
+  #quizModal.show{ opacity:1; pointer-events:auto; transform:translate(-50%,0); }
+  #quizQuestion{ font-size:17px; line-height:1.4; margin:0 0 12px 0; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,0.6); }
+  #quizOptions{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:480px){ #quizOptions{ grid-template-columns:1fr; } }
+  .optBtn{
+    font-family:Arial,Helvetica,sans-serif; font-size:15px; padding:10px 8px; border-radius:12px; cursor:pointer;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(230,210,255,0.2); color:var(--text);
+  }
+  .optBtn:active{ background:rgba(217,164,65,0.4); }
+
+  #winScreen{
+    position:absolute; inset:0; z-index:80; display:flex; align-items:center; justify-content:center; flex-direction:column;
+    background: radial-gradient(circle at 50% 45%, rgba(255,244,214,0.95), rgba(217,164,65,0.75) 55%, rgba(5,3,8,0.98) 100%);
+    opacity:0; pointer-events:none; transition:opacity 1.5s ease;
+  }
+  #winScreen.show{ opacity:1; pointer-events:auto; }
+  #winScreen h1{ font-size:clamp(28px,6vw,48px); color:#241704; margin:0 0 10px; text-shadow:0 2px 4px rgba(255,255,255,0.6); }
+  #winScreen p{ font-size:clamp(16px,3vw,24px); color:#3d2707; margin:0; }
+
+  #secretZone{ position:absolute; left:0; top:0; width:64px; height:64px; z-index:60; pointer-events:none; }
+  
+  /* --- Панель вчителя --- */
+  .teacherOverlay{
+    position:absolute; inset:0; z-index:90;
+    display:none; 
+    align-items:center; justify-content:center;
+    background:rgba(3,2,6,0.75); backdrop-filter: blur(4px);
+    opacity:0; pointer-events:none;
+    transition:opacity .2s ease;
+  }
+  .teacherOverlay.show{
+    display:flex !important;
+    opacity:1 !important;
+    pointer-events:auto !important;
+  }
+  .teacherCard{
+    width:min(660px,92vw); max-height:85vh; overflow:auto; background:var(--glass-bg); border:1px solid var(--glass-border);
+    border-radius:16px; padding:20px; box-shadow:0 10px 40px rgba(0,0,0,0.5);
+  }
+  .teacherCard h2{ margin:0 0 8px 0; font-size:20px; font-weight:bold; color:var(--accent); }
+  
+  .help-text { font-size: 13px; color: rgba(255,255,255,0.8); margin-bottom: 15px; line-height: 1.4; }
+  .help-text b { color: var(--accent2); }
+
+  #bulkQuestionsInput {
+    width: 100%; height: 320px; resize: vertical; padding: 12px; border-radius: 8px;
+    border: 1px solid rgba(230,210,255,0.3); background: rgba(0,0,0,0.4);
+    color: var(--text); font-family: monospace; font-size: 14px;
+    line-height: 1.5; white-space: pre-wrap;
+  }
+  #bulkQuestionsInput:focus { outline: none; border-color: var(--accent2); }
+
+  .teacherBtnRow{ display:flex; gap:10px; margin-top:16px; flex-wrap:wrap; }
+  .teacherBtn{ flex:1; min-width:100px; padding:12px; border-radius:10px; border:1px solid rgba(230,210,255,0.25); background:rgba(217,164,65,0.25); color:var(--text); font-size:15px; cursor:pointer; transition: background 0.2s;}
+  .teacherBtn:hover{ background:rgba(217,164,65,0.4); }
+  .teacherBtn.secondary{ background:rgba(255,255,255,0.06); }
+  .teacherBtn.danger{ background:rgba(224,90,78,0.3); }
+  .teacherBtn.emergency{ margin-top:12px; background:rgba(224,90,78,0.5); }
+
+  #block-overlay {
+    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9);
+    color: #e05a4e; display: none; align-items: center; justify-content: center;
+    font-size: 28px; font-weight: bold; z-index: 999999; text-align: center; padding: 20px;
+  }
+  #themeBtn {
+    position: fixed; right: 20px; bottom: 20px; width: 44px; height: 44px; border-radius: 50%;
+    background: var(--glass-bg); border: 1px solid var(--glass-border); color: #fff;
+    font-size: 20px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; z-index: 90; backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  }
+  #themeModal {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 90vw; max-width: 600px; max-height: 60vh; background: var(--glass-bg);
+    border: 1px solid var(--glass-border); border-radius: 16px; padding: 20px;
+    z-index: 95; display: none; flex-direction: column; backdrop-filter: blur(10px);
+  }
+  #themeModal.show { display: flex; }
+  #themeGrid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px;
+    overflow-y: auto; margin-top: 10px; padding-right: 5px;
+  }
+  .theme-item {
+    position: relative; border-radius: 8px; overflow: hidden; cursor: pointer;
+    border: 2px solid transparent; aspect-ratio: 16/9; background-size: cover; background-position: center;
+  }
+  .theme-item:hover { border-color: var(--accent2); }
+  .theme-item span {
+    position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6);
+    color: #fff; font-size: 11px; text-align: center; padding: 3px 0;
+  }
+  .theme-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+  .close-theme { background: transparent; border: none; color: #fff; font-size: 24px; cursor: pointer; }
+  .btn-disable-bg {
+    background: rgba(224,90,78,0.3); border: 1px solid rgba(224,90,78,0.5); color: #fff;
+    padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; width: 100%; margin-bottom: 10px;
+  }
+
+  #ver{ position:absolute; left:8px; bottom:6px; font-size:10px; color:rgba(255,255,255,0.15); z-index:15; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+<div id="gameRoot">
+  <canvas id="view"></canvas>
+  <div id="vignette"></div>
+  <div id="flash"></div>
+  <div id="progress"></div>
+
+  <div id="guide">
+    <svg viewBox="0 0 64 64">
+      <defs>
+        <radialGradient id="guideGlow" cx="50%" cy="45%" r="60%">
+          <stop offset="0%" stop-color="#fff3d6"/>
+          <stop offset="55%" stop-color="#d9a441"/>
+          <stop offset="100%" stop-color="#8a5a17"/>
+        </radialGradient>
+      </defs>
+      <ellipse cx="32" cy="34" rx="20" ry="22" fill="url(#guideGlow)"/>
+      <path d="M14 40 Q32 60 50 40 Q46 52 32 56 Q18 52 14 40 Z" fill="#fff3d6" opacity="0.5"/>
+      <g id="guideEyes">
+        <ellipse cx="24" cy="30" rx="5" ry="6" fill="#2b1a06"/>
+        <ellipse cx="40" cy="30" rx="5" ry="6" fill="#2b1a06"/>
+        <circle class="guidePupil" id="pupilL" cx="24" cy="30" r="2" fill="#fff3d6"/>
+        <circle class="guidePupil" id="pupilR" cx="40" cy="30" r="2" fill="#fff3d6"/>
+      </g>
+    </svg>
+  </div>
+
+  <div id="controls">
+    <div class="ctlBtn" id="btnLeft">&#8630;</div>
+    <div class="ctlBtn" id="btnRight">&#8631;</div>
+    <div class="ctlBtn" id="btnBack">&#9660;</div>
+    <div class="ctlBtn" id="btnFwd">&#9650;</div>
+  </div>
+
+  <!-- Кнопка виклику панелі вчителя з прямим onclick -->
+  <button id="quickTeacherBtn" onclick="openTeacherPanel()" title="Панель вчителя">⚙️</button>
+  <div id="nextBtn" title="Пропустити">💡</div>
+
+  <div id="quizModal">
+    <p id="quizQuestion"></p>
+    <div id="quizOptions"></div>
+  </div>
+
+  <div id="winScreen">
+    <h1>Перемога!</h1>
+    <p>Ти знайшов(-ла) вихід із лабіринту &#10024;</p>
+  </div>
+
+  <!-- Панель вчителя з прямими onclick на кнопках -->
+  <div class="teacherOverlay" id="teacherPanel">
+    <div class="teacherCard">
+      <h2>Масове редагування питань</h2>
+      <div class="help-text">
+        Введіть список питань, кожне з нового рядка. Елементи розділяйте крапкою з комою (<b>;</b>).<br>
+        <b>Формат:</b> Питання ; Правильна відповідь ; Неправильна ; Неправильна...<br>
+        <i>(Можна вводити від 2 до 4 варіантів відповідей. Гра автоматично їх перемішає).</i>
+      </div>
+      <textarea id="bulkQuestionsInput" spellcheck="false"></textarea>
+      
+      <div class="teacherBtnRow">
+        <button class="teacherBtn" onclick="saveAndClose()">Зберегти та закрити</button>
+        <button class="teacherBtn secondary" onclick="closeTeacherPanel()">Скасувати</button>
+        <button class="teacherBtn danger" onclick="resetQuestions()">Скинути до стандартних</button>
+      </div>
+      <!-- Аварійна кнопка закриття -->
+      <button class="teacherBtn emergency" onclick="closeTeacherPanel()">❌ Аварійно закрити (без збереження)</button>
+    </div>
+  </div>
+  
+  <div id="themeBtn">🎨</div>
+  <div id="themeModal">
+    <div class="theme-header">
+      <h3 style="margin:0; font-size:18px;">Теми гри</h3>
+      <button class="close-theme" id="closeThemeModal">&times;</button>
+    </div>
+    <button class="btn-disable-bg" id="disableBgBtn">Вимкнути динамічний фон</button>
+    <div id="themeGrid"></div>
+  </div>
+
+  <div id="ver">v1.7.5</div>
+</div>
+
+<script>
+// =====================================================================
+//  1. ГЛОБАЛЬНІ ФУНКЦІЇ ПАНЕЛІ ВЧИТЕЛЯ (доступні з onclick)
+// =====================================================================
+var teacherPanel = document.getElementById("teacherPanel");
+var bulkInput = document.getElementById("bulkQuestionsInput");
+
+const TOTAL_MONSTERS = 10;
+const MONSTER_TYPES = ["skeleton","spider","zombie","dragon","worm","ghost","witch","mummy","troll","golem"];
+const DEFAULT_QUESTIONS = [
+  { type:"skeleton", question:"Скільки буде 5 + 3?", options:["8","7","9","6"], correct:0 },
+  { type:"spider",   question:"Скільки лапок у павука?", options:["8","6","4","10"], correct:0 },
+  { type:"zombie",   question:"Яке число йде одразу після 19?", options:["20","18","21","9"], correct:0 },
+  { type:"dragon",   question:"Скільки днів у тижні?", options:["7","5","6","8"], correct:0 },
+  { type:"worm",     question:"Скільки буде 10 − 4?", options:["6","5","7","4"], correct:0 },
+  { type:"ghost",    question:"Яка пора року настає після зими?", options:["Весна","Літо","Осінь","Зима"], correct:0 },
+  { type:"witch",    question:"Скільки буде 3 × 3?", options:["9","6","12","3"], correct:0 },
+  { type:"mummy",    question:"Скільки місяців у році?", options:["12","10","11","13"], correct:0 },
+  { type:"troll",    question:"Яка тварина говорить \"гав-гав\"?", options:["Собака","Кіт","Корова","Качка"], correct:0 },
+  { type:"golem",    question:"Скільки буде 7 + 6?", options:["13","12","14","11"], correct:0 }
+];
+const LS_QUESTIONS_KEY = "labyrinth_teacher_bulk_v1";
+
+function loadQuestions(){
+  try{
+    const raw = localStorage.getItem(LS_QUESTIONS_KEY);
+    if(!raw) return DEFAULT_QUESTIONS.map(q=>({...q, options:[...q.options]}));
+    const parsed = JSON.parse(raw);
+    if(!Array.isArray(parsed) || parsed.length!==10) return DEFAULT_QUESTIONS.map(q=>({...q, options:[...q.options]}));
+    return parsed;
+  }catch(e){ return DEFAULT_QUESTIONS.map(q=>({...q, options:[...q.options]})); }
+}
+function saveQuestions(qs){ 
+  try { localStorage.setItem(LS_QUESTIONS_KEY, JSON.stringify(qs)); } 
+  catch(err) { console.warn("Пам'ять браузера заблокована.", err); }
+}
+
+function buildEditor(){
+  let qs = loadQuestions();
+  let text = "";
+  qs.forEach((q) => {
+    let parts = [q.question];
+    parts.push(q.options[q.correct]);
+    q.options.forEach((opt, i) => {
+      if(i !== q.correct) parts.push(opt);
+    });
+    text += parts.join(" ; ") + "\n";
+  });
+  bulkInput.value = text.trim();
+}
+
+// Відкриття панелі
+function openTeacherPanel() {
+  console.log("openTeacherPanel викликана");
+  buildEditor();
+  teacherPanel.classList.add("show");
+  teacherPanel.style.display = "flex";
+  teacherPanel.style.opacity = "1";
+  teacherPanel.style.pointerEvents = "auto";
+}
+
+// Закриття панелі
+function closeTeacherPanel() {
+  console.log("closeTeacherPanel викликана");
+  teacherPanel.classList.remove("show");
+  teacherPanel.style.display = "none";
+  teacherPanel.style.opacity = "0";
+  teacherPanel.style.pointerEvents = "none";
+}
+
+// Скидання питань
+function resetQuestions() {
+  localStorage.removeItem(LS_QUESTIONS_KEY);
+  buildEditor();
+}
+
+// Збереження і закриття
+function saveAndClose() {
+  // 1. Закриваємо панель негайно
+  closeTeacherPanel();
+  // 2. Зберігаємо дані через невелику затримку
+  setTimeout(() => {
+    try {
+      const lines = bulkInput.value.split('\n').filter(l => l.trim() !== '');
+      const newBank = [];
+      for (let i = 0; i < TOTAL_MONSTERS; i++) {
+        const type = MONSTER_TYPES[i] || MONSTER_TYPES[0];
+        let added = false;
+        if (i < lines.length) {
+          const parts = lines[i].split(';').map(p => p.trim()).filter(p => p);
+          if (parts.length >= 2) {
+            newBank.push({
+              type: type,
+              question: parts[0],
+              options: parts.slice(1),
+              correct: 0
+            });
+            added = true;
+          }
+        }
+        if (!added) {
+          newBank.push(JSON.parse(JSON.stringify(DEFAULT_QUESTIONS[i])));
+        }
+      }
+      saveQuestions(newBank);
+      // Оновлюємо банк питань у грі (якщо він десь зберігається)
+      if (typeof window.questionBank !== 'undefined') {
+        window.questionBank = newBank;
+      }
+      console.log("Питання збережено успішно");
+    } catch (error) {
+      console.error("Помилка збереження:", error);
+    }
+  }, 30);
+}
+
+// Закриття по Escape
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape" && teacherPanel.classList.contains("show")) {
+    closeTeacherPanel();
+  }
+});
+
+// =====================================================================
+//  2. FIREBASE ТА ЗАГАЛЬНІ НАЛАШТУВАННЯ
+// =====================================================================
+const firebaseConfig = { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/", projectId: "lesson-13c44" };
+if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const urlParams = new URLSearchParams(window.location.search);
+let myName = urlParams.get('user');
+if(myName) sessionStorage.setItem('gameUser', myName);
+else myName = sessionStorage.getItem('gameUser');
+if(!myName){ myName = "Гість_" + Math.floor(Math.random()*1000); sessionStorage.setItem('gameUser', myName); }
+
+const tabId = Math.random().toString(36).substr(2,9);
+const myRef = db.ref(`online_users/${myName}/${tabId}`);
+db.ref('.info/connected').on('value', snap => {
+  if(snap.val() === true){ myRef.set(true); myRef.onDisconnect().remove(); }
+});
+window.addEventListener('beforeunload', () => myRef.remove());
+
+db.ref('force_refresh').on('value', snap => { 
+  if(snap.val() === true) {
+    if(sessionStorage.getItem('just_refreshed') !== 'true') {
+      sessionStorage.setItem('just_refreshed', 'true'); window.location.reload();
+    }
+  } else { sessionStorage.removeItem('just_refreshed'); }
+});
+db.ref(`blocked_users/${myName}`).on('value', snap => {
+  document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+});
+
+let isFirstActivityRead = true;
+db.ref('current_activity').on('value', snap => {
+  if (isFirstActivityRead) { isFirstActivityRead = false; return; }
+  if(snap.val() === 'lobby'){ window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName); }
+});
+
+function sendGameAction(type, data) {
+  db.ref('game_action').set({ senderId: myName, timestamp: firebase.database.ServerValue.TIMESTAMP, type: type, data: data });
+}
+
+// =====================================================================
+//  3. THEME MANAGER
+// =====================================================================
+let isThemeActive = false;
+const themeGrid = document.getElementById('themeGrid');
+async function checkImg(url) { return new Promise(res => { const img=new Image(); img.onload=()=>res(true); img.onerror=()=>res(false); img.src=url; }); }
+async function loadThemes() {
+  themeGrid.innerHTML = '';
+  for(let i=1; i<=1000; i++) {
+    const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+    if(await checkImg(url)) {
+      const div = document.createElement('div'); div.className = 'theme-item'; div.style.backgroundImage = `url(${url})`;
+      div.innerHTML = `<span>Фон ${i}</span>`; div.onclick = () => applyTheme(url, true); themeGrid.appendChild(div);
+    } else break;
+  }
+}
+function applyTheme(url, syncRemote = false) {
+  if(url) {
+    document.body.style.backgroundImage = `url(${url})`; localStorage.setItem('mySavedGameBg', url); isThemeActive = true;
+    if(syncRemote) db.ref('game_theme').set(url);
+  } else {
+    document.body.style.backgroundImage = 'none'; localStorage.removeItem('mySavedGameBg'); isThemeActive = false;
+    if(syncRemote) db.ref('game_theme').set('');
+  }
+  document.getElementById('themeModal').classList.remove('show');
+}
+db.ref('game_theme').on('value', snap => { if(snap.val() !== null) applyTheme(snap.val(), false); });
+const savedTheme = localStorage.getItem('mySavedGameBg'); if(savedTheme) applyTheme(savedTheme, false);
+
+document.getElementById('themeBtn').onclick = () => { document.getElementById('themeModal').classList.add('show'); if(themeGrid.children.length === 0) loadThemes(); };
+document.getElementById('closeThemeModal').onclick = () => document.getElementById('themeModal').classList.remove('show');
+document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
+
+// =====================================================================
+//  4. ОСНОВНА ГРА "3D ЛАБІРИНТ"
+// =====================================================================
+(function(){
+  "use strict";
+
+  const MAZE_COLS = 19; const MAZE_ROWS = 19;
+  const PLAYER_R = 0.22; const MOVE_SPEED = 2.4; const ROT_SPEED = 2.1;
+
+  // Використовуємо глобальний банк питань (з панелі)
+  window.questionBank = loadQuestions();
+
+  /* ---- Генерація лабіринту ---- */
+  function generateMazeCells(cols, rows){
+    const cells = [];
+    for(let y=0;y<rows;y++){
+      const row=[]; for(let x=0;x<cols;x++) row.push({N:true,E:true,S:true,W:true,visited:false}); cells.push(row);
+    }
+    const dirs=[["N",0,-1,"S"],["E",1,0,"W"],["S",0,1,"N"],["W",-1,0,"E"]];
+    const stack=[[0,0]]; cells[0][0].visited=true; let visitedCount=1; const total=cols*rows;
+    while(visitedCount<total){
+      const [x,y]=stack[stack.length-1]; const neighbors=[];
+      for(const [d,ddx,ddy,opp] of dirs){
+        const nx=x+ddx, ny=y+ddy;
+        if(nx>=0&&nx<cols&&ny>=0&&ny<rows&&!cells[ny][nx].visited) neighbors.push([d,nx,ny,opp]);
+      }
+      if(neighbors.length===0){ stack.pop(); continue; }
+      const [d,nx,ny,opp]=neighbors[Math.floor(Math.random()*neighbors.length)];
+      cells[y][x][d]=false; cells[ny][nx][opp]=false; cells[ny][nx].visited=true; visitedCount++; stack.push([nx,ny]);
+    }
+    const extra=Math.floor(cols*rows*0.2);
+    for(let i=0;i<extra;i++){
+      const x=Math.floor(Math.random()*cols), y=Math.floor(Math.random()*rows); const opts=[];
+      if(x<cols-1) opts.push("E"); if(y<rows-1) opts.push("S"); if(opts.length===0) continue;
+      const d=opts[Math.floor(Math.random()*opts.length)];
+      if(d==="E"){ cells[y][x].E=false; cells[y][x+1].W=false; } else { cells[y][x].S=false; cells[y+1][x].N=false; }
+    }
+    return cells;
+  }
+  function buildTileMap(cells, cols, rows){
+    const W=2*cols+1, H=2*rows+1; const map=[];
+    for(let j=0;j<H;j++) map.push(new Array(W).fill(1));
+    for(let y=0;y<rows;y++){
+      for(let x=0;x<cols;x++){
+        map[2*y+1][2*x+1]=0;
+        if(!cells[y][x].E) map[2*y+1][2*x+2]=0;
+        if(!cells[y][x].S) map[2*y+2][2*x+1]=0;
+      }
+    }
+    return {map, W, H};
+  }
+  let mazeCells = generateMazeCells(MAZE_COLS, MAZE_ROWS);
+  let { map, W:MAP_W, H:MAP_H } = buildTileMap(mazeCells, MAZE_COLS, MAZE_ROWS);
+
+  /* ---- Стан гравця ---- */
+  let posX = 1.5, posY = 1.5; let dirX = 1, dirY = 0; let planeX = 0, planeY = 0.66;
+  (function pickStartDir(){
+    if(map[1][2]===0){ dirX=1; dirY=0; planeX=0; planeY=0.66; return; }
+    if(map[2][1]===0){ dirX=0; dirY=1; planeX=-0.66; planeY=0; return; }
+  })();
+
+  let stepsCount = 0; let lastCellKey = null; let lastHeadingLabel = null;
+  let nextMonsterThreshold = 3; let monstersDefeated = 0; let gameWon = false;
+  let activeMonster = null; let exitLight = null; let quizActive = false; let quizLocked = false;
+
+  function canStand(x,y,r){
+    const pts=[[x-r,y-r],[x+r,y-r],[x-r,y+r],[x+r,y+r]];
+    for(const [px,py] of pts){
+      const mx=Math.floor(px), my=Math.floor(py);
+      if(mx<0||my<0||mx>=MAP_W||my>=MAP_H) return false;
+      if(map[my][mx]===1) return false;
+    }
+    return true;
+  }
+  function movePlayer(dx,dy){
+    if(canStand(posX+dx,posY+dy,PLAYER_R)){ posX+=dx; posY+=dy; }
+    else if(canStand(posX+dx,posY,PLAYER_R)){ posX+=dx; }
+    else if(canStand(posX,posY+dy,PLAYER_R)){ posY+=dy; }
+  }
+  function rotate(angle){
+    const oldDirX=dirX; dirX = dirX*Math.cos(angle) - dirY*Math.sin(angle); dirY = oldDirX*Math.sin(angle) + dirY*Math.cos(angle);
+    const oldPlaneX=planeX; planeX = planeX*Math.cos(angle) - planeY*Math.sin(angle); planeY = oldPlaneX*Math.sin(angle) + planeY*Math.cos(angle);
+  }
+  function headingVector(){
+    const ang=Math.atan2(dirY,dirX); const snapped=Math.round(ang/(Math.PI/2))*(Math.PI/2);
+    return { dx:Math.round(Math.cos(snapped)), dy:Math.round(Math.sin(snapped)) };
+  }
+  function headingLabel(){ const h = headingVector(); return h.dx + "," + h.dy; }
+  function getCurrentCell(){ const tx=Math.floor(posX), ty=Math.floor(posY); return { cx:(tx-1)/2, cy:(ty-1)/2, tx, ty }; }
+  function findStraightRun(cx, cy, hx, hy, maxSteps){
+    const run=[];
+    for(let k=1;k<=maxSteps;k++){
+      const connTX = (2*cx+1)+hx*(2*k-1); const connTY = (2*cy+1)+hy*(2*k-1);
+      const cellTX = (2*cx+1)+hx*2*k; const cellTY = (2*cy+1)+hy*2*k;
+      if(connTX<0||connTX>=MAP_W||connTY<0||connTY>=MAP_H) break;
+      if(cellTX<0||cellTX>=MAP_W||cellTY<0||cellTY>=MAP_H) break;
+      if(map[connTY][connTX]!==0) break; if(map[cellTY][cellTX]!==0) break;
+      run.push({cx:cx+hx*k, cy:cy+hy*k});
+    }
+    return run;
+  }
+  function tryAttemptSpawn(isTurnSpawn){
+    if(activeMonster || exitLight) return;
+    const {cx,cy} = getCurrentCell();
+    const h = headingVector();
+    if(h.dx===0 && h.dy===0) return;
+    let run = findStraightRun(cx, cy, h.dx, h.dy, 15);
+    if(run.length >= 1){
+      const spawnIdx = Math.max(0, run.length - 1); 
+      const cell = run[spawnIdx];
+      if(monstersDefeated >= TOTAL_MONSTERS){
+        exitLight = { x: 2*cell.cx+1+0.5, y: 2*cell.cy+1+0.5 };
+      } else {
+        const type = MONSTER_TYPES[monstersDefeated];
+        activeMonster = { type, x: 2*cell.cx+1+0.5, y: 2*cell.cy+1+0.5, alive:true, qIndex: monstersDefeated };
+      }
+    }
+  }
+  function onEnterNewCell(){
+    const tx=Math.floor(posX), ty=Math.floor(posY);
+    if(tx%2!==1 || ty%2!==1) return;
+    const cx=(tx-1)/2, cy=(ty-1)/2;
+    const key = cx+"_"+cy;
+    const currentHeading = headingLabel();
+    if(lastCellKey !== null && key !== lastCellKey) stepsCount++;
+    lastCellKey = key;
+    if(lastHeadingLabel !== null && currentHeading !== lastHeadingLabel){
+      if(!activeMonster && !exitLight){
+        if(monstersDefeated < TOTAL_MONSTERS && stepsCount >= nextMonsterThreshold) tryAttemptSpawn(true);
+        else if(monstersDefeated >= TOTAL_MONSTERS) tryAttemptSpawn(true);
+      }
+    }
+    lastHeadingLabel = currentHeading;
+  }
+
+  /* ---- Ввід ---- */
+  const keys = { fwd:false, back:false, left:false, right:false };
+  window.addEventListener("keydown", (e)=>{
+    // Якщо панель вчителя відкрита – не передаємо керування грі, але дозволяємо Escape
+    if(document.getElementById("teacherPanel").classList.contains("show")){
+      if(e.key === "Escape") { closeTeacherPanel(); }
+      return;
+    }
+    if(quizActive){ return; }
+    if(e.key==="ArrowUp"||e.key==="w"||e.key==="W") keys.fwd=true;
+    if(e.key==="ArrowDown"||e.key==="s"||e.key==="S") keys.back=true;
+    if(e.key==="ArrowLeft"||e.key==="a"||e.key==="A") keys.left=true;
+    if(e.key==="ArrowRight"||e.key==="d"||e.key==="D") keys.right=true;
+  });
+  window.addEventListener("keyup",(e)=>{
+    if(e.key==="ArrowUp"||e.key==="w"||e.key==="W") keys.fwd=false;
+    if(e.key==="ArrowDown"||e.key==="s"||e.key==="S") keys.back=false;
+    if(e.key==="ArrowLeft"||e.key==="a"||e.key==="A") keys.left=false;
+    if(e.key==="ArrowRight"||e.key==="d"||e.key==="D") keys.right=false;
+  });
+
+  function bindHold(id, onDown, onUp){
+    const el=document.getElementById(id);
+    el.addEventListener("pointerdown",(e)=>{ e.preventDefault(); onDown(); });
+    el.addEventListener("pointerup",(e)=>{ e.preventDefault(); onUp(); });
+    el.addEventListener("pointerleave",()=>{ onUp(); });
+    el.addEventListener("pointercancel",()=>{ onUp(); });
+  }
+  bindHold("btnFwd", ()=>keys.fwd=true, ()=>keys.fwd=false);
+  bindHold("btnBack", ()=>keys.back=true, ()=>keys.back=false);
+  bindHold("btnLeft", ()=>keys.left=true, ()=>keys.left=false);
+  bindHold("btnRight", ()=>keys.right=true, ()=>keys.right=false);
+
+  document.getElementById("nextBtn").addEventListener("click", ()=>{
+    if(quizActive && activeMonster && activeMonster.alive) {
+      resolveMonster(true, true);
+      sendGameAction('resolve_monster', { correct: true, index: activeMonster.qIndex });
+    }
+  });
+
+  db.ref('game_action').on('value', snap => {
+    const action = snap.val();
+    if (!action || action.senderId === myName) return;
+    if (action.type === 'resolve_monster' && activeMonster && activeMonster.alive) {
+      if (activeMonster.qIndex === action.data.index) {
+        resolveMonster(action.data.correct, true, true);
+      }
+    }
+  });
+
+  /* ---- Рендеринг ---- */
+  const viewCanvas = document.getElementById("view"); const viewCtx = viewCanvas.getContext("2d");
+  const rayCanvas = document.createElement("canvas"); const rayCtx = rayCanvas.getContext("2d");
+  let RENDER_W = 380, RENDER_H = 240;
+  function resize(){
+    const w = window.innerWidth, h = window.innerHeight; viewCanvas.width = w; viewCanvas.height = h;
+    RENDER_H = 240; RENDER_W = Math.round(RENDER_H * (w/h)); rayCanvas.width = RENDER_W; rayCanvas.height = RENDER_H;
+  }
+  window.addEventListener("resize", resize); window.addEventListener("orientationchange", resize); resize();
+
+  let zbuffer = new Float64Array(RENDER_W);
+
+  function renderFrame(){
+    if(zbuffer.length!==RENDER_W) zbuffer = new Float64Array(RENDER_W);
+    const w=RENDER_W, h=RENDER_H;
+
+    if(!isThemeActive) {
+      const flicker = 0.92 + Math.sin(performance.now()/450)*0.04;
+      const ceilGrad = rayCtx.createLinearGradient(0,0,0,h/2);
+      ceilGrad.addColorStop(0, "#0a0713"); ceilGrad.addColorStop(1, `rgba(40,30,55,${0.9*flicker})`);
+      rayCtx.fillStyle = ceilGrad; rayCtx.fillRect(0,0,w,h/2);
+    } else { rayCtx.clearRect(0,0,w,h/2); }
+
+    const flickerFloor = 0.92 + Math.sin(performance.now()/450)*0.04;
+    const floorGrad = rayCtx.createLinearGradient(0,h/2,0,h);
+    floorGrad.addColorStop(0, `rgba(58,40,26,${0.9*flickerFloor})`); floorGrad.addColorStop(1, "#120b06");
+    rayCtx.fillStyle = floorGrad; rayCtx.fillRect(0,h/2,w,h/2);
+
+    for(let x=0;x<w;x++){
+      const cameraX = 2*x/w - 1;
+      const rayDirX = dirX + planeX*cameraX; const rayDirY = dirY + planeY*cameraX;
+      let mapX = Math.floor(posX), mapY = Math.floor(posY);
+      const deltaDistX = rayDirX===0 ? 1e30 : Math.abs(1/rayDirX); const deltaDistY = rayDirY===0 ? 1e30 : Math.abs(1/rayDirY);
+      let stepX, stepY, sideDistX, sideDistY;
+      if(rayDirX<0){ stepX=-1; sideDistX=(posX-mapX)*deltaDistX; } else { stepX=1; sideDistX=(mapX+1-posX)*deltaDistX; }
+      if(rayDirY<0){ stepY=-1; sideDistY=(posY-mapY)*deltaDistY; } else { stepY=1; sideDistY=(mapY+1-posY)*deltaDistY; }
+      let hit=0, side=0, guard=0;
+      while(hit===0 && guard<256){
+        guard++;
+        if(sideDistX<sideDistY){ sideDistX+=deltaDistX; mapX+=stepX; side=0; }
+        else { sideDistY+=deltaDistY; mapY+=stepY; side=1; }
+        if(mapX<0||mapX>=MAP_W||mapY<0||mapY>=MAP_H){ hit=1; break; }
+        if(map[mapY][mapX]===1) hit=1;
+      }
+      let perpWallDist = side===0 ? (sideDistX-deltaDistX) : (sideDistY-deltaDistY);
+      if(perpWallDist<0.01) perpWallDist=0.01; zbuffer[x]=perpWallDist;
+      const lineHeight = Math.floor(h/perpWallDist);
+      const drawStart = Math.max(0, -lineHeight/2 + h/2); const drawEnd = Math.min(h-1, lineHeight/2 + h/2);
+
+      let wallX = side===0 ? (posY + perpWallDist*rayDirY) : (posX + perpWallDist*rayDirX);
+      wallX -= Math.floor(wallX);
+      const brick = (wallX>0.93 || (side===0 && wallX<0.04)) ? 0.72 : 1.0;
+
+      const shade = Math.max(0.18, Math.min(1, 1.15 - perpWallDist/9)) * (side===1?0.72:1) * brick;
+      const r = Math.floor(96*shade+20); const g = Math.floor(72*shade+14); const b = Math.floor(58*shade+10);
+      rayCtx.strokeStyle = `rgb(${r},${g},${b})`;
+      rayCtx.beginPath(); rayCtx.moveTo(x+0.5, drawStart); rayCtx.lineTo(x+0.5, drawEnd); rayCtx.stroke();
+    }
+
+    const sprites=[];
+    if(activeMonster) sprites.push({kind:"monster", data:activeMonster});
+    if(exitLight) sprites.push({kind:"exit", data:exitLight});
+    for(const sp of sprites){
+      const sx=sp.data.x-posX, sy=sp.data.y-posY;
+      const invDet = 1/(planeX*dirY - dirX*planeY);
+      const transformX = invDet*(dirY*sx - dirX*sy); const transformY = invDet*(-planeY*sx + planeX*sy);
+      if(transformY<=0.05) continue;
+      const screenX = Math.floor((w/2)*(1+transformX/transformY)); const distance = Math.sqrt(sx*sx+sy*sy);
+      const spriteH = Math.min(h*1.6, Math.abs(Math.floor(h/transformY))); const spriteW = spriteH*0.72;
+      const zCol = Math.max(0, Math.min(w-1, screenX));
+      if(zbuffer[zCol] < transformY - 0.15) continue; 
+      const topY = h/2 - spriteH/2; const baseY = h/2 + spriteH/2;
+      if(sp.kind==="monster" && sp.data.alive) drawMonster(rayCtx, sp.data.type, screenX, baseY, spriteW, spriteH, distance);
+      else if(sp.kind==="exit") drawExitLight(rayCtx, screenX, (topY+baseY)/2, spriteW, spriteH, distance);
+    }
+
+    viewCtx.imageSmoothingEnabled = true; viewCtx.clearRect(0,0,viewCanvas.width, viewCanvas.height);
+    viewCtx.drawImage(rayCanvas, 0,0, viewCanvas.width, viewCanvas.height);
+  }
+
+  function drawMonster(ctx, type, cx, baseY, w, h, dist){
+    ctx.save(); ctx.translate(cx, baseY);
+    const s = h/10; const bob = Math.sin(performance.now()/300 + cx)*0.02*h; ctx.translate(0, bob);
+    switch(type){
+      case "skeleton": drawSkeleton(ctx, s); break; case "spider": drawSpider(ctx, s); break; case "zombie": drawZombie(ctx, s); break;
+      case "dragon": drawDragon(ctx, s); break; case "worm": drawWorm(ctx, s); break; case "ghost": drawGhost(ctx, s); break;
+      case "witch": drawWitch(ctx, s); break; case "mummy": drawMummy(ctx, s); break; case "troll": drawTroll(ctx, s); break; case "golem": drawGolem(ctx, s); break;
+    }
+    ctx.restore();
+  }
+  function drawSkeleton(ctx,s){ ctx.fillStyle="#e9e4d6"; ctx.strokeStyle="#8a8370"; ctx.lineWidth=Math.max(1,s*0.15); ctx.fillRect(-s*1.5,-s*3,s*0.8,s*3); ctx.fillRect(s*0.7,-s*3,s*0.8,s*3); ctx.beginPath(); ctx.ellipse(0,-s*5.5,s*2.2,s*2.8,0,0,Math.PI*2); ctx.fill(); ctx.stroke(); for(let i=0;i<4;i++){ ctx.beginPath(); ctx.moveTo(-s*1.8, -s*4.2-i*s*0.7); ctx.lineTo(s*1.8,-s*4.2-i*s*0.7); ctx.stroke(); } ctx.fillRect(-s*3.2,-s*7,s*0.7,s*3.5); ctx.fillRect(s*2.5,-s*7,s*0.7,s*3.5); ctx.beginPath(); ctx.arc(0,-s*8.6,s*1.9,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.fillStyle="#1a1710"; ctx.beginPath(); ctx.arc(-s*0.7,-s*8.7,s*0.55,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.7,-s*8.7,s*0.55,0,Math.PI*2); ctx.fill(); ctx.fillRect(-s*0.5,-s*7.6,s,s*0.5); }
+  function drawSpider(ctx,s){ ctx.strokeStyle="#1f1226"; ctx.lineWidth=Math.max(1,s*0.22); for(let i=0;i<4;i++){ const ang=(i/4)*Math.PI*0.55+0.15; ctx.beginPath(); ctx.moveTo(0,-s*4); ctx.lineTo(-Math.sin(ang)*s*4.5, -s*4+Math.cos(ang)*s*2); ctx.lineTo(-Math.sin(ang)*s*7,-s*2.5+Math.cos(ang)*s*3); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,-s*4); ctx.lineTo(Math.sin(ang)*s*4.5, -s*4+Math.cos(ang)*s*2); ctx.lineTo(Math.sin(ang)*s*7,-s*2.5+Math.cos(ang)*s*3); ctx.stroke(); } ctx.fillStyle="#3b1f4d"; ctx.beginPath(); ctx.ellipse(0,-s*3.6,s*2.6,s*2.1,0,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(0,-s*6.4,s*1.5,s*1.5,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#e0463f"; for(const dx of [-0.6,-0.2,0.2,0.6]){ ctx.beginPath(); ctx.arc(s*dx,-s*6.6,s*0.28,0,Math.PI*2); ctx.fill(); } }
+  function drawZombie(ctx,s){ ctx.fillStyle="#5e8f52"; ctx.fillRect(-s*1.2,-s*4.5,s*1,s*4.5); ctx.fillRect(s*0.2,-s*4.5,s*1,s*4.5); ctx.fillStyle="#3d5c39"; ctx.beginPath(); ctx.moveTo(-s*2,-s*4.5); ctx.lineTo(s*2,-s*4.5); ctx.lineTo(s*1.7,-s*8); ctx.lineTo(-s*1.7,-s*8); ctx.closePath(); ctx.fill(); ctx.fillStyle="#638c56"; ctx.fillRect(-s*3,-s*7.6,s*1,s*3.4); ctx.fillRect(s*2,-s*6.6,s*1,s*3.6); ctx.beginPath(); ctx.ellipse(0,-s*9,s*1.7,s*1.9,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#1c2b19"; ctx.beginPath(); ctx.ellipse(-s*0.6,-s*9.1,s*0.4,s*0.25,0.3,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(s*0.6,-s*9.1,s*0.4,s*0.25,-0.3,0,Math.PI*2); ctx.fill(); }
+  function drawDragon(ctx,s){ ctx.fillStyle="#b23b2b"; ctx.beginPath(); ctx.moveTo(-s*3.5,-s*3); ctx.quadraticCurveTo(-s*6,-s*7,-s*1.5,-s*6); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(s*3.5,-s*3); ctx.quadraticCurveTo(s*6,-s*7,s*1.5,-s*6); ctx.closePath(); ctx.fill(); ctx.fillStyle="#d9603f"; ctx.beginPath(); ctx.ellipse(0,-s*4.5,s*2.4,s*3,0,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(0,-s*8,s*1.9,s*1.6,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#5e1c12"; ctx.beginPath(); ctx.moveTo(-s*1.4,-s*9.3); ctx.lineTo(-s*0.9,-s*10.6); ctx.lineTo(-s*0.4,-s*9.3); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(s*1.4,-s*9.3); ctx.lineTo(s*0.9,-s*10.6); ctx.lineTo(s*0.4,-s*9.3); ctx.closePath(); ctx.fill(); ctx.fillStyle="#ffd23f"; ctx.beginPath(); ctx.arc(-s*0.6,-s*8.2,s*0.3,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.6,-s*8.2,s*0.3,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#fff"; for(let i=0;i<4;i++){ ctx.beginPath(); ctx.moveTo(-s*1+i*s*0.6,-s*7.2); ctx.lineTo(-s*0.85+i*s*0.6,-s*6.6); ctx.lineTo(-s*0.7+i*s*0.6,-s*7.2); ctx.closePath(); ctx.fill(); } }
+  function drawWorm(ctx,s){ ctx.fillStyle="#c98a8a"; for(let i=0;i<5;i++){ ctx.beginPath(); ctx.ellipse(Math.sin(performance.now()/260+i)*s*0.5, -s*1.6-i*s*1.7, s*1.6-(i*0.05), s*1.4, 0,0,Math.PI*2); ctx.fill(); } ctx.fillStyle="#3a1414"; ctx.beginPath(); ctx.arc(0,-s*9.6,s*0.3,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.6,-s*9.4,s*0.3,0,Math.PI*2); ctx.fill(); }
+  function drawGhost(ctx,s){ ctx.globalAlpha=0.85; ctx.fillStyle="#dfeeff"; ctx.beginPath(); ctx.moveTo(-s*2.4,-s*2); ctx.quadraticCurveTo(-s*3, -s*9, 0,-s*9.4); ctx.quadraticCurveTo(s*3,-s*9, s*2.4,-s*2); for(let i=0;i<4;i++){ ctx.quadraticCurveTo(s*2.4-i*s*1.2-s*0.6,-s*1, s*2.4-i*s*1.2-s*1.2,-s*2); } ctx.closePath(); ctx.fill(); ctx.globalAlpha=1; ctx.fillStyle="#1a2a3a"; ctx.beginPath(); ctx.arc(-s*0.8,-s*6.8,s*0.4,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.8,-s*6.8,s*0.4,0,Math.PI*2); ctx.fill(); }
+  function drawWitch(ctx,s){ ctx.fillStyle="#4a2e6b"; ctx.beginPath(); ctx.moveTo(-s*2.6,-s*1.5); ctx.lineTo(s*2.6,-s*1.5); ctx.lineTo(0,-s*8); ctx.closePath(); ctx.fill(); ctx.fillStyle="#d9b58f"; ctx.beginPath(); ctx.ellipse(0,-s*8.6,s*1.4,s*1.5,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#2a1a3a"; ctx.beginPath(); ctx.ellipse(0,-s*10,s*1.9,s*0.5,0,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.moveTo(-s*1.3,-s*9.8); ctx.lineTo(s*1.3,-s*9.8); ctx.lineTo(0,-s*14); ctx.closePath(); ctx.fill(); ctx.fillStyle="#7ee6c4"; ctx.beginPath(); ctx.arc(-s*0.5,-s*8.7,s*0.25,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.5,-s*8.7,s*0.25,0,Math.PI*2); ctx.fill(); }
+  function drawMummy(ctx,s){ ctx.fillStyle="#d8caa0"; ctx.beginPath(); ctx.ellipse(0,-s*5,s*2.2,s*4.6,0,0,Math.PI*2); ctx.fill(); ctx.strokeStyle="#a99566"; ctx.lineWidth=Math.max(1,s*0.3); for(let i=0;i<6;i++){ ctx.beginPath(); ctx.moveTo(-s*2.2,-s*1.6-i*s*1.2); ctx.lineTo(s*2.2,-s*2.4-i*s*1.2); ctx.stroke(); } ctx.fillStyle="#d8caa0"; ctx.beginPath(); ctx.arc(0,-s*9,s*1.7,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#c0362c"; ctx.beginPath(); ctx.rect(-s*1,-s*9.3,s*0.7,s*0.35); ctx.fill(); ctx.beginPath(); ctx.rect(s*0.3,-s*9.3,s*0.7,s*0.35); ctx.fill(); }
+  function drawTroll(ctx,s){ ctx.fillStyle="#5f7a4c"; ctx.beginPath(); ctx.ellipse(0,-s*4.4,s*3.2,s*4,0,0,Math.PI*2); ctx.fill(); ctx.fillRect(-s*4,-s*6.5,s*1.2,s*4); ctx.fillRect(s*2.8,-s*6.5,s*1.2,s*4); ctx.beginPath(); ctx.ellipse(0,-s*9,s*2.1,s*2,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#3d4f30"; ctx.beginPath(); ctx.arc(-s*0.8,-s*9.2,s*0.4,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.8,-s*9.2,s*0.4,0,Math.PI*2); ctx.fill(); ctx.fillStyle="#f2eede"; ctx.beginPath(); ctx.moveTo(-s*0.5,-s*7.6); ctx.lineTo(-s*0.2,-s*6.9); ctx.lineTo(s*0.1,-s*7.6); ctx.closePath(); ctx.fill(); }
+  function drawGolem(ctx,s){ ctx.fillStyle="#8c8c8c"; ctx.fillRect(-s*2.6,-s*7,s*5.2,s*4.5); ctx.fillRect(-s*3.6,-s*6.5,s*1.4,s*3.6); ctx.fillRect(s*2.2,-s*6.5,s*1.4,s*3.6); ctx.fillRect(-s*1.9,-s*9.2,s*3.8,s*2.3); ctx.strokeStyle="#5c5c5c"; ctx.lineWidth=Math.max(1,s*0.18); ctx.beginPath(); ctx.moveTo(-s*1.4,-s*6.6); ctx.lineTo(-s*0.3,-s*4.8); ctx.lineTo(s*1.2,-s*5.6); ctx.stroke(); ctx.fillStyle="#7ee6c4"; ctx.beginPath(); ctx.arc(0,-s*4.7,s*0.55,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(-s*0.7,-s*8.1,s*0.3,0,Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.7,-s*8.1,s*0.3,0,Math.PI*2); ctx.fill(); }
+  function drawExitLight(ctx, cx, cy, w, h, dist){
+    const rad = Math.max(w,h)*0.8;
+    const grad = ctx.createRadialGradient(cx,cy,rad*0.1, cx,cy,rad);
+    grad.addColorStop(0,"rgba(126,230,196,1)"); grad.addColorStop(0.3,"rgba(60,180,200,0.8)"); grad.addColorStop(1,"rgba(20,50,100,0)");
+    ctx.fillStyle=grad;
+    ctx.beginPath(); ctx.ellipse(cx,cy, rad*0.6, rad*1.2, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="rgba(255,255,255,0.9)";
+    ctx.beginPath(); ctx.ellipse(cx,cy, rad*0.15, rad*0.6, 0, 0, Math.PI*2); ctx.fill();
+  }
+
+  /* ---- Звук ---- */
+  let audioCtx=null;
+  function ensureAudio(){ if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } }
+  function playTone(freqStart, freqEnd, dur, type){
+    ensureAudio(); if(!audioCtx) return;
+    const t0=audioCtx.currentTime; const osc=audioCtx.createOscillator(); const gain=audioCtx.createGain();
+    osc.type=type||"sine"; osc.frequency.setValueAtTime(freqStart,t0); osc.frequency.linearRampToValueAtTime(freqEnd,t0+dur);
+    gain.gain.setValueAtTime(0.0001,t0); gain.gain.exponentialRampToValueAtTime(0.05,t0+0.02); gain.gain.exponentialRampToValueAtTime(0.0001,t0+dur);
+    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(t0); osc.stop(t0+dur+0.02);
+  }
+  function soundCorrect(){ playTone(440,880,0.35,"triangle"); }
+  function soundWrong(){ playTone(180,90,0.3,"sawtooth"); }
+  function soundWin(){ playTone(300,1200,1.5,"sine"); }
+
+  /* ---- Вікторина ---- */
+  const quizModal = document.getElementById("quizModal");
+  const quizQuestionEl = document.getElementById("quizQuestion");
+  const quizOptionsEl = document.getElementById("quizOptions");
+  const viewEl = document.getElementById("view");
+  const flashEl = document.getElementById("flash");
+
+  function openQuiz(){
+    quizActive=true; quizLocked=false;
+    const q = window.questionBank[activeMonster.qIndex] || DEFAULT_QUESTIONS[activeMonster.qIndex];
+    quizQuestionEl.textContent = q.question; quizOptionsEl.innerHTML="";
+    const order = Array.from({length: q.options.length}, (_, i) => i);
+    for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+    order.forEach((optIdx)=>{
+      const btn=document.createElement("button"); btn.className="optBtn"; btn.type="button"; btn.textContent = q.options[optIdx];
+      btn.addEventListener("click", ()=>{ if(quizLocked) return; quizLocked=true; resolveMonster(optIdx===q.correct, false); });
+      quizOptionsEl.appendChild(btn);
+    });
+    quizModal.classList.add("show");
+  }
+  function closeQuiz(){ quizActive=false; quizModal.classList.remove("show"); }
+  
+  function resolveMonster(correct, skipped, isRemote = false){
+    if(correct){
+      flashEl.className="flash good"; flashEl.classList.add("good");
+      if(!skipped && !isRemote) soundCorrect();
+      setTimeout(()=>{ flashEl.className="flash"; }, 260);
+      activeMonster.alive=false; monstersDefeated++; updateProgressDots(); closeQuiz();
+      activeMonster=null;
+      nextMonsterThreshold = stepsCount + 4 + Math.floor(Math.random()*2);
+    } else {
+      if(!isRemote) soundWrong();
+      viewEl.classList.remove("shake"); void viewEl.offsetWidth; viewEl.classList.add("shake");
+      flashEl.classList.add("bad"); setTimeout(()=>{ flashEl.classList.remove("bad"); }, 260);
+      movePlayer(-dirX*0.25, -dirY*0.25);
+      setTimeout(()=>{ quizLocked=false; }, 500);
+    }
+  }
+
+  /* ---- Перемога ---- */
+  const winScreen = document.getElementById("winScreen");
+  function checkExitReached(){
+    if(!exitLight || gameWon) return;
+    const d = Math.hypot(posX-exitLight.x, posY-exitLight.y);
+    if(d<0.9){ gameWon=true; soundWin(); winScreen.classList.add("show"); }
+  }
+
+  /* ---- Прогрес ---- */
+  const progressEl = document.getElementById("progress");
+  function initProgressDots(){
+    progressEl.innerHTML="";
+    for(let i=0;i<TOTAL_MONSTERS;i++){ const d=document.createElement("div"); d.className="dot"; progressEl.appendChild(d); }
+  }
+  function updateProgressDots(){
+    const dots=progressEl.children;
+    for(let i=0;i<dots.length;i++){ dots[i].classList.toggle("done", i<monstersDefeated); }
+  }
+  initProgressDots();
+
+  /* ---- Супутник ---- */
+  const pupilL=document.getElementById("pupilL"), pupilR=document.getElementById("pupilR");
+  function randomGlance(){
+    const dx=(Math.random()*4-2), dy=(Math.random()*3-1.5);
+    pupilL.style.transform=`translate(${dx}px,${dy}px)`; pupilR.style.transform=`translate(${dx}px,${dy}px)`;
+    setTimeout(randomGlance, 1400+Math.random()*1800);
+  }
+  randomGlance();
+
+  /* ---- Головний цикл ---- */
+  let lastTime=performance.now();
+  function gameLoop(now){
+    const dt=Math.min(0.05,(now-lastTime)/1000); lastTime=now;
+    if(!quizActive && !gameWon){
+      if(keys.left) rotate(-ROT_SPEED*dt);
+      if(keys.right) rotate(ROT_SPEED*dt);
+      if(keys.fwd) movePlayer(dirX*MOVE_SPEED*dt, dirY*MOVE_SPEED*dt);
+      if(keys.back) movePlayer(-dirX*MOVE_SPEED*dt*0.7, -dirY*MOVE_SPEED*dt*0.7);
+      onEnterNewCell();
+      if(activeMonster && activeMonster.alive){
+        const d=Math.hypot(posX-activeMonster.x, posY-activeMonster.y);
+        if(d<=1.35 && !quizActive){ openQuiz(); }
+      }
+      checkExitReached();
+    }
+    renderFrame();
+    requestAnimationFrame(gameLoop);
+  }
+  requestAnimationFrame(gameLoop);
+
+})(); // кінець IIFE
+</script>
+</body>
+</html>
