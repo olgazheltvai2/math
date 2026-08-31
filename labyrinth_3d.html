@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <!--
   ГРА "3D ЛАБІРИНТ" — від першого лиця
-  Версія: v1.7.9 (Глобальна синхронізація питань та спільний крокомір)
+  Версія: v1.7.6 (Повноцінна гра + панель вчителя через onclick + Жорстке поле + Синхронізація)
 -->
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Лабіринт v1.7.9</title>
+<title>Лабіринт v1.7.6</title>
 <!-- Підключення Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -27,7 +27,14 @@
     touch-action:none;
     background-size: cover; background-position: center; transition: background-image 0.5s ease;
   }
-  #gameRoot{ position:fixed; inset:0; width:100%; height:100%; overflow:hidden; }
+  
+  /* Жорстке поле 16:9, що центрується та адаптується під будь-який екран */
+  #gameRoot{ 
+    position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); 
+    width:100vw; height:56.25vw; max-height:100vh; max-width:177.78vh; 
+    overflow:hidden; box-shadow: 0 0 30px rgba(0,0,0,0.8);
+  }
+  
   #view{ position:absolute; inset:0; width:100%; height:100%; display:block; }
   #view.shake{ animation: shakeAnim 0.35s ease; }
   @keyframes shakeAnim{
@@ -128,8 +135,6 @@
     border: 1px solid rgba(230,210,255,0.3); background: rgba(0,0,0,0.4);
     color: var(--text); font-family: monospace; font-size: 14px;
     line-height: 1.5; white-space: pre-wrap;
-    /* Сховати текст для учнів (якщо вони випадково відкриють) */
-    text-shadow: 0 0 0 var(--text);
   }
   #bulkQuestionsInput:focus { outline: none; border-color: var(--accent2); }
 
@@ -189,7 +194,6 @@
   <div id="flash"></div>
   <div id="progress"></div>
 
-  <!-- Персонаж-помічник -->
   <div id="guide">
     <svg viewBox="0 0 64 64">
       <defs>
@@ -217,6 +221,7 @@
     <div class="ctlBtn" id="btnFwd">&#9650;</div>
   </div>
 
+  <!-- Кнопка виклику панелі вчителя з прямим onclick -->
   <button id="quickTeacherBtn" onclick="openTeacherPanel()" title="Панель вчителя">⚙️</button>
   <div id="nextBtn" title="Пропустити">💡</div>
 
@@ -230,12 +235,13 @@
     <p>Ти знайшов(-ла) вихід із лабіринту &#10024;</p>
   </div>
 
+  <!-- Панель вчителя з прямими onclick на кнопках -->
   <div class="teacherOverlay" id="teacherPanel">
     <div class="teacherCard">
       <h2>Масове редагування питань</h2>
       <div class="help-text">
-        Введіть список питань, кожне з нового рядка. Елементи розділяйте крапкою з комою (<b>;</b>) АБО копіюйте прямо таблицею з Міро.<br>
-        <b>Формат:</b> Питання ; Правильна відповідь ; Неправильна ; Неправильна...<br>
+        Введіть список питань. Елементи розділяйте крапкою з комою (<b>;</b>), а <b>в кінці кожного питання обов'язково ставте вертикальну риску ( | )</b>.<br>
+        <b>Формат:</b> Питання ; Правильна відповідь ; Неправильна ; Неправильна |<br>
         <i>(Можна вводити від 2 до 4 варіантів відповідей. Гра автоматично їх перемішає).</i>
       </div>
       <textarea id="bulkQuestionsInput" spellcheck="false"></textarea>
@@ -245,11 +251,11 @@
         <button class="teacherBtn secondary" onclick="closeTeacherPanel()">Скасувати</button>
         <button class="teacherBtn danger" onclick="resetQuestions()">Скинути до стандартних</button>
       </div>
+      <!-- Аварійна кнопка закриття -->
       <button class="teacherBtn emergency" onclick="closeTeacherPanel()">❌ Аварійно закрити (без збереження)</button>
     </div>
   </div>
   
-  <!-- UI Галереї тем -->
   <div id="themeBtn">🎨</div>
   <div id="themeModal">
     <div class="theme-header">
@@ -260,12 +266,12 @@
     <div id="themeGrid"></div>
   </div>
 
-  <div id="ver">v1.7.9</div>
+  <div id="ver">v1.7.6</div>
 </div>
 
 <script>
 // =====================================================================
-//  1. ГЛОБАЛЬНІ ФУНКЦІЇ ПАНЕЛІ ВЧИТЕЛЯ (Стійкий парсер + Глобальний банк)
+//  1. ГЛОБАЛЬНІ ФУНКЦІЇ ПАНЕЛІ ВЧИТЕЛЯ (доступні з onclick)
 // =====================================================================
 var teacherPanel = document.getElementById("teacherPanel");
 var bulkInput = document.getElementById("bulkQuestionsInput");
@@ -286,102 +292,110 @@ const DEFAULT_QUESTIONS = [
 ];
 const LS_QUESTIONS_KEY = "labyrinth_teacher_bulk_v1";
 
-window.questionBank = loadQuestions();
-
 function loadQuestions(){
   try{
     const raw = localStorage.getItem(LS_QUESTIONS_KEY);
-    if(!raw) return JSON.parse(JSON.stringify(DEFAULT_QUESTIONS));
+    if(!raw) return DEFAULT_QUESTIONS.map(q=>({...q, options:[...q.options]}));
     const parsed = JSON.parse(raw);
-    if(!Array.isArray(parsed) || parsed.length !== TOTAL_MONSTERS) return JSON.parse(JSON.stringify(DEFAULT_QUESTIONS));
+    if(!Array.isArray(parsed) || parsed.length!==10) return DEFAULT_QUESTIONS.map(q=>({...q, options:[...q.options]}));
     return parsed;
-  }catch(e){ return JSON.parse(JSON.stringify(DEFAULT_QUESTIONS)); }
+  }catch(e){ return DEFAULT_QUESTIONS.map(q=>({...q, options:[...q.options]})); }
 }
-
-function saveQuestionsLocally(qs){ 
+function saveQuestions(qs){ 
   try { localStorage.setItem(LS_QUESTIONS_KEY, JSON.stringify(qs)); } 
   catch(err) { console.warn("Пам'ять браузера заблокована.", err); }
 }
 
 function buildEditor(){
-  let qs = window.questionBank;
+  let qs = loadQuestions();
   let text = "";
   qs.forEach((q) => {
-    let parts = [q.question, q.options[q.correct]];
-    q.options.forEach((opt, i) => { if(i !== q.correct) parts.push(opt); });
-    text += parts.join(" ; ") + "\n";
+    let parts = [q.question];
+    parts.push(q.options[q.correct]);
+    q.options.forEach((opt, i) => {
+      if(i !== q.correct) parts.push(opt);
+    });
+    // Додаємо символ | в кінці для надійного парсингу
+    text += parts.join(" ; ") + " |\n";
   });
   bulkInput.value = text.trim();
 }
 
+// Відкриття панелі
 function openTeacherPanel() {
+  console.log("openTeacherPanel викликана");
   buildEditor();
   teacherPanel.classList.add("show");
+  teacherPanel.style.display = "flex";
+  teacherPanel.style.opacity = "1";
+  teacherPanel.style.pointerEvents = "auto";
 }
 
+// Закриття панелі
 function closeTeacherPanel() {
+  console.log("closeTeacherPanel викликана");
   teacherPanel.classList.remove("show");
+  teacherPanel.style.display = "none";
+  teacherPanel.style.opacity = "0";
+  teacherPanel.style.pointerEvents = "none";
 }
 
+// Скидання питань
 function resetQuestions() {
   localStorage.removeItem(LS_QUESTIONS_KEY);
-  window.questionBank = JSON.parse(JSON.stringify(DEFAULT_QUESTIONS));
-  if(typeof db !== 'undefined') db.ref('maze_questions').set(window.questionBank);
   buildEditor();
 }
 
+// Збереження і закриття
 function saveAndClose() {
+  // 1. Закриваємо панель негайно
   closeTeacherPanel();
+  // 2. Зберігаємо дані через невелику затримку
   setTimeout(() => {
     try {
-      // Очищення тексту для коректної роботи з таблицями Miro
-      let rawText = bulkInput.value
-        .replace(/[\u200B-\u200D\uFEFF]/g, '')
-        .replace(/\u00A0/g, ' ')               
-        .replace(/[；;]/g, ';');               
-
-      const rawLines = rawText.split(/\r?\n/);
+      // Розбиваємо текст за допомогою | (вертикальної риски)
+      const lines = bulkInput.value.split('|').map(l => l.trim()).filter(l => l !== '');
       const newBank = [];
-      let lineIdx = 0;
-
       for (let i = 0; i < TOTAL_MONSTERS; i++) {
         const type = MONSTER_TYPES[i] || MONSTER_TYPES[0];
         let added = false;
-        
-        while (lineIdx < rawLines.length && !added) {
-          let line = rawLines[lineIdx].trim();
-          lineIdx++;
-          
-          if (line !== '') {
-            line = line.replace(/^[•\-\*\d]+\.?\s*/, '');
-            const separator = line.includes('\t') ? '\t' : ';';
-            
-            const parts = line.split(separator).map(p => p.trim()).filter(p => p !== '');
-            if (parts.length >= 2) {
-              newBank.push({ type: type, question: parts[0], options: parts.slice(1), correct: 0 });
-              added = true;
-            }
+        if (i < lines.length) {
+          const parts = lines[i].split(';').map(p => p.trim()).filter(p => p);
+          if (parts.length >= 2) {
+            newBank.push({
+              type: type,
+              question: parts[0],
+              options: parts.slice(1),
+              correct: 0
+            });
+            added = true;
           }
         }
-        if (!added) newBank.push(JSON.parse(JSON.stringify(DEFAULT_QUESTIONS[i])));
+        if (!added) {
+          newBank.push(JSON.parse(JSON.stringify(DEFAULT_QUESTIONS[i])));
+        }
       }
-      
-      saveQuestionsLocally(newBank);
-      window.questionBank = newBank;
-      
-      // СИНХРОНІЗУЄМО ПИТАННЯ В МЕРЕЖУ!
-      if(typeof db !== 'undefined') db.ref('maze_questions').set(newBank);
-      
-    } catch (error) { console.error("Помилка збереження:", error); }
+      saveQuestions(newBank);
+      // Оновлюємо банк питань у грі (якщо він десь зберігається)
+      if (typeof window.questionBank !== 'undefined') {
+        window.questionBank = newBank;
+      }
+      console.log("Питання збережено успішно");
+    } catch (error) {
+      console.error("Помилка збереження:", error);
+    }
   }, 30);
 }
 
+// Закриття по Escape
 document.addEventListener("keydown", function(e) {
-  if (e.key === "Escape" && teacherPanel.classList.contains("show")) closeTeacherPanel();
+  if (e.key === "Escape" && teacherPanel.classList.contains("show")) {
+    closeTeacherPanel();
+  }
 });
 
 // =====================================================================
-//  2. FIREBASE ТА УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ
+//  2. FIREBASE ТА ЗАГАЛЬНІ НАЛАШТУВАННЯ
 // =====================================================================
 const firebaseConfig = { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/", projectId: "lesson-13c44" };
 if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
@@ -411,21 +425,27 @@ db.ref(`blocked_users/${myName}`).on('value', snap => {
   document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
 });
 
-// Імунітет лобі на 1 секунду
 let isFirstActivityRead = true;
-setTimeout(() => isFirstActivityRead = false, 1000);
 db.ref('current_activity').on('value', snap => {
-  if (isFirstActivityRead) return;
+  if (isFirstActivityRead) { isFirstActivityRead = false; return; }
   if(snap.val() === 'lobby'){ window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName); }
 });
 
-// Завантаження глобального банку питань з Firebase
-db.ref('maze_questions').on('value', snap => {
-  if(snap.val() && Array.isArray(snap.val())) {
-    window.questionBank = snap.val();
-    saveQuestionsLocally(snap.val()); // Зберігаємо локально на всякий випадок
-  }
-});
+function sendGameAction(type, data) {
+  db.ref('game_action').set({ senderId: myName, timestamp: firebase.database.ServerValue.TIMESTAMP, type: type, data: data });
+}
+
+// Фіксований генератор випадкових чисел для однакової генерації лабіринту у всіх гравців
+function getSeededRandom(seed) {
+  return function() {
+    seed = (seed * 9301 + 49297) % 233280;
+    return seed / 233280;
+  };
+}
+// Використовуємо поточну дату для створення однакового лабіринту на весь день
+const todayForSeed = new Date();
+const dailySeed = todayForSeed.getFullYear() * 10000 + (todayForSeed.getMonth()+1) * 100 + todayForSeed.getDate();
+const myRandom = getSeededRandom(dailySeed);
 
 // =====================================================================
 //  3. THEME MANAGER
@@ -461,13 +481,16 @@ document.getElementById('closeThemeModal').onclick = () => document.getElementBy
 document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
 
 // =====================================================================
-//  4. ОСНОВНА ГРА "3D ЛАБІРИНТ" З ВІДОКРЕМЛЕНОЮ СИНХРОНІЗАЦІЄЮ
+//  4. ОСНОВНА ГРА "3D ЛАБІРИНТ"
 // =====================================================================
 (function(){
   "use strict";
 
   const MAZE_COLS = 19; const MAZE_ROWS = 19;
   const PLAYER_R = 0.22; const MOVE_SPEED = 2.4; const ROT_SPEED = 2.1;
+
+  // Використовуємо глобальний банк питань (з панелі)
+  window.questionBank = loadQuestions();
 
   /* ---- Генерація лабіринту ---- */
   function generateMazeCells(cols, rows){
@@ -484,14 +507,14 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
         if(nx>=0&&nx<cols&&ny>=0&&ny<rows&&!cells[ny][nx].visited) neighbors.push([d,nx,ny,opp]);
       }
       if(neighbors.length===0){ stack.pop(); continue; }
-      const [d,nx,ny,opp]=neighbors[Math.floor(Math.random()*neighbors.length)];
+      const [d,nx,ny,opp]=neighbors[Math.floor(myRandom()*neighbors.length)];
       cells[y][x][d]=false; cells[ny][nx][opp]=false; cells[ny][nx].visited=true; visitedCount++; stack.push([nx,ny]);
     }
     const extra=Math.floor(cols*rows*0.2);
     for(let i=0;i<extra;i++){
-      const x=Math.floor(Math.random()*cols), y=Math.floor(Math.random()*rows); const opts=[];
+      const x=Math.floor(myRandom()*cols), y=Math.floor(myRandom()*rows); const opts=[];
       if(x<cols-1) opts.push("E"); if(y<rows-1) opts.push("S"); if(opts.length===0) continue;
-      const d=opts[Math.floor(Math.random()*opts.length)];
+      const d=opts[Math.floor(myRandom()*opts.length)];
       if(d==="E"){ cells[y][x].E=false; cells[y][x+1].W=false; } else { cells[y][x].S=false; cells[y+1][x].N=false; }
     }
     return cells;
@@ -518,77 +541,10 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
     if(map[2][1]===0){ dirX=0; dirY=1; planeX=-0.66; planeY=0; return; }
   })();
 
-  // ГЛОБАЛЬНИЙ КРОКОМІР (головний фікс для монстрів)
-  let globalStepsCount = 0; 
-  let lastCellKey = null; let lastHeadingLabel = null;
+  let stepsCount = 0; let lastCellKey = null; let lastHeadingLabel = null;
   let nextMonsterThreshold = 3; let monstersDefeated = 0; let gameWon = false;
   let activeMonster = null; let exitLight = null; let quizActive = false; let quizLocked = false;
-  let currentQuizOrder = [];
 
-  /* ---- СИНХРОНІЗАЦІЯ Firebase ---- */
-  
-  // 1. Надсилання дискретних подій через game_action
-  function sendGameAction(type, data) {
-    db.ref('game_action').set({ senderId: myName, timestamp: firebase.database.ServerValue.TIMESTAMP, type: type, data: data });
-  }
-
-  // Обробник отриманих подій
-  let isRemoteAction = false;
-  db.ref('game_action').on('value', snap => {
-    const action = snap.val();
-    if (!action || action.senderId === myName) return; 
-
-    isRemoteAction = true;
-    switch (action.type) {
-      case 'spawn_monster':
-        activeMonster = action.data.monster;
-        nextMonsterThreshold = action.data.threshold;
-        break;
-      case 'spawn_exit':
-        exitLight = action.data.exitLight;
-        break;
-      case 'open_quiz':
-        currentQuizOrder = action.data.quizOrder;
-        if (!quizActive) openQuiz(true);
-        break;
-      case 'close_quiz':
-        if (quizActive) closeQuiz(true);
-        break;
-      case 'resolve_monster':
-        monstersDefeated = action.data.defeated;
-        nextMonsterThreshold = action.data.newThreshold;
-        resolveMonster(action.data.correct, action.data.skipped, true);
-        break;
-      case 'win':
-        if (!gameWon) triggerWin(true);
-        break;
-    }
-    isRemoteAction = false;
-  });
-
-  // 2. Окрема синхронізація безперервного руху та кроків
-  let lastSentPosX = 0, lastSentPosY = 0, lastSentDirX = 0;
-  function checkAndSyncMovement() {
-    if(Math.abs(posX - lastSentPosX) > 0.01 || Math.abs(posY - lastSentPosY) > 0.01 || Math.abs(dirX - lastSentDirX) > 0.01) {
-        db.ref('shared_pos').set({ 
-            senderId: myName, x: posX, y: posY, dx: dirX, dy: dirY, px: planeX, py: planeY, 
-            steps: globalStepsCount // Синхронізуємо кроки тут!
-        });
-        lastSentPosX = posX; lastSentPosY = posY; lastSentDirX = dirX;
-    }
-  }
-
-  db.ref('shared_pos').on('value', snap => {
-    const pos = snap.val();
-    if(!pos || pos.senderId === myName) return;
-    posX = pos.x; posY = pos.y; dirX = pos.dx; dirY = pos.dy; planeX = pos.px; planeY = pos.py;
-    // Беремо найбільше значення кроків, щоб не збивати прогрес
-    if (pos.steps > globalStepsCount) {
-        globalStepsCount = pos.steps;
-    }
-  });
-
-  /* ---- Логіка рухів та генерації ---- */
   function canStand(x,y,r){
     const pts=[[x-r,y-r],[x+r,y-r],[x-r,y+r],[x+r,y+r]];
     for(const [px,py] of pts){
@@ -613,7 +569,6 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   }
   function headingLabel(){ const h = headingVector(); return h.dx + "," + h.dy; }
   function getCurrentCell(){ const tx=Math.floor(posX), ty=Math.floor(posY); return { cx:(tx-1)/2, cy:(ty-1)/2, tx, ty }; }
-  
   function findStraightRun(cx, cy, hx, hy, maxSteps){
     const run=[];
     for(let k=1;k<=maxSteps;k++){
@@ -626,51 +581,56 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
     }
     return run;
   }
-  
-  // Спавн монстра
-  function tryAttemptSpawn(){
+  function tryAttemptSpawn(isTurnSpawn){
     if(activeMonster || exitLight) return;
     const {cx,cy} = getCurrentCell();
     const h = headingVector();
     if(h.dx===0 && h.dy===0) return;
     let run = findStraightRun(cx, cy, h.dx, h.dy, 15);
-    
     if(run.length >= 1){
       const spawnIdx = Math.max(0, run.length - 1); 
       const cell = run[spawnIdx];
-      
       if(monstersDefeated >= TOTAL_MONSTERS){
         exitLight = { x: 2*cell.cx+1+0.5, y: 2*cell.cy+1+0.5 };
-        sendGameAction('spawn_exit', { exitLight: exitLight });
       } else {
         const type = MONSTER_TYPES[monstersDefeated];
         activeMonster = { type, x: 2*cell.cx+1+0.5, y: 2*cell.cy+1+0.5, alive:true, qIndex: monstersDefeated };
-        sendGameAction('spawn_monster', { monster: activeMonster, threshold: nextMonsterThreshold });
       }
+      
+      // СИНХРОНІЗАЦІЯ ПЕРСОНАЖІВ: Миттєво надсилаємо появу монстра всім пристроям
+      sendGameAction('spawn_monster', {
+        monstersDefeated: monstersDefeated,
+        exitLight: exitLight ? {x: exitLight.x, y: exitLight.y} : null,
+        activeMonster: activeMonster ? {type: activeMonster.type, x: activeMonster.x, y: activeMonster.y, alive: true, qIndex: activeMonster.qIndex} : null
+      });
     }
   }
-  
   function onEnterNewCell(){
     const tx=Math.floor(posX), ty=Math.floor(posY);
     if(tx%2!==1 || ty%2!==1) return;
     const cx=(tx-1)/2, cy=(ty-1)/2;
     const key = cx+"_"+cy;
-    
-    if(lastCellKey !== null && key !== lastCellKey) {
-        globalStepsCount++; // Збільшуємо глобальний крокомір
-    }
+    const currentHeading = headingLabel();
+    if(lastCellKey !== null && key !== lastCellKey) stepsCount++;
     lastCellKey = key;
-    
-    if(!activeMonster && !exitLight && globalStepsCount >= nextMonsterThreshold) {
-        tryAttemptSpawn();
+    if(lastHeadingLabel !== null && currentHeading !== lastHeadingLabel){
+      if(!activeMonster && !exitLight){
+        if(monstersDefeated < TOTAL_MONSTERS && stepsCount >= nextMonsterThreshold) tryAttemptSpawn(true);
+        else if(monstersDefeated >= TOTAL_MONSTERS) tryAttemptSpawn(true);
+      }
     }
+    lastHeadingLabel = currentHeading;
   }
 
   /* ---- Ввід ---- */
   const keys = { fwd:false, back:false, left:false, right:false };
   window.addEventListener("keydown", (e)=>{
-    if(document.getElementById("teacherPanel").classList.contains("show")){ if(e.key === "Escape") closeTeacherPanel(); return; }
-    if(quizActive) return;
+    // Якщо панель вчителя відкрита – не передаємо керування грі, але дозволяємо Escape
+    if(document.getElementById("teacherPanel").classList.contains("show")){
+      if(e.key === "Escape") { closeTeacherPanel(); }
+      return;
+    }
+    if(quizActive){ return; }
     if(e.key==="ArrowUp"||e.key==="w"||e.key==="W") keys.fwd=true;
     if(e.key==="ArrowDown"||e.key==="s"||e.key==="S") keys.back=true;
     if(e.key==="ArrowLeft"||e.key==="a"||e.key==="A") keys.left=true;
@@ -696,7 +656,29 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   bindHold("btnRight", ()=>keys.right=true, ()=>keys.right=false);
 
   document.getElementById("nextBtn").addEventListener("click", ()=>{
-    if(quizActive && activeMonster && activeMonster.alive) { resolveMonster(true, true, false); }
+    if(quizActive && activeMonster && activeMonster.alive) {
+      resolveMonster(true, true);
+      sendGameAction('resolve_monster', { correct: true, index: activeMonster.qIndex });
+    }
+  });
+
+  let sessionStartTime = Date.now();
+  db.ref('game_action').on('value', snap => {
+    const action = snap.val();
+    if (!action || action.senderId === myName || action.timestamp < sessionStartTime) return;
+    
+    if (action.type === 'resolve_monster' && activeMonster && activeMonster.alive) {
+      if (activeMonster.qIndex === action.data.index) {
+        resolveMonster(action.data.correct, true, true);
+      }
+    }
+    // Синхронізація появи монстра у всіх одночасно
+    if (action.type === 'spawn_monster') {
+      monstersDefeated = action.data.monstersDefeated;
+      if (action.data.exitLight) exitLight = action.data.exitLight;
+      if (action.data.activeMonster) activeMonster = action.data.activeMonster;
+      updateProgressDots();
+    }
   });
 
   /* ---- Рендеринг ---- */
@@ -704,8 +686,11 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   const rayCanvas = document.createElement("canvas"); const rayCtx = rayCanvas.getContext("2d");
   let RENDER_W = 380, RENDER_H = 240;
   function resize(){
-    const w = window.innerWidth, h = window.innerHeight; viewCanvas.width = w; viewCanvas.height = h;
-    RENDER_H = 240; RENDER_W = Math.round(RENDER_H * (w/h)); rayCanvas.width = RENDER_W; rayCanvas.height = RENDER_H;
+    const el = document.getElementById("gameRoot");
+    const w = el.clientWidth, h = el.clientHeight; 
+    viewCanvas.width = w; viewCanvas.height = h;
+    RENDER_H = 240; RENDER_W = Math.round(RENDER_H * (w/h)); 
+    rayCanvas.width = RENDER_W; rayCanvas.height = RENDER_H;
   }
   window.addEventListener("resize", resize); window.addEventListener("orientationchange", resize); resize();
 
@@ -830,79 +815,44 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   const viewEl = document.getElementById("view");
   const flashEl = document.getElementById("flash");
 
-  function openQuiz(isRemote = false){
-    quizActive = true; quizLocked = false;
+  function openQuiz(){
+    quizActive=true; quizLocked=false;
     const q = window.questionBank[activeMonster.qIndex] || DEFAULT_QUESTIONS[activeMonster.qIndex];
-    quizQuestionEl.textContent = q.question; quizOptionsEl.innerHTML = "";
-    
-    if(!isRemote) {
-        currentQuizOrder = Array.from({length: q.options.length}, (_, i) => i);
-        for(let i=currentQuizOrder.length-1;i>0;i--){ 
-            const j=Math.floor(Math.random()*(i+1)); 
-            [currentQuizOrder[i],currentQuizOrder[j]]=[currentQuizOrder[j],currentQuizOrder[i]]; 
-        }
-        sendGameAction('open_quiz', { quizOrder: currentQuizOrder });
-    }
-    
-    currentQuizOrder.forEach((optIdx)=>{
+    quizQuestionEl.textContent = q.question; quizOptionsEl.innerHTML="";
+    const order = Array.from({length: q.options.length}, (_, i) => i);
+    for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+    order.forEach((optIdx)=>{
       const btn=document.createElement("button"); btn.className="optBtn"; btn.type="button"; btn.textContent = q.options[optIdx];
-      btn.addEventListener("click", ()=>{ if(quizLocked) return; quizLocked=true; resolveMonster(optIdx===q.correct, false, false); });
+      btn.addEventListener("click", ()=>{ if(quizLocked) return; quizLocked=true; resolveMonster(optIdx===q.correct, false); });
       quizOptionsEl.appendChild(btn);
     });
     quizModal.classList.add("show");
   }
-  
-  function closeQuiz(isRemote = false){ 
-    quizActive = false; 
-    quizModal.classList.remove("show"); 
-    if(!isRemote) sendGameAction('close_quiz', {});
-  }
+  function closeQuiz(){ quizActive=false; quizModal.classList.remove("show"); }
   
   function resolveMonster(correct, skipped, isRemote = false){
     if(correct){
       flashEl.className="flash good"; flashEl.classList.add("good");
       if(!skipped && !isRemote) soundCorrect();
       setTimeout(()=>{ flashEl.className="flash"; }, 260);
-      
-      if(!isRemote) {
-        activeMonster.alive = false; 
-        monstersDefeated++; 
-        nextMonsterThreshold = globalStepsCount + 4 + Math.floor(Math.random()*2);
-        sendGameAction('resolve_monster', { correct: true, skipped: skipped, defeated: monstersDefeated, newThreshold: nextMonsterThreshold });
-      }
-      
-      updateProgressDots(); 
-      if(quizActive) closeQuiz(isRemote);
-      activeMonster = null;
+      activeMonster.alive=false; monstersDefeated++; updateProgressDots(); closeQuiz();
+      activeMonster=null;
+      nextMonsterThreshold = stepsCount + 4 + Math.floor(Math.random()*2);
     } else {
       if(!isRemote) soundWrong();
       viewEl.classList.remove("shake"); void viewEl.offsetWidth; viewEl.classList.add("shake");
       flashEl.classList.add("bad"); setTimeout(()=>{ flashEl.classList.remove("bad"); }, 260);
       movePlayer(-dirX*0.25, -dirY*0.25);
-      
-      if(!isRemote) {
-        sendGameAction('resolve_monster', { correct: false, skipped: skipped, defeated: monstersDefeated, newThreshold: nextMonsterThreshold });
-      }
       setTimeout(()=>{ quizLocked=false; }, 500);
     }
   }
 
   /* ---- Перемога ---- */
   const winScreen = document.getElementById("winScreen");
-  
   function checkExitReached(){
     if(!exitLight || gameWon) return;
     const d = Math.hypot(posX-exitLight.x, posY-exitLight.y);
-    if(d<0.9){ 
-        triggerWin(false);
-    }
-  }
-
-  function triggerWin(isRemote = false) {
-    gameWon = true; 
-    if(!isRemote) soundWin(); 
-    winScreen.classList.add("show");
-    if(!isRemote) sendGameAction('win', {});
+    if(d<0.9){ gameWon=true; soundWin(); winScreen.classList.add("show"); }
   }
 
   /* ---- Прогрес ---- */
@@ -928,31 +878,17 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
 
   /* ---- Головний цикл ---- */
   let lastTime=performance.now();
-  
   function gameLoop(now){
     const dt=Math.min(0.05,(now-lastTime)/1000); lastTime=now;
     if(!quizActive && !gameWon){
-      let moved = false;
-      if(keys.left) { rotate(-ROT_SPEED*dt); moved=true; }
-      if(keys.right) { rotate(ROT_SPEED*dt); moved=true; }
-      if(keys.fwd) { movePlayer(dirX*MOVE_SPEED*dt, dirY*MOVE_SPEED*dt); moved=true; }
-      if(keys.back) { movePlayer(-dirX*MOVE_SPEED*dt*0.7, -dirY*MOVE_SPEED*dt*0.7); moved=true; }
-      
+      if(keys.left) rotate(-ROT_SPEED*dt);
+      if(keys.right) rotate(ROT_SPEED*dt);
+      if(keys.fwd) movePlayer(dirX*MOVE_SPEED*dt, dirY*MOVE_SPEED*dt);
+      if(keys.back) movePlayer(-dirX*MOVE_SPEED*dt*0.7, -dirY*MOVE_SPEED*dt*0.7);
       onEnterNewCell();
-      
-      let currentHeading = headingLabel();
-      if(currentHeading !== lastHeadingLabel) {
-          if(!activeMonster && !exitLight && globalStepsCount >= nextMonsterThreshold) {
-              tryAttemptSpawn();
-          }
-          lastHeadingLabel = currentHeading;
-      }
-      
-      if(moved) checkAndSyncMovement();
-      
       if(activeMonster && activeMonster.alive){
         const d=Math.hypot(posX-activeMonster.x, posY-activeMonster.y);
-        if(d<=1.35 && !quizActive){ openQuiz(false); }
+        if(d<=1.35 && !quizActive){ openQuiz(); }
       }
       checkExitReached();
     }
