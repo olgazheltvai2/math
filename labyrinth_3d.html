@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <!--
   ГРА "3D ЛАБІРИНТ" — від першого лиця
-  Версія: v1.7.6 (Повноцінна гра + панель вчителя через onclick + Жорстке поле + Синхронізація)
+  Версія: v1.7.7 (Повна тотальна синхронізація: позиція, рух, питання, відповіді)
 -->
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Лабіринт v1.7.6</title>
+<title>Лабіринт v1.7.7</title>
 <!-- Підключення Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -266,7 +266,7 @@
     <div id="themeGrid"></div>
   </div>
 
-  <div id="ver">v1.7.6</div>
+  <div id="ver">v1.7.7</div>
 </div>
 
 <script>
@@ -432,7 +432,7 @@ db.ref('current_activity').on('value', snap => {
 });
 
 function sendGameAction(type, data) {
-  db.ref('game_action').set({ senderId: myName, timestamp: firebase.database.ServerValue.TIMESTAMP, type: type, data: data });
+  db.ref('game_action').set({ senderId: tabId, timestamp: firebase.database.ServerValue.TIMESTAMP, type: type, data: data });
 }
 
 // Фіксований генератор випадкових чисел для однакової генерації лабіринту у всіх гравців
@@ -597,7 +597,7 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
         activeMonster = { type, x: 2*cell.cx+1+0.5, y: 2*cell.cy+1+0.5, alive:true, qIndex: monstersDefeated };
       }
       
-      // СИНХРОНІЗАЦІЯ ПЕРСОНАЖІВ: Миттєво надсилаємо появу монстра всім пристроям
+      // СИНХРОНІЗАЦІЯ ПЕРСОНАЖІВ
       sendGameAction('spawn_monster', {
         monstersDefeated: monstersDefeated,
         exitLight: exitLight ? {x: exitLight.x, y: exitLight.y} : null,
@@ -657,27 +657,46 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
 
   document.getElementById("nextBtn").addEventListener("click", ()=>{
     if(quizActive && activeMonster && activeMonster.alive) {
-      resolveMonster(true, true);
-      sendGameAction('resolve_monster', { correct: true, index: activeMonster.qIndex });
+      resolveMonster(true, true, false);
     }
   });
 
+  // Отримуємо події від інших гравців
   let sessionStartTime = Date.now();
   db.ref('game_action').on('value', snap => {
     const action = snap.val();
-    if (!action || action.senderId === myName || action.timestamp < sessionStartTime) return;
+    if (!action || action.senderId === tabId || action.timestamp < sessionStartTime) return;
     
-    if (action.type === 'resolve_monster' && activeMonster && activeMonster.alive) {
-      if (activeMonster.qIndex === action.data.index) {
-        resolveMonster(action.data.correct, true, true);
-      }
+    // Синхронізація позиції (руху)
+    if (action.type === 'sync_pos') {
+      posX = action.data.posX; posY = action.data.posY;
+      dirX = action.data.dirX; dirY = action.data.dirY;
+      planeX = action.data.planeX; planeY = action.data.planeY;
     }
-    // Синхронізація появи монстра у всіх одночасно
-    if (action.type === 'spawn_monster') {
+    // Синхронізація появи монстра
+    else if (action.type === 'spawn_monster') {
       monstersDefeated = action.data.monstersDefeated;
       if (action.data.exitLight) exitLight = action.data.exitLight;
       if (action.data.activeMonster) activeMonster = action.data.activeMonster;
       updateProgressDots();
+    }
+    // Синхронізація відкриття вікторини
+    else if (action.type === 'open_quiz') {
+      if (!quizActive && activeMonster && activeMonster.qIndex === action.data.index) {
+        openQuiz(true);
+      }
+    }
+    // Синхронізація відповіді у вікторині
+    else if (action.type === 'resolve_monster') {
+      if (activeMonster && activeMonster.alive && activeMonster.qIndex === action.data.index) {
+        resolveMonster(action.data.correct, true, true);
+      }
+    }
+    // Синхронізація кінцевого екрану перемоги
+    else if (action.type === 'win_game') {
+      if (!gameWon) {
+        gameWon = true; soundWin(); winScreen.classList.add("show");
+      }
     }
   });
 
@@ -815,7 +834,8 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   const viewEl = document.getElementById("view");
   const flashEl = document.getElementById("flash");
 
-  function openQuiz(){
+  function openQuiz(isRemote = false){
+    if(quizActive) return;
     quizActive=true; quizLocked=false;
     const q = window.questionBank[activeMonster.qIndex] || DEFAULT_QUESTIONS[activeMonster.qIndex];
     quizQuestionEl.textContent = q.question; quizOptionsEl.innerHTML="";
@@ -823,36 +843,59 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
     for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
     order.forEach((optIdx)=>{
       const btn=document.createElement("button"); btn.className="optBtn"; btn.type="button"; btn.textContent = q.options[optIdx];
-      btn.addEventListener("click", ()=>{ if(quizLocked) return; quizLocked=true; resolveMonster(optIdx===q.correct, false); });
+      btn.addEventListener("click", ()=>{ if(quizLocked) return; quizLocked=true; resolveMonster(optIdx===q.correct, false, false); });
       quizOptionsEl.appendChild(btn);
     });
     quizModal.classList.add("show");
+    
+    // СИНХРОНІЗАЦІЯ ВІДКРИТТЯ ВІКТОРИНИ
+    if (!isRemote && activeMonster) {
+      sendGameAction('open_quiz', { index: activeMonster.qIndex });
+    }
   }
   function closeQuiz(){ quizActive=false; quizModal.classList.remove("show"); }
   
   function resolveMonster(correct, skipped, isRemote = false){
+    const currentQIndex = activeMonster ? activeMonster.qIndex : null;
     if(correct){
       flashEl.className="flash good"; flashEl.classList.add("good");
       if(!skipped && !isRemote) soundCorrect();
       setTimeout(()=>{ flashEl.className="flash"; }, 260);
-      activeMonster.alive=false; monstersDefeated++; updateProgressDots(); closeQuiz();
+      if(activeMonster) activeMonster.alive=false; 
+      monstersDefeated++; updateProgressDots(); closeQuiz();
       activeMonster=null;
-      nextMonsterThreshold = stepsCount + 4 + Math.floor(Math.random()*2);
+      nextMonsterThreshold = stepsCount + 4 + Math.floor(myRandom()*2);
+      
+      // СИНХРОНІЗАЦІЯ ПРАВИЛЬНОЇ ВІДПОВІДІ
+      if (!isRemote && currentQIndex !== null) {
+        sendGameAction('resolve_monster', { correct: true, index: currentQIndex });
+      }
     } else {
       if(!isRemote) soundWrong();
       viewEl.classList.remove("shake"); void viewEl.offsetWidth; viewEl.classList.add("shake");
       flashEl.classList.add("bad"); setTimeout(()=>{ flashEl.classList.remove("bad"); }, 260);
       movePlayer(-dirX*0.25, -dirY*0.25);
       setTimeout(()=>{ quizLocked=false; }, 500);
+      
+      // СИНХРОНІЗАЦІЯ НЕПРАВИЛЬНОЇ ВІДПОВІДІ
+      if (!isRemote && currentQIndex !== null) {
+        sendGameAction('resolve_monster', { correct: false, index: currentQIndex });
+      }
     }
   }
 
   /* ---- Перемога ---- */
   const winScreen = document.getElementById("winScreen");
-  function checkExitReached(){
+  function checkExitReached(isRemote = false){
     if(!exitLight || gameWon) return;
     const d = Math.hypot(posX-exitLight.x, posY-exitLight.y);
-    if(d<0.9){ gameWon=true; soundWin(); winScreen.classList.add("show"); }
+    if(d<0.9){ 
+      gameWon=true; soundWin(); winScreen.classList.add("show"); 
+      // СИНХРОНІЗАЦІЯ ПЕРЕМОГИ
+      if (!isRemote) {
+        sendGameAction('win_game', {});
+      }
+    }
   }
 
   /* ---- Прогрес ---- */
@@ -878,19 +921,32 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
 
   /* ---- Головний цикл ---- */
   let lastTime=performance.now();
+  let lastSyncTime = 0; // Для регулювання частоти синхронізації
+
   function gameLoop(now){
     const dt=Math.min(0.05,(now-lastTime)/1000); lastTime=now;
     if(!quizActive && !gameWon){
-      if(keys.left) rotate(-ROT_SPEED*dt);
-      if(keys.right) rotate(ROT_SPEED*dt);
-      if(keys.fwd) movePlayer(dirX*MOVE_SPEED*dt, dirY*MOVE_SPEED*dt);
-      if(keys.back) movePlayer(-dirX*MOVE_SPEED*dt*0.7, -dirY*MOVE_SPEED*dt*0.7);
-      onEnterNewCell();
+      let movedThisFrame = false;
+      if(keys.left) { rotate(-ROT_SPEED*dt); movedThisFrame = true; }
+      if(keys.right) { rotate(ROT_SPEED*dt); movedThisFrame = true; }
+      if(keys.fwd) { movePlayer(dirX*MOVE_SPEED*dt, dirY*MOVE_SPEED*dt); movedThisFrame = true; }
+      if(keys.back) { movePlayer(-dirX*MOVE_SPEED*dt*0.7, -dirY*MOVE_SPEED*dt*0.7); movedThisFrame = true; }
+      
+      if(movedThisFrame) {
+        onEnterNewCell();
+        
+        // Відправляємо свої координати ~12 разів на секунду при русі
+        if (now - lastSyncTime > 80) {
+          sendGameAction('sync_pos', { posX, posY, dirX, dirY, planeX, planeY });
+          lastSyncTime = now;
+        }
+      }
+      
       if(activeMonster && activeMonster.alive){
         const d=Math.hypot(posX-activeMonster.x, posY-activeMonster.y);
-        if(d<=1.35 && !quizActive){ openQuiz(); }
+        if(d<=1.35 && !quizActive){ openQuiz(false); }
       }
-      checkExitReached();
+      checkExitReached(false);
     }
     renderFrame();
     requestAnimationFrame(gameLoop);
