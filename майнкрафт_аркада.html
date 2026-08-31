@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Parkour Arcade</title>
+
+    <!-- Firebase Compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
+
+    <style>
+        /* Загальні стилі, шрифт Arial */
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #010409; 
+            display: flex; align-items: center; justify-content: center;
+            font-family: Arial, sans-serif; font-weight: bold;
+            color: #00e5ff; user-select: none; overflow: hidden;
+            touch-action: none; /* Запобігає випадковому скролу екрану при грі на мобільному */
+        }
+
+        /* Контейнер гри, прозорий для динамічних фонів */
+        #game-wrapper {
+            position: relative;
+            width: 100vw; height: 56.25vw; 
+            max-height: 100vh; max-width: 177.77vh;
+            background: transparent;
+            overflow: hidden; border-radius: 10px;
+        }
+
+        /* Меню для вводу питань (зникає після старту) */
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle at center, rgba(6, 17, 42, 0.8) 0%, rgba(1, 4, 9, 0.95) 100%);
+            background-image: repeating-linear-gradient(45deg, rgba(0, 229, 255, 0.02) 0px, rgba(0, 229, 255, 0.02) 2px, transparent 2px, transparent 15px);
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 10;
+        }
+
+        /* Блок інструкції для вводу питань */
+        #instruction-box {
+            width: 60%; background: rgba(1, 4, 9, 0.8); 
+            border: 2px solid #ffcc00; border-radius: 10px; 
+            padding: 2vmin; margin-bottom: 2vmin; 
+            color: #fff; font-size: 2vmin; text-align: left; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        #instruction-box h3 { margin: 0 0 1vmin 0; color: #ffcc00; font-size: 2.5vmin; }
+        #instruction-box p { margin: 0; line-height: 1.4; font-weight: normal; }
+
+        textarea {
+            width: 60%; height: 25%;
+            background: rgba(1, 4, 9, 0.7); 
+            color: transparent; /* Зроблено прозорим для секретності */
+            border: 3px solid #00e5ff; border-radius: 20px;
+            font-family: Arial, sans-serif; font-size: 2.5vmin; padding: 2vmin; margin-bottom: 3vmin;
+            outline: none; resize: none;
+            box-shadow: inset 0 0 20px rgba(0, 229, 255, 0.1), 0 10px 30px rgba(0,0,0,0.8);
+        }
+        
+        textarea::selection {
+            color: transparent;
+            background: rgba(0, 229, 255, 0.3);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #00e5ff, #0055ff);
+            border: none; border-radius: 50%; width: 12vmin; height: 12vmin;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 10px 30px rgba(0, 85, 255, 0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:active { transform: scale(0.9); box-shadow: 0 5px 15px rgba(0, 85, 255, 0.5); }
+        .btn svg { width: 6vmin; height: 6vmin; fill: #010409; margin-left: 1vmin; }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* Навігація рівнів (зверху справа) */
+        #nav-layer {
+            position: absolute; top: 2vmin; right: 2vmin;
+            display: flex; gap: 1.5vmin; z-index: 5;
+        }
+        .nav-btn {
+            background: rgba(1, 4, 9, 0.6); border: 2px solid #00e5ff; border-radius: 12px;
+            width: 6vmin; height: 6vmin; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(8px); box-shadow: 0 5px 15px rgba(0, 229, 255, 0.2); transition: transform 0.1s;
+        }
+        .nav-btn:active { transform: scale(0.9); }
+        .nav-btn svg { fill: #00e5ff; width: 3.5vmin; height: 3.5vmin; }
+
+        /* Оверлей завдань */
+        #task-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(1, 4, 9, 0.9); z-index: 20;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            background-image: radial-gradient(circle at 50% 50%, rgba(0, 85, 255, 0.2) 0%, transparent 60%);
+        }
+
+        #question-text {
+            font-size: 5vmin; color: #e0f7fa; text-align: center; margin-bottom: 6vmin;
+            text-shadow: 0 4px 15px #00e5ff, 0 -2px 10px #0055ff;
+            max-width: 85%; line-height: 1.3;
+        }
+
+        #answers-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 3vmin; width: 85%; }
+
+        .answer-btn {
+            background: linear-gradient(135deg, rgba(0, 85, 255, 0.3), rgba(0, 229, 255, 0.2));
+            border: 3px solid #00e5ff; border-radius: 20px;
+            padding: 3vmin 5vmin; font-size: 3.5vmin; font-family: Arial, sans-serif;
+            cursor: pointer; color: #fff; text-align: center; min-width: 40%;
+            box-shadow: inset 0 0 20px rgba(0, 229, 255, 0.1), 0 10px 25px rgba(0,0,0,0.6);
+            transition: all 0.2s; position: relative; overflow: hidden;
+        }
+        .answer-btn:hover { 
+            background: rgba(0, 229, 255, 0.4); 
+            box-shadow: 0 0 35px #00e5ff; text-shadow: 0 0 8px #fff; 
+        }
+        .answer-btn:active { transform: scale(0.95); }
+
+        /* Theme Manager UI */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px; z-index: 10000; 
+            font-size: 30px; background: none; border: none; cursor: pointer; 
+            text-shadow: 0 0 10px #00e5ff; transition: transform 0.2s;
+        }
+        #theme-btn:active { transform: scale(0.9); }
+        #theme-modal {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            background: rgba(1, 4, 9, 0.95); border: 2px solid #00e5ff; border-radius: 10px; 
+            padding: 20px; z-index: 10001; width: 80%; max-width: 600px; max-height: 60vh; 
+            overflow-y: auto; font-family: Arial, sans-serif; box-shadow: 0 0 30px rgba(0, 229, 255, 0.3);
+        }
+        #theme-gallery {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px;
+        }
+        .modal-buttons {
+            display: flex; gap: 10px; margin-top: 20px;
+        }
+        .modal-buttons button {
+            flex: 1; padding: 12px; background: #00e5ff; color: #000; border: none; 
+            border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; font-family: Arial, sans-serif;
+        }
+        #reset-theme-btn { background: #ff0044; color: #fff; }
+
+        /* Мобільне керування персонажем (ВНИЗУ, ЗМЕНШЕНІ КНОПКИ) */
+        #mobile-controls {
+            display: none; position: absolute; bottom: 6vmin; left: 0; width: 100%; 
+            justify-content: space-between; padding: 0 6vmin; box-sizing: border-box; z-index: 150;
+            pointer-events: none; /* Щоб кліки проходили крізь контейнер */
+        }
+        .m-btn {
+            width: 11vmin; height: 11vmin; background: rgba(0, 229, 255, 0.15); 
+            border: 3px solid rgba(0, 229, 255, 0.6); border-radius: 50%; 
+            color: rgba(255, 255, 255, 0.9); font-size: 5vmin; font-weight: bold;
+            display: flex; align-items: center; justify-content: center;
+            user-select: none; touch-action: none; -webkit-touch-callout: none; font-family: Arial, sans-serif;
+            pointer-events: auto; /* Повертаємо клікабельність кнопкам */
+            backdrop-filter: blur(5px); box-shadow: 0 5px 20px rgba(0, 229, 255, 0.3);
+        }
+        .m-btn:active { background: rgba(0, 229, 255, 0.5); transform: scale(0.95); }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <div id="ui-layer">
+        <div id="instruction-box">
+            <h3>Масове редагування питань</h3>
+            <p>Введіть список питань. Елементи розділяйте крапкою з комою (;), а <strong>в кінці кожного питання обов'язково ставте вертикальну риску ( | )</strong>.<br>
+            <span style="color: #00e5ff; font-weight: bold;">Формат:</span> Питання ; Правильна відповідь ; Неправильна ; Неправильна |<br>
+            <em style="color: #ccc;">(Можна вводити від 2 до 4 варіантів відповідей. Гра автоматично їх перемішає).</em></p>
+        </div>
+        <textarea id="questions-input">
+Скільки буде 5 * 5? ; 25 ; 20 ; 30 |
+100 - 45 = ? ; 55 ; 65 ; 45 |
+12 / 4 = ? ; 3 ; 4 ; 2 |
+8 + 7 = ? ; 15 ; 14 ; 16 |
+        </textarea>
+        <button class="btn" id="btn-start">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+    </div>
+
+    <!-- Кнопки перемикання рівнів (зверху) -->
+    <div id="nav-layer" style="display: none;">
+        <button class="nav-btn" id="btn-prev">
+            <svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg>
+        </button>
+        <button class="nav-btn" id="btn-next">
+            <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+        </button>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Справжні кнопки керування персонажем (внизу) -->
+    <div id="mobile-controls">
+        <div style="display: flex; gap: 4vmin;">
+            <div class="m-btn" id="m-left">←</div>
+            <div class="m-btn" id="m-right">→</div>
+        </div>
+        <div style="display: flex; gap: 4vmin;">
+            <div class="m-btn" id="m-up">↑</div>
+            <div class="m-btn" id="m-jump">⇑</div>
+        </div>
+    </div>
+    
+    <div id="task-overlay">
+        <div id="question-text"></div>
+        <div id="answers-container"></div>
+    </div>
+</div>
+
+<!-- Theme Manager Button & Modal -->
+<button id="theme-btn">⚙️</button>
+<div id="theme-modal">
+    <h2 style="text-align: center; margin-top: 0; color: #00e5ff;">Оберіть фон</h2>
+    <div id="theme-gallery"></div>
+    <div class="modal-buttons">
+        <button id="reset-theme-btn">Скинути фон</button>
+        <button id="close-theme-modal">Закрити</button>
+    </div>
+</div>
+
+<script>
+    // --- ДЕТЕКТОР МОБІЛЬНОГО ПРИСТРОЮ (СЕНСОРА) ---
+    window.addEventListener('DOMContentLoaded', () => {
+        if ('ontouchstart' in window || navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0) {
+            document.getElementById('mobile-controls').style.display = 'flex';
+        }
+    });
+
+    // --- FIREBASE ІНІЦІАЛІЗАЦІЯ ---
+    const firebaseConfig = {
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+        projectId: "lesson-13c44"
+    };
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // --- УПРАВЛІННЯ ІМ'ЯМ ТА СЕСІЄЮ ---
+    const urlParams = new URLSearchParams(window.location.search);
+    let myName = urlParams.get('user') || sessionStorage.getItem('userName');
+    if (!myName) {
+        myName = 'Гість_' + Math.floor(Math.random() * 1000);
+    }
+    sessionStorage.setItem('userName', myName);
+
+    // --- FIREBASE СИНХРОНІЗАЦІЯ ДІЙ ТА ПОЗИЦІЙ ---
+    let onlinePlayers = {};
+    db.ref('arcade_players').on('value', snap => {
+        onlinePlayers = snap.val() || {};
+    });
+
+    db.ref('.info/connected').on('value', (snap) => {
+        if (snap.val() === true) {
+            db.ref(`arcade_players/${myName}`).onDisconnect().remove();
+        }
+    });
+
+    function sendGameAction(type, data) {
+        if (!db) return;
+        db.ref('game_action').set({
+            senderId: myName,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: type,
+            data: data
+        });
+    }
+
+    let isGameStarted = false;
+    db.ref('game_action').on('value', snap => {
+        const action = snap.val();
+        if (!action) return;
+        if (action.senderId === myName) return; 
+
+        if (action.type === 'start_game') {
+            questions = action.data.questions;
+            currentLevel = action.data.level;
+            startGameRemotely();
+        } else if (action.type === 'change_level') {
+            currentLevel = action.data.level;
+            loadLevel();
+        }
+    });
+
+    function startGameRemotely() {
+        if(isGameStarted) return;
+        isGameStarted = true;
+        document.getElementById('ui-layer').style.display = 'none';
+        document.getElementById('nav-layer').style.display = 'flex';
+        resize(); loadLevel(); gameLoop();
+    }
+
+    // --- THEME MANAGER ---
+    const themeBtn = document.getElementById('theme-btn');
+    const themeModal = document.getElementById('theme-modal');
+    const closeThemeModal = document.getElementById('close-theme-modal');
+    const resetThemeBtn = document.getElementById('reset-theme-btn');
+    const themeGallery = document.getElementById('theme-gallery');
+
+    themeBtn.onclick = () => themeModal.style.display = 'block';
+    closeThemeModal.onclick = () => themeModal.style.display = 'none';
+    resetThemeBtn.onclick = () => {
+        db.ref('game_theme').set("");
+        themeModal.style.display = 'none';
+    };
+
+    const savedBg = localStorage.getItem('mySavedGameBg');
+    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
+    document.body.style.backgroundSize = 'cover';
+    document.body.style.backgroundPosition = 'center';
+    document.body.style.backgroundAttachment = 'fixed';
+
+    for (let i = 1; i <= 1000; i++) {
+        let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+        let img = new Image();
+        img.src = url;
+        img.onload = () => {
+            let div = document.createElement('div');
+            div.style.position = 'relative';
+            div.style.cursor = 'pointer';
+            div.style.borderRadius = '5px';
+            div.style.overflow = 'hidden';
+            div.style.height = '80px';
+            div.style.backgroundImage = `url('${url}')`;
+            div.style.backgroundSize = 'cover';
+            div.style.backgroundPosition = 'center';
+            div.style.border = '2px solid transparent';
+            
+            let label = document.createElement('div');
+            label.innerText = `Фон ${i}`;
+            label.style.position = 'absolute';
+            label.style.bottom = '0';
+            label.style.width = '100%';
+            label.style.background = 'rgba(0,0,0,0.7)';
+            label.style.color = '#fff';
+            label.style.textAlign = 'center';
+            label.style.fontSize = '12px';
+            label.style.padding = '3px 0';
+            
+            div.appendChild(label);
+            div.onclick = () => db.ref('game_theme').set(url);
+            themeGallery.appendChild(div);
+        };
+    }
+
+    db.ref('game_theme').on('value', snap => {
+        const url = snap.val();
+        if (url) {
+            document.body.style.backgroundImage = `url('${url}')`;
+            localStorage.setItem('mySavedGameBg', url);
+        } else {
+            document.body.style.backgroundImage = 'none';
+            localStorage.removeItem('mySavedGameBg');
+        }
+    });
+
+    // --- АУДІО ДВИЖОК ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(type) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+        
+        if (type === 'jump') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(350, now); osc.frequency.exponentialRampToValueAtTime(750, now + 0.15);
+            gain.gain.setValueAtTime(0.25, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc.start(now); osc.stop(now + 0.15);
+        } else if (type === 'bounce') {
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(250, now); osc.frequency.linearRampToValueAtTime(650, now + 0.25);
+            gain.gain.setValueAtTime(0.35, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+            osc.start(now); osc.stop(now + 0.25);
+        } else if (type === 'hit') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(120, now); osc.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+            gain.gain.setValueAtTime(0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        } else if (type === 'task_open') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(600, now); osc.frequency.setValueAtTime(1000, now + 0.1);
+            gain.gain.setValueAtTime(0.15, now); gain.gain.linearRampToValueAtTime(0, now + 0.25);
+            osc.start(now); osc.stop(now + 0.25);
+        } else if (type === 'success') {
+            osc.type = 'square'; [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => osc.frequency.setValueAtTime(freq, now + i*0.1));
+            gain.gain.setValueAtTime(0.15, now); gain.gain.linearRampToValueAtTime(0, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
+        } else if (type === 'fail') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(80, now + 0.25);
+            gain.gain.setValueAtTime(0.25, now); gain.gain.linearRampToValueAtTime(0, now + 0.35);
+            osc.start(now); osc.stop(now + 0.35);
+        }
+    }
+
+    // --- ОНОВЛЕНИЙ ПАРСЕР ПИТАНЬ ---
+    let questions = [];
+    document.getElementById('btn-start').addEventListener('click', () => {
+        const text = document.getElementById('questions-input').value;
+        const lines = text.split('|').filter(l => l.trim().length > 0); // Розділяємо по |
+        questions = lines.map(line => {
+            const parts = line.split(';').map(p => p.trim()).filter(p => p.length > 0); // Розділяємо по ;
+            if(parts.length < 2) return null;
+            const q = parts[0];
+            const correct = parts[1];
+            const all = parts.slice(1).sort(() => Math.random() - 0.5);
+            return { q: q, correct: correct, all: all };
+        }).filter(q => q);
+        
+        sendGameAction('start_game', { questions: questions, level: currentLevel });
+        startGameRemotely();
+    });
+
+    // --- НАВІГАЦІЯ РІВНІВ ---
+    document.getElementById('btn-next').addEventListener('click', () => changeLevel(1, false));
+    document.getElementById('btn-prev').addEventListener('click', () => changeLevel(-1, false));
+    function changeLevel(dir, isRemote = true) {
+        currentLevel = Math.max(0, Math.min(levels.length - 1, currentLevel + dir));
+        loadLevel();
+        if(!isRemote) sendGameAction('change_level', { level: currentLevel });
+    }
+
+    // --- МАПИ РІВНІВ (10 УНІКАЛЬНИХ РІВНІВ) ---
+    const levels = [
+        [ // Рівень 0
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "...........................11...",
+            ".........................1111...",
+            ".......................111111.F.",
+            "S......111....111....11111111111",
+            "11111..111....111....11111111111",
+            "11111221112222111222211111111111"
+        ],
+        [ // Рівень 1
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "..............................F.",
+            "...........111.............11111",
+            "...........111..................",
+            ".......11..111...11.............",
+            ".......11..111...11.............",
+            "S..1...11..111...11.............",
+            "1111...11..111...115.....5......",
+            "1111...11..111...111.....1......",
+            "1111...11..111...111.....1......",
+            "11113331133111333111333331333333"
+        ],
+        [ // Рівень 2
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            ".............................F..",
+            "..........1111.............1111.",
+            "..........1111.............1111.",
+            "S.........1111..M.....M....1111.",
+            "111.......1111.............1111.",
+            "11122222221111222222222222211111",
+            "11111111111111111111111111111111",
+            "11111111111111111111111111111111",
+            "11111111111111111111111111111111",
+            "11111111111111111111111111111111"
+        ],
+        [ // Рівень 3
+            "................................",
+            "................................",
+            "..............................F.",
+            "............................1111",
+            "............................1...",
+            ".........................4..1...",
+            "...................1111..4..1...",
+            "...................1.....4..1...",
+            "...................1.....4..1...",
+            "..........1111.....1.....4..1...",
+            "..........1........1.....4..1...",
+            "..........1.....4..1.....4..1...",
+            "S...111...1.....4..1.....4..1...",
+            "111.1.....1.....4..1.....4..1...",
+            "111.1.....1.....4..1.....4..1...",
+            "111.1.....1.....4..1.....4..1...",
+            "111.1.....1.....4..1.....4..1...",
+            "11121222221222224221222224221222"
+        ],
+        [ // Рівень 4
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            ".............................F..",
+            "...........................11111",
+            "................................",
+            "S.......M.........M.........M...",
+            "111.............................",
+            "111.............................",
+            "111.............................",
+            "111.............................",
+            "111.............................",
+            "111.............................",
+            "11133333333333333333333333333333"
+        ],
+        [ // Рівень 5
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            ".............................F..",
+            "...........................1111.",
+            "...........................1111.",
+            "................................",
+            "................................",
+            "...................5............",
+            "..............5....1............",
+            "S........5....1....1............",
+            "111......1....1....1............",
+            "111......1....1....1............",
+            "11122222212222122221222222222222"
+        ],
+        [ // Рівень 6
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "..............................F.",
+            "............................1111",
+            "................................",
+            "......................11........",
+            ".................11.............",
+            "............11..................",
+            "S......11.......................",
+            "11..............................",
+            "11..............................",
+            "11122222222222222222222222222222"
+        ],
+        [ // Рівень 7
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            ".............................F..",
+            "...........................11111",
+            "................................",
+            "................................",
+            "..............111...............",
+            "................................",
+            ".........111....................",
+            "S..................5............",
+            "111...5............1...5........",
+            "111...1............1...1........",
+            "11133313333333333331333133333333"
+        ],
+        [ // Рівень 8
+            "................................",
+            ".............................F..",
+            "...........................11111",
+            ".......................M........",
+            "................................",
+            "................................",
+            "...............M................",
+            "................................",
+            "................................",
+            "........M.......................",
+            "................................",
+            "................................",
+            "................................",
+            "................................",
+            "S...............................",
+            "111.............................",
+            "111.............................",
+            "11122222222222222222222222222222"
+        ],
+        [ // Рівень 9
+            "................................",
+            ".............................F..",
+            "...........................1111.",
+            "...........................1....",
+            "...........................1....",
+            "...........................1....",
+            "...................M.......1....",
+            "...........................1....",
+            "...........M...............1....",
+            "...........................1....",
+            "...................4.......1....",
+            "...................4.......1....",
+            "...................4............",
+            "S..................4............",
+            "111...5............4............",
+            "111...1............4............",
+            "11122212222222222224222222222222",
+            "11122212222222222224222222222222"
+        ]
+    ];
+
+    // --- ФІЗИКА І СТАН ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const ts = 30; 
+    let width = 960, height = 540; 
+    let currentLevel = 0;
+    let grid = [], particles = [], entities = [], bgElements = [];
+    let isTaskActive = false;
+    let gameWon = false;
+    let lastSyncTime = 0;
+
+    const p = { 
+        x: 0, y: 0, w: 20, h: 28, 
+        vx: 0, vy: 0, speed: 7.5, jump: -14.5, 
+        dir: 1, frame: 0, state: 'idle',
+        emotion: 'focus', blinkTimer: 0 
+    };
+    
+    const keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, Space: false };
+
+    // --- ВДОСКОНАЛЕНЕ МОБІЛЬНЕ КЕРУВАННЯ ---
+    const bindInput = (elemId, keyName) => {
+        const el = document.getElementById(elemId);
+        if (!el) return;
+        
+        const activate = (e) => { 
+            if(e.cancelable) e.preventDefault(); 
+            keys[keyName] = true; 
+        };
+        const deactivate = (e) => { 
+            if(e.cancelable) e.preventDefault(); 
+            keys[keyName] = false; 
+        };
+        
+        el.addEventListener('touchstart', activate, {passive: false});
+        el.addEventListener('touchend', deactivate, {passive: false});
+        el.addEventListener('touchcancel', deactivate, {passive: false});
+        el.addEventListener('mousedown', activate);
+        el.addEventListener('mouseup', deactivate);
+        el.addEventListener('mouseleave', deactivate);
+        el.addEventListener('contextmenu', e => e.preventDefault());
+    };
+
+    bindInput('m-left', 'ArrowLeft');
+    bindInput('m-right', 'ArrowRight');
+    bindInput('m-up', 'ArrowUp');
+    bindInput('m-jump', 'Space'); 
+
+    function resize() {
+        canvas.width = width; canvas.height = height;
+    }
+    window.addEventListener('resize', resize);
+
+    document.addEventListener('keydown', e => { if (e.code in keys) keys[e.code] = true; });
+    document.addEventListener('keyup', e => { if (e.code in keys) keys[e.code] = false; });
+
+    function loadLevel() {
+        isTaskActive = false; gameWon = false; p.emotion = 'focus'; p.state = 'idle';
+        document.getElementById('task-overlay').style.display = 'none';
+        
+        const map = levels[currentLevel % levels.length];
+        grid = []; particles = []; entities = []; bgElements = [];
+        p.vx = 0; p.vy = 0;
+
+        for(let i=0; i<45; i++) {
+            bgElements.push({
+                x: Math.random()*width, y: Math.random()*height,
+                size: Math.random()*2+1, speed: Math.random()*0.4+0.1,
+                offset: Math.random()*Math.PI*2,
+                color: Math.random() > 0.5 ? '#00e5ff' : '#0055ff'
+            });
+        }
+
+        for (let r = 0; r < map.length; r++) {
+            let row = [];
+            for (let c = 0; c < map[r].length; c++) {
+                let char = map[r][c];
+                let val = 0;
+                
+                if (char === 'S') { p.x = c*ts + (ts-p.w)/2; p.y = r*ts + (ts-p.h); } 
+                else if (char === '1') val = 1; 
+                else if (char === '2') val = 2;
+                else if (char === '3') val = 3; 
+                else if (char === '4') val = 4;
+                else if (char === '5') val = 5; 
+                else if (char === 'F') val = 9;
+                else if (char === 'M') {
+                    entities.push({ type: 'plat', x: c*ts, y: r*ts, w: ts*3, h: ts/2, vx: 2.5, sx: c*ts, ex: c*ts + ts*5.5 });
+                }
+                row.push(val);
+            }
+            grid.push(row);
+        }
+    }
+
+    function spawnParticles(x, y, color, count=15) {
+        for(let i=0; i<count; i++) {
+            particles.push({
+                x: x, y: y, 
+                vx: (Math.random()-0.5)*9, vy: (Math.random()-0.5)*9 - 1,
+                life: 1, color: color, size: Math.random()*4+2
+            });
+        }
+    }
+
+    function checkMapCollision(isX, test = false) {
+        let hit = false;
+        let px1 = Math.floor(p.x / ts);
+        let px2 = Math.floor((p.x + p.w - 0.05) / ts);
+        let py1 = Math.floor(p.y / ts);
+        let py2 = Math.floor((p.y + p.h - 0.05) / ts);
+        
+        for (let y = py1; y <= py2; y++) {
+            for (let x = px1; x <= px2; x++) {
+                if (grid[y] && grid[y][x]) {
+                    let t = grid[y][x];
+                    if (t === 1 || t === 5) { 
+                        hit = true;
+                        if (!test) {
+                            if (isX) {
+                                if (p.vx > 0) p.x = x*ts - p.w;
+                                else if (p.vx < 0) p.x = (x+1)*ts;
+                            } else {
+                                if (p.vy > 0) p.y = y*ts - p.h;
+                                else if (p.vy < 0) p.y = (y+1)*ts;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return hit;
+    }
+
+    function update() {
+        if (isTaskActive || gameWon) return;
+
+        let inWater = false, onLadder = false, onGround = false;
+        
+        let cx = Math.floor((p.x + p.w/2)/ts);
+        let cy = Math.floor((p.y + p.h - 2)/ts); 
+        let cyCenter = Math.floor((p.y + p.h/2)/ts); 
+        
+        if (grid[cy] && grid[cy][cx] === 3) inWater = true;
+        
+        if (grid[cyCenter] && grid[cyCenter][cx] !== undefined) {
+            let t = grid[cyCenter][cx];
+            if (t === 4) onLadder = true; 
+            if (t === 2) { 
+                playSound('hit'); p.emotion = 'hurt';
+                spawnParticles(p.x+p.w/2, p.y+p.h/2, '#ff0044', 25);
+                setTimeout(loadLevel, 500); return; 
+            } 
+            if (t === 9) { triggerTask(); return; }
+        }
+
+        if (keys.ArrowLeft) { p.vx = -p.speed; p.dir = -1; p.state = 'run'; }
+        else if (keys.ArrowRight) { p.vx = p.speed; p.dir = 1; p.state = 'run'; }
+        else { p.vx *= 0.6; p.state = 'idle'; }
+        
+        if (inWater) p.vx *= 0.6;
+        
+        p.x += p.vx;
+        if (checkMapCollision(true)) p.vx = 0;
+
+        if (onLadder) {
+            p.state = 'climb';
+            if (keys.ArrowUp) p.vy = -3.5;
+            else p.vy = 0;
+            
+            if (keys.Space) {
+                p.vy = p.jump; 
+                playSound('jump'); p.emotion = 'happy';
+                keys.Space = false;
+                onLadder = false;
+                spawnParticles(p.x+p.w/2, p.y+p.h, '#00e5ff', 5);
+            }
+        } 
+        
+        if (!onLadder) {
+            p.vy += inWater ? 0.25 : 0.6; 
+            
+            p.y += 1; onGround = checkMapCollision(false, true); p.y -= 1;
+            
+            entities.forEach(e => {
+                if (e.type === 'plat') {
+                    e.x += e.vx;
+                    if (e.x > e.ex || e.x < e.sx) e.vx *= -1;
+                    if (p.vy >= 0 && p.y + p.vy + p.h >= e.y && p.y + p.h <= e.y + 25 && p.x + p.w > e.x && p.x < e.x + e.w) {
+                        onGround = true; p.y = e.y - p.h; p.vy = 0; p.x += e.vx;
+                    }
+                }
+            });
+
+            let cyBottom = Math.floor((p.y + p.h + 2)/ts);
+            if(onGround && grid[cyBottom] && grid[cyBottom][Math.floor((p.x+p.w/2)/ts)] === 5) {
+                p.vy = -16; playSound('bounce'); onGround = false; p.emotion = 'happy';
+                spawnParticles(p.x+p.w/2, p.y+p.h, '#00e5ff', 12);
+            }
+
+            if ((keys.ArrowUp || keys.Space) && onGround) {
+                p.vy = p.jump * (inWater ? 0.75 : 1);
+                playSound('jump'); p.emotion = 'happy';
+                keys.ArrowUp = false; keys.Space = false;
+                spawnParticles(p.x+p.w/2, p.y+p.h, '#00e5ff', 5);
+            }
+        }
+
+        p.y += p.vy;
+        if (checkMapCollision(false)) {
+            if(p.vy > 0) { onGround = true; if(p.emotion === 'happy') p.emotion = 'focus'; }
+            p.vy = 0;
+        }
+
+        if(!onGround && !onLadder) p.state = p.vy < 0 ? 'jump' : 'fall';
+        p.frame += Math.abs(p.vx) * 0.12 + (p.state==='idle'?0.05:0);
+
+        p.blinkTimer++;
+        if(p.blinkTimer > 160 && Math.random() > 0.9) p.blinkTimer = 0;
+
+        if (p.x < 0) p.x = 0;
+        if (p.x > width - p.w) p.x = width - p.w;
+        if (p.y > height) { playSound('hit'); loadLevel(); return; }
+
+        for(let i = particles.length-1; i>=0; i--) {
+            let pt = particles[i];
+            pt.x += pt.vx; pt.y += pt.vy; pt.life -= 0.03;
+            if(pt.life <= 0) particles.splice(i, 1);
+        }
+
+        if (Date.now() - lastSyncTime > 65) {
+            db.ref(`arcade_players/${myName}`).set({
+                x: Math.round(p.x), y: Math.round(p.y), dir: p.dir, 
+                state: p.state, frame: p.frame, emotion: p.emotion, level: currentLevel
+            });
+            lastSyncTime = Date.now();
+        }
+    }
+
+    function triggerTask() {
+        if(isTaskActive) return;
+        playSound('task_open'); isTaskActive = true;
+        p.emotion = 'happy'; p.state = 'idle';
+        spawnParticles(p.x+p.w/2, p.y+p.h/2, '#ffff00', 40);
+        
+        let qData = questions[currentLevel % questions.length] || { q: "Неймовірно!", all: ["Далі"], correct: "Далі" };
+        
+        document.getElementById('task-overlay').style.display = 'flex';
+        document.getElementById('question-text').innerText = qData.q;
+        const cont = document.getElementById('answers-container');
+        cont.innerHTML = '';
+        
+        qData.all.forEach(ans => {
+            let btn = document.createElement('button');
+            btn.className = 'answer-btn'; btn.innerText = ans;
+            btn.onclick = () => {
+                if (ans === qData.correct) {
+                    playSound('success');
+                    if (currentLevel >= levels.length - 1) {
+                        gameWon = true; 
+                        document.getElementById('task-overlay').style.display = 'none';
+                        spawnParticles(width/2, height/2, '#00e5ff', 120);
+                    } else {
+                        currentLevel++; loadLevel();
+                        sendGameAction('change_level', { level: currentLevel });
+                    }
+                } else {
+                    playSound('fail');
+                    btn.style.background = 'rgba(255, 0, 68, 0.4)';
+                    btn.style.borderColor = '#ff0044';
+                    btn.style.transform = 'scale(0.9) rotate(-2deg)';
+                    setTimeout(() => {
+                        btn.style.transform = 'scale(1) rotate(0deg)';
+                        btn.style.background = ''; btn.style.borderColor = '';
+                    }, 250);
+                }
+            };
+            cont.appendChild(btn);
+        });
+    }
+
+    function drawCharacter(context, charData, alpha = 1, showName = false, playerName = "") {
+        context.save();
+        context.globalAlpha = alpha;
+        context.translate(charData.x + 10, charData.y + 14); 
+        context.scale(charData.dir, 1);
+        
+        let bounce = (charData.state === 'run' || charData.state === 'idle') ? Math.abs(Math.sin(charData.frame)) * 2.5 : 0;
+        let tilt = charData.state === 'jump' ? -0.25 : (charData.state === 'fall' ? 0.2 : 0);
+        context.rotate(tilt);
+        context.translate(0, -bounce);
+
+        context.fillStyle = '#4a3018'; 
+        context.beginPath(); context.arc(-6, -11, 7, 0, Math.PI*2); context.fill();
+
+        context.fillStyle = '#00e5ff';
+        context.beginPath(); context.roundRect(-8, -6, 16, 17, 5); context.fill();
+        context.fillStyle = '#0055ff'; 
+        context.fillRect(-8, 5, 16, 6);
+
+        context.fillStyle = '#1e293b';
+        let lx1 = 0, lx2 = 0;
+        if(charData.state === 'run') { lx1 = Math.sin(charData.frame)*6; lx2 = -Math.sin(charData.frame)*6; }
+        if(charData.state === 'jump') { lx1 = -4; lx2 = -2; }
+        if(charData.state === 'fall') { lx1 = 2; lx2 = 4; }
+        if(charData.state === 'climb') { lx1 = Math.sin(charData.frame)*4; lx2 = -Math.sin(charData.frame)*4; }
+        
+        context.beginPath(); context.roundRect(-7+lx1, 10, 6, 10, 3); context.fill();
+        context.fillStyle = '#fff'; context.fillRect(-7+lx1, 17, 6, 3); 
+        
+        context.fillStyle = '#1e293b';
+        context.beginPath(); context.roundRect(1+lx2, 10, 6, 10, 3); context.fill();
+        context.fillStyle = '#fff'; context.fillRect(1+lx2, 17, 6, 3); 
+        
+        let armY = (charData.state === 'jump' || charData.state === 'fall') ? -12 : -3;
+        let armRot = charData.state === 'run' ? Math.sin(charData.frame)*0.7 : (charData.state === 'climb' ? Math.sin(charData.frame)*0.9 : 0);
+        
+        context.save(); context.translate(-8, armY); context.rotate(-armRot); 
+        context.fillStyle = '#00e5ff'; context.beginPath(); context.roundRect(0, 0, 5.5, 12, 3); context.fill(); 
+        context.fillStyle = '#fcd4b8'; context.beginPath(); context.arc(2.75, 12, 3, 0, Math.PI*2); context.fill(); 
+        context.restore();
+        
+        context.save(); context.translate(4, armY); context.rotate(armRot); 
+        context.fillStyle = '#00e5ff'; context.beginPath(); context.roundRect(0, 0, 5.5, 12, 3); context.fill(); 
+        context.fillStyle = '#fcd4b8'; context.beginPath(); context.arc(2.75, 12, 3, 0, Math.PI*2); context.fill(); 
+        context.restore();
+
+        context.fillStyle = '#fcd4b8'; 
+        context.beginPath(); context.roundRect(-7, -16, 15, 14, 6); context.fill();
+        
+        context.fillStyle = '#4a3018';
+        context.beginPath(); context.moveTo(-7, -16); context.quadraticCurveTo(0, -22, 8, -14); context.lineTo(8, -16); context.lineTo(-7, -16); context.fill();
+        context.beginPath(); context.arc(6, -14, 3, 0, Math.PI*2); context.fill();
+
+        context.fillStyle = '#000'; 
+        let blink = charData.blinkTimer > 155 ? 0.1 : 1;
+        if(charData.emotion) {
+            if (charData.emotion === 'hurt') {
+                context.lineWidth = 1.5; context.strokeStyle = '#000';
+                context.beginPath(); context.moveTo(-3,-12); context.lineTo(1,-9); context.moveTo(1,-12); context.lineTo(-3,-9); context.stroke();
+                context.beginPath(); context.moveTo(3,-12); context.lineTo(7,-9); context.moveTo(7,-12); context.lineTo(3,-9); context.stroke();
+            } else if (charData.emotion === 'happy') {
+                context.lineWidth = 1.5; context.strokeStyle = '#000';
+                context.beginPath(); context.moveTo(-3,-10); context.quadraticCurveTo(-1,-12, 1,-10); context.stroke();
+                context.beginPath(); context.moveTo(3,-10); context.quadraticCurveTo(5,-12, 7,-10); context.stroke();
+                context.beginPath(); context.moveTo(-1, -7); context.quadraticCurveTo(3, -4, 6, -7); context.stroke();
+            } else {
+                context.beginPath(); context.ellipse(-1, -10, 1.8, 2*blink, 0, 0, Math.PI*2); context.fill();
+                context.beginPath(); context.ellipse(4, -10, 1.8, 2*blink, 0, 0, Math.PI*2); context.fill();
+                
+                if(charData.state === 'jump' || charData.state === 'fall') {
+                    context.beginPath(); context.arc(3, -6, 1.5, 0, Math.PI*2); context.fill(); 
+                } else if (charData.emotion === 'focus') {
+                    context.lineWidth = 1; context.strokeStyle = '#000';
+                    context.beginPath(); context.moveTo(1, -6); context.lineTo(4, -6); context.stroke();
+                } else {
+                    context.lineWidth = 1; context.strokeStyle = '#000';
+                    context.beginPath(); context.moveTo(1, -6); context.quadraticCurveTo(3, -5, 5, -6); context.stroke();
+                }
+            }
+        }
+        context.restore();
+
+        if (showName) {
+            context.fillStyle = 'rgba(255,255,255,0.7)';
+            context.font = 'bold 12px Arial';
+            context.textAlign = 'center';
+            context.fillText(playerName, charData.x + 10, charData.y - 12);
+        }
+    }
+
+    function draw() {
+        let t = Date.now() * 0.001;
+        ctx.clearRect(0, 0, width, height);
+
+        ctx.fillStyle = 'rgba(3, 8, 20, 0.8)';
+        for(let i=0; i<12; i++) {
+            ctx.beginPath(); ctx.moveTo(i*100 - 60, height);
+            ctx.lineTo(i*100 + 30, height - 250 - Math.sin(i)*60);
+            ctx.lineTo(i*100 + 120, height); ctx.fill();
+        }
+
+        bgElements.forEach(bg => {
+            let dx = (bg.x + Math.sin(t*bg.speed + bg.offset)*30) % width;
+            let dy = bg.y + Math.cos(t*bg.speed + bg.offset)*30;
+            ctx.fillStyle = bg.color;
+            ctx.globalAlpha = Math.abs(Math.sin(t + bg.offset)) * 0.6;
+            ctx.beginPath(); ctx.arc(dx, dy, bg.size, 0, Math.PI*2); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        for (let r = 0; r < grid.length; r++) {
+            for (let c = 0; c < grid[r].length; c++) {
+                let tile = grid[r][c];
+                let x = c * ts, y = r * ts;
+                if (tile === 0) continue;
+
+                if (tile === 1) { 
+                    ctx.fillStyle = '#08132b'; ctx.fillRect(x, y, ts, ts); 
+                    ctx.fillStyle = '#0f2045'; ctx.fillRect(x+2, y+2, ts-4, ts-4);
+                    ctx.strokeStyle = '#040b18'; ctx.lineWidth = 1.5;
+                    ctx.beginPath(); ctx.moveTo(x, y+ts/2); ctx.lineTo(x+ts, y+ts/2); ctx.moveTo(x+ts/2, y); ctx.lineTo(x+ts/2, y+ts); ctx.stroke();
+                    if (r === 0 || grid[r-1][c] !== 1) {
+                        ctx.fillStyle = '#00e5ff'; ctx.fillRect(x, y, ts, 4);
+                        ctx.fillStyle = 'rgba(0, 229, 255, 0.4)';
+                        for(let i=0; i<ts; i+=6) { 
+                            ctx.beginPath(); ctx.moveTo(x+i, y+4); ctx.lineTo(x+i+3, y-3); ctx.lineTo(x+i+6, y+4); ctx.fill(); 
+                        }
+                    }
+                } else if (tile === 2) { 
+                    ctx.fillStyle = '#ff0044'; 
+                    for(let i=0; i<3; i++) {
+                        let sx = x + i*(ts/3);
+                        ctx.beginPath(); ctx.moveTo(sx, y+ts); ctx.lineTo(sx+ts/6, y+ts/2); ctx.lineTo(sx+ts/3, y+ts); ctx.fill();
+                        ctx.fillStyle = '#ff5588'; ctx.beginPath(); ctx.moveTo(sx+ts/6, y+ts/2); ctx.lineTo(sx+ts/6, y+ts); ctx.lineTo(sx+ts/3, y+ts); ctx.fill(); ctx.fillStyle = '#ff0044';
+                    }
+                } else if (tile === 3) { 
+                    ctx.fillStyle = 'rgba(0, 85, 255, 0.4)';
+                    let wave = Math.sin(t*4 + x)*4;
+                    ctx.beginPath(); ctx.moveTo(x, y+12+wave); ctx.lineTo(x+ts, y+12-wave); ctx.lineTo(x+ts, y+ts); ctx.lineTo(x, y+ts); ctx.fill();
+                    ctx.fillStyle = 'rgba(0, 229, 255, 0.2)'; ctx.fillRect(x, y+ts/2, ts, ts/2);
+                } else if (tile === 4) { 
+                    ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.moveTo(x+ts/2, y); ctx.lineTo(x+ts/2, y+ts); ctx.stroke();
+                    ctx.fillStyle = '#0055ff';
+                    for(let i=5; i<ts; i+=10) { ctx.beginPath(); ctx.ellipse(x+ts/2, y+i, 8, 3, 0, 0, Math.PI*2); ctx.fill(); }
+                } else if (tile === 5) { 
+                    ctx.fillStyle = '#00e5ff'; ctx.fillRect(x+4, y+ts-10, ts-8, 10);
+                    ctx.fillStyle = '#fff'; ctx.fillRect(x+8, y+ts-10, ts-16, 4);
+                    ctx.strokeStyle = '#0055ff'; ctx.lineWidth = 2.5;
+                    ctx.beginPath(); ctx.moveTo(x+8, y+ts-10); ctx.lineTo(x+4, y+ts); ctx.moveTo(x+ts-8, y+ts-10); ctx.lineTo(x+ts-4, y+ts); ctx.stroke();
+                } else if (tile === 9) { 
+                    let hover = Math.sin(t*5)*6;
+                    ctx.save(); ctx.translate(x+ts/2, y+ts/2 + hover);
+                    ctx.shadowBlur = 25; ctx.shadowColor = '#ffff00';
+                    ctx.fillStyle = '#ffff00'; ctx.rotate(t * 1.5);
+                    ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(12, 0); ctx.lineTo(0, 18); ctx.lineTo(-12, 0); ctx.fill();
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(6, 0); ctx.lineTo(0, 18); ctx.lineTo(-6, 0); ctx.fill();
+                    ctx.restore();
+                }
+            }
+        }
+
+        entities.forEach(e => {
+            if (e.type === 'plat') {
+                ctx.fillStyle = '#08132b'; ctx.fillRect(e.x, e.y, e.w, e.h);
+                ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 2; ctx.strokeRect(e.x, e.y, e.w, e.h);
+                ctx.fillStyle = 'rgba(0, 229, 255, 0.25)';
+                for(let i=0; i<e.w; i+=15) ctx.fillRect(e.x+i, e.y, 6, e.h);
+            }
+        });
+
+        particles.forEach(pt => {
+            ctx.fillStyle = pt.color; ctx.globalAlpha = Math.max(0, pt.life);
+            ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI*2); ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+
+        Object.keys(onlinePlayers).forEach(key => {
+            if (key !== myName && onlinePlayers[key].level === currentLevel) {
+                drawCharacter(ctx, onlinePlayers[key], 0.45, true, key);
+            }
+        });
+
+        drawCharacter(ctx, p, 1, false, "");
+
+        if (gameWon) {
+            ctx.fillStyle = 'rgba(1, 4, 9, 0.85)'; ctx.fillRect(0,0,width,height);
+            ctx.save(); ctx.translate(width/2, height/2 - 40);
+            let rot = t;
+            for(let i=0; i<3; i++) {
+                ctx.save(); ctx.rotate(rot + (i*Math.PI*2/3)); ctx.translate(0, -60);
+                ctx.fillStyle = '#00e5ff'; ctx.shadowBlur = 30; ctx.shadowColor = '#00e5ff';
+                ctx.beginPath(); ctx.moveTo(0,-25); ctx.lineTo(12,0); ctx.lineTo(0,25); ctx.lineTo(-12,0); ctx.fill();
+                ctx.restore();
+            }
+            ctx.restore();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 6vmin Arial';
+            ctx.textAlign = 'center';
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00e5ff';
+            ctx.fillText('ВИ ПЕРЕМОГЛИ!', width/2, height/2 + 60);
+            
+            ctx.font = 'bold 3vmin Arial';
+            ctx.fillStyle = '#00e5ff';
+            ctx.shadowBlur = 10;
+            ctx.fillText('Усі рівні пройдено', width/2, height/2 + 110);
+        }
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+</script>
+
+<!-- Універсальний блок контролю -->
+<div id="block-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.85); z-index: 999999; justify-content: center; align-items: center; color: red; font-size: 5vmin; font-weight: bold; font-family: Arial, sans-serif;">
+    Зачекай! Зараз не твій урок.
+</div>
+<script>
+    (function(){
+        if (!window.db) return;
+        const tabId = Math.random().toString(36).substring(2, 15);
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        const connectedRef = db.ref('.info/connected');
+        
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                userRef.set(true);
+                userRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        db.ref('force_refresh').on('value', (snap) => {
+            if (snap.val() && snap.val() > Date.now() - 5000) {
+                window.location.reload();
+            }
+        });
+
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            const overlay = document.getElementById('block-overlay');
+            if (snap.val() === true) {
+                overlay.style.display = 'flex';
+            } else {
+                overlay.style.display = 'none';
+            }
+        });
+
+        let immunity = true;
+        setTimeout(() => immunity = false, 1000);
+        db.ref('current_activity').on('value', (snap) => {
+            if (immunity) return;
+            const activity = snap.val();
+            if (activity === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+    })();
+</script>
+
+</body>
+</html>
