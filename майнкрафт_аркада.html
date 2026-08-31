@@ -262,23 +262,35 @@
         }
     });
 
-    // ОНОВЛЕНА НАДІЙНА СИНХРОНІЗАЦІЯ РІВНІВ ТА СТАНУ
     let isGameStarted = false;
+    let questions = [];
+    
+    // --- НАДІЙНА СИНХРОНІЗАЦІЯ СТАНУ ГРИ ТА ПИТАНЬ ---
     db.ref('arcade_game_state').on('value', snap => {
         const state = snap.val();
         if (!state) return;
         
-        if (state.questions && questions.length === 0) {
-            questions = state.questions;
+        // Синхронізуємо питання для всіх, хто приєднується
+        if (state.questions) {
+            questions = Array.isArray(state.questions) ? state.questions : Object.values(state.questions);
         }
         
-        if (state.level !== undefined && state.level !== currentLevel) {
-            currentLevel = state.level;
-            loadLevel();
+        // Синхронізуємо рівень
+        if (state.level !== undefined) {
+            if (isGameStarted && currentLevel !== state.level) {
+                currentLevel = state.level;
+                loadLevel();
+            } else if (!isGameStarted) {
+                currentLevel = state.level;
+            }
         }
         
-        if (state.isStarted && !isGameStarted) {
-            startGameRemotely();
+        // Запускаємо гру автоматично тільки для учнів (якщо гру створив хтось інший)
+        if (state.startedAt && state.startedBy !== myName && !isGameStarted) {
+            // Перевіряємо, чи гра була створена нещодавно (наприклад, протягом останніх 2 годин)
+            if (Date.now() - state.startedAt < 2 * 60 * 60 * 1000) {
+                startGameRemotely();
+            }
         }
     });
 
@@ -325,7 +337,7 @@
                         div.style.backgroundPosition = 'center';
                     };
                     img.onerror = () => {
-                        div.style.display = 'none'; // Ховаємо, якщо фону не існує
+                        div.style.display = 'none';
                     };
                 }
             }
@@ -340,7 +352,7 @@
         div.style.borderRadius = '5px';
         div.style.overflow = 'hidden';
         div.style.height = '80px';
-        div.style.background = '#0a192f'; // Тимчасовий колір до завантаження
+        div.style.background = '#0a192f'; 
         div.dataset.url = url;
         
         let label = document.createElement('div');
@@ -358,7 +370,7 @@
         div.onclick = () => db.ref('game_theme').set(url);
         themeGallery.appendChild(div);
         
-        observer.observe(div); // Активуємо ліниве завантаження
+        observer.observe(div); 
     }
 
     db.ref('game_theme').on('value', snap => {
@@ -408,12 +420,11 @@
         }
     }
 
-    // --- ОНОВЛЕНИЙ ПАРСЕР ПИТАНЬ ---
-    let questions = [];
+    // --- ПАРСЕР ПИТАНЬ ТА СТАРТ ---
     document.getElementById('btn-start').addEventListener('click', () => {
         const text = document.getElementById('questions-input').value;
         const lines = text.split('|').filter(l => l.trim().length > 0); 
-        questions = lines.map(line => {
+        const parsedQuestions = lines.map(line => {
             const parts = line.split(';').map(p => p.trim()).filter(p => p.length > 0); 
             if(parts.length < 2) return null;
             const q = parts[0];
@@ -422,25 +433,26 @@
             return { q: q, correct: correct, all: all };
         }).filter(q => q);
         
+        questions = parsedQuestions;
+
+        // Записуємо глобальний стан гри і стартуємо
         db.ref('arcade_game_state').update({
             questions: questions,
             level: currentLevel,
-            isStarted: true,
             startedBy: myName,
-            timestamp: firebase.database.ServerValue.TIMESTAMP
+            startedAt: firebase.database.ServerValue.TIMESTAMP
         });
+        
         startGameRemotely();
     });
 
     // --- НАВІГАЦІЯ РІВНІВ ---
-    document.getElementById('btn-next').addEventListener('click', () => changeLevel(1, false));
-    document.getElementById('btn-prev').addEventListener('click', () => changeLevel(-1, false));
-    function changeLevel(dir, isRemote = true) {
+    document.getElementById('btn-next').addEventListener('click', () => changeLevel(1));
+    document.getElementById('btn-prev').addEventListener('click', () => changeLevel(-1));
+    function changeLevel(dir) {
         currentLevel = Math.max(0, Math.min(levels.length - 1, currentLevel + dir));
         loadLevel();
-        if(!isRemote) {
-            db.ref('arcade_game_state').update({ level: currentLevel });
-        }
+        db.ref('arcade_game_state').update({ level: currentLevel });
     }
 
     // --- МАПИ РІВНІВ (10 УНІКАЛЬНИХ РІВНІВ) ---
@@ -652,7 +664,6 @@
     const ctx = canvas.getContext('2d');
     const ts = 30; 
     let width = 960, height = 540; 
-    let currentLevel = 0;
     let grid = [], particles = [], entities = [], bgElements = [];
     let isTaskActive = false;
     let gameWon = false;
@@ -911,7 +922,7 @@
                         spawnParticles(width/2, height/2, '#00e5ff', 120);
                     } else {
                         currentLevel++; loadLevel();
-                        sendGameAction('change_level', { level: currentLevel });
+                        db.ref('arcade_game_state').update({ level: currentLevel });
                     }
                 } else {
                     playSound('fail');
