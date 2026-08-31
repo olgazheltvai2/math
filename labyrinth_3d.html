@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <!--
   ГРА "3D ЛАБІРИНТ" — від першого лиця
-  Версія: v1.7.7 (Повна тотальна синхронізація: позиція, рух, питання, відповіді)
+  Версія: v1.7.8 (Тотальна синхронізація: позиція, рух, питання вікторини з БД, ідентичний порядок відповідей)
 -->
 <html lang="uk">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Лабіринт v1.7.7</title>
+<title>Лабіринт v1.7.8</title>
 <!-- Підключення Firebase -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -266,7 +266,7 @@
     <div id="themeGrid"></div>
   </div>
 
-  <div id="ver">v1.7.7</div>
+  <div id="ver">v1.7.8</div>
 </div>
 
 <script>
@@ -343,6 +343,7 @@ function closeTeacherPanel() {
 // Скидання питань
 function resetQuestions() {
   localStorage.removeItem(LS_QUESTIONS_KEY);
+  if(typeof db !== 'undefined') { db.ref('game_questions').remove(); }
   buildEditor();
 }
 
@@ -376,9 +377,12 @@ function saveAndClose() {
         }
       }
       saveQuestions(newBank);
-      // Оновлюємо банк питань у грі (якщо він десь зберігається)
+      // Оновлюємо банк питань у грі та синхронізуємо базу
       if (typeof window.questionBank !== 'undefined') {
         window.questionBank = newBank;
+      }
+      if (typeof db !== 'undefined') {
+        db.ref('game_questions').set(newBank);
       }
       console.log("Питання збережено успішно");
     } catch (error) {
@@ -429,6 +433,18 @@ let isFirstActivityRead = true;
 db.ref('current_activity').on('value', snap => {
   if (isFirstActivityRead) { isFirstActivityRead = false; return; }
   if(snap.val() === 'lobby'){ window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName); }
+});
+
+// Синхронізація загального банку питань з Firebase
+db.ref('game_questions').on('value', snap => {
+  const qs = snap.val();
+  if (qs && Array.isArray(qs)) {
+    window.questionBank = qs;
+    try { localStorage.setItem(LS_QUESTIONS_KEY, JSON.stringify(qs)); } catch(e){}
+  } else {
+    window.questionBank = DEFAULT_QUESTIONS.map(q=>({...q, options:[...q.options]}));
+    try { localStorage.removeItem(LS_QUESTIONS_KEY); } catch(e){}
+  }
 });
 
 function sendGameAction(type, data) {
@@ -489,7 +505,7 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
   const MAZE_COLS = 19; const MAZE_ROWS = 19;
   const PLAYER_R = 0.22; const MOVE_SPEED = 2.4; const ROT_SPEED = 2.1;
 
-  // Використовуємо глобальний банк питань (з панелі)
+  // Використовуємо глобальний банк питань (початково локальний, потім оновиться з БД)
   window.questionBank = loadQuestions();
 
   /* ---- Генерація лабіринту ---- */
@@ -840,7 +856,13 @@ document.getElementById('disableBgBtn').onclick = () => applyTheme('', true);
     const q = window.questionBank[activeMonster.qIndex] || DEFAULT_QUESTIONS[activeMonster.qIndex];
     quizQuestionEl.textContent = q.question; quizOptionsEl.innerHTML="";
     const order = Array.from({length: q.options.length}, (_, i) => i);
-    for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+    
+    // ДЕТЕРМІНОВАНЕ ПЕРЕМІШУВАННЯ ВІДПОВІДЕЙ (ідентичне на всіх екранах)
+    let qSeed = dailySeed + activeMonster.qIndex;
+    function qRandom() { qSeed = (qSeed * 9301 + 49297) % 233280; return qSeed / 233280; }
+    
+    for(let i=order.length-1;i>0;i--){ const j=Math.floor(qRandom()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+    
     order.forEach((optIdx)=>{
       const btn=document.createElement("button"); btn.className="optBtn"; btn.type="button"; btn.textContent = q.options[optIdx];
       btn.addEventListener("click", ()=>{ if(quizLocked) return; quizLocked=true; resolveMonster(optIdx===q.correct, false, false); });
