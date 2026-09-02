@@ -263,6 +263,7 @@
 
     let isGameStarted = false;
     let questions = [];
+    let lastSession = 0;
     
     // --- НАДІЙНА СИНХРОНІЗАЦІЯ СТАНУ ГРИ ТА ПИТАНЬ ---
     db.ref('arcade_game_state').on('value', snap => {
@@ -284,9 +285,16 @@
             }
         }
         
-        // Надійний запуск для учнів: якщо вчитель стартував, відразу запускаємо гру
-        if (state.isStarted && !isGameStarted && state.startedBy !== myName) {
+        // Гарантований запуск гри для всіх:
+        if (state.isStarted && !isGameStarted) {
+            lastSession = state.session || 0;
             startGameRemotely();
+        } 
+        // Якщо гра вже запущена, але вчитель натиснув "Старт" ще раз (змінив питання)
+        else if (state.isStarted && isGameStarted && state.session && state.session !== lastSession) {
+            lastSession = state.session;
+            currentLevel = state.level || 0;
+            loadLevel(); // Перезавантажуємо рівень із новими питаннями
         }
     });
 
@@ -474,12 +482,13 @@
         // Записуємо глобальний стан гри і стартуємо
         db.ref('arcade_game_state').update({
             questions: questions,
-            level: currentLevel,
+            level: currentLevel || 0,
             startedBy: myName,
-            isStarted: true
+            isStarted: true,
+            session: Date.now() // Унікальний час старту, щоб розпізнати повторне натискання
         });
         
-        document.getElementById('ui-layer').style.display = 'none'; // Ховаємо вікно після редагування
+        document.getElementById('ui-layer').style.display = 'none';
         startGameRemotely();
     });
 
@@ -1228,13 +1237,13 @@
             }
         });
 
-        let isFirstLoad = true;
+        // Надійний імунітет при завантаженні (1.5 секунди), щоб при прямому посиланні не викидало в лобі
+        let immunity = true;
+        setTimeout(() => { immunity = false; }, 1500);
+
         db.ref('current_activity').on('value', (snap) => {
+            if (immunity) return;
             const activity = snap.val();
-            if (isFirstLoad) {
-                isFirstLoad = false;
-                return; // Ігноруємо перше зчитування, щоб не викидало при прямому посиланні
-            }
             if (activity === 'lobby' || (activity && activity.toString().startsWith('lobby'))) {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
