@@ -142,7 +142,6 @@
             flex: 1; padding: 12px; background: #00e5ff; color: #000; border: none; 
             border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; font-family: Arial, sans-serif;
         }
-        #reset-theme-btn { background: #ff0044; color: #fff; }
 
         /* Мобільне керування персонажем (ВНИЗУ, ЗМЕНШЕНІ КНОПКИ) */
         #mobile-controls {
@@ -220,7 +219,6 @@
     <h2 style="text-align: center; margin-top: 0; color: #00e5ff;">Оберіть фон</h2>
     <div id="theme-gallery"></div>
     <div class="modal-buttons">
-        <button id="reset-theme-btn">Скинути фон</button>
         <button id="close-theme-modal">Закрити</button>
     </div>
 </div>
@@ -271,7 +269,7 @@
         const state = snap.val();
         if (!state) return;
         
-        // Синхронізуємо питання для всіх, хто приєднується
+        // Синхронізуємо питання
         if (state.questions) {
             questions = Array.isArray(state.questions) ? state.questions : Object.values(state.questions);
         }
@@ -286,12 +284,9 @@
             }
         }
         
-        // Запускаємо гру автоматично тільки для учнів (якщо гру створив хтось інший)
-        if (state.startedAt && state.startedBy !== myName && !isGameStarted) {
-            // Перевіряємо, чи гра була створена нещодавно (наприклад, протягом останніх 2 годин)
-            if (Date.now() - state.startedAt < 2 * 60 * 60 * 1000) {
-                startGameRemotely();
-            }
+        // Надійний запуск для учнів: якщо вчитель стартував, відразу запускаємо гру
+        if (state.isStarted && !isGameStarted && state.startedBy !== myName) {
+            startGameRemotely();
         }
     });
 
@@ -303,31 +298,48 @@
         resize(); loadLevel(); gameLoop();
     }
 
-    // --- ТЕПЕР ФОНИ ЗАВАНТАЖУЮТЬСЯ "ЛІНИВО", ЩОБ НЕ БЛОКУВАТИ GITHUB ---
+    // --- СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER) ---
     const GAME_ID = "NeonParkour";
     const themeBtn = document.getElementById('theme-btn');
     const themeModal = document.getElementById('theme-modal');
     const closeThemeModal = document.getElementById('close-theme-modal');
-    const resetThemeBtn = document.getElementById('reset-theme-btn');
     const themeGallery = document.getElementById('theme-gallery');
 
     themeBtn.onclick = () => themeModal.style.display = 'block';
     closeThemeModal.onclick = () => themeModal.style.display = 'none';
-    resetThemeBtn.onclick = () => {
-        db.ref('game_theme').set("");
-        themeModal.style.display = 'none';
-    };
 
     document.getElementById('questions-btn').onclick = () => {
         document.getElementById('ui-layer').style.display = 'flex';
     };
 
-    const savedBg = localStorage.getItem('mySavedBg_' + GAME_ID);
-    if (savedBg) document.body.style.backgroundImage = `url('${savedBg}')`;
-    document.body.style.backgroundSize = 'cover';
-    document.body.style.backgroundPosition = 'center';
-    document.body.style.backgroundAttachment = 'fixed';
+    // Опція "Без фону" як перша картка
+    let noBgDiv = document.createElement('div');
+    noBgDiv.style.position = 'relative';
+    noBgDiv.style.cursor = 'pointer';
+    noBgDiv.style.borderRadius = '5px';
+    noBgDiv.style.overflow = 'hidden';
+    noBgDiv.style.height = '80px';
+    noBgDiv.style.background = '#0a192f'; 
+    
+    let noBgLabel = document.createElement('div');
+    noBgLabel.innerText = `Без фону`;
+    noBgLabel.style.position = 'absolute';
+    noBgLabel.style.bottom = '0';
+    noBgLabel.style.width = '100%';
+    noBgLabel.style.background = 'rgba(0,0,0,0.7)';
+    noBgLabel.style.color = '#fff';
+    noBgLabel.style.textAlign = 'center';
+    noBgLabel.style.fontSize = '12px';
+    noBgLabel.style.padding = '3px 0';
+    
+    noBgDiv.appendChild(noBgLabel);
+    noBgDiv.onclick = () => {
+        db.ref('game_theme').set('none');
+        themeModal.style.display = 'none';
+    };
+    themeGallery.appendChild(noBgDiv);
 
+    // Intersection observer для динамічних фонів
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
@@ -381,14 +393,28 @@
 
     db.ref('game_theme').on('value', snap => {
         const url = snap.val();
-        if (url) {
+        if (url && url !== 'none') {
             document.body.style.backgroundImage = `url('${url}')`;
+            document.body.style.backgroundSize = 'cover';
+            document.body.style.backgroundPosition = 'center';
+            document.body.style.backgroundAttachment = 'fixed';
             localStorage.setItem('mySavedBg_' + GAME_ID, url);
-        } else {
+        } else if (url === 'none') {
             document.body.style.backgroundImage = 'none';
-            localStorage.removeItem('mySavedBg_' + GAME_ID);
+            localStorage.setItem('mySavedBg_' + GAME_ID, 'none');
         }
     });
+
+    // Початкове завантаження індивідуального фону для гри
+    const savedBg = localStorage.getItem('mySavedBg_' + GAME_ID);
+    if (savedBg && savedBg !== 'none') {
+        document.body.style.backgroundImage = `url('${savedBg}')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundAttachment = 'fixed';
+    } else if (savedBg === 'none') {
+        document.body.style.backgroundImage = 'none';
+    }
 
     // --- АУДІО ДВИЖОК ---
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -441,15 +467,19 @@
         
         questions = parsedQuestions;
 
+        // Щоб гарантовано спрацював вихід в Лобі при наступному натисканні пульта,
+        // ми змінюємо статус активності на назву гри.
+        db.ref('current_activity').set('NeonParkour');
+
         // Записуємо глобальний стан гри і стартуємо
         db.ref('arcade_game_state').update({
             questions: questions,
             level: currentLevel,
             startedBy: myName,
-            startedAt: firebase.database.ServerValue.TIMESTAMP
+            isStarted: true
         });
         
-        document.getElementById('ui-layer').style.display = 'none'; // Гарантовано ховаємо вікно після редагування
+        document.getElementById('ui-layer').style.display = 'none'; // Ховаємо вікно після редагування
         startGameRemotely();
     });
 
@@ -1205,7 +1235,7 @@
                 isFirstLoad = false;
                 return; // Ігноруємо перше зчитування, щоб не викидало при прямому посиланні
             }
-            if (activity === 'lobby') {
+            if (activity === 'lobby' || (activity && activity.toString().startsWith('lobby'))) {
                 window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
             }
         });
