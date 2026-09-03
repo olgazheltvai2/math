@@ -1,52 +1,77 @@
 // pencil.js - Глобальний інструмент малювання для всіх ігор
 (function() {
-    if (document.getElementById('global-draw-ui') || window.location.pathname.includes('teacher_panel.html')) return;
+    if (document.getElementById('global-draw-wrapper') || window.location.pathname.includes('teacher_panel.html')) return;
 
-    // Автоматично вбиваємо старі локальні полотна, щоб вони не блокували гру
-    ['draw-canvas', 'drawing-toolbar', 'draw-toggle-btn', 'draw-controls'].forEach(id => {
-        let el = document.getElementById(id);
-        if(el) el.remove();
+    // Знищуємо старі локальні елементи, якщо вони раптом залишилися в HTML
+    const oldIds = ['draw-canvas', 'drawing-toolbar', 'draw-toggle-btn', 'draw-controls'];
+    oldIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.remove();
     });
 
-    const ui = document.createElement('div');
-    ui.id = 'global-draw-ui';
-    ui.innerHTML = `
+    // Створюємо абсолютно прозорий контейнер, який НЕ блокує кліки
+    const wrapper = document.createElement('div');
+    wrapper.id = 'global-draw-wrapper';
+    wrapper.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 999999;';
+
+    wrapper.innerHTML = `
         <style>
-            #global-draw-canvas { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 90000; pointer-events: none !important; background: transparent; }
-            #global-draw-canvas.active { pointer-events: auto !important; touch-action: none !important; }
-            #global-draw-ui-container { position: fixed; top:0; left:0; width:0; height:0; z-index: 99999; font-family: Arial, sans-serif; pointer-events: none; }
-            .draw-btn-float { position: fixed; bottom: 85px; right: 20px; padding: 10px 15px; border-radius: 25px; background: #8e44ad; color: white; border: 2px solid white; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); pointer-events: auto; transition: transform 0.2s; }
-            .draw-btn-float:hover { transform: scale(1.05); }
-            .draw-panel-float { position: fixed; bottom: 140px; right: 20px; background: white; padding: 15px; border-radius: 10px; border: 1px solid #ccc; box-shadow: 0 10px 20px rgba(0,0,0,0.3); display: none; width: 250px; color: #333; pointer-events: auto; }
-            .draw-header { display: flex; justify-content: flex-end; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 15px; cursor: grab; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>') no-repeat left center; height: 20px; }
-            .draw-header:active { cursor: grabbing; }
+            #global-draw-canvas {
+                position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+                pointer-events: auto; /* Полотно ловить кліки для малювання */
+                display: none; /* ПОВНІСТЮ ЗНИКАЄ, КОЛИ ВИМКНЕНЕ */
+                touch-action: none;
+            }
+            .pencil-ui-el {
+                pointer-events: auto; /* Кнопки натискаються */
+                font-family: Arial, sans-serif;
+            }
+            #pencil-open-btn {
+                position: absolute; bottom: 85px; right: 20px;
+                padding: 10px 15px; border-radius: 25px; background: #8e44ad; color: white;
+                border: 2px solid white; font-size: 16px; font-weight: bold; cursor: pointer;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.2s;
+            }
+            #pencil-open-btn:hover { transform: scale(1.05); }
+            #pencil-panel {
+                position: absolute; bottom: 140px; right: 20px;
+                background: white; padding: 15px; border-radius: 10px; border: 1px solid #ccc;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.3); width: 250px; color: #333; display: none;
+            }
+            #pencil-header {
+                display: flex; justify-content: flex-end; padding-bottom: 5px; margin-bottom: 15px;
+                border-bottom: 1px solid #eee; cursor: grab;
+                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="%23999" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>') no-repeat left center;
+            }
+            #pencil-header:active { cursor: grabbing; }
         </style>
         <canvas id="global-draw-canvas"></canvas>
-        <div id="global-draw-ui-container">
-            <button class="draw-btn-float" id="btn-open-draw" title="Відкрити малювання">✏️ Малювати</button>
-            <div class="draw-panel-float" id="panel-draw">
-                <div class="draw-header"><button id="btn-close-draw" style="background:none;border:none;cursor:pointer;font-size:16px;">❌</button></div>
-                <div style="display:flex; gap:10px; font-size:14px; margin-bottom:15px;">
-                    <label><input type="radio" name="d-tool" value="pencil" checked> ✏️ Олівець</label>
-                    <label><input type="radio" name="d-tool" value="eraser"> 🧽 Гумка</label>
-                </div>
-                <label style="font-size:14px; font-weight:bold;">Товщина: <span id="d-size-val">4</span>px</label>
-                <input type="range" id="d-size" min="1" max="50" value="4" style="width:100%; margin-bottom:10px; cursor:pointer;">
-                <input type="color" id="d-color" value="#e74c3c" style="width:100%; height:35px; border:none; cursor:pointer; margin-bottom:10px; border-radius:5px;">
-                <button id="btn-clear-draw" style="width:100%; padding:10px; background:#e74c3c; color:white; border:none; border-radius:5px; font-weight:bold; cursor:pointer;">🗑️ Очистити все</button>
+        <button id="pencil-open-btn" class="pencil-ui-el" title="Відкрити малювання">✏️ Малювати</button>
+        <div id="pencil-panel" class="pencil-ui-el">
+            <div id="pencil-header">
+                <button id="pencil-close-btn" style="background:none; border:none; cursor:pointer; font-size:16px;">❌</button>
             </div>
+            <div style="display:flex; gap:10px; font-size:14px; margin-bottom:15px;">
+                <label><input type="radio" name="p-tool" value="pencil" checked> ✏️ Олівець</label>
+                <label><input type="radio" name="p-tool" value="eraser"> 🧽 Гумка</label>
+            </div>
+            <label style="font-size:14px; font-weight:bold;">Товщина: <span id="p-size-val">4</span>px</label>
+            <input type="range" id="p-size" min="1" max="50" value="4" style="width:100%; margin-bottom:10px; cursor:pointer;">
+            <input type="color" id="p-color" value="#e74c3c" style="width:100%; height:35px; border:none; cursor:pointer; margin-bottom:10px; border-radius:5px;">
+            <button id="p-clear-btn" style="width:100%; padding:10px; background:#e74c3c; color:white; border:none; border-radius:5px; font-weight:bold; cursor:pointer;">🗑️ Очистити все</button>
         </div>
     `;
-    document.body.appendChild(ui);
+    document.body.appendChild(wrapper);
 
     const canvas = document.getElementById('global-draw-canvas');
     const ctx = canvas.getContext('2d');
-    const panel = document.getElementById('panel-draw');
-    const btnOpen = document.getElementById('btn-open-draw');
-    const btnClose = document.getElementById('btn-close-draw');
-    const sizeInput = document.getElementById('d-size');
-    const colorInput = document.getElementById('d-color');
-    const tools = document.getElementsByName('d-tool');
+    const panel = document.getElementById('pencil-panel');
+    const btnOpen = document.getElementById('pencil-open-btn');
+    const btnClose = document.getElementById('pencil-close-btn');
+    const sizeInput = document.getElementById('p-size');
+    const colorInput = document.getElementById('p-color');
+    const tools = document.getElementsByName('p-tool');
+    const header = document.getElementById('pencil-header');
 
     function resize() {
         const data = canvas.toDataURL();
@@ -59,33 +84,34 @@
     window.addEventListener('resize', resize);
     resize();
 
+    // МАГІЯ ТУТ: Полотно повністю з'являється/зникає з DOM-дерева
     btnOpen.addEventListener('click', () => {
         panel.style.display = 'block';
         btnOpen.style.display = 'none';
-        canvas.classList.add('active');
+        canvas.style.display = 'block'; 
     });
 
     btnClose.addEventListener('click', () => {
         panel.style.display = 'none';
         btnOpen.style.display = 'block';
-        canvas.classList.remove('active');
+        canvas.style.display = 'none'; 
     });
 
-    sizeInput.addEventListener('input', e => document.getElementById('d-size-val').innerText = e.target.value);
+    sizeInput.addEventListener('input', e => document.getElementById('p-size-val').innerText = e.target.value);
 
     let isDrawing = false, lastX = 0, lastY = 0;
     const getPos = e => (e.touches && e.touches.length > 0) ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : { x: e.clientX, y: e.clientY };
     const getTool = () => Array.from(tools).find(r => r.checked).value;
 
     function start(e) {
-        if (!canvas.classList.contains('active')) return;
+        if (canvas.style.display === 'none') return;
         isDrawing = true;
         const pos = getPos(e);
         lastX = pos.x; lastY = pos.y;
     }
 
     function draw(e) {
-        if (!isDrawing || !canvas.classList.contains('active')) return;
+        if (!isDrawing || canvas.style.display === 'none') return;
         e.preventDefault();
         const pos = getPos(e);
         const tool = getTool(), size = sizeInput.value, color = colorInput.value;
@@ -118,7 +144,7 @@
         ctx.stroke();
     }
 
-    document.getElementById('btn-clear-draw').addEventListener('click', () => {
+    document.getElementById('p-clear-btn').addEventListener('click', () => {
         if (typeof db !== 'undefined' && typeof myName !== 'undefined') {
             db.ref('game_action').set({ senderId: myName, timestamp: Date.now(), type: 'clear_canvas', data: {} });
         }
@@ -141,10 +167,8 @@
         }
     }, 500);
 
-    // Draggable Panel
-    const header = panel.querySelector('.draw-header');
+    // Перетягування панелі
     let dragging = false, sX, sY, iX, iY;
-    
     const startDrag = e => {
         dragging = true;
         sX = e.clientX || e.touches[0].clientX;
@@ -153,15 +177,13 @@
         iX = rect.left; iY = rect.top;
         panel.style.right = 'auto'; panel.style.bottom = 'auto';
     };
-    
     const drag = e => {
         if (!dragging) return;
         const cX = e.clientX || (e.touches ? e.touches[0].clientX : sX);
         const cY = e.clientY || (e.touches ? e.touches[0].clientY : sY);
-        panel.style.left = \`\${iX + (cX - sX)}px\`;
-        panel.style.top = \`\${iY + (cY - sY)}px\`;
+        panel.style.left = `${iX + (cX - sX)}px`;
+        panel.style.top = `${iY + (cY - sY)}px`;
     };
-    
     const stopDrag = () => dragging = false;
 
     header.addEventListener('mousedown', startDrag);
