@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Осьминіжок та Математичні Перлини</title>
+    
+    <!-- Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* Скидання стилів та налаштування повноекранного режиму */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #020c1b; /* Глибокий океанічний колір */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            user-select: none;
+        }
+
+        /* Контейнер гри зі співвідношенням 16:9 */
+        #game-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 56.25vw;
+            max-height: 100vh;
+            max-width: 177.78vh;
+            background: transparent; 
+            overflow: hidden;
+            box-shadow: none; 
+        }
+
+        svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Мінімалістичні кнопки навігації (включаючи кнопку НАЗАД) */
+        .nav-btn {
+            position: absolute;
+            bottom: 3%;
+            background: rgba(0, 255, 255, 0.15);
+            border: 2px solid rgba(0, 255, 255, 0.6);
+            color: #0ff;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 30px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            text-shadow: 0 0 10px rgba(0,255,255,0.8);
+            box-shadow: 0 0 15px rgba(0,255,255,0.2);
+        }
+
+        .nav-btn:hover {
+            background: rgba(0, 255, 255, 0.3);
+            transform: scale(1.15);
+            box-shadow: 0 0 25px rgba(0,255,255,0.6);
+        }
+
+        .nav-btn:active {
+            transform: scale(0.95);
+        }
+
+        #next-btn { right: 2%; }
+        #prev-btn { left: 2%; } /* Додана кнопка назад */
+
+        /* Інтерактивні мушлі (колишні квіточки) */
+        .target-wrapper {
+            cursor: pointer;
+        }
+
+        .target-scale {
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform-origin: 0 0;
+        }
+
+        .target-wrapper:hover .target-scale {
+            transform: scale(1.1) translateY(-5px);
+        }
+
+        /* Анімація помилки */
+        .target-wrapper.shake .target-scale {
+            animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-5px, 0, 0) scale(1.1); }
+            20%, 80% { transform: translate3d(6px, 0, 0) scale(1.1); }
+            30%, 50%, 70% { transform: translate3d(-8px, 0, 0) scale(1.1); }
+            40%, 60% { transform: translate3d(8px, 0, 0) scale(1.1); }
+        }
+
+        /* Перлина після відкриття */
+        .pearl-glow {
+            opacity: 0;
+            transition: opacity 0.8s ease;
+        }
+
+        .shell-top {
+            transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transform-origin: 0 -20px;
+        }
+
+        .target-wrapper.visited .shell-top {
+            transform: rotateX(180deg) translateY(-40px);
+            opacity: 0.3;
+        }
+
+        .target-wrapper.visited .pearl-glow {
+            opacity: 1;
+            animation: pulse-pearl 2s infinite alternate;
+        }
+
+        @keyframes pulse-pearl {
+            0% { filter: drop-shadow(0 0 10px rgba(255,255,255,0.8)); }
+            100% { filter: drop-shadow(0 0 30px rgba(255,255,255,1)); transform: scale(1.05); }
+        }
+
+        .target-wrapper.visited {
+            cursor: default;
+        }
+
+        .target-wrapper.visited:hover .target-scale {
+            transform: scale(1);
+        }
+
+        /* Персонаж: Осьминіг */
+        #character-group {
+            transition: transform 1s cubic-bezier(0.45, 0, 0.15, 1);
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        /* Дихання осьминога разом з щупальцями (виправлення відривання) */
+        .octo-breathe {
+            animation: breathe 3s infinite alternate ease-in-out;
+            transform-origin: center;
+        }
+        @keyframes breathe {
+            0% { transform: scale(1); }
+            100% { transform: scale(1.05) translateY(-5px); }
+        }
+
+        /* Ворушіння щупальцями */
+        .tentacle { transform-origin: 0px -20px; }
+        .tentacle-1 { animation: wave-t 2s infinite alternate ease-in-out; }
+        .tentacle-2 { animation: wave-t 2.3s infinite alternate-reverse ease-in-out; }
+        .tentacle-3 { animation: wave-t 2.1s infinite alternate ease-in-out; }
+        .tentacle-4 { animation: wave-t 1.9s infinite alternate-reverse ease-in-out; }
+
+        @keyframes wave-t {
+            0% { transform: rotate(-8deg) skewX(5deg); }
+            100% { transform: rotate(8deg) skewX(-5deg); }
+        }
+
+        /* Стиль тексту (на перлинах) */
+        .math-text {
+            font-size: 55px;
+            font-weight: 900;
+            fill: #0a192f;
+            pointer-events: none;
+            transition: all 0.5s ease;
+            font-family: 'Comic Sans MS', cursive, sans-serif; /* Більш дитячий/грайливий */
+        }
+
+        /* Живий фон: Водорості та Бульбашки */
+        .seaweed-path {
+            animation: sway 4s infinite alternate ease-in-out;
+            transform-origin: bottom center;
+        }
+        @keyframes sway {
+            0% { transform: skewX(-5deg); }
+            100% { transform: skewX(8deg); }
+        }
+
+        .bubble {
+            animation: rise infinite linear;
+        }
+        @keyframes rise {
+            0% { transform: translateY(0) scale(1); opacity: 0.8; }
+            100% { transform: translateY(-1000px) scale(1.5); opacity: 0; }
+        }
+
+        /* Переможна анімація: Медузи */
+        .jellyfish-body {
+            animation: pulse-jelly 1s infinite alternate ease-in-out;
+            transform-origin: center top;
+        }
+        @keyframes pulse-jelly {
+            0% { transform: scaleX(1) scaleY(1); }
+            100% { transform: scaleX(1.1) scaleY(0.9); }
+        }
+        .jelly-tentacle {
+            animation: jelly-wave 0.8s infinite alternate ease-in-out;
+        }
+        @keyframes jelly-wave {
+            0% { transform: skewX(-15deg); }
+            100% { transform: skewX(15deg); }
+        }
+
+        /* Універсальний блок контролю - Заглушка (без тексту, тільки візуал) */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 5, 15, 0.95);
+            z-index: 999999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #block-overlay-icon {
+            font-size: 15vw;
+            animation: lock-pulse 2s infinite alternate;
+        }
+        @keyframes lock-pulse {
+            0% { transform: scale(1); filter: drop-shadow(0 0 10px red); }
+            100% { transform: scale(1.1); filter: drop-shadow(0 0 30px red); }
+        }
+
+        /* Адаптивність */
+        @media (max-width: 768px) {
+            .math-text { font-size: 40px; }
+            .nav-btn { width: 40px; height: 40px; font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <svg id="game-canvas" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <!-- Тінь -->
+            <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="8" stdDeviation="5" flood-color="#000" flood-opacity="0.6"/>
+            </filter>
+            
+            <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="8" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+
+            <!-- Градієнти Океану -->
+            <radialGradient id="water-bg" cx="50%" cy="0%" r="100%">
+                <stop offset="0%" stop-color="#0d47a1"/>
+                <stop offset="100%" stop-color="#010a17"/>
+            </radialGradient>
+
+            <linearGradient id="pearl-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="40%" stop-color="#e0f7fa"/>
+                <stop offset="100%" stop-color="#80deea"/>
+            </linearGradient>
+
+            <linearGradient id="shell-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#ff8a65"/>
+                <stop offset="100%" stop-color="#d84315"/>
+            </linearGradient>
+
+            <radialGradient id="octo-body-grad" cx="30%" cy="30%" r="70%">
+                <stop offset="0%" stop-color="#b388ff"/>
+                <stop offset="70%" stop-color="#651fff"/>
+                <stop offset="100%" stop-color="#311b92"/>
+            </radialGradient>
+        </defs>
+
+        <!-- Сюжетний фон: Глибокий океан -->
+        <g id="background-layer">
+            <rect width="1600" height="900" fill="url(#water-bg)" />
+            
+            <!-- Промені світла зверху -->
+            <path d="M 400,-100 L 700,900 L 1000,900 Z" fill="#ffffff" opacity="0.04" />
+            <path d="M 900,-100 L 1200,900 L 1500,900 Z" fill="#ffffff" opacity="0.02" />
+            <path d="M 0,-100 L 200,900 L 500,900 Z" fill="#ffffff" opacity="0.03" />
+
+            <!-- Дно (Пісок/Скелі) -->
+            <path d="M 0,800 Q 400,750 800,820 T 1600,780 L 1600,900 L 0,900 Z" fill="#1c2a38" opacity="0.8"/>
+            <path d="M 0,850 Q 300,800 900,860 T 1600,830 L 1600,900 L 0,900 Z" fill="#111d29"/>
+
+            <!-- Водорості на задньому плані -->
+            <g transform="translate(1400, 900)">
+                <path class="seaweed-path" d="M 0,0 Q -30,-100 10,-200 T -20,-400" fill="none" stroke="#004d40" stroke-width="25" stroke-linecap="round"/>
+                <path class="seaweed-path" style="animation-delay: -1.5s;" d="M 40,0 Q 70,-80 20,-180 T 50,-350" fill="none" stroke="#00695c" stroke-width="18" stroke-linecap="round"/>
+            </g>
+            <g transform="translate(200, 900)">
+                <path class="seaweed-path" style="animation-delay: -0.5s;" d="M 0,0 Q 40,-120 -10,-250 T 30,-450" fill="none" stroke="#004d40" stroke-width="30" stroke-linecap="round"/>
+            </g>
+
+            <!-- Зграйка маленьких рибок (декорація) -->
+            <g style="animation: float-bg 20s infinite linear; transform: translateX(-200px);">
+                <path d="M 300,300 Q 310,295 320,300 Q 310,305 300,300 Z M 320,300 L 325,295 L 325,305 Z" fill="#ffb74d" opacity="0.6"/>
+                <path d="M 330,320 Q 340,315 350,320 Q 340,325 330,320 Z M 350,320 L 355,315 L 355,325 Z" fill="#ffb74d" opacity="0.6"/>
+            </g>
+
+            <!-- Бульбашки генеруються через JS -->
+            <g id="bg-bubbles"></g>
+        </g>
+
+        <!-- Шар для чорнильного/світлового сліду -->
+        <g id="web-layer"></g>
+
+        <!-- Стартовий камінь (замість листочка) -->
+        <g id="start-leaf" transform="translate(150, 750)" filter="url(#shadow)">
+            <path d="M 0,0 C -50,-30 -80,-80 -40,-120 C 0,-160 80,-140 120,-100 C 160,-60 130,20 60,30 Z" fill="#37474f"/>
+            <circle cx="20" cy="-40" r="15" fill="#263238"/>
+            <circle cx="70" cy="-80" r="10" fill="#263238"/>
+            <circle cx="80" cy="-30" r="20" fill="#263238"/>
+            <!-- Актинія на камені -->
+            <path d="M 120,-100 Q 140,-140 160,-110" fill="none" stroke="#ff4081" stroke-width="8" stroke-linecap="round" class="tentacle-1"/>
+            <path d="M 110,-90 Q 130,-130 150,-100" fill="none" stroke="#ff80ab" stroke-width="6" stroke-linecap="round" class="tentacle-2"/>
+        </g>
+
+        <!-- Шар для інтерактивних мушель -->
+        <g id="targets-layer"></g>
+
+        <!-- Персонаж (Осьминіг) -->
+        <g id="character-wrapper">
+            <g id="character-group" transform="translate(150, 680)" filter="url(#shadow)">
+                <!-- Додано спільний клас дихання для тіла і щупалець -->
+                <g class="octo-breathe">
+                    <!-- Щупальця (задні) -->
+                    <g fill="url(#octo-body-grad)" stroke="#311b92" stroke-width="3">
+                        <path class="tentacle tentacle-1" d="M -20,20 Q -60,60 -90,30 Q -110,10 -100,-10" fill="none" stroke-width="18" stroke-linecap="round"/>
+                        <path class="tentacle tentacle-2" d="M 20,20 Q 60,60 90,30 Q 110,10 100,-10" fill="none" stroke-width="18" stroke-linecap="round"/>
+                    </g>
+
+                    <g class="octo-body-parts">
+                        <!-- Тіло -->
+                        <path d="M -45,20 C -60,-40 -40,-80 0,-80 C 40,-80 60,-40 45,20 C 20,30 -20,30 -45,20 Z" fill="url(#octo-body-grad)"/>
+                        
+                        <!-- Плямочки -->
+                        <circle cx="-20" cy="-50" r="6" fill="#7c4dff" opacity="0.6"/>
+                        <circle cx="15" cy="-60" r="4" fill="#7c4dff" opacity="0.6"/>
+                        <circle cx="25" cy="-30" r="8" fill="#7c4dff" opacity="0.6"/>
+
+                        <!-- Очі -->
+                        <circle cx="-18" cy="-10" r="14" fill="white" />
+                        <circle cx="18" cy="-10" r="14" fill="white" />
+                        
+                        <!-- Зіниці -->
+                        <g id="pupil-left">
+                            <circle cx="-18" cy="-10" r="7" fill="#000" />
+                            <circle cx="-20" cy="-13" r="3" fill="white" />
+                        </g>
+                        <g id="pupil-right">
+                            <circle cx="18" cy="-10" r="7" fill="#000" />
+                            <circle cx="16" cy="-13" r="3" fill="white" />
+                        </g>
+                    </g>
+
+                    <!-- Щупальця (передні) -->
+                    <g fill="none" stroke="url(#octo-body-grad)" stroke-width="16" stroke-linecap="round">
+                        <path class="tentacle tentacle-3" d="M -15,25 Q -40,70 -60,50 Q -70,30 -50,20" />
+                        <path class="tentacle tentacle-4" d="M 0,28 Q 0,80 20,60" />
+                        <path class="tentacle tentacle-1" d="M 15,25 Q 40,70 60,50 Q 70,30 50,20" />
+                    </g>
+                </g>
+            </g>
+        </g>
+
+        <!-- Шар для переможної анімації (Медузи) -->
+        <g id="win-layer"></g>
+
+    </svg>
+
+    <!-- Навігація -->
+    <button class="nav-btn" id="prev-btn">❮</button>
+    <button class="nav-btn" id="next-btn">❯</button>
+</div>
+
+<!-- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ -->
+<div id="block-overlay">
+    <div id="block-overlay-icon">🔒</div>
+</div>
+
+<script>
+    // --- Конфігурація ---
+    const CONFIG = {
+        gameId: 'octopus_math_shells'
+    };
+
+    // --- ІНІЦІАЛІЗАЦІЯ FIREBASE ---
+    const firebaseConfig = {
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+        projectId: "lesson-13c44"
+    };
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // --- БЛОК КОНТРОЛЮ ДОСТУПУ ---
+    const urlParams = new URLSearchParams(window.location.search);
+    let myName = urlParams.get('user') || sessionStorage.getItem('myName');
+    if (!myName) {
+        myName = "Учень_" + Math.floor(Math.random() * 1000);
+    }
+    sessionStorage.setItem('myName', myName);
+
+    const tabId = Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+    const myRef = db.ref(`online_users/${myName}/${tabId}`);
+    const connectedRef = db.ref('.info/connected');
+
+    connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+            myRef.set(true);
+            myRef.onDisconnect().remove();
+        }
+    });
+
+    window.addEventListener('beforeunload', () => { myRef.remove(); });
+
+    db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+        const overlay = document.getElementById('block-overlay');
+        overlay.style.display = snap.val() === true ? 'flex' : 'none';
+    });
+
+    let skipFirstRefresh = true;
+    db.ref('force_refresh').on('value', (snap) => {
+        if (skipFirstRefresh) { skipFirstRefresh = false; return; }
+        if (snap.val()) window.location.reload();
+    });
+
+    let immunity = true;
+    setTimeout(() => { immunity = false; }, 1000);
+    db.ref('current_activity').on('value', (snap) => {
+        if (!immunity && snap.val() === 'lobby') {
+            window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+        }
+    });
+
+    // --- СИНХРОНІЗАЦІЯ ХОДІВ ---
+    db.ref('game_action').on('value', (snap) => {
+        const action = snap.val();
+        if (!action || action.senderId === tabId) return; 
+        
+        if (Date.now() - action.timestamp > 15000 && action.type !== 'draw_line' && action.type !== 'clear_canvas') return; 
+
+        if (action.type === 'TARGET_CLICK') {
+            const el = document.querySelector(`.target-wrapper[data-answer="${action.data.answer}"]`);
+            if (el) handleTargetClick(el, action.data.x, action.data.y, action.data.answer, true);
+        } else if (action.type === 'draw_line') {
+            if (typeof drawOnCanvas === 'function') drawOnCanvas(action.data.x0, action.data.y0, action.data.x1, action.data.y1, action.data.color, action.data.thickness, true);
+        } else if (action.type === 'clear_canvas') {
+            if (typeof clearCanvas === 'function') clearCanvas(true);
+        }
+    });
+
+    function sendAction(type, data) {
+        db.ref('game_action').set({
+            senderId: tabId,
+            timestamp: Date.now(),
+            type: type,
+            data: data
+        });
+    }
+
+    // --- АУДІО (Водяні звуки) ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function initAudio() {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        const now = audioCtx.currentTime;
+        const masterVolume = 0.05; 
+
+        if (type === 'correct') {
+            // Звук "бульбашки"
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, now);
+            osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(masterVolume, now + 0.02);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        } else if (type === 'wrong') {
+            // Глухий звук
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(80, now + 0.2);
+            gainNode.gain.setValueAtTime(masterVolume, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+            osc.start(now);
+            osc.stop(now + 0.2);
+        } else if (type === 'win') {
+            // Перелив дзвіночків (магічна перлина)
+            const notes = [440, 554.37, 659.25, 880, 1108.73, 1318.51];
+            notes.forEach((freq, i) => {
+                const stepOsc = audioCtx.createOscillator();
+                const stepGain = audioCtx.createGain();
+                stepOsc.type = 'sine';
+                stepOsc.frequency.value = freq;
+                stepOsc.connect(stepGain);
+                stepGain.connect(audioCtx.destination);
+                
+                const time = now + i * 0.1;
+                stepGain.gain.setValueAtTime(0, time);
+                stepGain.gain.linearRampToValueAtTime(masterVolume, time + 0.05);
+                stepGain.gain.exponentialRampToValueAtTime(0.001, time + 0.6);
+                
+                stepOsc.start(time);
+                stepOsc.stop(time + 0.6);
+            });
+        }
+    }
+
+    // --- ЛОГІКА ГРИ ---
+    const START_POS = { x: 150, y: 680 };
+    const GAME_WIDTH = 1600;
+    const GAME_HEIGHT = 900;
+    
+    // Кольори для мушель
+    const SHELL_COLORS = ['#ff8a65', '#ba68c8', '#4fc3f7', '#aed581', '#f06292', '#ffb74d', '#4db6ac', '#7986cb', '#e57373', '#9575cd'];
+
+    let gameHistory = [];
+    let currentLevelIndex = -1;
+    let currentExpectedAnswer = 1;
+    let charPos = { ...START_POS };
+    let isMoving = false;
+
+    const levelRef = db.ref(`game_state/${CONFIG.gameId}_level`);
+
+    function generateDiverseProblem(targetResult) {
+        let options = [];
+        for (let a = 1; a < targetResult; a++) options.push(`${a} + ${targetResult - a}`);
+        for (let a = targetResult + 1; a <= 10; a++) options.push(`${a} - ${a - targetResult}`);
+        if (options.length === 0) return targetResult.toString(); 
+        return options[Math.floor(Math.random() * options.length)];
+    }
+
+    function generateSafePositions(count) {
+        const positions = [];
+        const MIN_DIST = 240; 
+        const PADDING_X = 140; 
+        const PADDING_Y = 160; 
+        const CHAR_SAFE_RADIUS = 320; 
+        
+        let attempts = 0;
+        while (positions.length < count && attempts < 2000) {
+            attempts++;
+            const x = PADDING_X + Math.random() * (GAME_WIDTH - PADDING_X * 2);
+            const y = PADDING_Y + Math.random() * (GAME_HEIGHT - PADDING_Y * 2 - 100); // залишаємо низ для піску
+
+            if (Math.hypot(x - START_POS.x, y - START_POS.y) < CHAR_SAFE_RADIUS) continue;
+
+            let collision = false;
+            for (let i = 0; i < positions.length; i++) {
+                if (Math.hypot(x - positions[i].x, y - positions[i].y) < MIN_DIST) {
+                    collision = true; break;
+                }
+            }
+            if (!collision) positions.push({ x, y });
+        }
+        return positions;
+    }
+
+    function createNewLevelData() {
+        const targets = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        const positions = generateSafePositions(10);
+        const shuffledColors = [...SHELL_COLORS].sort(() => Math.random() - 0.5);
+        
+        const items = targets.map((target, index) => ({
+            id: target,
+            text: generateDiverseProblem(target),
+            x: positions[index].x,
+            y: positions[index].y,
+            color: shuffledColors[index]
+        }));
+        return { items };
+    }
+
+    // МАЛЮВАННЯ МУШЛІ (Складна SVG графіка)
+    function drawShell(data) {
+        const gWrapper = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        gWrapper.setAttribute("class", "target-wrapper");
+        gWrapper.setAttribute("transform", `translate(${data.x}, ${data.y})`);
+        gWrapper.setAttribute("data-answer", data.id);
+        
+        // Хітбокс
+        const hitbox = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hitbox.setAttribute("r", "90");
+        hitbox.setAttribute("fill", "transparent");
+        gWrapper.appendChild(hitbox);
+
+        const gScale = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        gScale.setAttribute("class", "target-scale");
+
+        // Нижня частина мушлі (Фон)
+        const shellBottom = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        shellBottom.setAttribute("d", "M 0,30 C -70,30 -90,-20 -50,-60 C -30,-80 30,-80 50,-60 C 90,-20 70,30 0,30 Z");
+        shellBottom.setAttribute("fill", "#263238"); // Темний всередині
+        shellBottom.setAttribute("filter", "url(#shadow)");
+        gScale.appendChild(shellBottom);
+
+        // Сяйво перлини (приховане до кліку)
+        const glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        glow.setAttribute("cx", "0");
+        glow.setAttribute("cy", "-15");
+        glow.setAttribute("r", "50");
+        glow.setAttribute("fill", "#00ffff");
+        glow.setAttribute("class", "pearl-glow");
+        glow.setAttribute("filter", "url(#glow)");
+        gScale.appendChild(glow);
+
+        // Сама перлина
+        const pearl = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        pearl.setAttribute("cx", "0");
+        pearl.setAttribute("cy", "-15");
+        pearl.setAttribute("r", "40");
+        pearl.setAttribute("fill", "url(#pearl-grad)");
+        pearl.setAttribute("stroke", "#b2ebf2");
+        pearl.setAttribute("stroke-width", "2");
+        gScale.appendChild(pearl);
+
+        // Верхня частина мушлі (Стулка, що відкривається)
+        const shellTop = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        shellTop.setAttribute("class", "shell-top");
+        
+        const shellBase = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        shellBase.setAttribute("d", "M 0,35 C -80,35 -100,-25 -60,-65 C -40,-85 40,-85 60,-65 C 100,-25 80,35 0,35 Z");
+        shellBase.setAttribute("fill", data.color);
+        shellBase.setAttribute("stroke", "#fff");
+        shellBase.setAttribute("stroke-width", "3");
+        shellBase.setAttribute("stroke-opacity", "0.5");
+        shellTop.appendChild(shellBase);
+
+        // Рельєф мушлі (лінії)
+        for(let i = -3; i <= 3; i++) {
+            if(i === 0) continue;
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            const startX = i * 15;
+            line.setAttribute("d", `M 0,30 Q ${startX},-10 ${startX * 1.5},-60`);
+            line.setAttribute("fill", "none");
+            line.setAttribute("stroke", "rgba(0,0,0,0.15)");
+            line.setAttribute("stroke-width", "4");
+            shellTop.appendChild(line);
+        }
+
+        gScale.appendChild(shellTop);
+
+        // Текст на перлині (перенесено сюди, щоб він був завжди ВИЩЕ закритих стулок)
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("class", "math-text");
+        text.setAttribute("x", "0");
+        text.setAttribute("y", "-10"); // Трохи вище центру
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("dominant-baseline", "middle");
+        text.textContent = data.text;
+        gScale.appendChild(text);
+
+        gWrapper.appendChild(gScale);
+
+        gWrapper.addEventListener("click", () => handleTargetClick(gWrapper, data.x, data.y, data.id, false));
+        return gWrapper;
+    }
+
+    function moveCharTo(targetX, targetY) {
+        isMoving = true;
+        const charInner = document.getElementById("character-group");
+        const webLayer = document.getElementById("web-layer");
+        
+        // Світловий водний слід
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", charPos.x);
+        line.setAttribute("y1", charPos.y);
+        line.setAttribute("x2", targetX);
+        line.setAttribute("y2", targetY);
+        line.setAttribute("stroke", "#00e5ff");
+        line.setAttribute("stroke-width", "6");
+        line.setAttribute("stroke-linecap", "round");
+        line.setAttribute("opacity", "0.6");
+        line.setAttribute("filter", "url(#glow)");
+        
+        const length = Math.hypot(targetX - charPos.x, targetY - charPos.y);
+        line.style.strokeDasharray = length;
+        line.style.strokeDashoffset = length;
+        line.style.transition = "stroke-dashoffset 1s ease-in-out";
+        
+        webLayer.appendChild(line);
+        
+        requestAnimationFrame(() => {
+            line.style.strokeDashoffset = 0;
+            charInner.style.transform = `translate(${targetX}px, ${targetY}px)`;
+        });
+
+        // Бульбашки вздовж шляху
+        setTimeout(() => {
+            for(let i=0; i<5; i++) {
+                createDecorBubble(charPos.x + (targetX - charPos.x)*(i/5), charPos.y + (targetY - charPos.y)*(i/5));
+            }
+        }, 500);
+
+        charPos = { x: targetX, y: targetY };
+        setTimeout(() => { isMoving = false; }, 1050);
+    }
+
+    // Декоративні бульбашки
+    function createDecorBubble(x, y) {
+        const bgLayer = document.getElementById("bg-bubbles");
+        const bubble = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        bubble.setAttribute("cx", x + (Math.random()-0.5)*40);
+        bubble.setAttribute("cy", y + (Math.random()-0.5)*40);
+        bubble.setAttribute("r", 3 + Math.random()*5);
+        bubble.setAttribute("fill", "rgba(255,255,255,0.4)");
+        bubble.setAttribute("class", "bubble");
+        bubble.style.animationDuration = (2 + Math.random()*3) + 's';
+        bgLayer.appendChild(bubble);
+        setTimeout(() => { if(bubble.parentNode) bubble.remove(); }, 5000);
+    }
+
+    // Анімація вильоту МЕДУЗ (замість метеликів)
+    function spawnWinParticles() {
+        const layer = document.getElementById("win-layer");
+        layer.innerHTML = ""; 
+        const colors = ['#00e5ff', '#b388ff', '#ff80ab', '#69f0ae', '#ffff8d'];
+        
+        for (let i = 0; i < 6; i++) {
+            const j = document.createElementNS("http://www.w3.org/2000/svg", "g");
+            
+            // Тіло медузи та щупальця
+            j.innerHTML = `
+                <g class="jellyfish-body" filter="url(#glow)">
+                    <path d="M -30,0 C -30,-40 30,-40 30,0 Z" fill="${colors[i]}" opacity="0.8"/>
+                    <path d="M -30,0 Q -15,10 0,0 Q 15,10 30,0" fill="${colors[i]}" opacity="0.6"/>
+                    <g class="jelly-tentacle">
+                        <path d="M -15,0 Q -25,30 -10,60" fill="none" stroke="${colors[i]}" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M 0,0 Q 10,40 -5,70" fill="none" stroke="${colors[i]}" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M 15,0 Q 25,30 10,50" fill="none" stroke="${colors[i]}" stroke-width="3" stroke-linecap="round"/>
+                    </g>
+                </g>
+            `;
+            layer.appendChild(j);
+            
+            const startX = 200 + Math.random() * 1200;
+            const endX = startX + (Math.random() - 0.5) * 400;
+            
+            j.animate([
+                { transform: `translate(${startX}px, 1000px) scale(0.5)` },
+                { transform: `translate(${endX}px, -200px) scale(1.5)` }
+            ], {
+                duration: 6000 + Math.random() * 3000,
+                delay: Math.random() * 1000,
+                fill: 'both',
+                easing: 'ease-out'
+            });
+        }
+    }
+
+    function handleTargetClick(el, x, y, answer, isRemote = false) {
+        initAudio();
+        if (isMoving || el.classList.contains("visited")) return;
+
+        if (!isRemote) sendAction('TARGET_CLICK', { answer, x, y });
+
+        if (answer === currentExpectedAnswer) {
+            playSound('correct');
+            el.classList.add("visited");
+            
+            // Зміна тексту
+            const textEl = el.querySelector('.math-text');
+            textEl.textContent = answer;
+            textEl.style.fontSize = "75px";
+            textEl.style.fill = "#1a237e"; 
+            textEl.style.textShadow = "0 0 10px white";
+
+            moveCharTo(x, y);
+            currentExpectedAnswer++;
+            
+            if (currentExpectedAnswer > 10) {
+                setTimeout(() => {
+                    playSound('win');
+                    spawnWinParticles(); 
+                }, 1000);
+            }
+        } else {
+            playSound('wrong');
+            el.classList.remove("shake");
+            void el.offsetWidth; 
+            el.classList.add("shake");
+        }
+    }
+
+    // Анімація очей (слідкують)
+    setInterval(() => {
+        const pL = document.getElementById("pupil-left");
+        const pR = document.getElementById("pupil-right");
+        const dx = (Math.random() - 0.5) * 10;
+        const dy = (Math.random() - 0.5) * 6;
+        const transformStr = `translate(${dx}, ${dy})`;
+        pL.setAttribute("transform", transformStr);
+        pR.setAttribute("transform", transformStr);
+    }, 2500);
+
+    // Фоновий генератор бульбашок
+    setInterval(() => {
+        createDecorBubble(Math.random() * GAME_WIDTH, GAME_HEIGHT);
+    }, 800);
+
+    function loadLevel(data) {
+        const tLayer = document.getElementById("targets-layer");
+        const wLayer = document.getElementById("web-layer");
+        const winLayer = document.getElementById("win-layer");
+        const charInner = document.getElementById("character-group");
+        
+        tLayer.innerHTML = ''; wLayer.innerHTML = ''; winLayer.innerHTML = '';
+        
+        currentExpectedAnswer = 1;
+        charPos = { ...START_POS };
+        charInner.style.transition = "none";
+        charInner.style.transform = `translate(${START_POS.x}px, ${START_POS.y}px)`;
+        
+        requestAnimationFrame(() => {
+            charInner.style.transition = "transform 1s cubic-bezier(0.45, 0, 0.15, 1)";
+        });
+
+        data.items.forEach(itemData => {
+            tLayer.appendChild(drawShell(itemData));
+        });
+    }
+
+    levelRef.on('value', (snap) => {
+        const data = snap.val();
+        if (data) {
+            // Оновлюємо історію лише якщо це новий рівень (запобігає дублям)
+            if(gameHistory.length === 0 || JSON.stringify(gameHistory[gameHistory.length-1]) !== JSON.stringify(data)) {
+                gameHistory.push(data);
+                currentLevelIndex = gameHistory.length - 1;
+            } else {
+                // Якщо отримали старий стан (наприклад, натиснули "Назад")
+                currentLevelIndex = gameHistory.findIndex(h => JSON.stringify(h) === JSON.stringify(data));
+            }
+            loadLevel(data);
+        }
+    });
+
+    document.getElementById("next-btn").addEventListener("click", () => {
+        initAudio();
+        // Якщо ми повернулися назад, а потім тиснемо "Далі", і є історія попереду - йдемо по історії
+        if(currentLevelIndex < gameHistory.length - 1) {
+            currentLevelIndex++;
+            levelRef.set(gameHistory[currentLevelIndex]);
+        } else {
+            levelRef.set(createNewLevelData()); 
+        }
+    });
+
+    // Кнопка НАЗАД (запит)
+    document.getElementById("prev-btn").addEventListener("click", () => {
+        initAudio();
+        if (currentLevelIndex > 0) {
+            currentLevelIndex--;
+            levelRef.set(gameHistory[currentLevelIndex]);
+        }
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+        levelRef.once('value').then((snap) => {
+            if (!snap.exists()) levelRef.set(createNewLevelData());
+        });
+    });
+
+    // ==========================================
+    // СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Збережена)
+    // ==========================================
+    (function initThemeManager() {
+        const themeBtn = document.createElement('div');
+        themeBtn.innerHTML = '⚙️';
+        themeBtn.style.cssText = 'position: fixed; bottom: 20px; right: 20px; font-size: 30px; cursor: pointer; z-index: 100000; background: rgba(255,255,255,0.1); backdrop-filter: blur(5px); border-radius: 50%; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; border: 1px solid rgba(255,255,255,0.3);';
+        document.body.appendChild(themeBtn);
+
+        const themeModal = document.createElement('div');
+        themeModal.style.cssText = 'display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.8); z-index: 100001; justify-content: center; align-items: center; font-family: Arial, sans-serif;';
+        themeModal.innerHTML = `
+            <div style="background: #112240; border: 2px solid #0ff; padding: 20px; border-radius: 10px; width: 80%; max-width: 600px; color: white;">
+                <div id="theme-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto;">
+                    <div class="theme-card" data-bg="none" style="position: relative; cursor: pointer; border: 2px solid #0ff; border-radius: 8px; height: 80px; display: flex; justify-content: center; align-items: center; background: #0a192f;">
+                        <span style="font-size: 24px; pointer-events: none;">🌊</span>
+                    </div>
+                </div>
+                <button id="close-theme-modal" style="margin-top: 20px; padding: 10px 20px; cursor: pointer; background: #0ff; border: none; font-weight: bold; border-radius: 5px;">✕</button>
+            </div>
+        `;
+        document.body.appendChild(themeModal);
+
+        themeBtn.onclick = () => themeModal.style.display = 'flex';
+        document.getElementById('close-theme-modal').onclick = () => themeModal.style.display = 'none';
+
+        const gallery = themeModal.querySelector('#theme-gallery');
+        const baseURL = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        let bgIndex = 1;
+
+        function checkImg(url, cb) { const i = new Image(); i.onload=()=>cb(true); i.onerror=()=>cb(false); i.src=url; }
+        function loadNextBg() {
+            if (bgIndex > 1000) return;
+            const url = `${baseURL}background_${bgIndex}.webp`;
+            checkImg(url, (ex) => {
+                if (ex) {
+                    const c = document.createElement('div');
+                    c.className = 'theme-card'; c.dataset.bg = url;
+                    c.style.cssText = `position: relative; cursor: pointer; border: 2px solid #555; border-radius: 8px; height: 80px; background-image: url('${url}'); background-size: cover; background-position: center;`;
+                    gallery.appendChild(c);
+                    bgIndex++; loadNextBg(); 
+                }
+            });
+        }
+        loadNextBg();
+
+        gallery.addEventListener('click', (e) => {
+            const card = e.target.closest('.theme-card');
+            if (card) {
+                const bg = card.dataset.bg;
+                localStorage.setItem('mySavedBg_' + CONFIG.gameId, bg);
+                db.ref('game_theme').set(bg);
+                themeModal.style.display = 'none';
+            }
+        });
+
+        const setBg = (bg) => {
+            if (!bg || bg === 'none') {
+                document.body.style.backgroundImage = 'none';
+                document.getElementById('background-layer').style.display = 'block';
+            } else {
+                document.body.style.backgroundImage = `url('${bg}')`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundPosition = 'center';
+                document.getElementById('background-layer').style.display = 'none'; // Ховаємо дефолтний океан, якщо обрано картинку
+            }
+        };
+
+        const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedBg) setBg(savedBg);
+
+        db.ref('game_theme').on('value', (snap) => {
+            let bg = snap.val();
+            const cur = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+            if (cur && bg !== cur) bg = cur; 
+            setBg(bg);
+        });
+    })();
+
+    // ==========================================
+    // ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ (Збережений)
+    // ==========================================
+    (function initGlobalDrawing() {
+        const drawCanvas = document.createElement('canvas');
+        drawCanvas.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 90000;';
+        document.body.appendChild(drawCanvas);
+        const drawCtx = drawCanvas.getContext('2d');
+        
+        function resize() { drawCanvas.width = window.innerWidth; drawCanvas.height = window.innerHeight; }
+        window.addEventListener('resize', resize); resize();
+
+        const drawBtn = document.createElement('div');
+        drawBtn.innerHTML = '✏️';
+        drawBtn.style.cssText = 'position: fixed; bottom: 85px; right: 20px; background: rgba(0,255,255,0.2); border: 2px solid #0ff; color: #0ff; border-radius: 50%; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; font-size: 24px; cursor: pointer; z-index: 90001; backdrop-filter: blur(5px);';
+        document.body.appendChild(drawBtn);
+
+        const drawPanel = document.createElement('div');
+        drawPanel.style.cssText = 'display: none; position: fixed; top: 20px; left: 20px; background: rgba(17,34,64,0.9); padding: 15px; border-radius: 8px; z-index: 90002; border: 1px solid #0ff; width: 200px; backdrop-filter: blur(10px);';
+        
+        const colors = ['#00ffff', '#ff00ff', '#ffff00', '#00ff00', '#ff5555', '#ffffff', '#000000'];
+        const pHTML = colors.map(c => `<div class="color-swatch" data-color="${c}" style="width: 25px; height: 25px; background: ${c}; border: 1px solid #fff; cursor: pointer; border-radius: 50%;"></div>`).join('');
+
+        drawPanel.innerHTML = `
+            <div id="dp-head" style="cursor: grab; background: rgba(0,255,255,0.1); color: #0ff; padding: 8px; text-align: center; font-weight: bold; margin-bottom: 15px; border-radius: 4px; user-select: none;">🖐</div>
+            <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                <button id="dp-pen" style="flex: 1; padding: 8px; background: #0ff; color: #000; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">✏️</button>
+                <button id="dp-era" style="flex: 1; padding: 8px; background: transparent; border: 1px solid #0ff; color: #0ff; border-radius: 4px; cursor: pointer;">🧽</button>
+            </div>
+            <input type="range" id="dp-thick" min="2" max="30" value="6" style="width: 100%; margin-bottom: 15px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px; justify-content: center;">${pHTML}</div>
+            <button id="dp-clr" style="width: 100%; padding: 8px; background: #ff4c4c; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">🗑️</button>
+            <button id="dp-close" style="position: absolute; top: 5px; right: 5px; background: none; border: none; color: #0ff; font-size: 18px; cursor: pointer;">✕</button>
+        `;
+        document.body.appendChild(drawPanel);
+
+        let enabled = false, color = '#00ffff', thick = 6, mode = true, isDown = false, lx = 0, ly = 0;
+
+        drawBtn.onclick = () => { drawPanel.style.display = 'block'; drawCanvas.style.pointerEvents = 'auto'; enabled = true; };
+        document.getElementById('dp-close').onclick = () => { drawPanel.style.display = 'none'; drawCanvas.style.pointerEvents = 'none'; enabled = false; };
+        
+        const pBtn = document.getElementById('dp-pen'), eBtn = document.getElementById('dp-era');
+        pBtn.onclick = () => { mode = true; pBtn.style.background = '#0ff'; pBtn.style.color = '#000'; eBtn.style.background = 'transparent'; eBtn.style.color = '#0ff'; };
+        eBtn.onclick = () => { mode = false; eBtn.style.background = '#0ff'; eBtn.style.color = '#000'; pBtn.style.background = 'transparent'; pBtn.style.color = '#0ff'; };
+        document.getElementById('dp-thick').onchange = (e) => thick = e.target.value;
+        document.querySelectorAll('.color-swatch').forEach(s => s.onclick = (e) => { color = e.target.dataset.color; mode = true; pBtn.click(); });
+        
+        document.getElementById('dp-clr').onclick = () => { window.clearCanvas(false); sendAction('clear_canvas', {}); };
+
+        window.clearCanvas = () => drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        window.drawOnCanvas = (x0, y0, x1, y1, col, th, rem) => {
+            drawCtx.beginPath(); drawCtx.moveTo(x0, y0); drawCtx.lineTo(x1, y1);
+            drawCtx.strokeStyle = col; drawCtx.lineWidth = th; drawCtx.lineCap = 'round';
+            drawCtx.globalCompositeOperation = col === 'eraser' ? 'destination-out' : 'source-over';
+            if(col === 'eraser') drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+            drawCtx.stroke(); drawCtx.globalCompositeOperation = 'source-over';
+        };
+
+        const getPos = (e) => ({ x: (e.touches ? e.touches[0].clientX : e.clientX), y: (e.touches ? e.touches[0].clientY : e.clientY) });
+        const start = (e) => { if(!enabled) return; isDown = true; const p = getPos(e); lx = p.x; ly = p.y; };
+        const move = (e) => {
+            if(!enabled || !isDown) return; e.preventDefault();
+            const p = getPos(e), c = mode ? color : 'eraser';
+            window.drawOnCanvas(lx, ly, p.x, p.y, c, thick, false);
+            sendAction('draw_line', { x0: lx, y0: ly, x1: p.x, y1: p.y, color: c, thickness: thick });
+            lx = p.x; ly = p.y;
+        };
+        const stop = () => isDown = false;
+
+        drawCanvas.addEventListener('mousedown', start); drawCanvas.addEventListener('mousemove', move); drawCanvas.addEventListener('mouseup', stop); drawCanvas.addEventListener('mouseout', stop);
+        drawCanvas.addEventListener('touchstart', start, {passive: false}); drawCanvas.addEventListener('touchmove', move, {passive: false}); drawCanvas.addEventListener('touchend', stop);
+
+        const hd = document.getElementById('dp-head'); let dg = false, dx=0, dy=0;
+        hd.onmousedown = (e) => { dg = true; dx = e.clientX - drawPanel.offsetLeft; dy = e.clientY - drawPanel.offsetTop; };
+        document.onmousemove = (e) => { if(dg) { drawPanel.style.left = (e.clientX - dx) + 'px'; drawPanel.style.top = (e.clientY - dy) + 'px'; } };
+        document.onmouseup = () => dg = false;
+        hd.ontouchstart = (e) => { dg = true; dx = e.touches[0].clientX - drawPanel.offsetLeft; dy = e.touches[0].clientY - drawPanel.offsetTop; };
+        document.ontouchmove = (e) => { if(dg) { drawPanel.style.left = (e.touches[0].clientX - dx) + 'px'; drawPanel.style.top = (e.touches[0].clientY - dy) + 'px'; } };
+        document.ontouchend = () => dg = false;
+    })();
+</script>
+</body>
+</html>
