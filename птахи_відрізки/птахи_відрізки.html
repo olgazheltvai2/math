@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ферма - Інтерактивна гра</title>
+    
+    <!-- Підключення Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background-color: #f0f0f0;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        /* Контейнер гри (максимально прозорий) */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: transparent;
+        }
+
+        /* Головне зображення ферми */
+        #farm-scene {
+            position: relative;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+
+        .farm-wrapper {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        /* Кнопки "Рупор" */
+        .megaphone-btn {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.9);
+            border: 2px solid #333;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 100;
+            transition: transform 0.2s;
+        }
+        
+        .megaphone-btn:active {
+            transform: scale(0.9);
+        }
+
+        /* Позиціонування рупорів відносно картинки */
+        #btn-ostrich { top: 35%; left: 28%; }
+        #btn-turkey { top: 55%; left: 45%; }
+        #btn-rooster { top: 65%; left: 68%; }
+
+        /* Відрізки для Drag and Drop */
+        .draggable-segment {
+            height: 8px; /* Товщина лінії відрізка */
+            cursor: grab;
+            position: absolute;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            touch-action: none;
+            z-index: 150;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .draggable-segment:active {
+            cursor: grabbing;
+        }
+
+        /* Точки на кінцях відрізків */
+        .draggable-segment::before, .draggable-segment::after {
+            content: '';
+            display: block;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: inherit;
+            border: 2px solid white;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            margin: 0 -8px; /* Виступ за межі лінії */
+        }
+
+        /* Theme Manager */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            font-size: 24px;
+            background: #34495e;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 90001;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 600px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            z-index: 90002;
+            padding: 20px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        #theme-modal h2 {
+            margin-top: 0;
+            text-align: center;
+        }
+
+        #close-theme-modal {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 24px;
+            cursor: pointer;
+            color: #555;
+        }
+
+        .theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+        }
+
+        .theme-item {
+            position: relative;
+            width: 100%;
+            height: 80px;
+            background-color: #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid transparent;
+            background-size: cover;
+            background-position: center;
+        }
+        
+        .theme-item:hover {
+            border-color: #3498db;
+        }
+
+        .theme-item span {
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        /* Заглушка контролю доступу */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 100000;
+            justify-content: center;
+            align-items: center;
+            color: red;
+            font-size: 40px;
+            font-weight: bold;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        /* Глобальний інструмент малювання */
+        #global-draw-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 90000;
+            pointer-events: none;
+        }
+
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px;
+            right: 20px;
+            background-color: #8e44ad;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 90001;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        #draw-panel-global {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            z-index: 90002;
+            width: 250px;
+            padding-bottom: 15px;
+            user-select: none;
+        }
+
+        .draw-panel-header {
+            background: #f1c40f;
+            height: 30px;
+            border-radius: 10px 10px 0 0;
+            cursor: grab;
+            position: relative;
+        }
+        
+        .draw-panel-header:active {
+            cursor: grabbing;
+        }
+
+        .close-draw-panel {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .draw-controls {
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .draw-tools {
+            display: flex;
+            gap: 10px;
+        }
+
+        .draw-tool-btn {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            background: #ecf0f1;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .draw-tool-btn.active {
+            background: #8e44ad;
+            color: white;
+            border-color: #8e44ad;
+        }
+
+        .color-palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .color-swatch {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        
+        .color-swatch.active {
+            border-color: #333;
+        }
+
+        #draw-clear-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* Адаптивність для мобільних */
+        @media (max-width: 768px) {
+            #theme-btn { bottom: 10px; right: 10px; width: 40px; height: 40px; font-size: 20px; }
+            #toggle-draw-btn-global { bottom: 60px; right: 10px; padding: 8px 15px; font-size: 14px; }
+            .megaphone-btn { width: 30px; height: 30px; font-size: 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Заглушка доступу -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <!-- Контейнер гри -->
+    <div id="game-container">
+        <div class="farm-wrapper">
+            <!-- Зображення ферми -->
+            <img id="farm-scene" src="Gemini_Generated_Image_nisr0dnisr0dnisr.jpg" alt="Ферма">
+            
+            <!-- Кнопки-рупори для тварин -->
+            <button class="megaphone-btn" id="btn-ostrich" onclick="playAnimalSound('ostrich')">📣</button>
+            <button class="megaphone-btn" id="btn-turkey" onclick="playAnimalSound('turkey')">📣</button>
+            <button class="megaphone-btn" id="btn-rooster" onclick="playAnimalSound('rooster')">📣</button>
+        </div>
+    </div>
+
+    <!-- Відрізки для Drag and Drop (початкові позиції) -->
+    <div id="seg-1" class="draggable-segment" style="background-color: #e74c3c; width: 80px; top: 30px; left: 80%;"></div>
+    <div id="seg-2" class="draggable-segment" style="background-color: #3498db; width: 130px; top: 70px; left: 80%;"></div>
+    <div id="seg-3" class="draggable-segment" style="background-color: #2ecc71; width: 180px; top: 110px; left: 80%;"></div>
+
+    <!-- Аудіо файли -->
+    <audio id="audio-ostrich" src="страус.mp3"></audio>
+    <audio id="audio-turkey" src="індик.mp3"></audio>
+    <audio id="audio-rooster" src="півень.mp3"></audio>
+
+    <!-- Theme Manager UI -->
+    <button id="theme-btn">⚙️</button>
+    <div id="theme-modal">
+        <span id="close-theme-modal">✕</span>
+        <h2>Обери фон</h2>
+        <div class="theme-gallery" id="theme-gallery-container">
+            <!-- Картки генеруються через JS -->
+        </div>
+    </div>
+
+    <!-- Глобальний інструмент малювання -->
+    <canvas id="global-draw-canvas"></canvas>
+    <button id="toggle-draw-btn-global">✏️ Малювати</button>
+    <div id="draw-panel-global">
+        <div class="draw-panel-header" id="draw-panel-header">
+            <span class="close-draw-panel" id="close-draw-panel">✕</span>
+        </div>
+        <div class="draw-controls">
+            <div class="draw-tools">
+                <button class="draw-tool-btn active" id="tool-pencil">✏️ Олівець</button>
+                <button class="draw-tool-btn" id="tool-eraser">🧽 Гумка</button>
+            </div>
+            <input type="range" id="draw-thickness" min="1" max="50" value="5" style="width: 100%;">
+            <div class="color-palette">
+                <div class="color-swatch active" style="background: #000000;" data-color="#000000"></div>
+                <div class="color-swatch" style="background: #e74c3c;" data-color="#e74c3c"></div>
+                <div class="color-swatch" style="background: #3498db;" data-color="#3498db"></div>
+                <div class="color-swatch" style="background: #2ecc71;" data-color="#2ecc71"></div>
+                <div class="color-swatch" style="background: #f1c40f;" data-color="#f1c40f"></div>
+                <div class="color-swatch" style="background: #9b59b6;" data-color="#9b59b6"></div>
+                <div class="color-swatch" style="background: #ffffff;" data-color="#ffffff"></div>
+            </div>
+            <button id="draw-clear-btn">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <!-- Основні скрипти -->
+    <script>
+        // --- КОНФІГУРАЦІЯ ---
+        const CONFIG = {
+            gameId: 'farm_animals_segments_02',
+            firebaseProjectId: 'lesson-13c44'
+        };
+
+        // --- ІНІЦІАЛІЗАЦІЯ FIREBASE ---
+        const firebaseConfig = {
+            databaseURL: "https://" + CONFIG.firebaseProjectId + "-default-rtdb.firebaseio.com/",
+            projectId: CONFIG.firebaseProjectId
+        };
+        
+        let db;
+        let isFirebaseConnected = false;
+
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            isFirebaseConnected = true;
+        } catch (e) {
+            console.warn("Робота без Firebase (офлайн режим).");
+        }
+
+        // --- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ ДОСТУПУ ТА РАДАР ---
+        let myName = "";
+        let tabId = "tab_" + Math.random().toString(36).substr(2, 9);
+        let isImmune = true;
+
+        function initAccessControl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            myName = urlParams.get('user');
+            
+            if (myName) {
+                sessionStorage.setItem('userName', myName);
+            } else {
+                myName = sessionStorage.getItem('userName');
+                if (!myName) {
+                    myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                    sessionStorage.setItem('userName', myName);
+                }
+            }
+
+            if (!isFirebaseConnected) return;
+
+            setTimeout(() => { isImmune = false; }, 1000);
+
+            const userRef = db.ref('online_users/' + myName + '/' + tabId);
+            const connectedRef = db.ref('.info/connected');
+
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    userRef.set({
+                        joinedAt: firebase.database.ServerValue.TIMESTAMP,
+                        gameId: CONFIG.gameId
+                    });
+                    userRef.onDisconnect().remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                userRef.remove();
+            });
+
+            // Блокування
+            db.ref('blocked_users/' + myName).on('value', (snapshot) => {
+                const isBlocked = snapshot.val();
+                document.getElementById('block-overlay').style.display = isBlocked ? 'flex' : 'none';
+            });
+
+            // Повернення в лобі
+            db.ref('current_activity').on('value', (snapshot) => {
+                const activity = snapshot.val();
+                if (!isImmune && activity === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+
+            // Безпечне перезавантаження (запобігання безкінечному циклу)
+            db.ref('force_refresh').on('value', (snapshot) => {
+                const shouldRefresh = snapshot.val();
+                if (shouldRefresh === true) {
+                    if (!sessionStorage.getItem('reloaded_recently')) {
+                        sessionStorage.setItem('reloaded_recently', 'true');
+                        window.location.reload();
+                    }
+                } else {
+                    sessionStorage.removeItem('reloaded_recently');
+                }
+            });
+        }
+
+        // --- СИНХРОНІЗАЦІЯ ДІЙ ТА ІГРОВОЇ ЛОГІКИ ---
+        let isRemoteAction = false;
+        
+        function sendAction(type, data) {
+            if (!isFirebaseConnected || isRemoteAction) return;
+            const actionRef = db.ref('game_action');
+            actionRef.set({
+                senderId: tabId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        function listenActions() {
+            if (!isFirebaseConnected) return;
+            db.ref('game_action').on('value', (snapshot) => {
+                const action = snapshot.val();
+                if (!action || action.senderId === tabId) return;
+
+                isRemoteAction = true;
+                
+                if (action.type === 'play_audio') {
+                    playAnimalSound(action.data.animalId, true);
+                } else if (action.type === 'move_segment') {
+                    const el = document.getElementById(action.data.id);
+                    if (el) {
+                        el.style.left = action.data.x + 'px';
+                        el.style.top = action.data.y + 'px';
+                    }
+                } else if (action.type === 'draw_line') {
+                    drawRemoteLine(action.data);
+                } else if (action.type === 'clear_canvas') {
+                    clearCanvas(true);
+                }
+
+                setTimeout(() => { isRemoteAction = false; }, 50);
+            });
+        }
+
+        // --- АУДІО ТВАРИН ---
+        function playAnimalSound(animalId, fromRemote = false) {
+            const audioEl = document.getElementById('audio-' + animalId);
+            if (audioEl) {
+                audioEl.currentTime = 0;
+                audioEl.play().catch(e => console.log("Браузер потребує взаємодії користувача."));
+            }
+            if (!fromRemote) {
+                sendAction('play_audio', { animalId: animalId });
+            }
+        }
+
+        // --- DRAG AND DROP ВІДРІЗКІВ ---
+        const segments = document.querySelectorAll('.draggable-segment');
+        let activeDragElement = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        segments.forEach(segment => {
+            segment.addEventListener('mousedown', startDrag);
+            segment.addEventListener('touchstart', startDrag, {passive: false});
+        });
+
+        function startDrag(e) {
+            if (e.target.classList.contains('draggable-segment')) {
+                activeDragElement = e.target;
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+                
+                const rect = activeDragElement.getBoundingClientRect();
+                dragOffsetX = clientX - rect.left;
+                dragOffsetY = clientY - rect.top;
+                
+                activeDragElement.style.zIndex = 1000;
+                e.preventDefault();
+            }
+        }
+
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('touchmove', drag, {passive: false});
+        document.addEventListener('mouseup', endDrag);
+        document.addEventListener('touchend', endDrag);
+
+        function drag(e) {
+            if (!activeDragElement) return;
+            e.preventDefault();
+
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+            const newX = clientX - dragOffsetX;
+            const newY = clientY - dragOffsetY;
+
+            activeDragElement.style.left = newX + 'px';
+            activeDragElement.style.top = newY + 'px';
+
+            sendAction('move_segment', {
+                id: activeDragElement.id,
+                x: newX,
+                y: newY
+            });
+        }
+
+        function endDrag() {
+            if (activeDragElement) {
+                activeDragElement.style.zIndex = 150;
+                activeDragElement = null;
+            }
+        }
+
+        // --- СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER) ---
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const closeThemeModal = document.getElementById('close-theme-modal');
+        const galleryContainer = document.getElementById('theme-gallery-container');
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/background_';
+        const savedBgKey = 'mySavedBg_' + CONFIG.gameId;
+
+        const savedBg = localStorage.getItem(savedBgKey);
+        if (savedBg) {
+            document.body.style.backgroundImage = savedBg === 'none' ? 'none' : `url('${savedBg}')`;
+        }
+
+        themeBtn.addEventListener('click', () => {
+            themeModal.style.display = 'block';
+            if (galleryContainer.innerHTML.trim() === '') {
+                loadGallery();
+            }
+        });
+
+        closeThemeModal.addEventListener('click', () => {
+            themeModal.style.display = 'none';
+        });
+
+        function loadGallery() {
+            const noBgCard = document.createElement('div');
+            noBgCard.className = 'theme-item';
+            noBgCard.style.backgroundColor = '#ccc';
+            noBgCard.innerHTML = '<span>Без фону</span>';
+            noBgCard.onclick = () => selectTheme('none');
+            galleryContainer.appendChild(noBgCard);
+
+            let i = 1;
+            function checkNextImage() {
+                if (i > 1000) return;
+                const imgUrl = `${baseUrl}${i}.webp`;
+                const img = new Image();
+                img.onload = () => {
+                    const card = document.createElement('div');
+                    card.className = 'theme-item';
+                    card.style.backgroundImage = `url('${imgUrl}')`;
+                    card.innerHTML = `<span>Фон ${i}</span>`;
+                    
+                    const currentUrl = imgUrl; 
+                    card.onclick = () => selectTheme(currentUrl);
+                    
+                    galleryContainer.appendChild(card);
+                    i++;
+                    checkNextImage(); 
+                };
+                img.onerror = () => {
+                    // Зупиняємо цикл, якщо фон не знайдено, щоб не навантажувати систему
+                };
+                img.src = imgUrl;
+            }
+            checkNextImage();
+        }
+
+        function selectTheme(url) {
+            document.body.style.backgroundImage = url === 'none' ? 'none' : `url('${url}')`;
+            localStorage.setItem(savedBgKey, url);
+            
+            if (isFirebaseConnected) {
+                db.ref('game_theme').set(url);
+            }
+            themeModal.style.display = 'none';
+        }
+
+        if (isFirebaseConnected) {
+            db.ref('game_theme').on('value', (snapshot) => {
+                const url = snapshot.val();
+                if (url) {
+                    document.body.style.backgroundImage = url === 'none' ? 'none' : `url('${url}')`;
+                    localStorage.setItem(savedBgKey, url);
+                }
+            });
+        }
+
+        // --- ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ ---
+        const canvas = document.getElementById('global-draw-canvas');
+        const ctx = canvas.getContext('2d');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        const drawPanel = document.getElementById('draw-panel-global');
+        const closeDrawPanel = document.getElementById('close-draw-panel');
+        const drawHeader = document.getElementById('draw-panel-header');
+        
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let currentTool = 'pencil';
+        let currentColor = '#000000';
+        let currentThickness = 5;
+        let lastX = 0;
+        let lastY = 0;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        toggleDrawBtn.addEventListener('click', () => {
+            drawPanel.style.display = 'block';
+            canvas.style.pointerEvents = 'auto'; 
+            isDrawingMode = true;
+        });
+
+        closeDrawPanel.addEventListener('click', () => {
+            drawPanel.style.display = 'none';
+            canvas.style.pointerEvents = 'none'; 
+            isDrawingMode = false;
+        });
+
+        document.getElementById('tool-pencil').addEventListener('click', (e) => {
+            currentTool = 'pencil';
+            updateToolUI(e.target);
+        });
+        document.getElementById('tool-eraser').addEventListener('click', (e) => {
+            currentTool = 'eraser';
+            updateToolUI(e.target);
+        });
+
+        function updateToolUI(activeBtn) {
+            document.querySelectorAll('.draw-tool-btn').forEach(b => b.classList.remove('active'));
+            activeBtn.classList.add('active');
+        }
+
+        document.getElementById('draw-thickness').addEventListener('input', (e) => {
+            currentThickness = e.target.value;
+        });
+
+        document.querySelectorAll('.color-swatch').forEach(swatch => {
+            swatch.addEventListener('click', (e) => {
+                document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+                e.target.classList.add('active');
+                currentColor = e.target.dataset.color;
+                if (currentTool === 'eraser') {
+                    document.getElementById('tool-pencil').click();
+                }
+            });
+        });
+
+        document.getElementById('draw-clear-btn').addEventListener('click', () => {
+            clearCanvas(false);
+        });
+
+        function clearCanvas(fromRemote) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!fromRemote) sendAction('clear_canvas', {});
+        }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', drawLine);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); 
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY });
+            canvas.dispatchEvent(mouseEvent);
+        }, {passive: false});
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY });
+            canvas.dispatchEvent(mouseEvent);
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', () => {
+            canvas.dispatchEvent(new MouseEvent('mouseup'));
+        });
+
+        function startDrawing(e) {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            lastX = e.clientX - rect.left;
+            lastY = e.clientY - rect.top;
+        }
+
+        function drawLine(e) {
+            if (!isDrawing || !isDrawingMode) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            ctx.globalCompositeOperation = currentTool === 'eraser' ? 'destination-out' : 'source-over';
+            ctx.strokeStyle = currentTool === 'eraser' ? 'rgba(0,0,0,1)' : currentColor;
+            ctx.lineWidth = currentThickness;
+
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+
+            const normLastX = lastX / canvas.width;
+            const normLastY = lastY / canvas.height;
+            const normX = x / canvas.width;
+            const normY = y / canvas.height;
+
+            sendAction('draw_line', {
+                x0: normLastX, y0: normLastY,
+                x1: normX, y1: normY,
+                color: currentColor,
+                thickness: currentThickness,
+                tool: currentTool
+            });
+
+            lastX = x;
+            lastY = y;
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function drawRemoteLine(data) {
+            const rx0 = data.x0 * canvas.width;
+            const ry0 = data.y0 * canvas.height;
+            const rx1 = data.x1 * canvas.width;
+            const ry1 = data.y1 * canvas.height;
+
+            ctx.save();
+            ctx.globalCompositeOperation = data.tool === 'eraser' ? 'destination-out' : 'source-over';
+            ctx.strokeStyle = data.tool === 'eraser' ? 'rgba(0,0,0,1)' : data.color;
+            ctx.lineWidth = data.thickness;
+
+            ctx.beginPath();
+            ctx.moveTo(rx0, ry0);
+            ctx.lineTo(rx1, ry1);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Drag and Drop для панелі малювання
+        let isDraggingPanel = false;
+        let panelOffsetX, panelOffsetY;
+
+        drawHeader.addEventListener('mousedown', (e) => {
+            isDraggingPanel = true;
+            const rect = drawPanel.getBoundingClientRect();
+            panelOffsetX = e.clientX - rect.left;
+            panelOffsetY = e.clientY - rect.top;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDraggingPanel) return;
+            drawPanel.style.left = (e.clientX - panelOffsetX) + 'px';
+            drawPanel.style.top = (e.clientY - panelOffsetY) + 'px';
+            drawPanel.style.right = 'auto'; 
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDraggingPanel = false;
+        });
+
+        drawHeader.addEventListener('touchstart', (e) => {
+            isDraggingPanel = true;
+            const touch = e.touches[0];
+            const rect = drawPanel.getBoundingClientRect();
+            panelOffsetX = touch.clientX - rect.left;
+            panelOffsetY = touch.clientY - rect.top;
+        }, {passive: true});
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDraggingPanel) return;
+            const touch = e.touches[0];
+            drawPanel.style.left = (touch.clientX - panelOffsetX) + 'px';
+            drawPanel.style.top = (touch.clientY - panelOffsetY) + 'px';
+            drawPanel.style.right = 'auto';
+        }, {passive: true});
+
+        document.addEventListener('touchend', () => {
+            isDraggingPanel = false;
+        });
+
+        // --- ЗАПУСК ---
+        window.onload = () => {
+            initAccessControl();
+            listenActions();
+        };
+
+    </script>
+</body>
+</html>
