@@ -24,7 +24,7 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background-color: transparent; /* Прозорий для динамічного фону */
+            background-color: transparent;
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -256,6 +256,16 @@
             transition: none;
         }
 
+        /* Стиль для віддаленого перетягування іншим користувачем */
+        .animal-item.remote-dragging {
+            position: absolute;
+            z-index: 9999;
+            pointer-events: none;
+            filter: drop-shadow(0 20px 15px rgba(0,0,0,0.6));
+            transform: scale(1.3);
+            transition: left 0.1s linear, top 0.1s linear; /* Згладжування руху */
+        }
+
         .animal-number {
             position: absolute;
             bottom: -5px;
@@ -405,7 +415,7 @@
             background: #757575;
         }
 
-        /* ВИПРАВЛЕННЯ Z-INDEX: текст числа поверх рами */
+        /* ВІЗУАЛІЗАЦІЯ ЧИСЕЛ */
         .window-content {
             position: absolute;
             top: 50%;
@@ -554,7 +564,6 @@
             </linearGradient>
         </defs>
         <rect width="100%" height="100%" fill="url(#sky)"/>
-        
         <g transform="translate(850, 150)">
             <circle r="80" fill="url(#sun)"/>
             <path d="M0,-110 L0,-140 M0,110 L0,140 M-110,0 L-140,0 M110,0 L140,0 M-78,-78 L-100,-100 M78,78 L100,100 M-78,78 L-100,100 M78,-78 L100,-100" stroke="#FFCA28" stroke-width="8" stroke-linecap="round"/>
@@ -583,7 +592,6 @@
     <div id="setup-screen">
         <div class="wood-panel">
             <div class="input-group">
-                <!-- Секретне поле -->
                 <input type="number" id="target-number-input" min="2" max="20" value="6" class="secret-hidden">
                 <button id="toggle-secret-btn">👁️</button>
             </div>
@@ -596,7 +604,6 @@
     <!-- Основний контейнер гри -->
     <div id="game-container" style="display: none;">
         <div id="top-bar">
-            <!-- ЄДИНА КНОПКА ЗАМІСТЬ ВПЕРЕД/НАЗАД -->
             <div class="control-btn" id="btn-new-house">Новий будинок</div>
         </div>
 
@@ -683,7 +690,6 @@
         <h2 style="text-align:center; font-family:Arial;">Обери фон</h2>
         <div id="theme-grid">
             <div class="theme-card theme-card-none" data-bg="none">Без фону</div>
-            <!-- Динамічні фони генеруються тут -->
         </div>
     </div>
 
@@ -752,10 +758,10 @@
             currentThemeUrl = url;
             if (url === 'none') {
                 document.body.style.backgroundImage = 'none';
-                svgBackground.style.display = 'block'; // Відновлюємо SVG
+                svgBackground.style.display = 'block';
             } else {
                 document.body.style.backgroundImage = `url('${url}')`;
-                svgBackground.style.display = 'none'; // Ховаємо SVG
+                svgBackground.style.display = 'none';
             }
             
             document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('active'));
@@ -768,11 +774,9 @@
             }
         }
 
-        // Завантаження локального або 'none'
         const savedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId) || 'none';
         applyTheme(savedTheme);
 
-        // Синхронізація фону
         db.ref(`game_theme/${CONFIG.gameId}`).on('value', snap => {
             const data = snap.val();
             if (data && data.senderId !== tabId && data.timestamp > Date.now() - 10000) {
@@ -780,7 +784,6 @@
             }
         });
 
-        // Генерація карток фону
         async function loadBackgrounds() {
             for (let i = 1; i <= 30; i++) {
                 const url = `${CONFIG.bgBaseUrl}background_${i}.webp`;
@@ -863,13 +866,12 @@
 
         function draw(e) {
             if (!isDrawing || !isDrawingMode) return;
-            e.preventDefault(); // Запобігаємо скролу на мобільних при малюванні
+            e.preventDefault(); 
             const pos = getCanvasPos(e);
             const color = currentTool === 'eraser' ? null : document.getElementById('draw-color').value;
             const size = document.getElementById('draw-size').value;
 
             drawLineLocalAndSync(lastX, lastY, pos.x, pos.y, color, size, canvas.width, canvas.height);
-            
             lastX = pos.x; lastY = pos.y;
         }
 
@@ -914,7 +916,6 @@
             db.ref(`game_action/${CONFIG.gameId}`).set({ senderId: tabId, timestamp: Date.now(), type: 'clear_canvas' });
         };
 
-        // Дрег-енд-дроп для панелі малювання
         const drawHeader = document.querySelector('.draw-panel-header');
         let isDraggingPanel = false, panelStartX, panelStartY, initialPanelX, initialPanelY;
         drawHeader.onmousedown = drawHeader.ontouchstart = (e) => {
@@ -937,7 +938,6 @@
         let targetNum = 6;
         let pairs = [];
         let completedPairs = 0;
-        let visibleNumbersList = new Set(); // Для запобігання дублюванню цифр-підказок
 
         const setupScreen = document.getElementById('setup-screen');
         const gameContainer = document.getElementById('game-container');
@@ -950,7 +950,6 @@
         const floorsContainer = document.getElementById('floors-container');
         const dock = document.getElementById('animals-dock');
 
-        // Секретне поле вводу
         toggleSecretBtn.addEventListener('click', () => {
             targetInput.classList.toggle('secret-hidden');
             toggleSecretBtn.textContent = targetInput.classList.contains('secret-hidden') ? '👁️' : '🙈';
@@ -1004,10 +1003,7 @@
             initAudio();
             const val = parseInt(targetInput.value);
             if (val > 1 && val <= 20) {
-                db.ref(`game_action/${CONFIG.gameId}`).set({
-                    senderId: tabId, timestamp: Date.now(), type: 'start_game', data: { targetNum: val }
-                });
-                startGameWithNum(val);
+                generateGameStateAndStart(val);
             }
         });
 
@@ -1016,88 +1012,106 @@
             setupScreen.style.display = 'flex';
         });
 
-        function startGameWithNum(val) {
-            targetNum = val;
-            setupGame();
-            setupScreen.style.display = 'none';
-            gameContainer.style.display = 'flex';
+        // 1. Створення спільного єдиного стану
+        function generateGameStateAndStart(val) {
+            let visibleNumbersList = new Set();
+            let localFloors = [];
+            let localDockAnimals = [];
+            let animalIdCounter = 0;
+
+            for (let i = 1; i < val; i++) {
+                let pair = { a: i, b: val - i };
+                let isLeftEmpty = false;
+                
+                if (visibleNumbersList.has(pair.a)) {
+                    isLeftEmpty = true;
+                } else if (visibleNumbersList.has(pair.b)) {
+                    isLeftEmpty = false;
+                } else {
+                    isLeftEmpty = Math.random() > 0.5;
+                }
+                
+                let visibleVal = isLeftEmpty ? pair.b : pair.a;
+                visibleNumbersList.add(visibleVal);
+                
+                localFloors.push({ isLeftEmpty, a: pair.a, b: pair.b });
+                
+                localDockAnimals.push({
+                    id: 'animal_' + (animalIdCounter++),
+                    val: isLeftEmpty ? pair.a : pair.b,
+                    svgIndex: i
+                });
+            }
+
+            const extraCount = Math.min(4, val);
+            for(let i = 0; i < extraCount; i++) {
+                localDockAnimals.push({
+                    id: 'animal_' + (animalIdCounter++),
+                    val: Math.floor(Math.random() * val) + 1,
+                    svgIndex: val + i
+                });
+            }
+
+            for (let i = localDockAnimals.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [localDockAnimals[i], localDockAnimals[j]] = [localDockAnimals[j], localDockAnimals[i]];
+            }
+
+            const gameState = { targetNum: val, floors: localFloors, dockAnimals: localDockAnimals };
+            
+            db.ref(`game_action/${CONFIG.gameId}`).set({
+                senderId: tabId, timestamp: Date.now(), type: 'start_game', data: gameState
+            });
+            
+            applyGameState(gameState);
         }
 
-        function setupGame() {
+        // 2. Відтворення стану на екрані
+        function applyGameState(state) {
+            targetNum = state.targetNum;
             atticNumberEl.textContent = targetNum;
             floorsContainer.innerHTML = '';
             dock.innerHTML = '';
-            pairs = [];
+            pairs = state.floors;
             completedPairs = 0;
-            visibleNumbersList.clear(); // Очищаємо список унікальних цифр
 
-            for (let i = 1; i < targetNum; i++) {
-                pairs.push({ a: i, b: targetNum - i });
-            }
-
-            pairs.forEach((pair, index) => {
+            state.floors.forEach((floorData, index) => {
                 const floor = document.createElement('div');
                 floor.className = 'floor';
                 floor.dataset.floorIdx = index;
                 
-                // ЛОГІКА УНІКАЛЬНИХ ЧИСЕЛ
-                let isLeftEmpty = false;
-                if (visibleNumbersList.has(pair.a)) {
-                    isLeftEmpty = true; // a вже було, ховаємо його (робимо порожнє вікно ліворуч)
-                } else if (visibleNumbersList.has(pair.b)) {
-                    isLeftEmpty = false; // b вже було, ховаємо його (робимо порожнє вікно праворуч)
-                } else {
-                    isLeftEmpty = Math.random() > 0.5; // випадково, якщо обидва вільні
-                }
-                
-                // Запам'ятовуємо, яке число ми показали як текст
-                const visibleVal = isLeftEmpty ? pair.b : pair.a;
-                visibleNumbersList.add(visibleVal);
-                
                 floor.innerHTML = `
-                    <div class="window ${isLeftEmpty ? 'empty' : ''}" data-side="left">
-                        ${!isLeftEmpty ? `<div class="window-content">${pair.a}</div>` : `<div class="window-dropzone" data-needed="${pair.a}"></div>`}
+                    <div class="window ${floorData.isLeftEmpty ? 'empty' : ''}" data-side="left">
+                        ${!floorData.isLeftEmpty ? `<div class="window-content">${floorData.a}</div>` : `<div class="window-dropzone" data-needed="${floorData.a}"></div>`}
                     </div>
-                    <div class="window ${!isLeftEmpty ? 'empty' : ''}" data-side="right">
-                        ${isLeftEmpty ? `<div class="window-content">${pair.b}</div>` : `<div class="window-dropzone" data-needed="${pair.b}"></div>`}
+                    <div class="window ${!floorData.isLeftEmpty ? 'empty' : ''}" data-side="right">
+                        ${floorData.isLeftEmpty ? `<div class="window-content">${floorData.b}</div>` : `<div class="window-dropzone" data-needed="${floorData.b}"></div>`}
                     </div>
                 `;
                 floorsContainer.appendChild(floor);
-
-                const missingNum = isLeftEmpty ? pair.a : pair.b;
-                createAnimal(missingNum, index);
             });
 
-            // Додаємо хибних тваринок
-            const extraCount = Math.min(4, targetNum);
-            for(let i=0; i<extraCount; i++) {
-                let randomWrong = Math.floor(Math.random() * (targetNum)) + 1;
-                createAnimal(randomWrong, pairs.length + i);
-            }
-            shuffleDock();
-        }
+            state.dockAnimals.forEach(animData => {
+                const animal = document.createElement('div');
+                animal.className = 'animal-item';
+                animal.dataset.val = animData.val;
+                animal.id = animData.id;
+                const svgContent = animalSVGList[animData.svgIndex % animalSVGList.length];
+                animal.innerHTML = `${svgContent}<div class="animal-number">${animData.val}</div>`;
+                dock.appendChild(animal);
+                animal.addEventListener('pointerdown', handleDragStart);
+            });
 
-        function createAnimal(number, uniqueIndex) {
-            const animal = document.createElement('div');
-            animal.className = 'animal-item';
-            animal.dataset.val = number;
-            const svgContent = animalSVGList[uniqueIndex % animalSVGList.length];
-            animal.innerHTML = `${svgContent}<div class="animal-number">${number}</div>`;
-            dock.appendChild(animal);
-            animal.addEventListener('pointerdown', handleDragStart);
-        }
-
-        function shuffleDock() {
-            for (let i = dock.children.length; i >= 0; i--) {
-                dock.appendChild(dock.children[Math.random() * i | 0]);
-            }
+            setupScreen.style.display = 'none';
+            gameContainer.style.display = 'flex';
         }
 
         // ============================================================================
-        // 5. ЛОГІКА ПЕРЕТЯГУВАННЯ (НАДІЙНИЙ DRAG & DROP)
+        // 5. ЛОГІКА ПЕРЕТЯГУВАННЯ З REAL-TIME СИНХРОНІЗАЦІЄЮ
         // ============================================================================
         let draggedEl = null;
         let offsetX = 0, offsetY = 0;
+        let lastSyncTime = 0;
 
         function getPointerPos(e) {
             if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -1107,20 +1121,33 @@
 
         function handleDragStart(e) {
             e.preventDefault();
+            draggedEl = e.currentTarget;
+            
+            // Якщо тваринку вже тягне інший гравець - ігноруємо
+            if (draggedEl.classList.contains('remote-dragging')) {
+                draggedEl = null;
+                return;
+            }
+
             initAudio(); playSound('pop');
             
-            draggedEl = e.currentTarget;
             const rect = draggedEl.getBoundingClientRect();
             const pos = getPointerPos(e);
-            
             offsetX = pos.x - rect.left;
             offsetY = pos.y - rect.top;
             
-            // Відриваємо елемент і переводимо в абсолют відносно body
             document.body.appendChild(draggedEl);
             draggedEl.classList.add('dragging');
-            draggedEl.style.left = (pos.x - offsetX) + 'px';
-            draggedEl.style.top = (pos.y - offsetY) + 'px';
+            
+            const leftPx = pos.x - offsetX;
+            const topPx = pos.y - offsetY;
+            draggedEl.style.left = leftPx + 'px';
+            draggedEl.style.top = topPx + 'px';
+
+            db.ref(`game_sync/${CONFIG.gameId}`).set({
+                senderId: tabId, type: 'drag_start', animalId: draggedEl.id,
+                px: (leftPx / window.innerWidth) * 100, py: (topPx / window.innerHeight) * 100
+            });
 
             document.addEventListener('pointermove', handleDragMove, {passive: false});
             document.addEventListener('pointerup', handleDragEnd);
@@ -1130,10 +1157,22 @@
 
         function handleDragMove(e) {
             if (!draggedEl) return;
-            e.preventDefault(); // Заборона скролу екрану при перетягуванні
+            e.preventDefault();
             const pos = getPointerPos(e);
-            draggedEl.style.left = (pos.x - offsetX) + 'px';
-            draggedEl.style.top = (pos.y - offsetY) + 'px';
+            const leftPx = pos.x - offsetX;
+            const topPx = pos.y - offsetY;
+
+            draggedEl.style.left = leftPx + 'px';
+            draggedEl.style.top = topPx + 'px';
+
+            const now = Date.now();
+            if (now - lastSyncTime > 40) { // ~25 кадрів в секунду для мережі
+                lastSyncTime = now;
+                db.ref(`game_sync/${CONFIG.gameId}`).set({
+                    senderId: tabId, type: 'drag_move', animalId: draggedEl.id,
+                    px: (leftPx / window.innerWidth) * 100, py: (topPx / window.innerHeight) * 100
+                });
+            }
         }
 
         function handleDragEnd(e) {
@@ -1145,7 +1184,6 @@
 
             const pos = getPointerPos(e);
             
-            // Тимчасово ховаємо, щоб знайти вікно під курсором
             draggedEl.style.display = 'none';
             const elemBelow = document.elementFromPoint(pos.x, pos.y);
             draggedEl.style.display = '';
@@ -1159,28 +1197,34 @@
                     
                     db.ref(`game_action/${CONFIG.gameId}`).set({
                         senderId: tabId, timestamp: Date.now(), type: 'drop_animal',
-                        data: { floorIdx: floorIdx, isLeft: isLeft, html: draggedEl.innerHTML }
+                        data: { animalId: draggedEl.id, floorIdx: floorIdx, isLeft: isLeft }
                     });
                     
-                    handleSuccessLocal(dropzone, draggedEl.innerHTML);
-                    draggedEl.remove();
+                    handleSuccessLocal(dropzone, draggedEl);
                 } else {
                     handleError();
-                    returnToDock(draggedEl);
+                    returnToDockLocal(draggedEl);
+                    db.ref(`game_action/${CONFIG.gameId}`).set({
+                        senderId: tabId, timestamp: Date.now(), type: 'drag_error', data: { animalId: draggedEl.id }
+                    });
                 }
             } else {
-                returnToDock(draggedEl);
+                returnToDockLocal(draggedEl);
+                db.ref(`game_sync/${CONFIG.gameId}`).set({
+                    senderId: tabId, type: 'drag_cancel', animalId: draggedEl.id
+                });
             }
             draggedEl = null;
         }
 
-        function returnToDock(el) {
+        function returnToDockLocal(el) {
             el.classList.remove('dragging');
+            el.classList.remove('remote-dragging');
             el.style.left = ''; el.style.top = '';
             dock.appendChild(el);
         }
 
-        function handleSuccessLocal(zone, innerHTML) {
+        function handleSuccessLocal(zone, el) {
             playSound('success');
             
             const wingL = document.getElementById('wing-l');
@@ -1190,10 +1234,14 @@
 
             const parentWindow = zone.parentElement;
             parentWindow.classList.remove('empty');
-            parentWindow.innerHTML = innerHTML;
+            parentWindow.innerHTML = el.innerHTML;
             parentWindow.classList.add('filled-animal');
             
             createParticles(parentWindow);
+            
+            if (el && el.parentNode) {
+                el.remove();
+            }
             
             completedPairs++;
             if (completedPairs === pairs.length) {
@@ -1239,27 +1287,30 @@
         }
 
         // ============================================================================
-        // 6. СИНХРОНІЗАЦІЯ ДІЙ ТА МАЛЮВАННЯ ЧЕРЕЗ FIREBASE
+        // 6. СИНХРОНІЗАЦІЯ ДІЙ ЧЕРЕЗ FIREBASE (СЛУХАЧІ)
         // ============================================================================
+        
+        // Основні стани (Старт, Помилка, Успіх)
         db.ref(`game_action/${CONFIG.gameId}`).on('value', snap => {
             const action = snap.val();
             if (!action || action.senderId === tabId || action.timestamp < Date.now() - 5000) return;
 
             if (action.type === 'start_game') {
-                startGameWithNum(action.data.targetNum);
+                applyGameState(action.data);
             } else if (action.type === 'drop_animal') {
                 const floor = floorsContainer.querySelector(`.floor[data-floor-idx="${action.data.floorIdx}"]`);
                 if (floor) {
                     const windowEl = floor.querySelector(`.window[data-side="${action.data.isLeft ? 'left' : 'right'}"]`);
                     const dropzone = windowEl.querySelector('.window-dropzone');
-                    if (dropzone) {
-                        handleSuccessLocal(dropzone, action.data.html);
-                        // Знаходимо і видаляємо відповідну тваринку з дока на цьому клієнті
-                        const neededVal = dropzone.dataset.needed;
-                        const animalInDock = Array.from(dock.children).find(el => el.dataset.val === neededVal);
-                        if (animalInDock) animalInDock.remove();
+                    const animal = document.getElementById(action.data.animalId);
+                    if (dropzone && animal) {
+                        handleSuccessLocal(dropzone, animal);
                     }
                 }
+            } else if (action.type === 'drag_error') {
+                handleError();
+                const animal = document.getElementById(action.data.animalId);
+                if (animal) returnToDockLocal(animal);
             } else if (action.type === 'draw_line') {
                 const d = action.data;
                 const scaleX = canvas.width / d.canvasW;
@@ -1267,6 +1318,27 @@
                 drawLine(d.x0 * scaleX, d.y0 * scaleY, d.x1 * scaleX, d.y1 * scaleY, d.color, d.size);
             } else if (action.type === 'clear_canvas') {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        });
+
+        // Швидка синхронізація перетягування (Live Drag)
+        db.ref(`game_sync/${CONFIG.gameId}`).on('value', snap => {
+            const sync = snap.val();
+            if (!sync || sync.senderId === tabId) return;
+            
+            const animal = document.getElementById(sync.animalId);
+            if (!animal) return;
+
+            if (sync.type === 'drag_start') {
+                document.body.appendChild(animal);
+                animal.classList.add('remote-dragging');
+                animal.style.left = sync.px + 'vw';
+                animal.style.top = sync.py + 'vh';
+            } else if (sync.type === 'drag_move') {
+                animal.style.left = sync.px + 'vw';
+                animal.style.top = sync.py + 'vh';
+            } else if (sync.type === 'drag_cancel') {
+                returnToDockLocal(animal);
             }
         });
 
