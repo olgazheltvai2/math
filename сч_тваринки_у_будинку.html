@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Склад числа</title>
+    
+    <!-- Підключення Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* Основні налаштування та скидання стилів */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-drag: none;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: transparent; /* Прозорий для динамічного фону */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            display: flex;
+            flex-direction: column;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Деталізований живий фон (SVG) - показується, якщо немає динамічного фону */
+        #background-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Анімація хмаринок */
+        @keyframes float-cloud {
+            0% { transform: translateX(-200px); }
+            100% { transform: translateX(1200px); }
+        }
+        .cloud {
+            animation: float-cloud 40s linear infinite;
+        }
+        .cloud.slow {
+            animation: float-cloud 60s linear infinite;
+            animation-delay: -20s;
+        }
+
+        /* Контейнер гри */
+        #game-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Інтерфейс вводу числа */
+        #setup-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 50, 20, 0.8);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .wood-panel {
+            background: linear-gradient(135deg, #8B5A2B, #A0522D, #8B5A2B);
+            border: 8px solid #5C3A21;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 0 20px rgba(0,0,0,0.5);
+            text-align: center;
+            position: relative;
+        }
+
+        /* Секретне поле вводу */
+        .input-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .wood-panel input {
+            font-size: 4rem;
+            width: 150px;
+            text-align: center;
+            border: 4px solid #3E2723;
+            border-radius: 15px;
+            background: #FFE0B2;
+            color: #3E2723;
+            font-weight: bold;
+            outline: none;
+            box-shadow: inset 0 5px 10px rgba(0,0,0,0.3);
+            transition: color 0.3s, text-shadow 0.3s;
+        }
+
+        .wood-panel input.secret-hidden {
+            color: transparent !important;
+            text-shadow: 0 0 0 transparent !important;
+        }
+        .wood-panel input.secret-hidden::selection {
+            background: transparent;
+            color: transparent;
+        }
+
+        #toggle-secret-btn {
+            background: #3E2723;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4);
+        }
+
+        .play-btn {
+            background: linear-gradient(to bottom, #4CAF50, #2E7D32);
+            border: 4px solid #1B5E20;
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+            transition: transform 0.2s, filter 0.2s;
+            margin: 0 auto;
+        }
+
+        .play-btn:hover {
+            transform: scale(1.1);
+            filter: brightness(1.2);
+        }
+
+        .play-btn svg {
+            width: 40px;
+            height: 40px;
+            fill: white;
+            margin-left: 5px;
+        }
+
+        /* Верхня панель з кнопками управління */
+        #top-bar {
+            display: flex;
+            justify-content: flex-end;
+            padding: 15px 30px;
+            z-index: 20;
+        }
+
+        .control-btn {
+            height: 60px;
+            background: linear-gradient(135deg, #FF9800, #E65100);
+            border: 3px solid #BF360C;
+            border-radius: 15px;
+            color: white;
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            text-shadow: 2px 2px 0 #5D4037;
+            padding: 0 20px;
+        }
+        
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Центральна частина: Тваринки, Сова та Будинок */
+        #play-area {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            padding-bottom: 20px;
+            gap: 20px;
+            height: calc(100vh - 90px);
+        }
+
+        /* Панель з тваринками ЗЛІВА */
+        #animals-dock {
+            width: 320px;
+            height: 90%;
+            background: rgba(129, 199, 132, 0.6);
+            border: 6px solid #4CAF50;
+            border-radius: 20px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-content: flex-start;
+            gap: 15px;
+            padding: 15px;
+            z-index: 20;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.2), 0 10px 20px rgba(0,0,0,0.3);
+            overflow-y: auto;
+            backdrop-filter: blur(8px);
+        }
+
+        #animals-dock::-webkit-scrollbar { width: 15px; }
+        #animals-dock::-webkit-scrollbar-track { background: rgba(46, 125, 50, 0.5); border-radius: 10px; }
+        #animals-dock::-webkit-scrollbar-thumb { background: #2E7D32; border-radius: 10px; border: 2px solid #81C784; }
+
+        .animal-item {
+            width: 90px;
+            height: 90px;
+            position: relative;
+            cursor: grab;
+            filter: drop-shadow(0 8px 6px rgba(0,0,0,0.5));
+            transition: transform 0.2s;
+            touch-action: none;
+            background: radial-gradient(circle, rgba(255,255,255,0.4), transparent);
+            border-radius: 50%;
+        }
+
+        .animal-item:hover {
+            transform: scale(1.15) translateY(-5px);
+        }
+
+        .animal-item:active {
+            cursor: grabbing;
+        }
+        
+        .animal-item.dragging {
+            position: absolute;
+            z-index: 10000;
+            pointer-events: none;
+            filter: drop-shadow(0 20px 15px rgba(0,0,0,0.6));
+            transform: scale(1.3);
+            transition: none;
+        }
+
+        .animal-number {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            width: 40px;
+            height: 40px;
+            background: #FFD54F;
+            border: 3px solid #E65100;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.8rem;
+            font-weight: 900;
+            color: #E65100;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+            z-index: 30;
+            pointer-events: none;
+        }
+
+        .animal-item svg {
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Живий персонаж (Сова) */
+        #character {
+            width: 200px;
+            height: 250px;
+            transform-origin: bottom center;
+            animation: breathe 3s infinite ease-in-out;
+            margin-bottom: 20px;
+            z-index: 15;
+        }
+
+        .eye-pupil { transition: transform 0.1s; }
+        .wing-left, .wing-right {
+            transform-origin: top center;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(0.96) scaleX(1.02); }
+        }
+
+        /* Будинок */
+        #house {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 15;
+        }
+
+        #roof {
+            width: 320px;
+            height: 180px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2;
+            filter: drop-shadow(0 10px 10px rgba(0,0,0,0.4));
+        }
+
+        #roof-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #attic-number {
+            position: relative;
+            z-index: 3;
+            font-size: 5rem;
+            font-weight: 900;
+            color: #FFD54F;
+            text-shadow: 3px 3px 0 #E65100, -2px -2px 0 #E65100, 2px -2px 0 #E65100, -2px 2px 0 #E65100, 0 8px 15px rgba(0,0,0,0.6);
+            margin-top: 40px;
+        }
+
+        /* Контейнер поверхів */
+        #floors-container {
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="%23D7CCC8"/><rect width="40" height="19" fill="%23A1887F"/><rect width="39" height="19" fill="%238D6E63"/></svg>');
+            border-left: 15px solid #5D4037;
+            border-right: 15px solid #5D4037;
+            border-bottom: 20px solid #4E342E;
+            width: 290px;
+            display: flex;
+            flex-direction: column;
+            padding: 15px 5px 15px 0;
+            box-shadow: inset 0 10px 20px rgba(0,0,0,0.5), 0 15px 25px rgba(0,0,0,0.5);
+            height: 60vh;
+            overflow-y: auto;
+        }
+        
+        #floors-container::-webkit-scrollbar { width: 28px; background: #4E342E; border-left: 4px solid #3E2723; }
+        #floors-container::-webkit-scrollbar-track { background: #5D4037; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+        #floors-container::-webkit-scrollbar-thumb {
+            background: linear-gradient(to right, #FFB300, #FF8F00);
+            border-radius: 14px; border: 4px solid #4E342E; box-shadow: inset 2px 2px 5px rgba(255,255,255,0.5);
+        }
+
+        .floor {
+            display: flex;
+            justify-content: space-evenly;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 4px solid rgba(93, 64, 55, 0.4);
+        }
+
+        .window {
+            width: 90px;
+            height: 100px;
+            background: linear-gradient(to bottom, #81D4FA, #29B6F6);
+            border: 6px solid #FFECB3;
+            border-radius: 10px 10px 0 0;
+            position: relative;
+            box-shadow: inset 0 5px 10px rgba(0,0,0,0.3), 0 5px 10px rgba(0,0,0,0.4);
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            overflow: hidden;
+        }
+        
+        .window::before {
+            content: ''; position: absolute; top: 0; left: 50%; width: 6px; height: 100%;
+            background: #FFECB3; transform: translateX(-50%); z-index: 10;
+        }
+        
+        .window::after {
+            content: ''; position: absolute; top: 50%; left: 0; width: 100%; height: 6px;
+            background: #FFECB3; transform: translateY(-50%); z-index: 10;
+        }
+
+        .window.empty {
+            background: radial-gradient(circle, #424242, #212121);
+        }
+
+        .window.empty::before, .window.empty::after {
+            background: #757575;
+        }
+
+        /* ВИПРАВЛЕННЯ Z-INDEX: текст числа поверх рами */
+        .window-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 20; 
+            font-size: 4rem;
+            font-weight: 900;
+            color: white;
+            text-shadow: 2px 2px 0 #1565C0, -1px -1px 0 #1565C0, 1px -1px 0 #1565C0, -1px 1px 0 #1565C0;
+            pointer-events: none;
+        }
+
+        .window-dropzone {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 25; 
+        }
+
+        .window.filled-animal svg {
+            width: 80%;
+            height: 80%;
+            position: absolute;
+            bottom: -5px;
+            z-index: 15;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        }
+        .window.filled-animal .animal-number {
+            display: none;
+        }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            z-index: 100;
+            animation: particleAnim 1s forwards cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        @keyframes particleAnim {
+            0% { transform: scale(0) rotate(0deg); opacity: 1; }
+            50% { opacity: 1; }
+            100% { transform: scale(1.5) translate(var(--tx), var(--ty)) rotate(var(--rot)); opacity: 0; }
+        }
+
+        /* Адаптивність */
+        @media (max-width: 800px) {
+            #play-area { flex-direction: column; align-items: center; justify-content: flex-start; overflow-y: auto; height: auto; padding-top: 20px;}
+            #animals-dock { width: 90%; height: 180px; overflow-x: auto; flex-wrap: nowrap; align-items: center; justify-content: flex-start;}
+            #character { display: none; }
+        }
+
+        /* ------------------------------------------------------------------
+           ГЛОБАЛЬНІ КОМПОНЕНТИ (Малювання, Фони, Блокування)
+        ------------------------------------------------------------------- */
+        
+        /* Блокування */
+        #block-overlay {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.85); z-index: 100000;
+            justify-content: center; align-items: center;
+            color: red; font-size: 5vw; font-weight: bold; text-align: center; text-transform: uppercase;
+        }
+
+        /* Малювання */
+        #global-drawing-canvas {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 90000; pointer-events: none; background: transparent;
+        }
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px; z-index: 90002;
+            background: #8e44ad; color: white; border: 2px solid white; border-radius: 50px;
+            padding: 10px 20px; font-size: 16px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; left: 20px; z-index: 90003;
+            background: white; border: 2px solid #ccc; border-radius: 10px;
+            padding: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); width: 220px;
+        }
+        .draw-panel-header {
+            width: 100%; height: 20px; background: #eee; cursor: move;
+            border-radius: 5px; margin-bottom: 10px; position: relative;
+        }
+        .draw-close-btn {
+            position: absolute; right: 5px; top: 0; cursor: pointer; font-weight: bold; color: red;
+        }
+        .draw-controls { display: flex; flex-direction: column; gap: 10px; }
+        .draw-btn-group { display: flex; gap: 5px; }
+        .draw-tool-btn {
+            flex: 1; padding: 5px; cursor: pointer; border: 1px solid #ccc;
+            border-radius: 5px; background: #f9f9f9; text-align: center; font-weight: bold;
+        }
+        .draw-tool-btn.active { background: #8e44ad; color: white; border-color: #8e44ad; }
+        .draw-clear-btn { background: #e74c3c; color: white; border: none; padding: 5px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        
+        /* Менеджер фонів */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px; z-index: 90002;
+            background: #2c3e50; color: white; border: 2px solid white; border-radius: 50px;
+            padding: 10px 20px; font-size: 16px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #theme-modal {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 80%; max-width: 600px; max-height: 60vh; background: white; z-index: 90005;
+            border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow-y: auto; padding: 20px;
+        }
+        #theme-modal-close {
+            position: absolute; top: 10px; right: 15px; font-size: 24px; cursor: pointer; color: #333;
+        }
+        #theme-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; margin-top: 20px;
+        }
+        .theme-card {
+            position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
+            border: 3px solid transparent; aspect-ratio: 16/9; background: #ccc;
+        }
+        .theme-card:hover { border-color: #3498db; }
+        .theme-card.active { border-color: #2ecc71; }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; }
+        .theme-card .theme-title {
+            position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.6);
+            color: white; text-align: center; padding: 5px 0; font-size: 12px; font-weight: bold;
+        }
+        .theme-card-none {
+            display: flex; justify-content: center; align-items: center; background: #f0f0f0;
+            color: #333; font-weight: bold; text-align: center; padding: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SVG БЕКГРАУНД (відображається, якщо немає динамічного фону) -->
+    <svg id="background-layer" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="sky" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#4facfe"/>
+                <stop offset="100%" stop-color="#00f2fe"/>
+            </linearGradient>
+            <linearGradient id="sun" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#FFF59D"/>
+                <stop offset="100%" stop-color="#FFB300"/>
+            </linearGradient>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#sky)"/>
+        
+        <g transform="translate(850, 150)">
+            <circle r="80" fill="url(#sun)"/>
+            <path d="M0,-110 L0,-140 M0,110 L0,140 M-110,0 L-140,0 M110,0 L140,0 M-78,-78 L-100,-100 M78,78 L100,100 M-78,78 L-100,100 M78,-78 L100,-100" stroke="#FFCA28" stroke-width="8" stroke-linecap="round"/>
+        </g>
+        <g class="cloud" fill="#FFFFFF" opacity="0.8">
+            <path d="M150,120 Q170,90 200,100 Q240,70 270,110 Q310,110 300,150 L130,150 Q110,130 150,120 Z"/>
+        </g>
+        <g class="cloud slow" fill="#FFFFFF" opacity="0.8">
+            <path d="M700,80 Q720,60 740,70 Q770,40 800,60 Q830,70 820,100 L680,100 Q670,80 700,80 Z" transform="scale(0.8) translate(100, 50)"/>
+        </g>
+        <path d="M0,450 Q250,300 500,450 T1000,400 L1000,600 L0,600 Z" fill="#81C784"/>
+        <path d="M0,500 Q300,400 600,520 T1000,480 L1000,600 L0,600 Z" fill="#4CAF50"/>
+        <g id="trees">
+            <rect x="100" y="350" width="30" height="200" fill="#795548"/>
+            <circle cx="115" cy="320" r="80" fill="#2E7D32"/>
+            <circle cx="75" cy="350" r="60" fill="#388E3C"/>
+            <circle cx="155" cy="350" r="60" fill="#1B5E20"/>
+            <rect x="800" y="300" width="40" height="250" fill="#5D4037"/>
+            <circle cx="820" cy="250" r="100" fill="#1B5E20"/>
+            <circle cx="750" cy="290" r="70" fill="#2E7D32"/>
+            <circle cx="890" cy="290" r="70" fill="#388E3C"/>
+        </g>
+    </svg>
+
+    <!-- Початковий екран вводу -->
+    <div id="setup-screen">
+        <div class="wood-panel">
+            <div class="input-group">
+                <!-- Секретне поле -->
+                <input type="number" id="target-number-input" min="2" max="20" value="6" class="secret-hidden">
+                <button id="toggle-secret-btn">👁️</button>
+            </div>
+            <button class="play-btn" id="start-btn">
+                <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Основний контейнер гри -->
+    <div id="game-container" style="display: none;">
+        <div id="top-bar">
+            <!-- ЄДИНА КНОПКА ЗАМІСТЬ ВПЕРЕД/НАЗАД -->
+            <div class="control-btn" id="btn-new-house">Новий будинок</div>
+        </div>
+
+        <div id="play-area">
+            <!-- Панель з тваринками ЗЛІВА -->
+            <div id="animals-dock"></div>
+
+            <!-- Живий персонаж: Сова -->
+            <div id="character">
+                <svg viewBox="0 0 200 250" width="100%" height="100%">
+                    <defs>
+                        <radialGradient id="owl-body-grad" cx="50%" cy="50%" r="50%">
+                            <stop offset="0%" stop-color="#D7CCC8"/><stop offset="70%" stop-color="#8D6E63"/><stop offset="100%" stop-color="#5D4037"/>
+                        </radialGradient>
+                        <linearGradient id="owl-wing-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#795548"/><stop offset="100%" stop-color="#4E342E"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M70,230 Q80,250 90,230 M110,230 Q120,250 130,230" stroke="#FF8F00" stroke-width="8" stroke-linecap="round" fill="none"/>
+                    <path class="wing-left" id="wing-l" d="M30,100 C10,150 20,200 60,210 C40,180 40,130 60,100 Z" fill="url(#owl-wing-grad)"/>
+                    <path class="wing-right" id="wing-r" d="M170,100 C190,150 180,200 140,210 C160,180 160,130 140,100 Z" fill="url(#owl-wing-grad)"/>
+                    <ellipse cx="100" cy="140" rx="70" ry="85" fill="url(#owl-body-grad)"/>
+                    <ellipse cx="100" cy="155" rx="45" ry="55" fill="#EFEBE9"/>
+                    <path d="M80,130 Q100,140 120,130 M75,150 Q100,160 125,150 M85,170 Q100,180 115,170" stroke="#8D6E63" stroke-width="3" stroke-linecap="round" fill="none"/>
+                    <circle cx="100" cy="70" r="60" fill="url(#owl-body-grad)"/>
+                    <polygon points="45,40 20,10 65,15" fill="#5D4037"/>
+                    <polygon points="155,40 180,10 135,15" fill="#5D4037"/>
+                    <g fill="#FFF">
+                        <circle cx="70" cy="70" r="25"/><circle cx="130" cy="70" r="25"/>
+                    </g>
+                    <g id="owl-pupils" fill="#212121">
+                        <circle class="eye-pupil" id="pupil-l" cx="70" cy="70" r="10"/>
+                        <circle class="eye-pupil" id="pupil-r" cx="130" cy="70" r="10"/>
+                    </g>
+                    <polygon points="90,85 110,85 100,110" fill="#FFA000"/>
+                </svg>
+            </div>
+
+            <!-- Будинок -->
+            <div id="house">
+                <div id="roof">
+                    <svg id="roof-svg" viewBox="0 0 320 180">
+                        <defs>
+                            <pattern id="roof-tile" viewBox="0 0 20 20" width="30" height="30" patternUnits="userSpaceOnUse">
+                                <path d="M0,10 Q10,0 20,10 L20,20 Q10,10 0,20 Z" fill="#D84315"/>
+                                <path d="M0,10 Q10,0 20,10" stroke="#BF360C" stroke-width="2" fill="none"/>
+                            </pattern>
+                        </defs>
+                        <polygon points="160,10 20,170 300,170" fill="url(#roof-tile)" stroke="#5D4037" stroke-width="8" stroke-linejoin="round"/>
+                        <polygon points="160,10 160,170 300,170" fill="rgba(0,0,0,0.15)" pointer-events="none"/>
+                        <circle cx="160" cy="110" r="45" fill="#5D4037"/>
+                        <circle cx="160" cy="110" r="35" fill="#FFCA28"/>
+                    </svg>
+                    <div id="attic-number">6</div>
+                </div>
+                <div id="floors-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- УНІВЕРСАЛЬНИЙ БЛОК: Екран блокування -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <!-- УНІВЕРСАЛЬНИЙ БЛОК: Глобальне малювання -->
+    <canvas id="global-drawing-canvas"></canvas>
+    <button id="toggle-draw-btn-global">✏️ Малювати</button>
+    <div id="draw-panel-global">
+        <div class="draw-panel-header"><div class="draw-close-btn" id="draw-close-btn">✕</div></div>
+        <div class="draw-controls">
+            <div class="draw-btn-group">
+                <div class="draw-tool-btn active" id="tool-pencil">✏️ Олівець</div>
+                <div class="draw-tool-btn" id="tool-eraser">🧽 Гумка</div>
+            </div>
+            <input type="range" id="draw-size" min="1" max="50" value="5">
+            <input type="color" id="draw-color" value="#ff0000">
+            <button class="draw-clear-btn" id="draw-clear-btn">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <!-- УНІВЕРСАЛЬНИЙ БЛОК: Менеджер Фонів -->
+    <button id="theme-btn">⚙️ Фони</button>
+    <div id="theme-modal">
+        <div id="theme-modal-close">✕</div>
+        <h2 style="text-align:center; font-family:Arial;">Обери фон</h2>
+        <div id="theme-grid">
+            <div class="theme-card theme-card-none" data-bg="none">Без фону</div>
+            <!-- Динамічні фони генеруються тут -->
+        </div>
+    </div>
+
+    <script>
+        // ============================================================================
+        // 1. ГЛОБАЛЬНА КОНФІГУРАЦІЯ ТА FIREBASE
+        // ============================================================================
+        const CONFIG = {
+            gameId: 'sklad_chysla_house',
+            firebaseProjectId: 'lesson-13c44',
+            firebaseDbUrl: 'https://lesson-13c44-default-rtdb.firebaseio.com/',
+            bgBaseUrl: 'https://olgazheltvai2.github.io/images/backgrounds/'
+        };
+
+        const firebaseConfig = { databaseURL: CONFIG.firebaseDbUrl, projectId: CONFIG.firebaseProjectId };
+        if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); }
+        const db = firebase.database();
+
+        // ІДЕНТИФІКАЦІЯ, РАДАР ТА БЛОКУВАННЯ
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user') || sessionStorage.getItem('userName');
+        if (!myName) {
+            myName = "Гість_" + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('userName', myName);
+
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        const connectedRef = db.ref('.info/connected');
+
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                userRef.set({ game: 'Склад числа', timestamp: firebase.database.ServerValue.TIMESTAMP });
+                userRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => { userRef.remove(); });
+
+        db.ref('force_refresh').on('value', (snap) => {
+            if (snap.val() && snap.val() > Date.now() - 5000) { location.reload(); }
+        });
+
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        let initImmunity = true;
+        setTimeout(() => { initImmunity = false; }, 1000);
+        db.ref('current_activity').on('value', (snap) => {
+            if (!initImmunity && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // ============================================================================
+        // 2. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
+        // ============================================================================
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeModalClose = document.getElementById('theme-modal-close');
+        const themeGrid = document.getElementById('theme-grid');
+        const svgBackground = document.getElementById('background-layer');
+        let currentThemeUrl = 'none';
+
+        function applyTheme(url, saveLocally = false) {
+            currentThemeUrl = url;
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+                svgBackground.style.display = 'block'; // Відновлюємо SVG
+            } else {
+                document.body.style.backgroundImage = `url('${url}')`;
+                svgBackground.style.display = 'none'; // Ховаємо SVG
+            }
+            
+            document.querySelectorAll('.theme-card').forEach(c => c.classList.remove('active'));
+            let activeCard = document.querySelector(`.theme-card[data-bg="${url}"]`);
+            if(activeCard) activeCard.classList.add('active');
+
+            if (saveLocally) {
+                localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+                db.ref(`game_theme/${CONFIG.gameId}`).set({ url: url, senderId: tabId, timestamp: Date.now() });
+            }
+        }
+
+        // Завантаження локального або 'none'
+        const savedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId) || 'none';
+        applyTheme(savedTheme);
+
+        // Синхронізація фону
+        db.ref(`game_theme/${CONFIG.gameId}`).on('value', snap => {
+            const data = snap.val();
+            if (data && data.senderId !== tabId && data.timestamp > Date.now() - 10000) {
+                applyTheme(data.url, false);
+            }
+        });
+
+        // Генерація карток фону
+        async function loadBackgrounds() {
+            for (let i = 1; i <= 30; i++) {
+                const url = `${CONFIG.bgBaseUrl}background_${i}.webp`;
+                const img = new Image();
+                img.onload = () => {
+                    const card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.dataset.bg = url;
+                    card.innerHTML = `<img src="${url}" alt="Фон ${i}"><div class="theme-title">Фон ${i}</div>`;
+                    card.onclick = () => applyTheme(url, true);
+                    themeGrid.appendChild(card);
+                    if (currentThemeUrl === url) card.classList.add('active');
+                };
+                img.src = url;
+            }
+        }
+        
+        document.querySelector('.theme-card-none').onclick = () => applyTheme('none', true);
+
+        themeBtn.onclick = () => { 
+            themeModal.style.display = 'block'; 
+            if(themeGrid.children.length <= 1) loadBackgrounds(); 
+        };
+        themeModalClose.onclick = () => { themeModal.style.display = 'none'; };
+
+        // ============================================================================
+        // 3. ГЛОБАЛЬНЕ МАЛЮВАННЯ (SYNC)
+        // ============================================================================
+        const canvas = document.getElementById('global-drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        const drawPanel = document.getElementById('draw-panel-global');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        const drawCloseBtn = document.getElementById('draw-close-btn');
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let lastX = 0, lastY = 0;
+        let currentTool = 'pencil';
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        toggleDrawBtn.onclick = () => {
+            drawPanel.style.display = 'block';
+            isDrawingMode = true;
+            canvas.style.pointerEvents = 'auto';
+        };
+
+        drawCloseBtn.onclick = () => {
+            drawPanel.style.display = 'none';
+            isDrawingMode = false;
+            canvas.style.pointerEvents = 'none';
+        };
+
+        document.getElementById('tool-pencil').onclick = function() {
+            currentTool = 'pencil';
+            this.classList.add('active'); document.getElementById('tool-eraser').classList.remove('active');
+        };
+        document.getElementById('tool-eraser').onclick = function() {
+            currentTool = 'eraser';
+            this.classList.add('active'); document.getElementById('tool-pencil').classList.remove('active');
+        };
+
+        function getCanvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let x = e.clientX, y = e.clientY;
+            if (e.touches && e.touches.length > 0) { x = e.touches[0].clientX; y = e.touches[0].clientY; }
+            return { x: x - rect.left, y: y - rect.top };
+        }
+
+        function startDrawing(e) {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getCanvasPos(e);
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function draw(e) {
+            if (!isDrawing || !isDrawingMode) return;
+            e.preventDefault(); // Запобігаємо скролу на мобільних при малюванні
+            const pos = getCanvasPos(e);
+            const color = currentTool === 'eraser' ? null : document.getElementById('draw-color').value;
+            const size = document.getElementById('draw-size').value;
+
+            drawLineLocalAndSync(lastX, lastY, pos.x, pos.y, color, size, canvas.width, canvas.height);
+            
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function stopDrawing() { isDrawing = false; }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing, {passive: false});
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('touchend', stopDrawing);
+
+        function drawLineLocalAndSync(x0, y0, x1, y1, color, size, w, h) {
+            drawLine(x0, y0, x1, y1, color, size);
+            db.ref(`game_action/${CONFIG.gameId}`).set({
+                senderId: tabId, timestamp: Date.now(), type: 'draw_line',
+                data: { x0, y0, x1, y1, color, size, canvasW: w, canvasH: h }
+            });
+        }
+
+        function drawLine(x0, y0, x1, y1, color, size) {
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            if (color === null) {
+                ctx.globalCompositeOperation = "destination-out";
+                ctx.lineWidth = size * 2;
+                ctx.strokeStyle = "rgba(0,0,0,1)";
+            } else {
+                ctx.globalCompositeOperation = "source-over";
+                ctx.lineWidth = size;
+                ctx.strokeStyle = color;
+            }
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.stroke();
+        }
+
+        document.getElementById('draw-clear-btn').onclick = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            db.ref(`game_action/${CONFIG.gameId}`).set({ senderId: tabId, timestamp: Date.now(), type: 'clear_canvas' });
+        };
+
+        // Дрег-енд-дроп для панелі малювання
+        const drawHeader = document.querySelector('.draw-panel-header');
+        let isDraggingPanel = false, panelStartX, panelStartY, initialPanelX, initialPanelY;
+        drawHeader.onmousedown = drawHeader.ontouchstart = (e) => {
+            isDraggingPanel = true;
+            const pos = e.touches ? e.touches[0] : e;
+            panelStartX = pos.clientX; panelStartY = pos.clientY;
+            initialPanelX = drawPanel.offsetLeft; initialPanelY = drawPanel.offsetTop;
+        };
+        window.onmousemove = window.ontouchmove = (e) => {
+            if (!isDraggingPanel) return;
+            const pos = e.touches ? e.touches[0] : e;
+            drawPanel.style.left = (initialPanelX + pos.clientX - panelStartX) + 'px';
+            drawPanel.style.top = (initialPanelY + pos.clientY - panelStartY) + 'px';
+        };
+        window.onmouseup = window.ontouchend = () => { isDraggingPanel = false; };
+
+        // ============================================================================
+        // 4. ЛОГІКА ГРИ "СКЛАД ЧИСЛА"
+        // ============================================================================
+        let targetNum = 6;
+        let pairs = [];
+        let completedPairs = 0;
+        let visibleNumbersList = new Set(); // Для запобігання дублюванню цифр-підказок
+
+        const setupScreen = document.getElementById('setup-screen');
+        const gameContainer = document.getElementById('game-container');
+        const targetInput = document.getElementById('target-number-input');
+        const startBtn = document.getElementById('start-btn');
+        const btnNewHouse = document.getElementById('btn-new-house');
+        const toggleSecretBtn = document.getElementById('toggle-secret-btn');
+        
+        const atticNumberEl = document.getElementById('attic-number');
+        const floorsContainer = document.getElementById('floors-container');
+        const dock = document.getElementById('animals-dock');
+
+        // Секретне поле вводу
+        toggleSecretBtn.addEventListener('click', () => {
+            targetInput.classList.toggle('secret-hidden');
+            toggleSecretBtn.textContent = targetInput.classList.contains('secret-hidden') ? '👁️' : '🙈';
+        });
+
+        // Аудіо
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        function initAudio() { if (!audioCtx) audioCtx = new AudioContext(); }
+        
+        function playSound(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+
+            if (type === 'success') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.2);
+                gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'win') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(300, now);
+                osc.frequency.setValueAtTime(800, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.8);
+                osc.start(now); osc.stop(now + 0.8);
+            } else if (type === 'pop') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(600, now);
+                gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now); osc.stop(now + 0.1);
+            }
+        }
+
+        const animalSVGList = [
+            `<svg viewBox="0 0 100 100"><circle cx="50" cy="70" r="45" fill="#4CAF50"/><circle cx="30" cy="35" r="20" fill="#4CAF50"/><circle cx="70" cy="35" r="20" fill="#4CAF50"/><circle cx="30" cy="35" r="8" fill="#FFF"/><circle cx="30" cy="35" r="4" fill="#000"/><circle cx="70" cy="35" r="8" fill="#FFF"/><circle cx="70" cy="35" r="4" fill="#000"/><path d="M 35 70 Q 50 85 65 70" stroke="#1B5E20" stroke-width="4" fill="transparent" stroke-linecap="round"/></svg>`,
+            `<svg viewBox="0 0 100 100"><polygon points="15,50 25,10 50,30" fill="#FF9800"/><polygon points="85,50 75,10 50,30" fill="#FF9800"/><polygon points="23,25 28,18 40,30" fill="#FFE0B2"/><polygon points="77,25 72,18 60,30" fill="#FFE0B2"/><circle cx="50" cy="65" r="40" fill="#FF9800"/><circle cx="35" cy="55" r="6" fill="#000"/><circle cx="65" cy="55" r="6" fill="#000"/><ellipse cx="50" cy="65" rx="6" ry="4" fill="#E91E63"/><path d="M 50 69 L 45 75 M 50 69 L 55 75" stroke="#000" stroke-width="2" fill="none"/></svg>`,
+            `<svg viewBox="0 0 100 100"><ellipse cx="35" cy="40" rx="12" ry="35" fill="#EEEEEE"/><ellipse cx="35" cy="35" rx="6" ry="25" fill="#F48FB1"/><ellipse cx="65" cy="40" rx="12" ry="35" fill="#EEEEEE"/><ellipse cx="65" cy="35" rx="6" ry="25" fill="#F48FB1"/><circle cx="50" cy="75" r="35" fill="#EEEEEE"/><circle cx="40" cy="65" r="5" fill="#000"/><circle cx="60" cy="65" r="5" fill="#000"/><circle cx="50" cy="72" r="4" fill="#F48FB1"/><path d="M 50 76 L 45 82 M 50 76 L 55 82" stroke="#000" stroke-width="2" fill="none"/></svg>`,
+            `<svg viewBox="0 0 100 100"><circle cx="25" cy="35" r="18" fill="#795548"/><circle cx="25" cy="35" r="10" fill="#D7CCC8"/><circle cx="75" cy="35" r="18" fill="#795548"/><circle cx="75" cy="35" r="10" fill="#D7CCC8"/><circle cx="50" cy="65" r="40" fill="#8D6E63"/><circle cx="35" cy="55" r="5" fill="#000"/><circle cx="65" cy="55" r="5" fill="#000"/><ellipse cx="50" cy="70" rx="18" ry="15" fill="#D7CCC8"/><ellipse cx="50" cy="65" rx="8" ry="5" fill="#3E2723"/><path d="M 50 70 L 50 78" stroke="#3E2723" stroke-width="2"/><path d="M 40 75 Q 50 82 60 75" stroke="#3E2723" stroke-width="2" fill="none"/></svg>`,
+            `<svg viewBox="0 0 100 100"><polygon points="15,45 25,15 45,35" fill="#F48FB1"/><polygon points="85,45 75,15 55,35" fill="#F48FB1"/><circle cx="50" cy="65" r="40" fill="#F8BBD0"/><circle cx="35" cy="55" r="4" fill="#000"/><circle cx="65" cy="55" r="4" fill="#000"/><ellipse cx="50" cy="70" rx="15" ry="10" fill="#F06292"/><circle cx="45" cy="70" r="3" fill="#C2185B"/><circle cx="55" cy="70" r="3" fill="#C2185B"/></svg>`,
+            `<svg viewBox="0 0 100 100"><ellipse cx="20" cy="55" rx="12" ry="25" fill="#5D4037" transform="rotate(20 20 55)"/><ellipse cx="80" cy="55" rx="12" ry="25" fill="#5D4037" transform="rotate(-20 80 55)"/><circle cx="50" cy="60" r="38" fill="#A1887F"/><circle cx="35" cy="50" r="5" fill="#000"/><circle cx="65" cy="50" r="5" fill="#000"/><ellipse cx="50" cy="70" rx="20" ry="15" fill="#EFEBE9"/><circle cx="50" cy="65" r="6" fill="#212121"/><path d="M 50 71 Q 40 80 35 75 M 50 71 Q 60 80 65 75" stroke="#000" stroke-width="2" fill="none"/></svg>`
+        ];
+
+        // Керування станами
+        startBtn.addEventListener('click', () => {
+            initAudio();
+            const val = parseInt(targetInput.value);
+            if (val > 1 && val <= 20) {
+                db.ref(`game_action/${CONFIG.gameId}`).set({
+                    senderId: tabId, timestamp: Date.now(), type: 'start_game', data: { targetNum: val }
+                });
+                startGameWithNum(val);
+            }
+        });
+
+        btnNewHouse.addEventListener('click', () => {
+            gameContainer.style.display = 'none';
+            setupScreen.style.display = 'flex';
+        });
+
+        function startGameWithNum(val) {
+            targetNum = val;
+            setupGame();
+            setupScreen.style.display = 'none';
+            gameContainer.style.display = 'flex';
+        }
+
+        function setupGame() {
+            atticNumberEl.textContent = targetNum;
+            floorsContainer.innerHTML = '';
+            dock.innerHTML = '';
+            pairs = [];
+            completedPairs = 0;
+            visibleNumbersList.clear(); // Очищаємо список унікальних цифр
+
+            for (let i = 1; i < targetNum; i++) {
+                pairs.push({ a: i, b: targetNum - i });
+            }
+
+            pairs.forEach((pair, index) => {
+                const floor = document.createElement('div');
+                floor.className = 'floor';
+                floor.dataset.floorIdx = index;
+                
+                // ЛОГІКА УНІКАЛЬНИХ ЧИСЕЛ
+                let isLeftEmpty = false;
+                if (visibleNumbersList.has(pair.a)) {
+                    isLeftEmpty = true; // a вже було, ховаємо його (робимо порожнє вікно ліворуч)
+                } else if (visibleNumbersList.has(pair.b)) {
+                    isLeftEmpty = false; // b вже було, ховаємо його (робимо порожнє вікно праворуч)
+                } else {
+                    isLeftEmpty = Math.random() > 0.5; // випадково, якщо обидва вільні
+                }
+                
+                // Запам'ятовуємо, яке число ми показали як текст
+                const visibleVal = isLeftEmpty ? pair.b : pair.a;
+                visibleNumbersList.add(visibleVal);
+                
+                floor.innerHTML = `
+                    <div class="window ${isLeftEmpty ? 'empty' : ''}" data-side="left">
+                        ${!isLeftEmpty ? `<div class="window-content">${pair.a}</div>` : `<div class="window-dropzone" data-needed="${pair.a}"></div>`}
+                    </div>
+                    <div class="window ${!isLeftEmpty ? 'empty' : ''}" data-side="right">
+                        ${isLeftEmpty ? `<div class="window-content">${pair.b}</div>` : `<div class="window-dropzone" data-needed="${pair.b}"></div>`}
+                    </div>
+                `;
+                floorsContainer.appendChild(floor);
+
+                const missingNum = isLeftEmpty ? pair.a : pair.b;
+                createAnimal(missingNum, index);
+            });
+
+            // Додаємо хибних тваринок
+            const extraCount = Math.min(4, targetNum);
+            for(let i=0; i<extraCount; i++) {
+                let randomWrong = Math.floor(Math.random() * (targetNum)) + 1;
+                createAnimal(randomWrong, pairs.length + i);
+            }
+            shuffleDock();
+        }
+
+        function createAnimal(number, uniqueIndex) {
+            const animal = document.createElement('div');
+            animal.className = 'animal-item';
+            animal.dataset.val = number;
+            const svgContent = animalSVGList[uniqueIndex % animalSVGList.length];
+            animal.innerHTML = `${svgContent}<div class="animal-number">${number}</div>`;
+            dock.appendChild(animal);
+            animal.addEventListener('pointerdown', handleDragStart);
+        }
+
+        function shuffleDock() {
+            for (let i = dock.children.length; i >= 0; i--) {
+                dock.appendChild(dock.children[Math.random() * i | 0]);
+            }
+        }
+
+        // ============================================================================
+        // 5. ЛОГІКА ПЕРЕТЯГУВАННЯ (НАДІЙНИЙ DRAG & DROP)
+        // ============================================================================
+        let draggedEl = null;
+        let offsetX = 0, offsetY = 0;
+
+        function getPointerPos(e) {
+            if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            if (e.changedTouches && e.changedTouches.length > 0) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function handleDragStart(e) {
+            e.preventDefault();
+            initAudio(); playSound('pop');
+            
+            draggedEl = e.currentTarget;
+            const rect = draggedEl.getBoundingClientRect();
+            const pos = getPointerPos(e);
+            
+            offsetX = pos.x - rect.left;
+            offsetY = pos.y - rect.top;
+            
+            // Відриваємо елемент і переводимо в абсолют відносно body
+            document.body.appendChild(draggedEl);
+            draggedEl.classList.add('dragging');
+            draggedEl.style.left = (pos.x - offsetX) + 'px';
+            draggedEl.style.top = (pos.y - offsetY) + 'px';
+
+            document.addEventListener('pointermove', handleDragMove, {passive: false});
+            document.addEventListener('pointerup', handleDragEnd);
+            document.addEventListener('touchmove', handleDragMove, {passive: false});
+            document.addEventListener('touchend', handleDragEnd);
+        }
+
+        function handleDragMove(e) {
+            if (!draggedEl) return;
+            e.preventDefault(); // Заборона скролу екрану при перетягуванні
+            const pos = getPointerPos(e);
+            draggedEl.style.left = (pos.x - offsetX) + 'px';
+            draggedEl.style.top = (pos.y - offsetY) + 'px';
+        }
+
+        function handleDragEnd(e) {
+            if (!draggedEl) return;
+            document.removeEventListener('pointermove', handleDragMove);
+            document.removeEventListener('pointerup', handleDragEnd);
+            document.removeEventListener('touchmove', handleDragMove);
+            document.removeEventListener('touchend', handleDragEnd);
+
+            const pos = getPointerPos(e);
+            
+            // Тимчасово ховаємо, щоб знайти вікно під курсором
+            draggedEl.style.display = 'none';
+            const elemBelow = document.elementFromPoint(pos.x, pos.y);
+            draggedEl.style.display = '';
+
+            const dropzone = elemBelow ? elemBelow.closest('.window-dropzone') : null;
+
+            if (dropzone) {
+                if (parseInt(draggedEl.dataset.val) === parseInt(dropzone.dataset.needed)) {
+                    const floorIdx = dropzone.closest('.floor').dataset.floorIdx;
+                    const isLeft = dropzone.parentElement.dataset.side === 'left';
+                    
+                    db.ref(`game_action/${CONFIG.gameId}`).set({
+                        senderId: tabId, timestamp: Date.now(), type: 'drop_animal',
+                        data: { floorIdx: floorIdx, isLeft: isLeft, html: draggedEl.innerHTML }
+                    });
+                    
+                    handleSuccessLocal(dropzone, draggedEl.innerHTML);
+                    draggedEl.remove();
+                } else {
+                    handleError();
+                    returnToDock(draggedEl);
+                }
+            } else {
+                returnToDock(draggedEl);
+            }
+            draggedEl = null;
+        }
+
+        function returnToDock(el) {
+            el.classList.remove('dragging');
+            el.style.left = ''; el.style.top = '';
+            dock.appendChild(el);
+        }
+
+        function handleSuccessLocal(zone, innerHTML) {
+            playSound('success');
+            
+            const wingL = document.getElementById('wing-l');
+            const wingR = document.getElementById('wing-r');
+            wingL.style.transform = 'rotate(-30deg)'; wingR.style.transform = 'rotate(30deg)';
+            setTimeout(() => { wingL.style.transform = ''; wingR.style.transform = ''; }, 500);
+
+            const parentWindow = zone.parentElement;
+            parentWindow.classList.remove('empty');
+            parentWindow.innerHTML = innerHTML;
+            parentWindow.classList.add('filled-animal');
+            
+            createParticles(parentWindow);
+            
+            completedPairs++;
+            if (completedPairs === pairs.length) {
+                setTimeout(handleWin, 500);
+            }
+        }
+
+        function handleError() {
+            playSound('error');
+            const wingL = document.getElementById('wing-l');
+            const wingR = document.getElementById('wing-r');
+            wingL.style.transform = 'rotate(15deg)'; wingR.style.transform = 'rotate(-15deg)';
+            setTimeout(() => { wingL.style.transform = ''; wingR.style.transform = ''; }, 500);
+        }
+
+        function handleWin() {
+            playSound('win');
+            for(let i=0; i<30; i++) {
+                setTimeout(() => createParticles(atticNumberEl, true), i*50);
+            }
+        }
+
+        function createParticles(targetEl, random = false) {
+            const rect = targetEl.getBoundingClientRect();
+            for(let i=0; i<5; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.innerHTML = `<svg viewBox="0 0 24 24" width="30" height="30" fill="${['#FFD54F', '#FF7043', '#66BB6A', '#29B6F6'][Math.floor(Math.random()*4)]}"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
+                particle.style.left = (rect.left + rect.width/2 - 15) + 'px';
+                particle.style.top = (rect.top + rect.height/2 - 15) + 'px';
+                
+                const tx = (Math.random() - 0.5) * 150;
+                const ty = (Math.random() - 0.5) * 150 - (random ? 100 : 50);
+                const rot = Math.random() * 360;
+                
+                particle.style.setProperty('--tx', `${tx}px`);
+                particle.style.setProperty('--ty', `${ty}px`);
+                particle.style.setProperty('--rot', `${rot}deg`);
+                
+                document.body.appendChild(particle);
+                setTimeout(() => particle.remove(), 1000);
+            }
+        }
+
+        // ============================================================================
+        // 6. СИНХРОНІЗАЦІЯ ДІЙ ТА МАЛЮВАННЯ ЧЕРЕЗ FIREBASE
+        // ============================================================================
+        db.ref(`game_action/${CONFIG.gameId}`).on('value', snap => {
+            const action = snap.val();
+            if (!action || action.senderId === tabId || action.timestamp < Date.now() - 5000) return;
+
+            if (action.type === 'start_game') {
+                startGameWithNum(action.data.targetNum);
+            } else if (action.type === 'drop_animal') {
+                const floor = floorsContainer.querySelector(`.floor[data-floor-idx="${action.data.floorIdx}"]`);
+                if (floor) {
+                    const windowEl = floor.querySelector(`.window[data-side="${action.data.isLeft ? 'left' : 'right'}"]`);
+                    const dropzone = windowEl.querySelector('.window-dropzone');
+                    if (dropzone) {
+                        handleSuccessLocal(dropzone, action.data.html);
+                        // Знаходимо і видаляємо відповідну тваринку з дока на цьому клієнті
+                        const neededVal = dropzone.dataset.needed;
+                        const animalInDock = Array.from(dock.children).find(el => el.dataset.val === neededVal);
+                        if (animalInDock) animalInDock.remove();
+                    }
+                }
+            } else if (action.type === 'draw_line') {
+                const d = action.data;
+                const scaleX = canvas.width / d.canvasW;
+                const scaleY = canvas.height / d.canvasH;
+                drawLine(d.x0 * scaleX, d.y0 * scaleY, d.x1 * scaleX, d.y1 * scaleY, d.color, d.size);
+            } else if (action.type === 'clear_canvas') {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        });
+
+        // ============================================================================
+        // 7. АНІМАЦІЯ СОВИ (ПОГЛЯД)
+        // ============================================================================
+        const pupilL = document.getElementById('pupil-l');
+        const pupilR = document.getElementById('pupil-r');
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        let isIdle = false; let idleTimeout;
+
+        function updateMousePos(e) {
+            const pos = getPointerPos(e);
+            mouseX = pos.x; mouseY = pos.y;
+            isIdle = false; clearTimeout(idleTimeout);
+            idleTimeout = setTimeout(() => isIdle = true, 2000);
+        }
+        document.addEventListener('mousemove', updateMousePos);
+        document.addEventListener('touchmove', updateMousePos, {passive: true});
+
+        setInterval(() => {
+            const owlRect = document.getElementById('character').getBoundingClientRect();
+            if(owlRect.width === 0) return; 
+            
+            const headX = owlRect.left + owlRect.width / 2;
+            const headY = owlRect.top + owlRect.height * (70/250);
+            let targetX = mouseX, targetY = mouseY;
+
+            if (isIdle) {
+                const time = Date.now();
+                targetX = (Math.floor(time / 3000) % 2 === 0) ? 100 : window.innerWidth - 100;
+                targetY = owlRect.top + 100 + Math.sin(time/500)*50;
+            }
+
+            const dx = targetX - headX, dy = targetY - headY;
+            const angle = Math.atan2(dy, dx);
+            const dist = Math.min(8, Math.hypot(dx, dy) / 20);
+            
+            pupilL.style.transform = `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`;
+            pupilR.style.transform = `translate(${Math.cos(angle) * dist}px, ${Math.sin(angle) * dist}px)`;
+        }, 50);
+
+    </script>
+</body>
+</html>
