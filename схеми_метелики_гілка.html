@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Інтерактивна гра - Метелики</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-drag: none;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #1a202c; 
+            overflow: hidden;
+            background-size: cover;
+            background-position: center;
+            touch-action: none; /* Запобігає скролу на мобільних при свайпах */
+        }
+
+        /* Контейнер 16:9 - прозорий за замовчуванням для відображення динамічних фонів */
+        #game-board {
+            position: relative;
+            width: 100vw;
+            max-width: 177.78vh; 
+            height: 56.25vw;
+            max-height: 100vh;
+            border-radius: 20px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8), inset 0 0 30px rgba(255,255,255,0.2);
+            overflow: hidden;
+            background: transparent;
+            transition: transform 0.2s ease;
+            transform-origin: center;
+        }
+
+        /* Стандартний розмитий мультяшний фон (ховається при виборі динамічного) */
+        #blurred-bg {
+            position: absolute;
+            top: -5%; left: -5%;
+            width: 110%; height: 110%;
+            z-index: 1;
+            filter: blur(5px);
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        #interactive-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 10;
+        }
+
+        /* Кнопки навігації */
+        .nav-btn {
+            position: absolute;
+            top: 3%;
+            width: 3vw; height: 3vw;
+            min-width: 30px; min-height: 30px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0.1));
+            border: 2px solid rgba(255,255,255,0.6);
+            backdrop-filter: blur(8px);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+            z-index: 100;
+        }
+        .nav-btn:hover { transform: scale(1.15); box-shadow: 0 6px 20px rgba(0,0,0,0.4); }
+        .nav-btn:active { transform: scale(0.9); }
+        .nav-btn svg { width: 50%; height: 50%; fill: white; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+        #btn-back { left: 2%; }
+        #btn-next { right: 2%; }
+
+        /* Деталізовані гілки */
+        .branch-container {
+            position: absolute;
+            top: 0;
+            width: 40%; height: 55%;
+            z-index: 15;
+            filter: drop-shadow(0 15px 15px rgba(0,0,0,0.4));
+            pointer-events: none; /* Щоб не блокувати схеми */
+        }
+        .branch-container svg { pointer-events: none; }
+        #branch-left { left: -2%; }
+        #branch-right { right: -2%; transform: scaleX(-1); }
+
+        /* Кнопки дій під гілками */
+        .action-node {
+            position: absolute;
+            bottom: 5%; left: 50%;
+            transform: translateX(-50%);
+            width: 5vw; height: 5vw;
+            min-width: 40px; min-height: 40px;
+            cursor: pointer;
+            z-index: 20;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: auto;
+        }
+        #branch-right .action-node {
+            transform: translateX(-50%) scaleX(-1);
+        }
+        .action-node:hover { transform: translateX(-50%) scale(1.15) rotate(10deg); }
+        .action-node:active { transform: translateX(-50%) scale(0.9); }
+        
+        .action-node-content {
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #ffeb3b, #f57f17);
+            border: 0.3vw solid #e65100;
+            box-shadow: 0 10px 15px rgba(0,0,0,0.4), inset 0 -5px 10px rgba(0,0,0,0.2);
+            display: flex; justify-content: center; align-items: center;
+        }
+        .action-node-content svg { width: 60%; height: 60%; fill: #fff; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+
+        /* Зони метеликів */
+        .butterflies-zone {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+        }
+
+        .butterfly-position {
+            position: absolute;
+            width: 4vw; height: 4vw;
+            z-index: 30;
+            pointer-events: none;
+        }
+        
+        .butterfly-animator {
+            width: 100%; height: 100%;
+            transform-origin: center;
+        }
+
+        .butterfly-svg {
+            width: 100%; height: 100%;
+            filter: drop-shadow(0 8px 6px rgba(0,0,0,0.4));
+        }
+
+        .wing {
+            transform-origin: 50px 50px; 
+            transform-box: fill-box;
+        }
+
+        .flap-fast .wing-left { animation: flapL 0.12s infinite alternate ease-in-out; }
+        .flap-fast .wing-right { animation: flapR 0.12s infinite alternate ease-in-out; }
+        .flap-med .wing-left { animation: flapL 0.2s infinite alternate ease-in-out; }
+        .flap-med .wing-right { animation: flapR 0.2s infinite alternate ease-in-out; }
+        .flap-slow .wing-left { animation: flapL 0.35s infinite alternate ease-in-out; }
+        .flap-slow .wing-right { animation: flapR 0.35s infinite alternate ease-in-out; }
+
+        @keyframes flapL { 
+            0% { transform: scaleX(1) skewY(0deg); } 
+            100% { transform: scaleX(0.1) skewY(-15deg); } 
+        }
+        @keyframes flapR { 
+            0% { transform: scaleX(1) skewY(0deg); } 
+            100% { transform: scaleX(0.1) skewY(15deg); } 
+        }
+
+        @keyframes fly-in-left {
+            0% { transform: translate(-40vw, 30vh) scale(0.4) rotate(45deg); opacity: 0; }
+            15% { transform: translate(-30vw, -10vh) scale(1.1) rotate(-10deg); opacity: 1; }
+            40% { transform: translate(-10vw, 15vh) scale(0.9) rotate(20deg); }
+            70% { transform: translate(5vw, -5vh) scale(1.1) rotate(-15deg); }
+            100% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+        }
+
+        @keyframes fly-out-right {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+            30% { transform: translate(5vw, -15vh) scale(1.2) rotate(30deg); opacity: 1; }
+            60% { transform: translate(15vw, 5vh) scale(0.8) rotate(-10deg); }
+            100% { transform: translate(40vw, -30vh) scale(0.4) rotate(60deg); opacity: 0; }
+        }
+
+        /* Схеми: контрастні, без кружечків, перетягувані */
+        .schema-board {
+            position: absolute;
+            background: linear-gradient(to bottom, #ffffff, #f0e4d4);
+            border-radius: 20px;
+            border: 0.4vw solid #271714;
+            box-shadow: 0 15px 25px rgba(0,0,0,0.8), inset 0 0 15px rgba(0,0,0,0.2);
+            display: flex; justify-content: center; align-items: center;
+            background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.03) 0px, rgba(0,0,0,0.03) 2px, transparent 2px, transparent 8px);
+            z-index: 15;
+            cursor: grab;
+            touch-action: none; 
+        }
+        .schema-board:active { cursor: grabbing; }
+
+        /* Системні компоненти (Theme Manager, Draw Tool, Access Control) */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px;
+            background: #34495e; color: white; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; cursor: pointer; z-index: 80000; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #theme-modal {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 80vw; max-width: 600px; max-height: 60vh; background: white;
+            border-radius: 15px; z-index: 80001; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            overflow-y: auto;
+        }
+        #theme-modal h2 { margin-top: 0; text-align: center; color: #333; }
+        .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; }
+        .theme-card {
+            position: relative; border-radius: 10px; overflow: hidden; cursor: pointer;
+            border: 3px solid transparent; height: 80px; background: #ddd; display: flex;
+            align-items: center; justify-content: center;
+        }
+        .theme-card:hover { border-color: #3498db; }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; position: absolute; top:0; left:0; }
+        .theme-card span {
+            position: relative; z-index: 2; background: rgba(0,0,0,0.6); color: white;
+            padding: 2px 8px; border-radius: 5px; font-size: 12px; font-weight: bold;
+        }
+        .theme-card.no-bg { background: #555; }
+        
+        #modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.6); z-index: 80000;
+        }
+        .close-modal {
+            position: absolute; top: 10px; right: 15px; cursor: pointer; font-size: 24px; color: #333;
+        }
+
+        #block-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85); z-index: 99999; color: red; font-size: 5vw;
+            justify-content: center; align-items: center; text-align: center; font-weight: bold;
+        }
+
+        /* Global Draw Tool */
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px; width: 50px; height: 50px;
+            background: #8e44ad; color: white; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; cursor: pointer; z-index: 90001; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; right: 20px; background: white;
+            padding: 10px; border-radius: 10px; z-index: 90002; box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            flex-direction: column; gap: 10px; width: 180px; touch-action: none;
+        }
+        #draw-panel-global .handle {
+            width: 100%; height: 20px; background: #ddd; border-radius: 5px; cursor: move;
+            display: flex; justify-content: center; align-items: center; position: relative;
+        }
+        #draw-panel-global .close-draw {
+            position: absolute; right: 5px; cursor: pointer; font-weight: bold; color: #555;
+        }
+        #draw-panel-global button {
+            padding: 5px; cursor: pointer; border: 1px solid #ccc; border-radius: 5px; background: #f9f9f9;
+        }
+        #draw-panel-global button.active { background: #d0e1f9; border-color: #4a90e2; }
+        #global-draw-canvas {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 90000; pointer-events: none; touch-action: none;
+        }
+
+        /* Zoom Tools */
+        .zoom-tools {
+            position: absolute; top: 10%; right: 2%; display: flex; flex-direction: column; gap: 10px; z-index: 100;
+        }
+        .zoom-btn {
+            width: 3vw; height: 3vw; min-width: 30px; min-height: 30px;
+            border-radius: 50%; background: rgba(255,255,255,0.8);
+            border: 2px solid #333; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; font-size: 1.5vw; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        /* Секретні поля (додані згідно з промптом) */
+        .secret-input { color: transparent; selection-color: transparent; }
+        .secret-input.visible { color: black; }
+        
+        @media (max-width: 768px) {
+            #theme-btn, #toggle-draw-btn-global { width: 40px; height: 40px; font-size: 20px; }
+            #toggle-draw-btn-global { bottom: 70px; }
+            .zoom-btn { width: 40px; height: 40px; font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+<div id="game-board">
+    
+    <!-- Розмитий фон з лісом -->
+    <svg id="blurred-bg" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+        <defs>
+            <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#4facfe"/>
+                <stop offset="100%" stop-color="#00f2fe"/>
+            </linearGradient>
+            <radialGradient id="sunGrad" cx="50%" cy="30%" r="50%">
+                <stop offset="0%" stop-color="rgba(255,255,255,0.9)"/>
+                <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+            </radialGradient>
+        </defs>
+        <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+        <circle cx="960" cy="300" r="400" fill="url(#sunGrad)"/>
+        <path d="M0,1080 Q200,600 400,1080 Z" fill="#2e7d32" opacity="0.6"/>
+        <path d="M300,1080 Q600,400 900,1080 Z" fill="#1b5e20" opacity="0.5"/>
+        <path d="M800,1080 Q1200,500 1600,1080 Z" fill="#388e3c" opacity="0.4"/>
+        <path d="M1400,1080 Q1700,400 2000,1080 Z" fill="#2e7d32" opacity="0.7"/>
+    </svg>
+
+    <div id="interactive-layer">
+        
+        <!-- Навігація та зум -->
+        <div id="btn-back" class="nav-btn">
+            <svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg>
+        </div>
+        <div id="btn-next" class="nav-btn">
+            <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+        </div>
+        
+        <div class="zoom-tools">
+            <div class="zoom-btn" id="btn-zoom-in">🔍+</div>
+            <div class="zoom-btn" id="btn-zoom-out">🔍-</div>
+        </div>
+
+        <!-- Ліва деталізована гілка -->
+        <div id="branch-left" class="branch-container">
+            <svg viewBox="0 0 600 500" style="width: 100%; height: 100%; overflow: visible;">
+                <path d="M-50,0 Q100,50 250,200 T500,450" fill="none" stroke="#5d4037" stroke-width="40" stroke-linecap="round"/>
+                <path d="M-50,0 Q100,50 250,200 T500,450" fill="none" stroke="#4e342e" stroke-width="20" stroke-linecap="round"/>
+                <path d="M150,110 Q250,200 350,300" fill="none" stroke="#5d4037" stroke-width="25" stroke-linecap="round"/>
+                <path d="M250,200 Q300,100 400,150" fill="none" stroke="#5d4037" stroke-width="20" stroke-linecap="round"/>
+                
+                <path d="M450,400 C400,350 480,300 550,380 C500,420 480,450 450,400 Z" fill="#4caf50"/>
+                <path d="M400,150 C350,100 420,50 480,120 C450,180 430,200 400,150 Z" fill="#388e3c"/>
+                <path d="M350,300 C300,250 380,200 420,280 C380,330 370,350 350,300 Z" fill="#2e7d32"/>
+                <path d="M150,50 C100,0 200,-30 250,30 C200,80 180,100 150,50 Z" fill="#4caf50"/>
+            </svg>
+            <div class="action-node" id="btn-add">
+                <div class="action-node-content">
+                    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                </div>
+            </div>
+            <div id="butterflies-left" class="butterflies-zone"></div>
+        </div>
+
+        <!-- Права деталізована гілка -->
+        <div id="branch-right" class="branch-container">
+            <svg viewBox="0 0 600 500" style="width: 100%; height: 100%; overflow: visible;">
+                <path d="M-50,0 Q100,50 250,200 T500,450" fill="none" stroke="#6d4c41" stroke-width="40" stroke-linecap="round"/>
+                <path d="M-50,0 Q100,50 250,200 T500,450" fill="none" stroke="#5d4037" stroke-width="20" stroke-linecap="round"/>
+                <path d="M200,150 Q300,250 450,350" fill="none" stroke="#6d4c41" stroke-width="25" stroke-linecap="round"/>
+                
+                <path d="M500,450 C450,400 520,350 580,420 C540,480 520,480 500,450 Z" fill="#8bc34a"/>
+                <path d="M450,350 C400,300 480,250 520,330 C480,380 470,400 450,350 Z" fill="#689f38"/>
+                <path d="M250,100 C200,50 300,0 350,80 C300,130 280,150 250,100 Z" fill="#558b2f"/>
+            </svg>
+            <div class="action-node" id="btn-remove">
+                <div class="action-node-content" style="background: radial-gradient(circle at 30% 30%, #4dd0e1, #00838f); border-color: #006064;">
+                    <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+                </div>
+            </div>
+            <div id="butterflies-right" class="butterflies-zone"></div>
+        </div>
+
+        <!-- Схеми на дерев'яних дошках, що вільно перетягуються -->
+        
+        <!-- Схема 1: 4 + 2 = 6 -->
+        <div class="schema-board" id="schema-1" style="left: 10%; top: 50%; width: 35%; height: 40%;">
+            <svg viewBox="0 0 500 250" style="width: 90%; height: 90%; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); pointer-events: none;">
+                <!-- Верхня загальна дуга (6) -->
+                <path d="M40,90 Q250,10 460,90" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+                <text x="250" y="35" font-size="48" fill="#000" text-anchor="middle" font-weight="bold">6</text>
+                
+                <!-- Основна лінія поділок -->
+                <line x1="40" y1="110" x2="460" y2="110" stroke="#000" stroke-width="12" stroke-linecap="round"/>
+                <line x1="320" y1="110" x2="460" y2="110" stroke="#555" stroke-width="12" stroke-linecap="round"/>
+                
+                <!-- Засічки для 4 -->
+                <line x1="40" y1="90" x2="40" y2="130" stroke="#000" stroke-width="6"/>
+                <line x1="110" y1="95" x2="110" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="180" y1="95" x2="180" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="250" y1="95" x2="250" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="320" y1="90" x2="320" y2="130" stroke="#000" stroke-width="6"/>
+                
+                <!-- Засічки для 2 -->
+                <line x1="390" y1="95" x2="390" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="460" y1="90" x2="460" y2="130" stroke="#000" stroke-width="6"/>
+
+                <!-- Нижні дуги -->
+                <path d="M40,130 Q180,210 320,130" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+                <path d="M320,130 Q390,190 460,130" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+                
+                <text x="180" y="215" font-size="58" fill="#c62828" text-anchor="middle" font-weight="bold">?</text>
+                <text x="390" y="210" font-size="48" fill="#000" text-anchor="middle" font-weight="bold">2</text>
+            </svg>
+        </div>
+
+        <!-- Схема 2: 4 + 2 = ? -->
+        <div class="schema-board" id="schema-2" style="left: 55%; top: 50%; width: 35%; height: 40%;">
+            <svg viewBox="0 0 500 250" style="width: 90%; height: 90%; overflow: visible; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); pointer-events: none;">
+                <!-- Верхні дуги -->
+                <path d="M40,90 Q180,20 320,90" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+                <text x="180" y="40" font-size="48" fill="#000" text-anchor="middle" font-weight="bold">4</text>
+                
+                <path d="M320,90 Q390,40 460,90" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+                <text x="390" y="40" font-size="48" fill="#000" text-anchor="middle" font-weight="bold">2</text>
+
+                <!-- Основна лінія поділок -->
+                <line x1="40" y1="110" x2="320" y2="110" stroke="#000" stroke-width="12" stroke-linecap="round"/>
+                <line x1="320" y1="110" x2="460" y2="110" stroke="#555" stroke-width="12" stroke-linecap="round"/>
+                
+                <!-- Засічки -->
+                <line x1="40" y1="90" x2="40" y2="130" stroke="#000" stroke-width="6"/>
+                <line x1="110" y1="95" x2="110" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="180" y1="95" x2="180" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="250" y1="95" x2="250" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="320" y1="90" x2="320" y2="130" stroke="#000" stroke-width="6"/>
+                <line x1="390" y1="95" x2="390" y2="125" stroke="#000" stroke-width="6"/>
+                <line x1="460" y1="90" x2="460" y2="130" stroke="#000" stroke-width="6"/>
+
+                <!-- Нижня загальна дуга -->
+                <path d="M40,130 Q250,230 460,130" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+                <text x="250" y="235" font-size="58" fill="#c62828" text-anchor="middle" font-weight="bold">?</text>
+            </svg>
+        </div>
+
+    </div>
+</div>
+
+<!-- UI: Theme Manager -->
+<div id="theme-btn">⚙️</div>
+<div id="modal-overlay"></div>
+<div id="theme-modal">
+    <div class="close-modal">✕</div>
+    <h2>Виберіть фон</h2>
+    <div class="theme-grid" id="theme-grid">
+        <div class="theme-card no-bg" data-bg="none">
+            <span>Без фону</span>
+        </div>
+        <!-- Фони будуть додані динамічно -->
+    </div>
+</div>
+
+<!-- UI: Global Draw Tool -->
+<div id="toggle-draw-btn-global">✏️</div>
+<div id="draw-panel-global">
+    <div class="handle">
+        <span class="close-draw">✕</span>
+        <span>Малювання</span>
+    </div>
+    <div style="display:flex; justify-content:space-between;">
+        <button id="draw-pencil" class="active">✏️ Олівець</button>
+        <button id="draw-eraser">🧽 Гумка</button>
+    </div>
+    <input type="range" id="draw-size" min="1" max="50" value="5" style="width:100%;">
+    <input type="color" id="draw-color" value="#ff0000" style="width:100%; height:30px;">
+    <button id="draw-clear">🗑️ Очистити</button>
+</div>
+<canvas id="global-draw-canvas"></canvas>
+
+<!-- Скрипти: Firebase, логіка, малювання, фони -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+<script>
+    const CONFIG = {
+        gameId: 'forest_schema_butterflies_math_123', // Унікальний ID для localStorage
+        firebase: { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/" }
+    };
+
+    let db = null;
+    try {
+        if (typeof firebase !== 'undefined') {
+            firebase.initializeApp(CONFIG.firebase);
+            db = firebase.database();
+        } else {
+            console.warn("Firebase JS SDK не завантажено. Робота в офлайн-режимі.");
+        }
+    } catch (e) {
+        console.warn("Помилка ініціалізації Firebase. Гра працюватиме локально.", e);
+    }
+
+    // --- ACCESS CONTROL (Ідентифікація, Радар, Блокування) ---
+    const urlParams = new URLSearchParams(window.location.search);
+    let myName = urlParams.get('user') || sessionStorage.getItem('myName');
+    if (!myName) {
+        myName = 'Гість_' + Math.floor(Math.random() * 1000);
+    }
+    sessionStorage.setItem('myName', myName);
+    
+    const tabId = Math.random().toString(36).substr(2, 9);
+    let isConnected = true;
+
+    if (db) {
+        const connectedRef = db.ref('.info/connected');
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        connectedRef.on('value', (snap) => {
+            if (snap.val() === true) {
+                userRef.set(true);
+                userRef.onDisconnect().remove();
+            }
+        });
+
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // Захист від нескінченного перезавантаження
+        let isInitialRefreshLoad = true;
+        db.ref('force_refresh').on('value', (snap) => {
+            if (isInitialRefreshLoad) {
+                isInitialRefreshLoad = false;
+                return;
+            }
+            if (snap.val() === true) window.location.reload();
+        });
+
+        setTimeout(() => {
+            db.ref('current_activity').on('value', (snap) => {
+                if (snap.val() === 'lobby' && isConnected) {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }, 1000); // Імунітет 1 секунда
+    }
+
+    // --- THEME MANAGER (Строго послідовне завантаження фонів - Захист від блокування GitHub) ---
+    const themeBtn = document.getElementById('theme-btn');
+    const themeModal = document.getElementById('theme-modal');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const themeGrid = document.getElementById('theme-grid');
+    const blurBg = document.getElementById('blurred-bg');
+
+    themeBtn.onclick = () => { themeModal.style.display = 'block'; modalOverlay.style.display = 'block'; };
+    document.querySelector('.close-modal').onclick = closeModal;
+    modalOverlay.onclick = closeModal;
+
+    function closeModal() { themeModal.style.display = 'none'; modalOverlay.style.display = 'none'; }
+
+    async function loadBackgrounds() {
+        let i = 1;
+        while (true) { 
+            const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+            try {
+                // Використовуємо HEAD запит для швидкої перевірки наявності файлу
+                const response = await fetch(url, { method: 'HEAD' });
+                
+                // Якщо отримуємо 404 або іншу помилку — негайно зупиняємо цикл, щоб уникнути блокування
+                if (!response.ok) {
+                    break;
+                }
+                
+                const card = document.createElement('div');
+                card.className = 'theme-card';
+                card.dataset.bg = url;
+                card.innerHTML = `<img src="${url}" alt="Фон ${i}"><span>Фон ${i}</span>`;
+                themeGrid.appendChild(card);
+                
+                i++; // Переходимо до наступного тільки якщо попередній успішний
+            } catch (error) {
+                // При офлайн-режимі або мережевій помилці - перериваємось
+                break; 
+            }
+        }
+    }
+    
+    // Запускаємо тільки якщо є підключення до мережі
+    if (navigator.onLine) {
+        loadBackgrounds();
+    }
+
+    themeGrid.addEventListener('click', (e) => {
+        const card = e.target.closest('.theme-card');
+        if (!card) return;
+        const bgUrl = card.dataset.bg;
+        
+        applyBackground(bgUrl);
+        localStorage.setItem('mySavedBg_' + CONFIG.gameId, bgUrl);
+        
+        if (db) {
+            db.ref('game_theme').set({ url: bgUrl, senderId: myName, timestamp: Date.now() });
+        }
+        closeModal();
+    });
+
+    function applyBackground(url) {
+        if (url === 'none') {
+            document.body.style.backgroundImage = 'none';
+            blurBg.style.opacity = '1';
+        } else {
+            document.body.style.backgroundImage = `url(${url})`;
+            blurBg.style.opacity = '0';
+        }
+    }
+
+    // Завантаження локально збереженого індивідуального фону гри при старті
+    const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+    if (savedBg) applyBackground(savedBg);
+
+    if (db) {
+        db.ref('game_theme').on('value', (snap) => {
+            const data = snap.val();
+            if (data && data.senderId !== myName) {
+                applyBackground(data.url);
+                localStorage.setItem('mySavedBg_' + CONFIG.gameId, data.url);
+            }
+        });
+    }
+
+    // --- СИНХРОНІЗАЦІЯ ДІЙ (game_action) ---
+    function syncAction(type, data) {
+        if (!db) return;
+        db.ref('game_action').set({ senderId: myName, timestamp: Date.now(), type, data });
+    }
+
+    let isRemoteAction = false;
+    if (db) {
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === myName) return;
+            isRemoteAction = true;
+            if (val.type === 'add_butterflies') doAddButterflies();
+            else if (val.type === 'remove_butterflies') doRemoveButterflies();
+            else if (val.type === 'move_schema') doMoveSchema(val.data.id, val.data.x, val.data.y);
+            isRemoteAction = false;
+        });
+    }
+
+
+    // --- ЗУМ (Масштабування) ---
+    let currentZoom = 1;
+    const gameBoard = document.getElementById('game-board');
+    
+    document.getElementById('btn-zoom-in').onclick = () => {
+        currentZoom += 0.1;
+        gameBoard.style.transform = `scale(${currentZoom})`;
+    };
+    document.getElementById('btn-zoom-out').onclick = () => {
+        currentZoom = Math.max(0.5, currentZoom - 0.1);
+        gameBoard.style.transform = `scale(${currentZoom})`;
+    };
+
+
+    // --- ВІЛЬНЕ ПЕРЕТЯГУВАННЯ СХЕМ (Drag & Drop) ---
+    const boards = document.querySelectorAll('.schema-board');
+    let activeBoard = null;
+    let startX, startY, initialX, initialY;
+
+    boards.forEach(board => {
+        board.addEventListener('pointerdown', (e) => {
+            activeBoard = board;
+            startX = e.clientX;
+            startY = e.clientY;
+            initialX = board.offsetLeft;
+            initialY = board.offsetTop;
+            board.style.zIndex = 100;
+            board.setPointerCapture(e.pointerId);
+        });
+    });
+
+    window.addEventListener('pointermove', (e) => {
+        if (!activeBoard) return;
+        // Враховуємо зум при перетягуванні
+        const dx = (e.clientX - startX) / currentZoom;
+        const dy = (e.clientY - startY) / currentZoom;
+        const newX = initialX + dx;
+        const newY = initialY + dy;
+        activeBoard.style.left = newX + 'px';
+        activeBoard.style.top = newY + 'px';
+    });
+
+    window.addEventListener('pointerup', () => {
+        if (activeBoard) {
+            activeBoard.style.zIndex = 15;
+            syncAction('move_schema', { id: activeBoard.id, x: activeBoard.style.left, y: activeBoard.style.top });
+            activeBoard = null;
+        }
+    });
+
+    function doMoveSchema(id, x, y) {
+        const board = document.getElementById(id);
+        if (board) {
+            board.style.left = x;
+            board.style.top = y;
+        }
+    }
+
+
+    // --- ГЕНЕРАТОР МЕТЕЛИКІВ ---
+    function createButterflySVG(isLeft, isSpecial = false) {
+        let c;
+        if (isSpecial) {
+            // Нові метелики - контрастні кольори
+            const specialColors = [['#ff0844', '#ffb199'], ['#f83600', '#f9d423'], ['#b224ef', '#7579ff']];
+            c = specialColors[Math.floor(Math.random() * specialColors.length)];
+        } else {
+            // Стандартні кольори
+            const colors = isLeft 
+                ? [['#ff9a9e', '#fecfef'], ['#fccb90', '#d57eeb']]
+                : [['#a1c4fd', '#c2e9fb'], ['#84fab0', '#8fd3f4']];
+            c = colors[Math.floor(Math.random() * colors.length)];
+        }
+        
+        const flaps = ['flap-fast', 'flap-med', 'flap-slow'];
+        const flapClass = flaps[Math.floor(Math.random() * flaps.length)];
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'butterfly-position';
+
+        const animator = document.createElement('div');
+        animator.className = `butterfly-animator ${flapClass}`;
+
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 100 100');
+        svg.className = 'butterfly-svg';
+
+        const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        defs.innerHTML = `
+            <linearGradient id="grad${c[0].replace('#','')}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="${c[0]}" />
+                <stop offset="100%" stop-color="${c[1]}" />
+            </linearGradient>
+        `;
+        svg.appendChild(defs);
+
+        const body = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        body.setAttribute('x', '47'); body.setAttribute('y', '25');
+        body.setAttribute('width', '6'); body.setAttribute('height', '50');
+        body.setAttribute('rx', '3'); body.setAttribute('fill', '#2c3e50');
+
+        const ants = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        ants.setAttribute('d', 'M48,25 Q40,10 35,15 M52,25 Q60,10 65,15');
+        ants.setAttribute('fill', 'none');
+        ants.setAttribute('stroke', '#2c3e50');
+        ants.setAttribute('stroke-width', '2');
+        ants.setAttribute('stroke-linecap', 'round');
+
+        const wingL = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        wingL.classList.add('wing', 'wing-left');
+        wingL.innerHTML = `
+            <path d="M50,35 C20,-10 -10,40 10,80 C20,100 45,90 50,60 Z" fill="url(#grad${c[0].replace('#','')})" stroke="#fff" stroke-width="2"/>
+            <path d="M50,55 C30,70 10,100 35,95 C50,90 45,70 50,60 Z" fill="#fff" opacity="0.3"/>
+            <circle cx="25" cy="50" r="5" fill="#fff" opacity="0.8"/>
+        `;
+
+        const wingR = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        wingR.classList.add('wing', 'wing-right');
+        wingR.innerHTML = `
+            <path d="M50,35 C80,-10 110,40 90,80 C80,100 55,90 50,60 Z" fill="url(#grad${c[0].replace('#','')})" stroke="#fff" stroke-width="2"/>
+            <path d="M50,55 C70,70 90,100 65,95 C50,90 55,70 50,60 Z" fill="#fff" opacity="0.3"/>
+            <circle cx="75" cy="50" r="5" fill="#fff" opacity="0.8"/>
+        `;
+
+        svg.appendChild(ants);
+        svg.appendChild(wingL);
+        svg.appendChild(wingR);
+        svg.appendChild(body);
+        
+        animator.appendChild(svg);
+        wrapper.appendChild(animator);
+        
+        return { wrapper, animator };
+    }
+
+    const zoneLeft = document.getElementById('butterflies-left');
+    const zoneRight = document.getElementById('butterflies-right');
+    
+    const posLeft = [
+        {l: '35%', t: '25%', r: 15}, {l: '55%', t: '40%', r: -20}, 
+        {l: '45%', t: '65%', r: 10}, {l: '75%', t: '55%', r: -15},
+        {l: '25%', t: '45%', r: 25}, {l: '60%', t: '75%', r: -5}
+    ];
+    const posRight = [
+        {l: '55%', t: '25%', r: -15}, {l: '35%', t: '40%', r: 20}, 
+        {l: '45%', t: '65%', r: -10}, {l: '15%', t: '55%', r: 15},
+        {l: '65%', t: '45%', r: -25}, {l: '30%', t: '75%', r: 5}
+    ];
+
+    let countLeft = 0;
+    let countRight = 0;
+
+    function initGame() {
+        for(let i=0; i<4; i++) {
+            const b = createButterflySVG(true, false);
+            b.wrapper.style.left = posLeft[countLeft].l;
+            b.wrapper.style.top = posLeft[countLeft].t;
+            b.wrapper.style.transform = `rotate(${posLeft[countLeft].r}deg)`;
+            zoneLeft.appendChild(b.wrapper);
+            countLeft++;
+        }
+        for(let i=0; i<6; i++) {
+            const b = createButterflySVG(false, false);
+            b.wrapper.style.left = posRight[countRight].l;
+            b.wrapper.style.top = posRight[countRight].t;
+            b.wrapper.style.transform = `rotate(${posRight[countRight].r}deg)`;
+            zoneRight.appendChild(b.wrapper);
+            countRight++;
+        }
+    }
+
+    function doAddButterflies() {
+        if(countLeft >= 6) return;
+        for(let i=0; i<2; i++) {
+            if(countLeft >= 6) break;
+            const target = posLeft[countLeft++];
+            // Створюємо зі спеціальним кольором (isSpecial = true)
+            const b = createButterflySVG(true, true);
+            b.wrapper.style.left = target.l;
+            b.wrapper.style.top = target.t;
+            b.animator.style.animation = 'fly-in-left 2.5s cubic-bezier(0.25, 1, 0.5, 1) forwards';
+            zoneLeft.appendChild(b.wrapper);
+            
+            setTimeout(() => {
+                b.animator.style.animation = 'none';
+                b.wrapper.style.transform = `rotate(${target.r}deg)`;
+            }, 2500);
+        }
+    }
+
+    function doRemoveButterflies() {
+        if(countRight <= 4) return;
+        const wrappers = zoneRight.querySelectorAll('.butterfly-position');
+        for(let i=0; i<2; i++) {
+            if(countRight <= 4) break;
+            const wrap = wrappers[countRight - 1];
+            countRight--;
+            
+            // Змінюємо колір відлітаючого метелика за допомогою фільтра
+            wrap.style.filter = "hue-rotate(180deg) saturate(2)"; 
+
+            const anim = wrap.querySelector('.butterfly-animator');
+            wrap.style.transform = 'rotate(0deg)';
+            anim.style.animation = 'fly-out-right 2.5s cubic-bezier(0.42, 0, 1, 1) forwards';
+            
+            setTimeout(() => wrap.remove(), 2500);
+        }
+    }
+
+    document.getElementById('btn-add').addEventListener('click', () => {
+        doAddButterflies();
+        if (!isRemoteAction) syncAction('add_butterflies');
+    });
+
+    document.getElementById('btn-remove').addEventListener('click', () => {
+        doRemoveButterflies();
+        if (!isRemoteAction) syncAction('remove_butterflies');
+    });
+
+    initGame();
+
+
+    // --- GLOBAL DRAW TOOL ---
+    const drawBtn = document.getElementById('toggle-draw-btn-global');
+    const drawPanel = document.getElementById('draw-panel-global');
+    const drawCanvas = document.getElementById('global-draw-canvas');
+    const ctx = drawCanvas.getContext('2d');
+    
+    let isDrawingMode = false;
+    let isDrawing = false;
+    let drawMode = 'pencil';
+    let lastX = 0; let lastY = 0;
+
+    function resizeCanvas() {
+        drawCanvas.width = window.innerWidth;
+        drawCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    drawBtn.onclick = () => {
+        drawPanel.style.display = 'flex';
+        enableDrawMode();
+    };
+    
+    document.querySelector('.close-draw').onclick = () => {
+        drawPanel.style.display = 'none';
+        disableDrawMode();
+    };
+
+    // Одразу вмикаємо малювання
+    function enableDrawMode() {
+        isDrawingMode = true;
+        drawCanvas.style.pointerEvents = 'auto';
+    }
+    function disableDrawMode() {
+        isDrawingMode = false;
+        drawCanvas.style.pointerEvents = 'none';
+    }
+
+    const btnPencil = document.getElementById('draw-pencil');
+    const btnEraser = document.getElementById('draw-eraser');
+    
+    btnPencil.onclick = () => { drawMode = 'pencil'; btnPencil.classList.add('active'); btnEraser.classList.remove('active'); };
+    btnEraser.onclick = () => { drawMode = 'eraser'; btnEraser.classList.add('active'); btnPencil.classList.remove('active'); };
+
+    function drawLine(x0, y0, x1, y1, color, size, mode, emit = true) {
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : color;
+        ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
+        ctx.lineWidth = size;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        if (emit && db) {
+            syncAction('draw_line', {
+                x0: x0 / window.innerWidth, y0: y0 / window.innerHeight,
+                x1: x1 / window.innerWidth, y1: y1 / window.innerHeight,
+                color, size, mode
+            });
+        }
+    }
+
+    function clearCanvas(emit = true) {
+        ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        if (emit && db) syncAction('clear_canvas');
+    }
+
+    document.getElementById('draw-clear').onclick = () => clearCanvas(true);
+
+    drawCanvas.addEventListener('pointerdown', e => {
+        if (!isDrawingMode) return;
+        isDrawing = true;
+        lastX = e.clientX; lastY = e.clientY;
+    });
+    drawCanvas.addEventListener('pointermove', e => {
+        if (!isDrawing || !isDrawingMode) return;
+        const color = document.getElementById('draw-color').value;
+        const size = document.getElementById('draw-size').value;
+        drawLine(lastX, lastY, e.clientX, e.clientY, color, size, drawMode, true);
+        lastX = e.clientX; lastY = e.clientY;
+    });
+    drawCanvas.addEventListener('pointerup', () => isDrawing = false);
+    drawCanvas.addEventListener('pointerout', () => isDrawing = false);
+
+    // Draggable Draw Panel
+    let isDraggingPanel = false;
+    let pStartX, pStartY, pInitX, pInitY;
+    const drawHandle = drawPanel.querySelector('.handle');
+    
+    drawHandle.addEventListener('pointerdown', e => {
+        isDraggingPanel = true;
+        pStartX = e.clientX; pStartY = e.clientY;
+        pInitX = drawPanel.offsetLeft; pInitY = drawPanel.offsetTop;
+        drawHandle.setPointerCapture(e.pointerId);
+    });
+    window.addEventListener('pointermove', e => {
+        if(!isDraggingPanel) return;
+        drawPanel.style.left = (pInitX + e.clientX - pStartX) + 'px';
+        drawPanel.style.top = (pInitY + e.clientY - pStartY) + 'px';
+        drawPanel.style.right = 'auto'; 
+    });
+    window.addEventListener('pointerup', () => isDraggingPanel = false);
+
+    // Слухач малювання
+    if (db) {
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === myName) return;
+            if (val.type === 'draw_line') {
+                const d = val.data;
+                drawLine(
+                    d.x0 * window.innerWidth, d.y0 * window.innerHeight,
+                    d.x1 * window.innerWidth, d.y1 * window.innerHeight,
+                    d.color, d.size, d.mode, false
+                );
+            }
+            if (val.type === 'clear_canvas') clearCanvas(false);
+        });
+    }
+
+</script>
+</body>
+</html>
