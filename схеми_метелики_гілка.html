@@ -73,30 +73,41 @@
         #branch-right { right: -2%; transform: scaleX(-1); }
 
         /* Кнопки дій (Оранжева та Синя) - ЧИСТІ, БЕЗ НАПИСІВ, ПО КРАЯХ */
-        .action-node {
+        #btn-add {
             position: absolute;
             bottom: 5%;
+            left: 2%; /* Впритул до лівого краю */
             width: 6vw; height: 6vw;
             min-width: 50px; min-height: 50px;
             cursor: pointer;
             z-index: 20;
             border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #ffeb3b, #f57f17);
+            border: 0.3vw solid #e65100;
             box-shadow: 0 10px 15px rgba(0,0,0,0.4), inset 0 -5px 10px rgba(0,0,0,0.2);
             transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             pointer-events: auto;
         }
-        #btn-add {
-            left: 2%; /* Впритул до лівого краю */
-            background: radial-gradient(circle at 30% 30%, #ffeb3b, #f57f17);
-            border: 0.3vw solid #e65100;
-        }
+        #btn-add:hover { transform: scale(1.15) rotate(10deg); }
+        #btn-add:active { transform: scale(0.9); }
+
         #btn-remove {
+            position: absolute;
+            bottom: 5%;
             right: 2%; /* Впритул до правого краю */
+            width: 6vw; height: 6vw;
+            min-width: 50px; min-height: 50px;
+            cursor: pointer;
+            z-index: 20;
+            border-radius: 50%;
             background: radial-gradient(circle at 30% 30%, #4dd0e1, #00838f);
             border: 0.3vw solid #006064;
+            box-shadow: 0 10px 15px rgba(0,0,0,0.4), inset 0 -5px 10px rgba(0,0,0,0.2);
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: auto;
         }
-        .action-node:hover { transform: scale(1.15) rotate(10deg); }
-        .action-node:active { transform: scale(0.9); }
+        #btn-remove:hover { transform: scale(1.15) rotate(10deg); }
+        #btn-remove:active { transform: scale(0.9); }
 
         /* Зони метеликів */
         .butterflies-zone {
@@ -291,7 +302,7 @@
             #theme-btn, #toggle-draw-btn-global { width: 40px; height: 40px; font-size: 20px; }
             #toggle-draw-btn-global { bottom: 70px; }
             .zoom-btn, .restart-btn { width: 40px; height: 40px; }
-            .action-node { width: 50px; height: 50px; }
+            #btn-add, #btn-remove { width: 50px; height: 50px; }
         }
     </style>
 </head>
@@ -367,8 +378,8 @@
         </div>
 
         <!-- Кнопки дій (чисті кружечки по краях) -->
-        <div class="action-node" id="btn-add"></div>
-        <div class="action-node" id="btn-remove"></div>
+        <div id="btn-add"></div>
+        <div id="btn-remove"></div>
 
         <div id="butterflies-left" class="butterflies-zone"></div>
         <div id="butterflies-right" class="butterflies-zone"></div>
@@ -473,7 +484,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
 <script>
     const CONFIG = {
-        gameId: 'forest_schema_butterflies_final_v3', // Унікальний ID для збереження фону в localStorage
+        gameId: 'forest_schema_butterflies_final_v5', 
         firebase: { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/" }
     };
 
@@ -612,22 +623,27 @@
         });
     }
 
-    // --- СИНХРОНІЗАЦІЯ ДІЙ (game_action) ---
-    function syncAction(type, data) {
-        if (!db) return;
-        // Унікальний ID дії для 100% спрацьовування
-        const actionId = Math.random().toString(36).substring(2);
-        db.ref('game_action').set({ senderId: myName, timestamp: Date.now(), actionId, type, data });
-    }
-
+    // --- СИНХРОНІЗАЦІЯ ДІЙ (УНІКАЛЬНІ ID) ---
     let isRemoteAction = false;
     let lastActionId = null;
+
+    function syncAction(type, data) {
+        if (!db) return;
+        const actionId = Math.random().toString(36).substring(2);
+        lastActionId = actionId; 
+        db.ref('game_action').set({ senderId: myName, timestamp: Date.now(), actionId, type, data });
+    }
     
+    let isInitialLoad = true;
     if (db) {
         db.ref('game_action').on('value', snap => {
+            if (isInitialLoad) {
+                isInitialLoad = false;
+                return; 
+            }
             const val = snap.val();
-            // Перевіряємо, чи це не наша ж дія, і чи ця дія не дублюється
-            if (!val || val.senderId === myName || val.actionId === lastActionId) return;
+            
+            if (!val || val.actionId === lastActionId) return;
             
             lastActionId = val.actionId;
             isRemoteAction = true;
@@ -648,7 +664,6 @@
         countLeft = 0;
         countRight = 0;
         
-        // Скидаємо позиції схем
         const b1 = document.getElementById('schema-1');
         const b2 = document.getElementById('schema-2');
         if(b1) { b1.style.left = '15%'; b1.style.top = '55%'; }
@@ -676,7 +691,7 @@
     };
 
 
-    // --- ВІЛЬНЕ ПЕРЕТЯГУВАННЯ СХЕМ (З правильним адаптивним масштабом у %) ---
+    // --- ВІЛЬНЕ ПЕРЕТЯГУВАННЯ СХЕМ (Адаптивне позиціонування у %) ---
     const boards = document.querySelectorAll('.schema-board');
     let activeBoard = null;
     let startX, startY, initialX, initialY;
@@ -695,15 +710,12 @@
 
     window.addEventListener('pointermove', (e) => {
         if (!activeBoard) return;
-        
-        // Враховуємо поточний зум (scale) при перетягуванні
         const dx = (e.clientX - startX) / currentZoom;
         const dy = (e.clientY - startY) / currentZoom;
         
         const newX = initialX + dx;
         const newY = initialY + dy;
         
-        // Перетворюємо пікселі у відсотки (%) для ідеального позиціонування на будь-якому екрані!
         const pctX = (newX / gameBoard.offsetWidth) * 100;
         const pctY = (newY / gameBoard.offsetHeight) * 100;
         
@@ -805,15 +817,22 @@
     const zoneLeft = document.getElementById('butterflies-left');
     const zoneRight = document.getElementById('butterflies-right');
     
+    // Координати відносно всього екрану (для ідеальної точності)
     const posLeft = [
-        {l: '35%', t: '25%', r: 15}, {l: '55%', t: '40%', r: -20}, 
-        {l: '45%', t: '65%', r: 10}, {l: '75%', t: '55%', r: -15},
-        {l: '25%', t: '45%', r: 25}, {l: '60%', t: '75%', r: -5}
+        {l: '7%', t: '12%', r: 15}, 
+        {l: '13%', t: '20%', r: -20}, 
+        {l: '19%', t: '29%', r: 10}, 
+        {l: '25%', t: '37%', r: -15},
+        {l: '31%', t: '45%', r: 25}, 
+        {l: '15%', t: '10%', r: -5}
     ];
     const posRight = [
-        {l: '55%', t: '25%', r: -15}, {l: '35%', t: '40%', r: 20}, 
-        {l: '45%', t: '65%', r: -10}, {l: '15%', t: '55%', r: 15},
-        {l: '65%', t: '45%', r: -25}, {l: '30%', t: '75%', r: 5}
+        {l: '89%', t: '12%', r: -15}, 
+        {l: '83%', t: '20%', r: 20}, 
+        {l: '77%', t: '29%', r: -10}, 
+        {l: '71%', t: '37%', r: 15},
+        {l: '65%', t: '45%', r: -25}, 
+        {l: '81%', t: '10%', r: 5}
     ];
 
     let countLeft = 0;
@@ -839,7 +858,6 @@
     }
 
     function doAddButterflies() {
-        if(countLeft >= 6) return;
         for(let i=0; i<2; i++) {
             if(countLeft >= 6) break;
             const target = posLeft[countLeft++];
@@ -861,7 +879,6 @@
     }
 
     function doRemoveButterflies() {
-        if(countRight <= 4) return;
         const wrappers = zoneRight.querySelectorAll('.butterfly-position');
         for(let i=0; i<2; i++) {
             if(countRight <= 4) break;
@@ -881,11 +898,13 @@
     }
 
     document.getElementById('btn-add').addEventListener('click', () => {
+        if(countLeft >= 6) return;
         doAddButterflies();
         if (!isRemoteAction) syncAction('add_butterflies');
     });
 
     document.getElementById('btn-remove').addEventListener('click', () => {
+        if(countRight <= 4) return;
         doRemoveButterflies();
         if (!isRemoteAction) syncAction('remove_butterflies');
     });
