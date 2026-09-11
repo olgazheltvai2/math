@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jungle Math Snake</title>
+    
+    <!-- Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        /* Загальне скидання та стилізація сторінки */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            font-family: 'Arial', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #0f381c;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Контейнер 16:9 */
+        #game-aspect-ratio-container {
+            position: relative;
+            width: 100vw;
+            height: 56.25vw;
+            max-height: 100vh;
+            max-width: 177.78vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+            transform-origin: center center;
+            transition: transform 0.3s ease;
+            z-index: 10;
+        }
+
+        /* Розмитий SVG фон (якщо немає динамічного) */
+        .scenery-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            filter: blur(4px);
+        }
+
+        @keyframes floatCloud {
+            0% { transform: translateX(-10%); }
+            100% { transform: translateX(110%); }
+        }
+        .cloud { animation: floatCloud 40s linear infinite; }
+        .cloud.slow { animation: floatCloud 60s linear infinite reverse; }
+
+        @keyframes swayTree {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(2deg); }
+        }
+        .tree-top {
+            transform-origin: bottom center;
+            animation: swayTree 6s ease-in-out infinite;
+        }
+
+        /* Центральна ігрова зона (без фонових прямокутників) */
+        #game-board-wrapper {
+            position: relative;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 100%;
+            padding: 10px;
+            pointer-events: auto;
+        }
+
+        /* Ігрове поле (Канвас) */
+        canvas#gameCanvas {
+            background: radial-gradient(circle at center, #2e8b57 0%, #175231 100%);
+            border-radius: 25px;
+            box-shadow: 
+                inset 0 0 30px rgba(0,0,0,0.4),
+                0 20px 40px rgba(0,0,0,0.6),
+                0 0 0 12px #38a356,
+                0 0 0 16px #1c522b;
+            width: 100%;
+            max-width: 600px;
+            height: auto;
+            aspect-ratio: 1 / 1;
+            pointer-events: auto;
+        }
+
+        /* Панель керування швидкістю */
+        .speed-panel {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            background: linear-gradient(to bottom, #d97706, #9a3412);
+            padding: 10px 25px;
+            border-radius: 40px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 0 4px 10px rgba(255,255,255,0.3);
+            border: 4px solid #7c2d12;
+            transform: scale(0.9);
+            pointer-events: auto;
+        }
+
+        .speed-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #fde047, #eab308);
+            cursor: pointer;
+            box-shadow: 0 6px 0 #a16207, 0 8px 15px rgba(0,0,0,0.4);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.1s, box-shadow 0.1s;
+            outline: none;
+        }
+
+        .speed-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #a16207, 0 2px 5px rgba(0,0,0,0.4);
+        }
+
+        .speed-btn svg { width: 35px; height: 35px; fill: #713f12; }
+        .speed-indicator { display: flex; gap: 8px; }
+        .speed-dot {
+            width: 15px; height: 15px; border-radius: 50%;
+            background-color: #451a03; box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+            transition: background-color 0.3s;
+        }
+        .speed-dot.active {
+            background-color: #a3e635; box-shadow: 0 0 10px #bef264, inset 0 2px 4px rgba(255,255,255,0.5);
+        }
+
+        /* Модальне вікно математики */
+        #math-overlay {
+            display: none; position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(4, 21, 9, 0.7); z-index: 100;
+            justify-content: center; align-items: center;
+            backdrop-filter: blur(5px);
+            pointer-events: auto;
+        }
+
+        #math-modal {
+            position: relative; width: 90%; max-width: 500px;
+            aspect-ratio: 500 / 350; display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.1) rotate(-15deg); opacity: 0; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+
+        .leaf-bg {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1; filter: drop-shadow(0 25px 25px rgba(0,0,0,0.8));
+        }
+
+        #math-equation {
+            font-size: clamp(40px, 8vw, 80px); color: #fff;
+            text-shadow: 4px 4px 0 #b45309, -3px -3px 0 #78350f, 0 0 20px #f59e0b;
+            margin-bottom: 5%; z-index: 2; font-weight: 900;
+        }
+
+        .answers-container { display: flex; gap: 5%; z-index: 2; justify-content: center; }
+
+        .answer-btn {
+            width: clamp(60px, 15vw, 90px); height: clamp(60px, 15vw, 90px);
+            border-radius: 20px; border: 4px solid #fed7aa;
+            background: linear-gradient(135deg, #f97316, #c2410c);
+            color: #fff; font-size: clamp(25px, 6vw, 45px); font-weight: 900;
+            cursor: pointer; box-shadow: 0 10px 0 #7c2d12, 0 15px 25px rgba(0,0,0,0.5);
+            transition: transform 0.1s, box-shadow 0.1s, background 0.2s;
+            text-shadow: 2px 2px 0 #431407; display: flex; justify-content: center;
+            align-items: center;
+        }
+
+        .answer-btn:active { transform: translateY(10px); box-shadow: 0 0 0 #7c2d12, 0 5px 10px rgba(0,0,0,0.5); }
+        .answer-btn.wrong { background: linear-gradient(135deg, #ef4444, #991b1b); border-color: #fca5a5; animation: shake 0.4s; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px) rotate(-5deg); }
+            75% { transform: translateX(10px) rotate(5deg); }
+        }
+
+        .particle {
+            position: absolute; border-radius: 50%; pointer-events: none;
+            z-index: 150; animation: flyOut 0.8s ease-out forwards;
+        }
+        @keyframes flyOut {
+            0% { transform: scale(0.5) translate(0, 0); opacity: 1; }
+            100% { transform: scale(1.5) translate(var(--tx), var(--ty)); opacity: 0; }
+        }
+
+        /* ---------------- УНІВЕРСАЛЬНІ СТИЛІ ---------------- */
+        
+        .secret-input { color: transparent !important; }
+        .secret-input::selection { color: transparent !important; }
+
+        /* D-Pad для планшетів / телефонів (ЗАВЖДИ ВИДИМИЙ) */
+        #d-pad {
+            position: absolute; bottom: 20px; left: 20px;
+            display: grid; grid-template-columns: 60px 60px 60px;
+            grid-template-rows: 60px 60px 60px; gap: 8px; z-index: 80000;
+            pointer-events: auto;
+        }
+        .d-pad-btn {
+            background: rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.7);
+            border-radius: 12px; color: white; font-size: 28px; font-weight: bold;
+            display: flex; justify-content: center; align-items: center; cursor: pointer;
+            backdrop-filter: blur(5px); transition: 0.1s;
+            touch-action: none;
+        }
+        .d-pad-btn:active { background: rgba(255,255,255,0.8); transform: scale(0.95); }
+        .d-pad-btn.up { grid-column: 2; grid-row: 1; }
+        .d-pad-btn.left { grid-column: 1; grid-row: 2; }
+        .d-pad-btn.right { grid-column: 3; grid-row: 2; }
+        .d-pad-btn.down { grid-column: 2; grid-row: 3; }
+
+        /* Інструменти кута (Лупа + Перезапуск) */
+        .corner-tools {
+            position: absolute; top: 20px; right: 20px;
+            display: flex; flex-direction: column; gap: 10px; z-index: 80000;
+            pointer-events: auto;
+        }
+        .tool-btn {
+            background: #f39c12; color: white; border: none; padding: 12px 18px;
+            border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 18px;
+            box-shadow: 0 4px 0 #d68910; transition: 0.1s;
+        }
+        .tool-btn:active { transform: translateY(4px); box-shadow: none; }
+        .tool-btn.restart { background: #e74c3c; box-shadow: 0 4px 0 #c0392b; margin-bottom: 10px; }
+        .tool-btn.restart:active { box-shadow: none; }
+
+        /* Theme Manager UI */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px; z-index: 90001;
+            width: 50px; height: 50px; border-radius: 50%; border: none;
+            background: #34495e; color: white; font-size: 24px; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center;
+            pointer-events: auto;
+        }
+        #theme-modal-ui {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 20px; border-radius: 12px;
+            z-index: 100000; display: none; width: 90%; max-width: 700px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5); flex-direction: column;
+            pointer-events: auto;
+        }
+        #theme-modal-ui h2 { margin: 0 0 15px 0; display: flex; justify-content: space-between; align-items: center; }
+        #theme-modal-ui .close-btn { cursor: pointer; color: red; font-size: 24px; font-weight: bold; }
+        #theme-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 15px; max-height: 60vh; overflow-y: auto; padding-right: 5px;
+        }
+        .theme-card {
+            cursor: pointer; position: relative; border-radius: 8px; overflow: hidden;
+            aspect-ratio: 16/9; border: 2px solid #ccc; transition: 0.2s;
+        }
+        .theme-card:hover { border-color: #8e44ad; transform: scale(1.05); }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; }
+        .theme-title {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.7); color: white; text-align: center; font-size: 13px; padding: 5px 0;
+        }
+
+        /* Екран блокування (Радар) */
+        #block-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85); z-index: 200000; justify-content: center; align-items: center;
+            pointer-events: auto;
+        }
+        #block-overlay h1 { color: #ff4757; font-size: 5vw; text-align: center; }
+
+        /* Інструмент малювання (Фіксований поверх усього вікна) */
+        #draw-canvas-global {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 90000; pointer-events: none; /* ЖОРСТКЕ БЛОКУВАННЯ КЛІКІВ ЗА ЗАМОВЧУВАННЯМ */
+        }
+        body.draw-active #draw-canvas-global {
+            pointer-events: auto; 
+        }
+
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px; z-index: 90001;
+            background: #8e44ad; color: white; font-size: 20px; border: none;
+            padding: 12px 18px; border-radius: 25px; cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4); font-weight: bold;
+            pointer-events: auto;
+        }
+        #draw-panel-global {
+            position: fixed; top: 20px; left: 20px; background: white; border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4); display: none; z-index: 90002;
+            flex-direction: column; width: 260px; pointer-events: auto;
+        }
+        #draw-panel-header {
+            background: #8e44ad; color: white; padding: 10px 15px; cursor: grab;
+            border-radius: 8px 8px 0 0; display: flex; justify-content: space-between; align-items: center; font-weight: bold;
+        }
+        .draw-controls { padding: 15px; display: flex; flex-direction: column; gap: 12px; }
+        .draw-controls button {
+            padding: 10px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px;
+        }
+        .draw-tool-row { display: flex; gap: 10px; }
+        .draw-tool-row button { flex: 1; background: #ecf0f1; border: 2px solid transparent; }
+        .draw-tool-row button.active { background: #d2b4de; border-color: #8e44ad; }
+        #draw-clear-btn { background: #e74c3c; color: white; }
+    </style>
+</head>
+<body>
+
+    <!-- Полотно для малювання лежить найнижче в DOM, але має високий z-index. За замовчуванням прозоре для кліків -->
+    <canvas id="draw-canvas-global"></canvas>
+
+    <div id="game-aspect-ratio-container">
+        <!-- Сюжетний фон -->
+        <svg class="scenery-background" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#bae6fd"/></linearGradient>
+                <linearGradient id="mountainGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#0284c7"/><stop offset="100%" stop-color="#0369a1"/></linearGradient>
+                <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#166534"/><stop offset="100%" stop-color="#064e3b"/></linearGradient>
+                <linearGradient id="bushGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4ade80"/><stop offset="100%" stop-color="#15803d"/></linearGradient>
+            </defs>
+            <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+            <circle cx="1600" cy="200" r="120" fill="#fef08a" opacity="0.8"/>
+            <circle cx="1600" cy="200" r="200" fill="#fef08a" opacity="0.4"/>
+            <circle cx="1600" cy="200" r="300" fill="#fef08a" opacity="0.2"/>
+            <g class="cloud" fill="#ffffff" opacity="0.8"><path d="M -200 300 Q -150 250 -100 300 Q -50 250 0 320 Q 50 300 80 350 L -250 350 Z" /></g>
+            <g class="cloud slow" fill="#ffffff" opacity="0.6" transform="scale(1.5) translate(200, 50)"><path d="M 1200 200 Q 1250 150 1300 200 Q 1350 150 1400 220 Q 1450 200 1480 250 L 1150 250 Z" /></g>
+            <path d="M 0 700 L 300 300 L 700 800 Z" fill="url(#mountainGrad)" opacity="0.5"/>
+            <path d="M 500 800 L 900 200 L 1400 900 Z" fill="url(#mountainGrad)" opacity="0.7"/>
+            <path d="M 1100 900 L 1600 400 L 2000 900 Z" fill="url(#mountainGrad)" opacity="0.6"/>
+            <path d="M 0 700 Q 480 650 960 750 T 1920 700 L 1920 1080 L 0 1080 Z" fill="url(#groundGrad)"/>
+            <g class="tree-top" transform="translate(200, 600)">
+                <rect x="-10" y="0" width="20" height="150" fill="#78350f"/><circle cx="0" cy="-20" r="80" fill="url(#bushGrad)"/><circle cx="-40" cy="20" r="60" fill="url(#bushGrad)"/><circle cx="40" cy="20" r="60" fill="url(#bushGrad)"/>
+            </g>
+            <g class="tree-top" transform="translate(1700, 650) scale(1.2)">
+                <rect x="-10" y="0" width="20" height="150" fill="#78350f"/><circle cx="0" cy="-20" r="80" fill="url(#bushGrad)"/><circle cx="-40" cy="20" r="60" fill="url(#bushGrad)"/><circle cx="40" cy="20" r="60" fill="url(#bushGrad)"/>
+            </g>
+        </svg>
+
+        <!-- Ігрова зона -->
+        <div id="game-board-wrapper">
+            <canvas id="gameCanvas" width="600" height="600"></canvas>
+            
+            <div class="speed-panel">
+                <button class="speed-btn minus" onclick="changeSpeed(-1)">
+                    <svg viewBox="0 0 24 24"><path d="M19 13H5v-2h14v2z"/></svg>
+                </button>
+                <div class="speed-indicator">
+                    <div class="speed-dot" id="dot-1"></div>
+                    <div class="speed-dot" id="dot-2"></div>
+                    <div class="speed-dot" id="dot-3"></div>
+                    <div class="speed-dot" id="dot-4"></div>
+                    <div class="speed-dot" id="dot-5"></div>
+                </div>
+                <button class="speed-btn plus" onclick="changeSpeed(1)">
+                    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Оверлей з прикладом -->
+        <div id="math-overlay">
+            <div id="math-modal">
+                <svg class="leaf-bg" viewBox="0 0 300 200" preserveAspectRatio="none">
+                    <path d="M 150 10 C 280 -20 320 80 280 160 C 250 200 150 190 150 190 C 150 190 50 200 20 160 C -20 80 20 -20 150 10 Z" fill="#84cc16" stroke="#4d7c0f" stroke-width="6"/>
+                    <path d="M 150 190 Q 150 100 150 20" fill="none" stroke="#4d7c0f" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M 150 150 Q 220 130 250 90" fill="none" stroke="#4d7c0f" stroke-width="5" stroke-linecap="round"/>
+                    <path d="M 150 100 Q 230 80 260 40" fill="none" stroke="#4d7c0f" stroke-width="5" stroke-linecap="round"/>
+                    <path d="M 150 150 Q 80 130 50 90" fill="none" stroke="#4d7c0f" stroke-width="5" stroke-linecap="round"/>
+                    <path d="M 150 100 Q 70 80 40 40" fill="none" stroke="#4d7c0f" stroke-width="5" stroke-linecap="round"/>
+                </svg>
+                <div id="math-equation"></div>
+                <div class="answers-container">
+                    <button class="answer-btn" onclick="checkAnswer(0)" id="ans-0"></button>
+                    <button class="answer-btn" onclick="checkAnswer(1)" id="ans-1"></button>
+                    <button class="answer-btn" onclick="checkAnswer(2)" id="ans-2"></button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Інструменти масштабування та рестарт -->
+        <div class="corner-tools">
+            <button class="tool-btn restart" onclick="reqRestart()">🔄 Почати заново</button>
+            <button class="tool-btn" onclick="changeZoom(0.1)">🔍+</button>
+            <button class="tool-btn" onclick="changeZoom(-0.1)">🔍-</button>
+        </div>
+
+        <!-- D-Pad для планшетів (Завжди видимий, реагує миттєво) -->
+        <div id="d-pad">
+            <button class="d-pad-btn up" onpointerdown="reqDPad(0, -1, event)">▲</button>
+            <button class="d-pad-btn left" onpointerdown="reqDPad(-1, 0, event)">◀</button>
+            <button class="d-pad-btn right" onpointerdown="reqDPad(1, 0, event)">▶</button>
+            <button class="d-pad-btn down" onpointerdown="reqDPad(0, 1, event)">▼</button>
+        </div>
+    </div>
+
+    <!-- Заглушка (Блокування користувача) -->
+    <div id="block-overlay">
+        <h1>Зачекай! Зараз не твій урок.</h1>
+    </div>
+
+    <!-- UI: Theme Manager -->
+    <button id="theme-btn" onclick="document.getElementById('theme-modal-ui').style.display='flex'">⚙️</button>
+    <div id="theme-modal-ui">
+        <h2><span>Вибір фону</span> <span class="close-btn" onclick="document.getElementById('theme-modal-ui').style.display='none'">✕</span></h2>
+        <div id="theme-grid"></div>
+    </div>
+
+    <!-- UI: Draw Tool -->
+    <button id="toggle-draw-btn-global" onclick="toggleDrawPanel()">✏️ Малювати</button>
+    <div id="draw-panel-global">
+        <div id="draw-panel-header">
+            <span>Інструменти</span> <span style="cursor:pointer" onclick="toggleDrawPanel()">✕</span>
+        </div>
+        <div class="draw-controls">
+            <div class="draw-tool-row">
+                <button id="draw-pencil-btn" class="active" onclick="setDrawMode('pencil')">✏️ Олівець</button>
+                <button id="draw-eraser-btn" onclick="setDrawMode('eraser')">🧽 Гумка</button>
+            </div>
+            <label>Товщина: <input type="range" id="draw-size" min="1" max="50" value="5"></label>
+            <label>Колір: <input type="color" id="draw-color" value="#ff0000"></label>
+            <button id="draw-clear-btn" onclick="reqClearCanvas()">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <script>
+        // Примусовий фокус для гарантованої роботи клавіатури
+        window.addEventListener('load', () => window.focus());
+        document.addEventListener('click', () => window.focus());
+        document.addEventListener('touchstart', () => window.focus(), {passive: true});
+
+        // ==========================================
+        // 1. КОНФІГУРАЦІЯ ТА БЕЗПЕЧНА ІДЕНТИФІКАЦІЯ
+        // ==========================================
+        const CONFIG = {
+            gameId: 'jungle_math_snake_v1',
+            firebaseUrl: 'https://lesson-13c44-default-rtdb.firebaseio.com/',
+            projectId: 'lesson-13c44'
+        };
+
+        function safeGetSession(key) { try { return sessionStorage.getItem(key); } catch(e) { return null; } }
+        function safeSetSession(key, val) { try { sessionStorage.setItem(key, val); } catch(e) {} }
+        function safeGetLocal(key) { try { return localStorage.getItem(key); } catch(e) { return null; } }
+        function safeSetLocal(key, val) { try { localStorage.setItem(key, val); } catch(e) {} }
+
+        let myName = new URLSearchParams(window.location.search).get('user') || safeGetSession('username');
+        if (!myName) {
+            myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        }
+        safeSetSession('username', myName);
+        const tabId = Math.random().toString(36).substr(2, 9);
+
+        // ==========================================
+        // 2. БЕЗПЕЧНА ІНІЦІАЛІЗАЦІЯ FIREBASE
+        // ==========================================
+        let db = null;
+        try {
+            if (typeof firebase !== 'undefined') {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp({ databaseURL: CONFIG.firebaseUrl, projectId: CONFIG.projectId });
+                }
+                db = firebase.database();
+            }
+        } catch (e) {
+            console.warn("Помилка Firebase. Гра переведена в автономний локальний режим.", e);
+        }
+
+        // ==========================================
+        // 3. РАДАР, БЛОКУВАННЯ ТА ЗАХИСТ ВІД ПЕРЕЗАВАНТАЖЕНЬ
+        // ==========================================
+        if (db) {
+            db.ref('.info/connected').on('value', snap => {
+                if (snap.val() === true) {
+                    const userRef = db.ref(`online_users/${myName}/${tabId}`);
+                    userRef.set(true);
+                    userRef.onDisconnect().remove();
+                }
+            });
+            window.addEventListener('beforeunload', () => db.ref(`online_users/${myName}/${tabId}`).remove());
+
+            db.ref(`blocked_users/${myName}`).on('value', snap => {
+                document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+            });
+
+            let lastRefreshVal = undefined;
+            db.ref('force_refresh').on('value', snap => {
+                const val = snap.val();
+                if (lastRefreshVal === undefined) { lastRefreshVal = val; return; }
+                if (val && val !== lastRefreshVal) {
+                    lastRefreshVal = val;
+                    window.location.reload();
+                }
+            });
+
+            let initialActivityCheck = true;
+            db.ref('current_activity').on('value', snap => {
+                if (initialActivityCheck) { initialActivityCheck = false; return; }
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }
+
+        // ==========================================
+        // 4. МЕНЕДЖЕР ТЕМ (Послідовне завантаження, без маніфестів)
+        // ==========================================
+        const themeGrid = document.getElementById('theme-grid');
+        
+        async function loadThemes() {
+            const noBgDiv = document.createElement('div');
+            noBgDiv.className = 'theme-card';
+            noBgDiv.innerHTML = `<div style="width:100%; height:100%; background:#2c3e50; display:flex; align-items:center; justify-content:center; color:white;">Без фону</div>`;
+            noBgDiv.onclick = () => reqSetTheme('none');
+            themeGrid.appendChild(noBgDiv);
+
+            let i = 1;
+            while (i <= 1000) {
+                const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    if (!response.ok) break; // Зупиняємо при помилці 404
+                    
+                    const card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.innerHTML = `<img src="${url}" alt="Фон ${i}"><div class="theme-title">Фон ${i}</div>`;
+                    card.onclick = () => reqSetTheme(url);
+                    themeGrid.appendChild(card);
+                    i++;
+                } catch (e) { break; }
+            }
+        }
+        loadThemes();
+
+        function applyTheme(url) {
+            if (url === 'none' || !url) {
+                document.body.style.backgroundImage = 'none';
+                document.querySelector('.scenery-background').style.display = 'block';
+            } else {
+                document.body.style.backgroundImage = `url(${url})`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundPosition = 'center';
+                document.querySelector('.scenery-background').style.display = 'none';
+            }
+            document.getElementById('theme-modal-ui').style.display = 'none';
+        }
+
+        function reqSetTheme(url) {
+            applyTheme(url);
+            safeSetLocal('mySavedBg_' + CONFIG.gameId, url);
+            if (db) db.ref('game_theme').set(url);
+        }
+
+        const savedTheme = safeGetLocal('mySavedBg_' + CONFIG.gameId);
+        if (savedTheme) applyTheme(savedTheme);
+
+        if (db) {
+            db.ref('game_theme').on('value', snap => {
+                const remoteBg = snap.val();
+                if (remoteBg && remoteBg !== safeGetLocal('mySavedBg_' + CONFIG.gameId)) {
+                    applyTheme(remoteBg);
+                    safeSetLocal('mySavedBg_' + CONFIG.gameId, remoteBg);
+                }
+            });
+        }
+
+        // ==========================================
+        // 5. СИНХРОНІЗАЦІЯ ДІЙ ГРИ (FIREBASE)
+        // ==========================================
+        let isRemoteAction = false;
+        
+        function sendAction(actionData) {
+            if (isRemoteAction) return;
+            isRemoteAction = true;
+            try {
+                handleAction(actionData);
+            } finally {
+                isRemoteAction = false;
+            }
+
+            if (db) {
+                try {
+                    db.ref('game_action').set({
+                        senderId: myName,
+                        timestamp: firebase.database.ServerValue.TIMESTAMP,
+                        action: actionData
+                    });
+                } catch(e) {}
+            }
+        }
+
+        if (db) {
+            db.ref('game_action').on('value', snap => {
+                const data = snap.val();
+                if (!data || data.senderId === myName) return;
+                isRemoteAction = true;
+                try {
+                    handleAction(data.action);
+                } finally {
+                    isRemoteAction = false;
+                }
+            });
+        }
+
+        function handleAction(action) {
+            if (action.type === 'direction') {
+                dx = action.dx; dy = action.dy;
+                if (snake.length > 0 && action.x !== undefined) {
+                    snake[0].x = action.x; snake[0].y = action.y;
+                }
+            } else if (action.type === 'speed_req') {
+                doChangeSpeed(action.delta);
+            } else if (action.type === 'restart') {
+                doResetGame();
+            } else if (action.type === 'math_trigger') {
+                doMathTrigger(action);
+            } else if (action.type === 'math_answer') {
+                doCheckAnswer(action.index);
+            } else if (action.type === 'draw_line') {
+                doDrawLine(action);
+            } else if (action.type === 'clear_canvas') {
+                doClearCanvas();
+            }
+        }
+
+        // ==========================================
+        // 6. ІНСТРУМЕНТ МАЛЮВАННЯ (З ідеальною синхронізацією)
+        // ==========================================
+        const drawCanvas = document.getElementById('draw-canvas-global');
+        const drawCtx = drawCanvas.getContext('2d');
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let lastX = 0, lastY = 0;
+        let drawMode = 'pencil';
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function toggleDrawPanel() {
+            const panel = document.getElementById('draw-panel-global');
+            if (panel.style.display === 'none' || panel.style.display === '') {
+                panel.style.display = 'flex';
+                isDrawingMode = true;
+                document.body.classList.add('draw-active');
+            } else {
+                panel.style.display = 'none';
+                isDrawingMode = false;
+                document.body.classList.remove('draw-active');
+            }
+        }
+
+        function setDrawMode(mode) {
+            drawMode = mode;
+            document.getElementById('draw-pencil-btn').className = mode === 'pencil' ? 'active' : '';
+            document.getElementById('draw-eraser-btn').className = mode === 'eraser' ? 'active' : '';
+        }
+
+        const drawPanel = document.getElementById('draw-panel-global');
+        const drawHeader = document.getElementById('draw-panel-header');
+        let isDraggingPanel = false, offsetX, offsetY;
+
+        drawHeader.addEventListener('mousedown', e => {
+            isDraggingPanel = true;
+            offsetX = e.clientX - drawPanel.getBoundingClientRect().left;
+            offsetY = e.clientY - drawPanel.getBoundingClientRect().top;
+        });
+        drawHeader.addEventListener('touchstart', e => {
+            isDraggingPanel = true;
+            offsetX = e.touches[0].clientX - drawPanel.getBoundingClientRect().left;
+            offsetY = e.touches[0].clientY - drawPanel.getBoundingClientRect().top;
+        }, {passive:true});
+
+        window.addEventListener('mousemove', e => {
+            if (!isDraggingPanel) return;
+            drawPanel.style.left = (e.clientX - offsetX) + 'px';
+            drawPanel.style.top = (e.clientY - offsetY) + 'px';
+        });
+        window.addEventListener('touchmove', e => {
+            if (!isDraggingPanel) return;
+            drawPanel.style.left = (e.touches[0].clientX - offsetX) + 'px';
+            drawPanel.style.top = (e.touches[0].clientY - offsetY) + 'px';
+        }, {passive:true});
+
+        window.addEventListener('mouseup', () => isDraggingPanel = false);
+        window.addEventListener('touchend', () => isDraggingPanel = false);
+
+        function getPointerPos(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX, y: clientY };
+        }
+
+        function startDraw(e) {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getPointerPos(e);
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function drawMove(e) {
+            if (!isDrawing || !isDrawingMode) return;
+            e.preventDefault();
+            const pos = getPointerPos(e);
+            const size = document.getElementById('draw-size').value;
+            const color = document.getElementById('draw-color').value;
+            
+            sendAction({
+                type: 'draw_line',
+                x0: lastX / drawCanvas.width, y0: lastY / drawCanvas.height,
+                x1: pos.x / drawCanvas.width, y1: pos.y / drawCanvas.height,
+                color: color, size: size, isEraser: drawMode === 'eraser'
+            });
+            
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function stopDraw() { isDrawing = false; }
+
+        drawCanvas.addEventListener('mousedown', startDraw);
+        drawCanvas.addEventListener('mousemove', drawMove);
+        window.addEventListener('mouseup', stopDraw);
+        drawCanvas.addEventListener('touchstart', startDraw, {passive:false});
+        drawCanvas.addEventListener('touchmove', drawMove, {passive:false});
+        window.addEventListener('touchend', stopDraw);
+
+        function doDrawLine(data) {
+            drawCtx.beginPath();
+            drawCtx.moveTo(data.x0 * drawCanvas.width, data.y0 * drawCanvas.height);
+            drawCtx.lineTo(data.x1 * drawCanvas.width, data.y1 * drawCanvas.height);
+            
+            if (data.isEraser) {
+                drawCtx.globalCompositeOperation = 'destination-out';
+                drawCtx.lineWidth = data.size * 2;
+            } else {
+                drawCtx.globalCompositeOperation = 'source-over';
+                drawCtx.strokeStyle = data.color;
+                drawCtx.lineWidth = data.size;
+            }
+            drawCtx.lineCap = 'round';
+            drawCtx.stroke();
+            drawCtx.globalCompositeOperation = 'source-over';
+        }
+
+        function reqClearCanvas() { sendAction({ type: 'clear_canvas' }); }
+        function doClearCanvas() { drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); }
+
+        // ==========================================
+        // 7. МАСШТАБУВАННЯ (Лупа)
+        // ==========================================
+        let currentZoom = 1;
+        function changeZoom(delta) {
+            currentZoom += delta;
+            if (currentZoom < 0.4) currentZoom = 0.4;
+            if (currentZoom > 2.5) currentZoom = 2.5;
+            document.getElementById('game-aspect-ratio-container').style.transform = `scale(${currentZoom})`;
+        }
+
+        // ==========================================
+        // 8. ЛОГІКА ГРИ "ЗМІЙКА ТА МАТЕМАТИКА"
+        // ==========================================
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+
+        function initAudio() {
+            try {
+                if (!audioCtx) audioCtx = new AudioContext();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+            } catch(err) { console.warn("Аудіо заблоковано браузером", err); }
+        }
+
+        // СУПЕР ТИХИЙ ЗВУК
+        function playSound(type) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                const now = audioCtx.currentTime;
+                
+                if (type === 'eat') {
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(800, now);
+                    osc.frequency.exponentialRampToValueAtTime(1600, now + 0.1);
+                    gain.gain.setValueAtTime(0.02, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+                    osc.start(now); osc.stop(now + 0.1);
+                } else if (type === 'win') {
+                    osc.type = 'triangle'; osc.frequency.setValueAtTime(523.25, now);
+                    osc.frequency.setValueAtTime(659.25, now + 0.1); osc.frequency.setValueAtTime(783.99, now + 0.2);
+                    osc.frequency.setValueAtTime(1046.50, now + 0.3); gain.gain.setValueAtTime(0.02, now);
+                    gain.gain.linearRampToValueAtTime(0, now + 0.5); osc.start(now); osc.stop(now + 0.5);
+                } else if (type === 'error') {
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(250, now);
+                    osc.frequency.exponentialRampToValueAtTime(100, now + 0.3); gain.gain.setValueAtTime(0.02, now);
+                    gain.gain.linearRampToValueAtTime(0, now + 0.3); osc.start(now); osc.stop(now + 0.3);
+                } else if (type === 'click') {
+                    osc.type = 'square'; osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.exponentialRampToValueAtTime(200, now + 0.05); gain.gain.setValueAtTime(0.01, now);
+                    gain.gain.linearRampToValueAtTime(0.001, now + 0.05); osc.start(now); osc.stop(now + 0.05);
+                }
+            } catch(e) {}
+        }
+
+        let mathPool = [];
+        function generateMathPool() {
+            let pool = [];
+            for (let i = 2; i <= 9; i++) {
+                for (let j = 2; j <= 9; j++) {
+                    if (i + j > 10) {
+                        pool.push({ text: `${i} + ${j}`, ans: i + j });
+                        pool.push({ text: `${i + j} - ${i}`, ans: j });
+                    }
+                }
+            }
+            for (let i = pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            return pool;
+        }
+
+        function getProblem() {
+            if (mathPool.length === 0) mathPool = generateMathPool();
+            return mathPool.pop();
+        }
+
+        let currentProblem = null;
+        let correctBtnIndex = -1;
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gridSize = 30;
+        const tileCount = canvas.width / gridSize; // 20x20
+        
+        let snake = [];
+        let dx = 0, dy = 0, foodX = 0, foodY = 0, isPaused = false;
+        
+        // Додаткові змінні для запобігання багу подвійного натискання (180 градусів)
+        let lastRenderedDx = 0;
+        let lastRenderedDy = -1;
+
+        let speedLevel = 2;
+        const speeds = [500, 400, 300, 200, 100];
+        let gameLoopTimer = null;
+
+        function updateSpeedUI() {
+            for (let i = 1; i <= 5; i++) {
+                const dot = document.getElementById(`dot-${i}`);
+                if (i <= speedLevel) dot.classList.add('active');
+                else dot.classList.remove('active');
+            }
+        }
+
+        window.changeSpeed = function(delta) { sendAction({ type: 'speed_req', delta }); }
+        function doChangeSpeed(delta) {
+            initAudio(); playSound('click');
+            speedLevel += delta;
+            if (speedLevel < 1) speedLevel = 1;
+            if (speedLevel > 5) speedLevel = 5;
+            updateSpeedUI();
+            if (gameLoopTimer) {
+                clearTimeout(gameLoopTimer);
+                gameLoopTimer = setTimeout(gameLoop, speeds[speedLevel - 1]);
+            }
+        }
+
+        function spawnFoodLocalCoords() {
+            let fX, fY, collision;
+            do {
+                fX = Math.floor(Math.random() * tileCount);
+                fY = Math.floor(Math.random() * tileCount);
+                collision = false;
+                for (let part of snake) { if (part.x === fX && part.y === fY) collision = true; }
+            } while (collision);
+            return {fX, fY};
+        }
+
+        window.reqRestart = function() { sendAction({ type: 'restart' }); }
+        function doResetGame() {
+            snake = [{x: 10, y: 10}, {x: 10, y: 11}, {x: 10, y: 12}];
+            dx = 0; dy = -1;
+            lastRenderedDx = 0; lastRenderedDy = -1;
+            let p = spawnFoodLocalCoords();
+            foodX = p.fX; foodY = p.fY;
+            isPaused = false;
+            updateSpeedUI();
+            if (gameLoopTimer) clearTimeout(gameLoopTimer);
+            gameLoopTimer = setTimeout(gameLoop, speeds[speedLevel - 1]);
+        }
+
+        function gameLoop() {
+            if (!isPaused) {
+                updateState();
+                draw();
+            }
+            gameLoopTimer = setTimeout(gameLoop, speeds[speedLevel - 1]);
+        }
+
+        function updateState() {
+            if (dx === 0 && dy === 0) return;
+
+            // Зберігаємо напрямок, який ми реально застосували в цьому кадрі, щоб клавіатура не могла нас "вбити"
+            lastRenderedDx = dx;
+            lastRenderedDy = dy;
+
+            const nextX = snake[0].x + dx;
+            const nextY = snake[0].y + dy;
+
+            if (nextX < 0 || nextX >= tileCount || nextY < 0 || nextY >= tileCount) {
+                dx = 0; dy = 0; return;
+            }
+            for (let i = 0; i < snake.length; i++) {
+                if (snake[i].x === nextX && snake[i].y === nextY) { dx = 0; dy = 0; return; }
+            }
+
+            snake.unshift({x: nextX, y: nextY});
+
+            if (nextX === foodX && nextY === foodY) {
+                triggerMathSync();
+            } else {
+                snake.pop();
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Їжа
+            const cx = foodX * gridSize + gridSize/2;
+            const cy = foodY * gridSize + gridSize/2;
+            ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(cx, cy, gridSize/2 - 3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#fca5a5'; ctx.beginPath(); ctx.arc(cx - 5, cy - 5, 4, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#166534'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx, cy - gridSize/2 + 3);
+            ctx.quadraticCurveTo(cx + 5, cy - gridSize/2 - 5, cx + 10, cy - gridSize/2 - 2); ctx.stroke();
+            ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.ellipse(cx + 8, cy - gridSize/2 + 2, 6, 3, Math.PI/4, 0, Math.PI * 2); ctx.fill();
+
+            // Змійка
+            snake.forEach((part, index) => {
+                const px = part.x * gridSize;
+                const py = part.y * gridSize;
+                const grad = ctx.createRadialGradient(px + gridSize/3, py + gridSize/3, 2, px + gridSize/2, py + gridSize/2, gridSize/1.5);
+                
+                if (index === 0) {
+                    grad.addColorStop(0, '#f9a8d4'); grad.addColorStop(1, '#db2777');
+                    ctx.fillStyle = grad; ctx.beginPath();
+                    ctx.roundRect(px+1, py+1, gridSize-2, gridSize-2, 12); ctx.fill();
+                    
+                    ctx.fillStyle = '#fff'; ctx.beginPath();
+                    let eyeX1, eyeY1, eyeX2, eyeY2, pX1, pY1, pX2, pY2;
+                    if (dx === 1) { eyeX1=px+22; eyeY1=py+8; eyeX2=px+22; eyeY2=py+22; pX1=px+24; pY1=py+8; pX2=px+24; pY2=py+22; }
+                    else if (dx === -1) { eyeX1=px+8; eyeY1=py+8; eyeX2=px+8; eyeY2=py+22; pX1=px+6; pY1=py+8; pX2=px+6; pY2=py+22; }
+                    else if (dy === 1) { eyeX1=px+8; eyeY1=py+22; eyeX2=px+22; eyeY2=py+22; pX1=px+8; pY1=py+24; pX2=px+22; pY2=py+24; }
+                    else { eyeX1=px+8; eyeY1=py+8; eyeX2=px+22; eyeY2=py+8; pX1=px+8; pY1=py+6; pX2=px+22; pY2=py+6; }
+
+                    ctx.arc(eyeX1, eyeY1, 5, 0, Math.PI*2); ctx.arc(eyeX2, eyeY2, 5, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#000'; ctx.beginPath();
+                    ctx.arc(pX1, pY1, 2.5, 0, Math.PI*2); ctx.arc(pX2, pY2, 2.5, 0, Math.PI*2); ctx.fill();
+                } else {
+                    if (index % 2 === 0) { grad.addColorStop(0, '#60a5fa'); grad.addColorStop(1, '#2563eb'); } 
+                    else { grad.addColorStop(0, '#38bdf8'); grad.addColorStop(1, '#0284c7'); }
+                    ctx.fillStyle = grad; ctx.beginPath();
+                    ctx.roundRect(px+3, py+3, gridSize-6, gridSize-6, 10); ctx.fill();
+                }
+            });
+        }
+
+        const overlay = document.getElementById('math-overlay');
+        
+        function triggerMathSync() {
+            initAudio(); playSound('eat');
+            
+            let problem = getProblem();
+            let wrong1 = problem.ans + (Math.random() > 0.5 ? 1 : -1);
+            let wrong2 = problem.ans + (Math.random() > 0.5 ? 2 : -2);
+            if (wrong1 === wrong2 || wrong1 === problem.ans) wrong1 += 3;
+            if (wrong2 === problem.ans || wrong2 === wrong1) wrong2 -= 3;
+
+            let answers = [problem.ans, wrong1, wrong2];
+            answers.sort(() => Math.random() - 0.5);
+            let correctIdx = answers.indexOf(problem.ans);
+            let newF = spawnFoodLocalCoords();
+            
+            sendAction({
+                type: 'math_trigger', problem: problem, answers: answers,
+                correctBtnIndex: correctIdx, newFoodX: newF.fX, newFoodY: newF.fY
+            });
+        }
+
+        function doMathTrigger(action) {
+            currentProblem = action.problem; correctBtnIndex = action.correctBtnIndex;
+            foodX = action.newFoodX; foodY = action.newFoodY; isPaused = true;
+            document.getElementById('math-equation').innerText = currentProblem.text;
+            for (let i = 0; i < 3; i++) {
+                const btn = document.getElementById(`ans-${i}`);
+                btn.innerText = action.answers[i]; btn.className = 'answer-btn';
+            }
+            overlay.style.display = 'flex';
+        }
+
+        window.checkAnswer = function(index) { sendAction({ type: 'math_answer', index: index }); }
+        function doCheckAnswer(index) {
+            initAudio();
+            const btn = document.getElementById(`ans-${index}`);
+            if (index === correctBtnIndex) {
+                playSound('win'); createParticles(btn);
+                setTimeout(() => { overlay.style.display = 'none'; isPaused = false; }, 600);
+            } else {
+                playSound('error'); btn.classList.add('wrong');
+                setTimeout(() => btn.classList.remove('wrong'), 400);
+            }
+        }
+
+        function createParticles(element) {
+            const rect = element.getBoundingClientRect();
+            const colors = ['#fde047', '#f97316', '#a3e635'];
+            for (let i = 0; i < 20; i++) {
+                let p = document.createElement('div'); p.className = 'particle';
+                p.style.width = Math.random() * 10 + 10 + 'px'; p.style.height = p.style.width;
+                p.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                p.style.left = (rect.left + rect.width/2) + 'px'; p.style.top = (rect.top + rect.height/2) + 'px';
+                const angle = Math.random() * Math.PI * 2; const distance = Math.random() * 200 + 50;
+                p.style.setProperty('--tx', `${Math.cos(angle) * distance}px`);
+                p.style.setProperty('--ty', `${Math.sin(angle) * distance}px`);
+                document.body.appendChild(p); setTimeout(() => p.remove(), 800);
+            }
+        }
+
+        // ==========================================
+        // 9. КЕРУВАННЯ (Оптимізована клавіатура, що захищає від блокувань)
+        // ==========================================
+        function processDirection(newDx, newDy) {
+            if (isPaused) return;
+
+            // Запобігаємо розвороту відносно РЕАЛЬНОГО напрямку, куди змія рухалась у минулому кадрі.
+            // Це повністю ліквідує баг "швидкого подвійного натискання", через який змія "завмирала"
+            if (lastRenderedDx !== 0 || lastRenderedDy !== 0) {
+                if (newDx !== 0 && lastRenderedDx === -newDx) return;
+                if (newDy !== 0 && lastRenderedDy === -newDy) return;
+            }
+
+            if (newDx !== dx || newDy !== dy) {
+                sendAction({
+                    type: 'direction', 
+                    dx: newDx, dy: newDy, 
+                    x: snake[0]?.x, y: snake[0]?.y
+                });
+            }
+        }
+
+        document.addEventListener('keydown', e => {
+            // Запобігання прокручуванню вікна стрілками
+            if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) {
+                e.preventDefault();
+            }
+            initAudio();
+
+            const key = e.key.toLowerCase();
+            
+            if (key === 'arrowup' || key === 'w' || key === 'ц') {
+                processDirection(0, -1);
+            } else if (key === 'arrowdown' || key === 's' || key === 'і' || key === 'ы') {
+                processDirection(0, 1);
+            } else if (key === 'arrowleft' || key === 'a' || key === 'ф') {
+                processDirection(-1, 0);
+            } else if (key === 'arrowright' || key === 'd' || key === 'в') {
+                processDirection(1, 0);
+            }
+        });
+
+        window.reqDPad = function(nDx, nDy, event) {
+            if (event && event.cancelable) event.preventDefault();
+            initAudio();
+            processDirection(nDx, nDy);
+        }
+
+        mathPool = generateMathPool();
+        doResetGame();
+    </script>
+</body>
+</html>
