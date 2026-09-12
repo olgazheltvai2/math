@@ -524,7 +524,7 @@
             <div id="game-over-overlay">
                 <h1>Гру завершено!</h1>
                 <p>Загублено 5 яєць</p>
-                <button id="btn-restart" class="wood-btn">Грати знову</button>
+                <button id="btn-restart-gameover" class="wood-btn">Грати знову</button>
             </div>
 
             <!-- Навігація та Лупа -->
@@ -533,6 +533,9 @@
                 <button class="nav-btn" id="btn-zoom-in">+</button>
                 <button class="nav-btn" id="btn-prev" title="Уповільнити"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6 M21 18l-6-6 6-6"/></svg></button>
                 <button class="nav-btn" id="btn-next" title="Прискорити"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6 M3 18l6-6-6-6"/></svg></button>
+                <button class="nav-btn" id="btn-restart-nav" title="Почати спочатку">
+                    <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0020 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 004 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                </button>
             </div>
 
         </div>
@@ -603,7 +606,7 @@
 
         // Захист від нескінченного релоаду (Блимання)
         let isImmune = true;
-        setTimeout(() => { isImmune = false; }, 1500);
+        setTimeout(() => { isImmune = false; }, 2000);
 
         let initialRefreshLoad = true;
         db.ref('force_refresh').on('value', (snap) => { 
@@ -1013,6 +1016,7 @@
             if (action.type === 'move_wolf') updateWolfPose(action.data.pose);
             if (action.type === 'show_math') showMathModal(action.data.str, action.data.ans);
             if (action.type === 'solve_math') hideMathModal();
+            
             if (action.type === 'change_speed') {
                 currentEggSpeed = action.data.speed;
                 currentSpawnInterval = action.data.interval;
@@ -1024,12 +1028,17 @@
             if (action.type === 'restart_game') {
                 location.reload();
             }
-            if (action.type === 'spawn_egg') {
-                if (action.data.id >= eggIdCounter) {
-                    spawnEggLocal(action.data.id, action.data.shelf);
-                    eggIdCounter = action.data.id + 1;
-                    spawnTimer = 0; // Скидаємо таймер, щоб не генерувати одразу своє
+            
+            // Тільки клієнти реагують на команди хоста про яйця
+            if (!isHost) {
+                if (action.type === 'spawn_egg') {
+                    if (action.data.id >= eggIdCounter) {
+                        spawnEggLocal(action.data.id, action.data.shelf);
+                        eggIdCounter = action.data.id + 1;
+                    }
                 }
+                if (action.type === 'egg_caught') applyEggCaught(action.data.id, action.data.caught, action.data.dropped);
+                if (action.type === 'egg_dropped') applyEggDropped(action.data.id, action.data.caught, action.data.dropped);
             }
         }
 
@@ -1084,6 +1093,7 @@
                 shelf: shelf,
                 progress: 0,
                 state: 'rolling',
+                resolved: false,
                 ex: 0, ey: 0, angle: 0, fallY: 0, fallVelocity: 0,
                 dom: createEggSVG(id)
             };
@@ -1208,10 +1218,42 @@
             syncAction('game_over', {});
         }
 
-        document.getElementById('btn-restart').onclick = () => {
+        function restartGame() {
             syncAction('restart_game', {});
             location.reload();
-        };
+        }
+
+        document.getElementById('btn-restart-gameover').onclick = restartGame;
+        document.getElementById('btn-restart-nav').onclick = restartGame;
+
+        // --- Універсальні функції застосування результату для Host та Client ---
+        function applyEggCaught(id, caughtCount, droppedCount) {
+            eggsCaughtCount = caughtCount;
+            droppedEggsCount = droppedCount;
+            let idx = activeEggs.findIndex(e => e.id === id);
+            if (idx !== -1) {
+                let egg = activeEggs[idx];
+                Sounds.catch();
+                createParticles(egg.ex, egg.ey, 'catch');
+                egg.dom.remove();
+                activeEggs.splice(idx, 1);
+            }
+            wolfReaction('catch');
+        }
+
+        function applyEggDropped(id, caughtCount, droppedCount) {
+            eggsCaughtCount = caughtCount;
+            droppedEggsCount = droppedCount;
+            let idx = activeEggs.findIndex(e => e.id === id);
+            if (idx !== -1) {
+                let egg = activeEggs[idx];
+                Sounds.drop();
+                egg.state = 'falling';
+                egg.fallVelocity = 0;
+                egg.fallY = 0;
+            }
+            wolfReaction('drop');
+        }
 
         // Головний ігровий цикл
         function gameLoop(timestamp) {
@@ -1222,7 +1264,7 @@
             if (isGameRunning) {
                 updateEyes();
 
-                // ТІЛЬКИ ХОСТ генерує нові яйця і передає іншим
+                // ТІЛЬКИ ХОСТ вирішує коли з'явиться яйце і повідомляє інших
                 if (isHost) {
                     spawnTimer += deltaTime;
                     if (spawnTimer > currentSpawnInterval + (Math.random() * 800 - 400)) {
@@ -1240,7 +1282,7 @@
                 for (let i = activeEggs.length - 1; i >= 0; i--) {
                     let egg = activeEggs[i];
 
-                    // Якщо яйце у стані падіння
+                    // Анімація падіння (одночасна для всіх після отримання команди)
                     if (egg.state === 'falling') {
                         egg.fallVelocity += 0.002 * deltaTime; 
                         egg.fallY += egg.fallVelocity * deltaTime;
@@ -1251,47 +1293,43 @@
                             egg.dom.remove();
                             activeEggs.splice(i, 1);
                             
-                            droppedEggsCount++;
-                            if (droppedEggsCount >= 5 && isHost) {
+                            // Перевірка на завершення гри лише хостом
+                            if (isHost && droppedEggsCount >= 5) {
                                 triggerGameOver();
                             }
                         }
                         continue;
                     }
 
-                    // Нормальний рух по гілці (кадр у кадр синхронний для всіх)
-                    egg.progress += currentEggSpeed * deltaTime;
+                    // Нормальний рух по гілці (синхронний розрахунок)
+                    if (egg.progress < 1) {
+                        egg.progress += currentEggSpeed * deltaTime;
+                        if (egg.progress > 1) egg.progress = 1; // Затискаємо на 1, щоб дочекатися вердикту хоста
 
-                    let sh = shelves[egg.shelf];
-                    egg.ex = sh.x0 + (sh.x1 - sh.x0) * egg.progress;
-                    egg.ey = sh.y0 + (sh.y1 - sh.y0) * egg.progress;
-                    egg.angle = egg.progress * 500 * (egg.shelf % 2 === 0 ? 1 : -1);
+                        let sh = shelves[egg.shelf];
+                        egg.ex = sh.x0 + (sh.x1 - sh.x0) * egg.progress;
+                        egg.ey = sh.y0 + (sh.y1 - sh.y0) * egg.progress;
+                        egg.angle = egg.progress * 500 * (egg.shelf % 2 === 0 ? 1 : -1);
+                        egg.dom.setAttribute('transform', `translate(${egg.ex}, ${egg.ey}) rotate(${egg.angle})`);
+                    }
 
-                    if (egg.progress >= 1) {
+                    // ТІЛЬКИ ХОСТ вирішує що сталося з яйцем, коли воно доїхало
+                    if (egg.progress >= 1 && isHost && !egg.resolved) {
+                        egg.resolved = true;
+                        
                         if (currentWolfPose === egg.shelf) {
-                            Sounds.catch();
-                            createParticles(egg.ex, egg.ey, 'catch');
-                            wolfReaction('catch');
-                            eggsCaughtCount++;
+                            let newCaught = eggsCaughtCount + 1;
+                            syncAction('egg_caught', { id: egg.id, caught: newCaught, dropped: droppedEggsCount });
+                            applyEggCaught(egg.id, newCaught, droppedEggsCount);
                             
-                            egg.dom.remove();
-                            activeEggs.splice(i, 1);
-                            
-                            if (eggsCaughtCount >= currentTargetEggs && isHost) {
+                            if (newCaught >= currentTargetEggs) {
                                 triggerMathPopup();
                             }
-                            
                         } else {
-                            Sounds.drop();
-                            wolfReaction('drop');
-                            
-                            // Переводимо у стан вільного падіння
-                            egg.state = 'falling';
-                            egg.fallVelocity = 0;
-                            egg.fallY = 0;
+                            let newDropped = droppedEggsCount + 1;
+                            syncAction('egg_dropped', { id: egg.id, caught: eggsCaughtCount, dropped: newDropped });
+                            applyEggDropped(egg.id, eggsCaughtCount, newDropped);
                         }
-                    } else {
-                        egg.dom.setAttribute('transform', `translate(${egg.ex}, ${egg.ey}) rotate(${egg.angle})`);
                     }
                 }
             }
