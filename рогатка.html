@@ -323,15 +323,6 @@
             gap: 20px;
             align-items: center;
         }
-        .player-turn {
-            background: rgba(0,0,0,0.6);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 20px;
-            font-size: 1.5vw;
-            font-weight: bold;
-            border: 2px solid #FFF;
-        }
         .ui-btn {
             background: linear-gradient(135deg, #3498db, #2980b9);
             border: 0.2vw solid #fff;
@@ -349,6 +340,25 @@
             background: linear-gradient(135deg, #e74c3c, #c0392b);
         }
         
+        /* Екран перемоги */
+        #winner-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 150;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #winner-text {
+            color: #FFD700;
+            font-size: 6vw;
+            font-weight: bold;
+            text-shadow: 0 0 20px #FF8C00;
+            text-align: center;
+        }
+
         /* Секретні поля (шаблон на вимогу) */
         .secret-input {
             color: transparent;
@@ -406,9 +416,14 @@
 <div id="game-container">
     
     <div class="game-ui-top">
-        <div id="player-display" class="player-turn">Хід: Гравець 1</div>
-        <button id="btn-switch-player" class="ui-btn">🔄 Передати хід</button>
-        <button id="btn-restart" class="ui-btn">♻️ Почати заново</button>
+        <button id="btn-solo" class="ui-btn">🤖 Грати соло (Тест)</button>
+        <button id="btn-restart" class="ui-btn">♻️ Скинути гру</button>
+    </div>
+
+    <!-- Екран перемоги -->
+    <div id="winner-overlay">
+        <div id="winner-text">ВИ ПЕРЕМОГЛИ!</div>
+        <button id="btn-play-again" class="ui-btn" style="margin-top:40px; font-size:3vw; padding:20px 40px;">Грати ще</button>
     </div>
 
     <svg id="bg-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
@@ -432,7 +447,6 @@
             </pattern>
         </defs>
         
-        <!-- Ця група буде прозорою, якщо вибрано динамічний фон -->
         <g id="default-sky-grass">
             <rect width="1600" height="900" fill="url(#skyGrad)"/>
             <circle cx="200" cy="150" r="100" fill="url(#sunGrad)"/>
@@ -449,13 +463,11 @@
         </g>
         
         <g id="bg-trees">
-            <!-- Ліве дерево -->
             <path d="M500,600 L520,500 L540,600 Z" fill="#8B4513"/>
             <circle cx="520" cy="480" r="60" fill="#006400"/>
             <circle cx="480" cy="510" r="50" fill="#228B22"/>
             <circle cx="560" cy="510" r="50" fill="#228B22"/>
             
-            <!-- Праве дерево -->
             <path d="M1400,620 L1415,450 L1430,620 Z" fill="#654321"/>
             <circle cx="1415" cy="420" r="80" fill="#32CD32"/>
             <circle cx="1360" cy="460" r="60" fill="#008000"/>
@@ -465,15 +477,10 @@
 
         <!-- Асиметричний стіл (3 полиці різного розміру) -->
         <g id="asymmetric-table">
-            <!-- Опори до землі для нижньої полиці -->
             <rect x="850" y="770" width="20" height="130" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
             <rect x="1250" y="770" width="20" height="130" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
-            
-            <!-- Опори від середньої до нижньої полиці -->
             <rect x="980" y="600" width="20" height="140" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
             <rect x="1200" y="600" width="20" height="140" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
-            
-            <!-- Опори від верхньої до середньої полиці -->
             <rect x="1080" y="430" width="20" height="140" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
             
             <!-- Нижня полиця (Найширша) -->
@@ -799,7 +806,7 @@
         dctx.stroke();
     }
 
-    // --- ЛОГІКА ГРИ (ANGRY BIRDS CLONE З МАТЕМАТИКОЮ) ---
+    // --- ЛОГІКА ГРИ: ОДНОЧАСНІ ПЕРЕГОНИ ПРИВИДІВ ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
     function initAudio() { if (!audioCtx) audioCtx = new AudioContext(); }
@@ -936,20 +943,28 @@
         <path d="M45,100 L50,150 M48,120 L55,180" stroke="#3E2723" stroke-width="2" fill="none"/>
     </svg>`);
 
+    // Локальний стан
     let gameState = 'PLACE_CANS'; // PLACE_CANS, MATH, AIM, FLY, END
-    let cans = [];
+    let cans = []; // Банки, які розставив суперник ДЛЯ МЕНЕ (я по них стріляю)
+    let cansPlacedByMe = 0; // Скільки банок Я розставив для суперника
     const MAX_CANS = 8;
     let stone = { x: 0, y: 0, vx: 0, vy: 0, r: 20, active: false };
     let dragStart = null;
     let particles = [];
     let currentInput = '';
     let currentQuestion = null;
-    let currentPlayer = 1;
+    
+    // Стан суперника (для малювання привидів)
+    let remoteState = {
+        stone: null,
+        cans: [],
+        dragStart: null,
+        gameState: 'WAITING'
+    };
     
     const slingshotAnchor = { x: 250, y: 650 };
     const GRAVITY = 0.5, BOUNCE = 0.4, FRICTION = 0.98;
 
-    // Геометрія полиць (Асиметрія)
     const shelves = [
         { x: 800, y: 740, w: 500, h: 30 }, // Нижня
         { x: 950, y: 570, w: 300, h: 30 }, // Середня
@@ -958,9 +973,19 @@
 
     function initGame() {
         cans = [];
+        cansPlacedByMe = 0;
         stone.active = false;
         particles = [];
         gameState = 'PLACE_CANS';
+        remoteState = { stone: null, cans: [], dragStart: null, gameState: 'WAITING' };
+        document.getElementById('winner-overlay').style.display = 'none';
+    }
+
+    function checkStartCondition() {
+        // Якщо обидва гравці поставили один одному по 8 банок - переходимо до стрільби
+        if (gameState === 'PLACE_CANS' && cans.length === MAX_CANS && cansPlacedByMe === MAX_CANS) {
+            showMathModal();
+        }
     }
 
     function spawnParticles(x, y, color) {
@@ -972,6 +997,8 @@
             });
         }
     }
+
+    let lastStateSync = 0;
 
     function updatePhysics() {
         if (gameState === 'FLY') {
@@ -986,7 +1013,6 @@
             }
         }
 
-        let allDown = true;
         cans.forEach(can => {
             if (!can.active || can.y > 850) { 
                 can.x += can.vx;
@@ -1001,7 +1027,6 @@
                     can.va *= 0.8;
                 }
             } else {
-                allDown = false;
                 if (gameState === 'FLY') {
                     let testX = stone.x, testY = stone.y;
                     if (stone.x < can.x) testX = can.x;
@@ -1051,23 +1076,79 @@
             if (p.life <= 0) particles.splice(i, 1);
         }
 
-        if ((stone.x > 1700 || Math.abs(stone.vx) < 0.1) && gameState === 'FLY') {
+        // Перевірка перемоги
+        if ((gameState === 'FLY' || gameState === 'AIM') && cans.length === MAX_CANS && cans.every(c => !c.active)) {
             gameState = 'END';
+            playSound('win');
+            sendGameAction('player_won', { name: myName });
+            document.getElementById('winner-text').textContent = "ВИ ПЕРЕМОГЛИ!";
+            document.getElementById('winner-overlay').style.display = 'flex';
+            for(let i=0; i<8; i++) setTimeout(() => spawnParticles(Math.random()*1600, Math.random()*900, '#FFD700'), i*200);
+        }
+
+        // Завершення польоту
+        if ((stone.x > 1700 || Math.abs(stone.vx) < 0.1) && gameState === 'FLY') {
             setTimeout(() => {
-                if (cans.every(c => !c.active)) {
-                    playSound('win');
-                    for(let i=0; i<5; i++) setTimeout(() => spawnParticles(Math.random()*1600, Math.random()*900, '#FFD700'), i*200);
-                    setTimeout(() => {
-                        initGame();
-                        sendGameAction('restart', {});
-                    }, 4000);
-                } else {
+                if (gameState === 'FLY') {
                     stone.active = false;
                     showMathModal();
-                    sendGameAction('show_math', { question: currentQuestion });
                 }
             }, 1000);
         }
+
+        // Синхронізація локального стану (Гост-режим)
+        if (!isOffline && Date.now() - lastStateSync > 50) {
+            sendGameAction('sync_state', {
+                s: { x: stone.x, y: stone.y, active: stone.active },
+                c: cans.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), a: Math.round(c.angle*100)/100, act: c.active })),
+                d: dragStart ? { x: dragStart.x, y: dragStart.y } : null,
+                gs: gameState
+            });
+            lastStateSync = Date.now();
+        }
+    }
+
+    function drawBandsAndStone(sStone, sDragStart, sGameState, alpha) {
+        ctx.globalAlpha = alpha;
+        // Задня гумка
+        if (sGameState === 'AIM' || sGameState === 'FLY') {
+            ctx.beginPath();
+            ctx.moveTo(slingshotAnchor.x - 30, slingshotAnchor.y - 70);
+            if (sGameState === 'AIM' && sDragStart) ctx.lineTo(sStone.x, sStone.y);
+            else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
+            ctx.lineWidth = 6; ctx.strokeStyle = '#8B0000'; ctx.stroke();
+        }
+
+        // Камінь
+        if (sStone && sStone.active) {
+            ctx.save();
+            ctx.translate(sStone.x, sStone.y);
+            if (sGameState === 'FLY') ctx.rotate(sStone.x * 0.05);
+            ctx.drawImage(imgStone, -20, -20, 40, 40);
+            ctx.restore();
+        }
+
+        // Передня гумка
+        if (sGameState === 'AIM' || sGameState === 'FLY') {
+            ctx.beginPath();
+            ctx.moveTo(slingshotAnchor.x + 30, slingshotAnchor.y - 80);
+            if (sGameState === 'AIM' && sDragStart) ctx.lineTo(sStone.x, sStone.y);
+            else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
+            ctx.lineWidth = 6; ctx.strokeStyle = '#B22222'; ctx.stroke();
+        }
+        ctx.globalAlpha = 1.0;
+    }
+
+    function drawCansList(canList, alpha) {
+        ctx.globalAlpha = alpha;
+        canList.forEach(can => {
+            ctx.save();
+            ctx.translate(can.x + can.w/2, can.y + can.h/2);
+            ctx.rotate(can.angle || 0);
+            ctx.drawImage(imgCan, -can.w/2, -can.h/2, can.w, can.h);
+            ctx.restore();
+        });
+        ctx.globalAlpha = 1.0;
     }
 
     function draw() {
@@ -1077,47 +1158,24 @@
 
         if (gameState === 'PLACE_CANS') {
             ctx.fillStyle = 'rgba(255, 255, 255, ' + (Math.sin(Date.now() / 200) * 0.2 + 0.3) + ')';
-            shelves.forEach(s => {
-                ctx.fillRect(s.x, s.y - 100, s.w, 100);
-            });
+            shelves.forEach(s => ctx.fillRect(s.x, s.y - 100, s.w, 100));
+
             ctx.fillStyle = '#FFF';
-            ctx.font = '30px Arial';
-            ctx.fillText(`Поставте банки: ${cans.length} / ${MAX_CANS}`, 850, 200);
+            ctx.font = '24px Arial';
+            ctx.fillText(`Ви поставили супернику: ${cansPlacedByMe} / ${MAX_CANS}`, 750, 100);
+            ctx.fillText(`Суперник поставив вам: ${cans.length} / ${MAX_CANS}`, 750, 140);
         }
 
-        if (gameState === 'AIM' || gameState === 'FLY') {
-            ctx.beginPath();
-            ctx.moveTo(slingshotAnchor.x - 30, slingshotAnchor.y - 70);
-            if (gameState === 'AIM' && dragStart) ctx.lineTo(stone.x, stone.y);
-            else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
-            ctx.lineWidth = 6; ctx.strokeStyle = '#8B0000'; ctx.stroke();
-        }
-
+        // Стовбур рогатки (Малюється один раз непрозорим)
         ctx.drawImage(imgSlingshot, slingshotAnchor.x - 50, slingshotAnchor.y - 100, 100, 200);
 
-        if (stone.active) {
-            ctx.save();
-            ctx.translate(stone.x, stone.y);
-            if (gameState === 'FLY') ctx.rotate(stone.x * 0.05);
-            ctx.drawImage(imgStone, -20, -20, 40, 40);
-            ctx.restore();
-        }
+        // Привиди суперника (напівпрозорі)
+        if (remoteState.stone) drawBandsAndStone(remoteState.stone, remoteState.dragStart, remoteState.gameState, 0.4);
+        drawCansList(remoteState.cans, 0.4);
 
-        if (gameState === 'AIM' || gameState === 'FLY') {
-            ctx.beginPath();
-            ctx.moveTo(slingshotAnchor.x + 30, slingshotAnchor.y - 80);
-            if (gameState === 'AIM' && dragStart) ctx.lineTo(stone.x, stone.y);
-            else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
-            ctx.lineWidth = 6; ctx.strokeStyle = '#B22222'; ctx.stroke();
-        }
-
-        cans.forEach(can => {
-            ctx.save();
-            ctx.translate(can.x + can.w/2, can.y + can.h/2);
-            ctx.rotate(can.angle);
-            ctx.drawImage(imgCan, -can.w/2, -can.h/2, can.w, can.h);
-            ctx.restore();
-        });
+        // Ваші об'єкти (непрозорі)
+        drawBandsAndStone(stone, dragStart, gameState, 1.0);
+        drawCansList(cans, 1.0);
 
         particles.forEach(p => {
             ctx.globalAlpha = p.life;
@@ -1143,25 +1201,16 @@
         const x = (e.clientX - rect.left) / scaleX;
         const y = (e.clientY - rect.top) / scaleY;
 
-        if (gameState === 'PLACE_CANS' && cans.length < MAX_CANS) {
-            let placed = false;
+        if (gameState === 'PLACE_CANS' && cansPlacedByMe < MAX_CANS) {
             for (let s of shelves) {
                 if (x >= s.x && x <= s.x + s.w && y >= s.y - 150 && y <= s.y + s.h) {
-                    const newCan = {
-                        x: x - 30, y: s.y - 100,
-                        w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true
-                    };
-                    cans.push(newCan);
-                    placed = true;
-                    sendGameAction('place_can', { can: newCan });
+                    cansPlacedByMe++;
+                    sendGameAction('place_can_for_you', {
+                        x: x - 30, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true
+                    });
+                    playSound('place');
+                    checkStartCondition();
                     break;
-                }
-            }
-            if (placed) {
-                playSound('place');
-                if (cans.length >= MAX_CANS) {
-                    showMathModal();
-                    sendGameAction('show_math', { question: currentQuestion });
                 }
             }
         } else if (gameState === 'AIM') {
@@ -1182,7 +1231,7 @@
             const dx = x - slingshotAnchor.x;
             const dy = y - (slingshotAnchor.y - 70);
             const dist = Math.hypot(dx, dy);
-            const maxDist = 250; // Збільшено для кращого натягу та дальності
+            const maxDist = 250; 
             
             if (dist > maxDist) {
                 x = slingshotAnchor.x + (dx / dist) * maxDist;
@@ -1191,8 +1240,6 @@
             
             stone.x = x;
             stone.y = y;
-            
-            sendGameAction('aim_drag', { x: stone.x, y: stone.y });
         }
     });
 
@@ -1206,21 +1253,15 @@
             
             stone.vx = dx * 0.22;
             stone.vy = dy * 0.22;
-            
             playSound('shoot');
-            sendGameAction('shoot', { x: stone.x, y: stone.y, vx: stone.vx, vy: stone.vy });
         }
     });
 
     const mathModal = document.getElementById('math-modal');
     const eqDisplay = document.getElementById('equation-display');
 
-    function showMathModal(remoteQuestion = null) {
-        if (remoteQuestion) {
-            currentQuestion = remoteQuestion;
-        } else {
-            currentQuestion = getNextQuestion();
-        }
+    function showMathModal() {
+        currentQuestion = getNextQuestion();
         currentInput = '';
         updateEquationDisplay();
         gameState = 'MATH';
@@ -1238,49 +1279,59 @@
             if (e.currentTarget.classList.contains('del')) {
                 currentInput = currentInput.slice(0, -1);
                 updateEquationDisplay();
-                sendGameAction('math_input', { input: currentInput });
             } else if (e.currentTarget.classList.contains('submit')) {
                 if (parseInt(currentInput) === currentQuestion.ans) {
                     mathModal.classList.remove('active');
                     gameState = 'AIM';
                     stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
                     playSound('place');
-                    sendGameAction('math_success', {});
                 } else {
                     currentInput = '';
                     updateEquationDisplay();
                     eqDisplay.style.color = '#FF4500';
                     setTimeout(() => eqDisplay.style.color = '#FFF', 500);
                     playSound('error');
-                    sendGameAction('math_fail', {});
                 }
             } else if (val) {
                 if (currentInput.length < 3) {
                     currentInput += val;
                     updateEquationDisplay();
-                    sendGameAction('math_input', { input: currentInput });
                 }
             }
         });
     });
 
+    // Режим СОЛО (Тестування)
+    document.getElementById('btn-solo').addEventListener('click', () => {
+        initGame();
+        let placed = 0;
+        shelves.forEach(s => {
+            for(let i=0; i<3; i++) {
+                if (placed < MAX_CANS) {
+                    cans.push({ x: s.x + 50 + i*70, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
+                    placed++;
+                }
+            }
+        });
+        cansPlacedByMe = MAX_CANS;
+        checkStartCondition();
+    });
+
+    // Кнопки скидання та рестарту
     document.getElementById('btn-restart').addEventListener('click', () => {
         initGame();
-        sendGameAction('restart', {});
+        sendGameAction('restart_game', {});
     });
 
-    const playerDisplay = document.getElementById('player-display');
-    document.getElementById('btn-switch-player').addEventListener('click', () => {
-        currentPlayer = currentPlayer === 1 ? 2 : 1;
-        playerDisplay.textContent = `Хід: Гравець ${currentPlayer}`;
-        sendGameAction('switch_player', { player: currentPlayer });
+    document.getElementById('btn-play-again').addEventListener('click', () => {
+        initGame();
+        sendGameAction('restart_game', {});
     });
 
-    // --- ОБРОБКА ВХІДНИХ СИНХРОНІЗОВАНИХ ДІЙ (FIREBASE ON VALUE) ---
+    // --- ОБРОБКА ВХІДНИХ СИНХРОНІЗОВАНИХ ДІЙ ---
     if (!isOffline) {
         db.ref('game_action').on('value', snap => {
             const val = snap.val();
-            // Ігноруємо якщо немає даних, якщо це ми відправили, або якщо цей actionId вже опрацьовано
             if (!val || val.senderId === myTabId || val.actionId === lastActionId) return;
             
             lastActionId = val.actionId;
@@ -1297,44 +1348,22 @@
                     dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
                 } else if (val.type === 'theme_change') {
                     applyTheme(val.data.url, false);
-                } else if (val.type === 'place_can') {
-                    cans.push(val.data.can);
+                } else if (val.type === 'place_can_for_you') {
+                    cans.push(val.data);
                     playSound('place');
-                } else if (val.type === 'show_math') {
-                    showMathModal(val.data.question);
-                } else if (val.type === 'math_input') {
-                    currentInput = val.data.input;
-                    updateEquationDisplay();
-                } else if (val.type === 'math_success') {
-                    mathModal.classList.remove('active');
-                    gameState = 'AIM';
-                    stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
-                    playSound('place');
-                } else if (val.type === 'math_fail') {
-                    currentInput = '';
-                    updateEquationDisplay();
-                    eqDisplay.style.color = '#FF4500';
-                    setTimeout(() => eqDisplay.style.color = '#FFF', 500);
-                    playSound('error');
-                } else if (val.type === 'aim_drag') {
-                    stone.x = val.data.x;
-                    stone.y = val.data.y;
-                    gameState = 'AIM';
-                    dragStart = true; // візуально показуємо натяг
-                } else if (val.type === 'shoot') {
-                    stone.x = val.data.x;
-                    stone.y = val.data.y;
-                    stone.vx = val.data.vx;
-                    stone.vy = val.data.vy;
-                    stone.active = true;
-                    dragStart = null;
-                    gameState = 'FLY';
-                    playSound('shoot');
-                } else if (val.type === 'restart') {
+                    checkStartCondition();
+                } else if (val.type === 'sync_state') {
+                    // Зберігаємо стан суперника для малювання його "Привидів"
+                    remoteState.stone = val.data.s;
+                    remoteState.cans = val.data.c.map(c => ({ x: c.x, y: c.y, w: 60, h: 100, angle: c.a, active: c.act }));
+                    remoteState.dragStart = val.data.d;
+                    remoteState.gameState = val.data.gs;
+                } else if (val.type === 'player_won') {
+                    gameState = 'END';
+                    document.getElementById('winner-text').textContent = `${val.data.name} ПЕРЕМІГ!`;
+                    document.getElementById('winner-overlay').style.display = 'flex';
+                } else if (val.type === 'restart_game') {
                     initGame();
-                } else if (val.type === 'switch_player') {
-                    currentPlayer = val.data.player;
-                    playerDisplay.textContent = `Хід: Гравець ${currentPlayer}`;
                 }
             } finally {
                 isRemoteAction = false;
