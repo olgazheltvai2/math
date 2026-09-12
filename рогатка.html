@@ -348,7 +348,10 @@
             font-weight: bold;
             border: 2px solid #FFF;
             text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.1s;
         }
+        .status-room-indicator:active { transform: scale(0.95); }
 
         .ui-btn {
             background: linear-gradient(135deg, #3498db, #2980b9);
@@ -447,7 +450,7 @@
 <div id="game-container">
     
     <div class="game-ui-top" id="ui-panel">
-        <div class="status-room-indicator" id="room-indicator">Кімната 1</div>
+        <div class="status-room-indicator" id="room-indicator" title="Клікніть, щоб змінити назву кімнати">📍 Кімната 1</div>
         <div class="status-board" id="status-main">Розстановка: 0/8</div>
         <button id="btn-switch-room" class="ui-btn action">🔄 Перейти в іншу кімнату</button>
         <button id="btn-solo" class="ui-btn">⚡ Швидкий старт</button>
@@ -563,7 +566,7 @@
 <script>
     // --- FIREBASE ТА БАЗОВА КОНФІГУРАЦІЯ ---
     const CONFIG = {
-        gameId: 'cans_shooter_rooms_v1' 
+        gameId: 'cans_shooter_rooms_final' 
     };
 
     const firebaseConfig = {
@@ -792,7 +795,7 @@
         dctx.lineCap = 'round'; dctx.stroke();
     }
 
-    // --- ЛОГІКА ГРИ: ПОКРОКОВА РОЗСТАНОВКА ПО КІМНАТАХ ---
+    // --- ЛОГІКА ГРИ: ПОКРОКОВА РОЗСТАНОВКА ТА СТРІЛЬБА ПО КІМНАТАХ ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
     function initAudio() { if (!audioCtx) audioCtx = new AudioContext(); }
@@ -857,12 +860,12 @@
         const container = document.getElementById('game-container');
         cw = container.clientWidth; ch = container.clientHeight;
         canvas.width = cw; canvas.height = ch;
+        // Зберігаємо ідеальні пропорції для розрахунку кліків лупою
         scaleX = cw / baseW; scaleY = ch / baseH;
     }
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Безпечна координата миші (враховує лупу та масштаби екрану)
     function getSafeMousePos(e) {
         const rect = canvas.getBoundingClientRect();
         return {
@@ -878,26 +881,31 @@
         return img;
     }
 
-    const imgCan = createSVGImage(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
-        <defs>
-            <linearGradient id="canGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="#FF4500"/><stop offset="30%" stop-color="#FF6347"/>
-                <stop offset="70%" stop-color="#FF6347"/><stop offset="100%" stop-color="#8B0000"/>
-            </linearGradient>
-            <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="#B0C4DE"/><stop offset="50%" stop-color="#F0F8FF"/><stop offset="100%" stop-color="#778899"/>
-            </linearGradient>
-        </defs>
-        <rect x="5" y="10" width="50" height="80" fill="url(#canGrad)"/>
-        <path d="M5,10 Q30,20 55,10 L55,90 Q30,100 5,90 Z" fill="url(#canGrad)"/>
-        <ellipse cx="30" cy="10" rx="25" ry="8" fill="url(#metal)"/>
-        <ellipse cx="30" cy="90" rx="25" ry="8" fill="url(#metal)"/>
-        <path d="M5,20 Q30,30 55,20 M5,40 Q30,50 55,40 M5,60 Q30,70 55,60 M5,80 Q30,90 55,80" stroke="#8B0000" stroke-width="2" fill="none" opacity="0.5"/>
-        <circle cx="30" cy="50" r="12" fill="#FFD700" stroke="#FFF" stroke-width="2"/>
-        <path d="M25,50 L35,45 L35,55 Z" fill="#FF4500"/>
-    </svg>`);
+    function createCanSVG(primaryGrad, secondaryGrad, outline) {
+        return createSVGImage(`
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
+            <defs>
+                <linearGradient id="canGrad${primaryGrad.replace('#','')}" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="${primaryGrad}"/><stop offset="30%" stop-color="${secondaryGrad}"/>
+                    <stop offset="70%" stop-color="${secondaryGrad}"/><stop offset="100%" stop-color="${outline}"/>
+                </linearGradient>
+                <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#B0C4DE"/><stop offset="50%" stop-color="#F0F8FF"/><stop offset="100%" stop-color="#778899"/>
+                </linearGradient>
+            </defs>
+            <rect x="5" y="10" width="50" height="80" fill="url(#canGrad${primaryGrad.replace('#','')})"/>
+            <path d="M5,10 Q30,20 55,10 L55,90 Q30,100 5,90 Z" fill="url(#canGrad${primaryGrad.replace('#','')})"/>
+            <ellipse cx="30" cy="10" rx="25" ry="8" fill="url(#metal)"/>
+            <ellipse cx="30" cy="90" rx="25" ry="8" fill="url(#metal)"/>
+            <path d="M5,20 Q30,30 55,20 M5,40 Q30,50 55,40 M5,60 Q30,70 55,60 M5,80 Q30,90 55,80" stroke="${outline}" stroke-width="2" fill="none" opacity="0.5"/>
+            <circle cx="30" cy="50" r="12" fill="#FFD700" stroke="#FFF" stroke-width="2"/>
+            <path d="M25,50 L35,45 L35,55 Z" fill="${primaryGrad}"/>
+        </svg>`);
+    }
 
+    const imgCanRed = createCanSVG('#FF4500', '#FF6347', '#8B0000');
+    const imgCanBlue = createCanSVG('#1E90FF', '#4169E1', '#00008B');
+    
     const imgStone = createSVGImage(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
         <defs><radialGradient id="stoneGrad" cx="30%" cy="30%" r="70%"><stop offset="0%" stop-color="#A9A9A9"/><stop offset="100%" stop-color="#555555"/></radialGradient></defs>
@@ -915,7 +923,8 @@
 
     // Глобальний стан Кімнат
     let currentRoom = 1; // 1 або 2
-    let cans = { 1: [], 2: [] }; // Масиви банок для кожної кімнати
+    let roomNames = { 1: "Кімната 1", 2: "Кімната 2" };
+    let cans = { 1: [], 2: [] }; 
     let gamePhase = 'PLACE'; // PLACE -> PLAY
     let turnState = 'WAITING'; // WAITING, MATH, AIM, FLY, END
 
@@ -945,8 +954,17 @@
         winnerText: document.getElementById('winner-text')
     };
 
+    UI.indicator.addEventListener('click', () => {
+        let newName = prompt("Введіть назву для цієї кімнати:", roomNames[currentRoom]);
+        if (newName && newName.trim() !== '') {
+            roomNames[currentRoom] = newName.trim();
+            updateUI();
+            sendGameAction('sync_room_names', roomNames);
+        }
+    });
+
     function updateUI() {
-        UI.indicator.textContent = `📍 Кімната ${currentRoom}`;
+        UI.indicator.textContent = `📍 ${roomNames[currentRoom]}`;
         let activeCansCount = cans[currentRoom].filter(c => c.active).length;
 
         if (gamePhase === 'PLACE') {
@@ -954,9 +972,8 @@
             UI.btnSwitch.style.display = 'inline-block';
             UI.btnSolo.style.display = 'inline-block';
         } else {
-            UI.board.textContent = `Гравець ${currentRoom} стріляє! Залишилось: ${activeCansCount}`;
+            UI.board.textContent = `Залишилось банок: ${activeCansCount}`;
             UI.btnSolo.style.display = 'none';
-            // Кнопку переходу показуємо коли камінь лежить
             UI.btnSwitch.style.display = (turnState === 'WAITING' || turnState === 'MATH') ? 'inline-block' : 'none';
         }
     }
@@ -968,6 +985,16 @@
         UI.winner.style.display = 'none';
         UI.mathModal.classList.remove('active');
         updateUI();
+    }
+
+    function checkStartCondition() {
+        updateUI();
+        if (gamePhase === 'PLACE' && cans[1].length === MAX_CANS && cans[2].length === MAX_CANS) {
+            gamePhase = 'PLAY'; 
+            turnState = 'WAITING'; // Гра почалась, чекаємо кліку на рогатку
+            updateUI();
+            sendGameAction('sync_full', { gs: gamePhase, t: turnState, cRoom: currentRoom, c1: cans[1], c2: cans[2] });
+        }
     }
 
     function spawnParticles(x, y, color) {
@@ -999,7 +1026,9 @@
                         can.vx = stone.vx * 0.4 + (Math.random()-0.5)*5; can.vy = stone.vy * 0.4 - Math.random()*5;
                         can.va = (Math.random() - 0.5) * 0.2;
                         stone.vx *= 0.8; stone.vy *= 0.8;
-                        playSound('hit'); spawnParticles(can.x + can.w/2, can.y + can.h/2, '#FF4500');
+                        playSound('hit'); 
+                        let pColor = currentRoom === 1 ? '#FF4500' : '#1E90FF';
+                        spawnParticles(can.x + can.w/2, can.y + can.h/2, pColor);
                     }
                 }
             }
@@ -1028,26 +1057,24 @@
             if (cans[currentRoom].filter(c => c.active).length === 0) {
                 turnState = 'END';
                 playSound('win');
-                UI.winnerText.textContent = `ПЕРЕМОГА В КІМНАТІ ${currentRoom}!`;
+                UI.winnerText.textContent = `ПЕРЕМОГА В ${roomNames[currentRoom].toUpperCase()}!`;
                 UI.winner.style.display = 'flex';
                 for(let i=0; i<8; i++) setTimeout(() => spawnParticles(Math.random()*1600, Math.random()*900, '#FFD700'), i*200);
             }
         }
 
-        // Завершення польоту
+        // Завершення польоту -> Повернення до очікування (без автоматичного прикладу)
         if (turnState === 'FLY' && (stone.x > 1700 || Math.abs(stone.vx) < 0.1)) {
             setTimeout(() => {
                 if (turnState === 'FLY') {
                     stone.active = false;
-                    turnState = 'WAITING';
+                    turnState = 'WAITING'; 
                     updateUI();
-                    // Автоматично викликаємо приклад знову
-                    if(cans[currentRoom].filter(c=>c.active).length > 0) showMathModal();
                 }
             }, 1000);
         }
 
-        // Синхронізація фізики (передаємо тільки банки поточної кімнати)
+        // Синхронізація фізики
         if (!isOffline && turnState === 'FLY' && Date.now() - lastSyncTime > 50) {
             sendGameAction('sync_physics', { s: { x: stone.x, y: stone.y }, c: activeCans.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), a: Math.round(c.angle*100)/100, act: c.active })) });
             lastSyncTime = Date.now();
@@ -1064,6 +1091,13 @@
         }
 
         ctx.drawImage(imgSlingshot, slingshotAnchor.x - 50, slingshotAnchor.y - 100, 100, 200);
+
+        // Візуальна підказка: клікніть по рогатці
+        if (gamePhase === 'PLAY' && turnState === 'WAITING' && cans[currentRoom].filter(c=>c.active).length > 0) {
+            ctx.fillStyle = 'rgba(255, 255, 255, ' + (Math.sin(Date.now() / 200) * 0.5 + 0.5) + ')';
+            ctx.font = '30px Arial';
+            ctx.fillText('Клікніть на рогатку, щоб отримати приклад!', slingshotAnchor.x - 200, slingshotAnchor.y - 150);
+        }
 
         if (turnState === 'AIM' || turnState === 'FLY') {
             ctx.beginPath(); ctx.moveTo(slingshotAnchor.x - 30, slingshotAnchor.y - 70);
@@ -1084,10 +1118,11 @@
             ctx.lineWidth = 6; ctx.strokeStyle = '#B22222'; ctx.stroke();
         }
 
-        // Малюємо банки ТІЛЬКИ поточної кімнати
+        // Малюємо банки ТІЛЬКИ поточної кімнати відповідного кольору
+        let canImage = currentRoom === 1 ? imgCanRed : imgCanBlue;
         cans[currentRoom].forEach(can => {
             ctx.save(); ctx.translate(can.x + can.w/2, can.y + can.h/2); ctx.rotate(can.angle || 0);
-            ctx.drawImage(imgCan, -can.w/2, -can.h/2, can.w, can.h);
+            ctx.drawImage(canImage, -can.w/2, -can.h/2, can.w, can.h);
             ctx.restore();
         });
 
@@ -1112,16 +1147,19 @@
                     cans[currentRoom].push({ x: pos.x - 30, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
                     playSound('place'); updateUI();
                     sendGameAction('sync_room', { r: currentRoom, c: cans[currentRoom] });
-                    
-                    if (cans[1].length === MAX_CANS && cans[2].length === MAX_CANS) {
-                        gamePhase = 'PLAY'; updateUI(); showMathModal();
-                        sendGameAction('start_play_phase', {});
-                    }
+                    checkStartCondition();
                     break;
                 }
             }
+        } else if (gamePhase === 'PLAY' && turnState === 'WAITING') {
+            // Клік по рогатці для виклику прикладу
+            const dist = Math.hypot(pos.x - slingshotAnchor.x, pos.y - (slingshotAnchor.y - 70));
+            if (dist < 100) {
+                showMathModal();
+            }
         } else if (turnState === 'AIM') {
-            if (Math.hypot(pos.x - stone.x, pos.y - stone.y) < 100) {
+            const dist = Math.hypot(pos.x - stone.x, pos.y - stone.y);
+            if (dist < 100) {
                 dragStart = { x: pos.x, y: pos.y }; playSound('stretch');
             }
         }
@@ -1181,14 +1219,14 @@
         });
     });
 
-    // Зміна Кімнати
+    // Зміна Кімнати (Перехід ходу)
     UI.btnSwitch.addEventListener('click', () => {
         currentRoom = currentRoom === 1 ? 2 : 1;
         UI.mathModal.classList.remove('active');
         stone.active = false;
         
         if (cans[1].length === MAX_CANS && cans[2].length === MAX_CANS) {
-            gamePhase = 'PLAY'; turnState = 'MATH'; showMathModal();
+            gamePhase = 'PLAY'; turnState = 'WAITING'; // Переходимо в кімнату, де чекаємо кліку на рогатку
         } else {
             gamePhase = 'PLACE'; turnState = 'WAITING';
         }
@@ -1203,7 +1241,7 @@
             cans[1].push({ x: pSpots[i].x, y: pSpots[i].y, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
             cans[2].push({ x: pSpots[i].x, y: pSpots[i].y, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
         }
-        gamePhase = 'PLAY'; turnState = 'MATH'; currentRoom = 1; updateUI(); showMathModal();
+        gamePhase = 'PLAY'; turnState = 'WAITING'; currentRoom = 1; updateUI();
         sendGameAction('switch_room', { room: currentRoom, phase: gamePhase, turn: turnState });
         sendGameAction('sync_room', { r: 1, c: cans[1] });
         sendGameAction('sync_room', { r: 2, c: cans[2] });
@@ -1222,13 +1260,20 @@
                 if (val.type === 'draw_line') { drawLineLocal(val.data.x0*window.innerWidth, val.data.y0*window.innerHeight, val.data.x1*window.innerWidth, val.data.y1*window.innerHeight, val.data.c, val.data.s, true); } 
                 else if (val.type === 'clear_canvas') { dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); } 
                 else if (val.type === 'theme_change') { applyTheme(val.data.url, false); } 
+                else if (val.type === 'sync_room_names') {
+                    roomNames = val.data; updateUI();
+                }
                 else if (val.type === 'sync_room') {
                     cans[val.data.r] = val.data.c || []; playSound('place'); updateUI();
+                } else if (val.type === 'sync_full') {
+                    gamePhase = val.data.gs; turnState = val.data.t; currentRoom = val.data.cRoom;
+                    cans[1] = val.data.c1 || []; cans[2] = val.data.c2 || [];
+                    updateUI();
                 } else if (val.type === 'switch_room') {
                     currentRoom = val.data.room; gamePhase = val.data.phase; turnState = val.data.turn;
                     stone.active = false; UI.mathModal.classList.remove('active'); updateUI();
                 } else if (val.type === 'start_play_phase') {
-                    gamePhase = 'PLAY'; updateUI();
+                    gamePhase = 'PLAY'; turnState = 'WAITING'; updateUI();
                 } else if (val.type === 'show_math') { showMathModal(val.data); } 
                 else if (val.type === 'math_input') {
                     currentInput = val.data; document.getElementById('equation-display').textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput}`;
@@ -1259,7 +1304,7 @@
     }
 
     initGame();
-    imgCan.onload = () => requestAnimationFrame(loop);
+    imgCanRed.onload = () => requestAnimationFrame(loop);
     setTimeout(() => requestAnimationFrame(loop), 500);
 
 </script>
