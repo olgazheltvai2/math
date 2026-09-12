@@ -62,6 +62,7 @@
             to { transform: translateX(1800px); }
         }
 
+        /* Математичне вікно */
         #math-modal {
             position: absolute;
             top: 50%;
@@ -332,10 +333,21 @@
             color: white;
             padding: 10px 20px;
             border-radius: 10px;
-            font-size: 1.2vw;
+            font-size: 1.5vw;
             font-weight: bold;
             border: 2px solid #FFF;
             text-align: center;
+        }
+        
+        .status-room-indicator {
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 1.5vw;
+            font-weight: bold;
+            border: 2px solid #FFF;
+            text-transform: uppercase;
         }
 
         .ui-btn {
@@ -351,7 +363,7 @@
             transition: transform 0.1s;
         }
         .ui-btn:active { transform: scale(0.95); }
-        .ui-btn.action { background: linear-gradient(135deg, #27ae60, #2ecc71); display: none; }
+        .ui-btn.action { background: linear-gradient(135deg, #27ae60, #2ecc71); }
         .ui-btn.restart { background: linear-gradient(135deg, #e74c3c, #c0392b); }
         
         /* Екран перемоги */
@@ -391,7 +403,7 @@
         
         @media (max-width: 768px) {
             .ui-btn { font-size: 2.5vw; padding: 5px 10px; }
-            .status-board { font-size: 2.5vw; }
+            .status-board, .status-room-indicator { font-size: 3vw; }
         }
 
     </style>
@@ -435,15 +447,16 @@
 <div id="game-container">
     
     <div class="game-ui-top" id="ui-panel">
-        <div class="status-board" id="status-main">Завантаження...</div>
-        <button id="btn-pass-turn" class="ui-btn action">✅ Передати хід</button>
-        <button id="btn-solo" class="ui-btn">⚡ Швидкий старт (Авто)</button>
-        <button id="btn-restart" class="ui-btn restart">♻️ Скинути</button>
+        <div class="status-room-indicator" id="room-indicator">Кімната 1</div>
+        <div class="status-board" id="status-main">Розстановка: 0/8</div>
+        <button id="btn-switch-room" class="ui-btn action">🔄 Перейти в іншу кімнату</button>
+        <button id="btn-solo" class="ui-btn">⚡ Швидкий старт</button>
+        <button id="btn-restart" class="ui-btn restart">♻️ Скинути гру</button>
     </div>
 
     <!-- Екран перемоги -->
     <div id="winner-overlay">
-        <div id="winner-text">ВИ ПЕРЕМОГЛИ!</div>
+        <div id="winner-text">ПЕРЕМОГА!</div>
         <button id="btn-play-again" class="ui-btn" style="margin-top:40px; font-size:3vw; padding:20px 40px;">Грати ще</button>
     </div>
 
@@ -472,7 +485,7 @@
             <rect width="1600" height="900" fill="url(#skyGrad)"/>
             <circle cx="200" cy="150" r="100" fill="url(#sunGrad)"/>
             
-            <!-- Прозорі Хмарки (opacity="0.15") -->
+            <!-- Дуже прозорі Хмарки (opacity="0.15") -->
             <g opacity="0.15">
                 <path class="cloud" style="animation-duration: 40s;" d="M150,150 Q180,110 220,130 Q260,110 280,150 Q310,180 270,190 Q200,210 160,180 Z" fill="#ffffff"/>
                 <path class="cloud" style="animation-duration: 60s; animation-delay: -20s;" d="M850,200 Q880,160 920,180 Q960,160 980,200 Q1010,230 970,240 Q900,260 860,230 Z" fill="#ffffff"/>
@@ -496,7 +509,7 @@
             <circle cx="1415" cy="370" r="50" fill="#228B22"/>
         </g>
 
-        <!-- Асиметричний стіл -->
+        <!-- Асиметричний стіл (3 полиці різного розміру) -->
         <g id="asymmetric-table">
             <rect x="850" y="770" width="20" height="130" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
             <rect x="1250" y="770" width="20" height="130" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
@@ -504,8 +517,11 @@
             <rect x="1200" y="600" width="20" height="140" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
             <rect x="1080" y="430" width="20" height="140" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
             
+            <!-- Нижня полиця -->
             <rect x="800" y="740" width="500" height="30" rx="10" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="4"/>
+            <!-- Середня полиця -->
             <rect x="950" y="570" width="300" height="30" rx="10" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="4"/>
+            <!-- Верхня полиця -->
             <rect x="1050" y="400" width="150" height="30" rx="10" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="4"/>
         </g>
     </svg>
@@ -546,7 +562,9 @@
 
 <script>
     // --- FIREBASE ТА БАЗОВА КОНФІГУРАЦІЯ ---
-    const CONFIG = { gameId: 'cans_shooter_turn_based' };
+    const CONFIG = {
+        gameId: 'cans_shooter_rooms_v1' 
+    };
 
     const firebaseConfig = {
         databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
@@ -678,7 +696,7 @@
         }
     }
 
-    // --- ЗУМ ТА ГЛОБАЛЬНЕ МАЛЮВАННЯ ---
+    // --- ЗУМ / МАСШТАБУВАННЯ (ЛУПА) ---
     let currentZoom = 1;
     const gameContainer = document.getElementById('game-container');
     document.getElementById('zoom-in').onclick = () => {
@@ -691,6 +709,7 @@
         gameContainer.style.transform = `scale(${currentZoom})`;
     };
 
+    // --- ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ ---
     const drawBtnGlobal = document.getElementById('toggle-draw-btn-global');
     const drawPanel = document.getElementById('draw-panel-global');
     const drawCanvas = document.getElementById('draw-canvas-global');
@@ -711,9 +730,11 @@
         document.getElementById('tool-pencil').classList.add('active');
         document.getElementById('tool-eraser').classList.remove('active');
     };
+
     document.getElementById('close-draw-panel').onclick = () => {
         drawPanel.style.display = 'none'; drawCanvas.style.pointerEvents = 'none'; drawMode = false;
     };
+
     document.getElementById('tool-pencil').onclick = (e) => {
         currentTool = 'pencil'; e.target.classList.add('active'); document.getElementById('tool-eraser').classList.remove('active');
     };
@@ -742,9 +763,11 @@
     function getDrawPos(e) {
         const rect = drawCanvas.getBoundingClientRect(); return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
+
     drawCanvas.addEventListener('pointerdown', (e) => {
         if (!drawMode) return; isDrawing = true; const pos = getDrawPos(e); lastX = pos.x; lastY = pos.y;
     });
+
     drawCanvas.addEventListener('pointermove', (e) => {
         if (!isDrawing || !drawMode) return;
         const pos = getDrawPos(e);
@@ -758,6 +781,7 @@
         });
         lastX = pos.x; lastY = pos.y;
     });
+
     drawCanvas.addEventListener('pointerup', () => isDrawing = false);
     drawCanvas.addEventListener('pointerout', () => isDrawing = false);
 
@@ -768,7 +792,7 @@
         dctx.lineCap = 'round'; dctx.stroke();
     }
 
-    // --- ЛОГІКА ГРИ: ПОКРОКОВІ ПЕРЕГОНИ (ОДИН ПРОТИ ОДНОГО) ---
+    // --- ЛОГІКА ГРИ: ПОКРОКОВА РОЗСТАНОВКА ПО КІМНАТАХ ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioCtx;
     function initAudio() { if (!audioCtx) audioCtx = new AudioContext(); }
@@ -838,7 +862,7 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Безпечне отримання координат миші, стійке до лупи та масштабу
+    // Безпечна координата миші (враховує лупу та масштаби екрану)
     function getSafeMousePos(e) {
         const rect = canvas.getBoundingClientRect();
         return {
@@ -854,30 +878,26 @@
         return img;
     }
 
-    function createCanSVG(primaryGrad, secondaryGrad, outline) {
-        return createSVGImage(`
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
-            <defs>
-                <linearGradient id="canGrad" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stop-color="${primaryGrad}"/><stop offset="30%" stop-color="${secondaryGrad}"/>
-                    <stop offset="70%" stop-color="${secondaryGrad}"/><stop offset="100%" stop-color="${outline}"/>
-                </linearGradient>
-                <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stop-color="#B0C4DE"/><stop offset="50%" stop-color="#F0F8FF"/><stop offset="100%" stop-color="#778899"/>
-                </linearGradient>
-            </defs>
-            <rect x="5" y="10" width="50" height="80" fill="url(#canGrad)"/>
-            <path d="M5,10 Q30,20 55,10 L55,90 Q30,100 5,90 Z" fill="url(#canGrad)"/>
-            <ellipse cx="30" cy="10" rx="25" ry="8" fill="url(#metal)"/>
-            <ellipse cx="30" cy="90" rx="25" ry="8" fill="url(#metal)"/>
-            <path d="M5,20 Q30,30 55,20 M5,40 Q30,50 55,40 M5,60 Q30,70 55,60 M5,80 Q30,90 55,80" stroke="${outline}" stroke-width="2" fill="none" opacity="0.5"/>
-            <circle cx="30" cy="50" r="12" fill="#FFD700" stroke="#FFF" stroke-width="2"/>
-            <path d="M25,50 L35,45 L35,55 Z" fill="${primaryGrad}"/>
-        </svg>`);
-    }
+    const imgCan = createSVGImage(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 100">
+        <defs>
+            <linearGradient id="canGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#FF4500"/><stop offset="30%" stop-color="#FF6347"/>
+                <stop offset="70%" stop-color="#FF6347"/><stop offset="100%" stop-color="#8B0000"/>
+            </linearGradient>
+            <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#B0C4DE"/><stop offset="50%" stop-color="#F0F8FF"/><stop offset="100%" stop-color="#778899"/>
+            </linearGradient>
+        </defs>
+        <rect x="5" y="10" width="50" height="80" fill="url(#canGrad)"/>
+        <path d="M5,10 Q30,20 55,10 L55,90 Q30,100 5,90 Z" fill="url(#canGrad)"/>
+        <ellipse cx="30" cy="10" rx="25" ry="8" fill="url(#metal)"/>
+        <ellipse cx="30" cy="90" rx="25" ry="8" fill="url(#metal)"/>
+        <path d="M5,20 Q30,30 55,20 M5,40 Q30,50 55,40 M5,60 Q30,70 55,60 M5,80 Q30,90 55,80" stroke="#8B0000" stroke-width="2" fill="none" opacity="0.5"/>
+        <circle cx="30" cy="50" r="12" fill="#FFD700" stroke="#FFF" stroke-width="2"/>
+        <path d="M25,50 L35,45 L35,55 Z" fill="#FF4500"/>
+    </svg>`);
 
-    const imgCanRed = createCanSVG('#FF4500', '#FF6347', '#8B0000');
-    const imgCanBlue = createCanSVG('#1E90FF', '#4169E1', '#00008B');
     const imgStone = createSVGImage(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
         <defs><radialGradient id="stoneGrad" cx="30%" cy="30%" r="70%"><stop offset="0%" stop-color="#A9A9A9"/><stop offset="100%" stop-color="#555555"/></radialGradient></defs>
@@ -885,6 +905,7 @@
         <path d="M10,10 L20,15 L35,15" stroke="#777" stroke-width="1.5" fill="none"/>
         <path d="M15,35 L20,25 L32,30" stroke="#444" stroke-width="1.5" fill="none"/>
     </svg>`);
+
     const imgSlingshot = createSVGImage(`
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 200">
         <defs><linearGradient id="wood" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#5C3A21"/><stop offset="50%" stop-color="#8B5A2B"/><stop offset="100%" stop-color="#3E2723"/></linearGradient></defs>
@@ -892,12 +913,14 @@
         <path d="M45,100 L50,150 M48,120 L55,180" stroke="#3E2723" stroke-width="2" fill="none"/>
     </svg>`);
 
-    // Стани гри
-    let gameState = 'PLACE_1'; // PLACE_1, PLACE_2, MATH, AIM, FLY, TURN_END, GAME_OVER
-    let currentPlayer = 1; // 1 або 2
-    let cans = []; // Усі банки на столі {x, y, ... targetFor: 1 або 2}
+    // Глобальний стан Кімнат
+    let currentRoom = 1; // 1 або 2
+    let cans = { 1: [], 2: [] }; // Масиви банок для кожної кімнати
+    let gamePhase = 'PLACE'; // PLACE -> PLAY
+    let turnState = 'WAITING'; // WAITING, MATH, AIM, FLY, END
+
     const MAX_CANS = 8;
-    let stone = { x: 0, y: 0, vx: 0, vy: 0, r: 20, active: false };
+    let stone = { x: 0, y: 0, vx: 0, vy: 0, active: false };
     let dragStart = null;
     let particles = [];
     let currentInput = '';
@@ -912,54 +935,38 @@
         { x: 1050, y: 400, w: 150, h: 30 }
     ];
 
-    const statusBoard = document.getElementById('status-main');
-    const btnPassTurn = document.getElementById('btn-pass-turn');
-    const btnSolo = document.getElementById('btn-solo');
-    const mathModal = document.getElementById('math-modal');
-
-    function countActiveCans(targetPlayer) {
-        return cans.filter(c => c.active && c.targetFor === targetPlayer).length;
-    }
+    const UI = {
+        indicator: document.getElementById('room-indicator'),
+        board: document.getElementById('status-main'),
+        btnSwitch: document.getElementById('btn-switch-room'),
+        btnSolo: document.getElementById('btn-solo'),
+        mathModal: document.getElementById('math-modal'),
+        winner: document.getElementById('winner-overlay'),
+        winnerText: document.getElementById('winner-text')
+    };
 
     function updateUI() {
-        btnSolo.style.display = 'none';
-        btnPassTurn.style.display = 'none';
+        UI.indicator.textContent = `📍 Кімната ${currentRoom}`;
+        let activeCansCount = cans[currentRoom].filter(c => c.active).length;
 
-        if (gameState === 'PLACE_1') {
-            let placedFor2 = cans.filter(c => c.targetFor === 2).length;
-            statusBoard.textContent = `Гр. 1 розставляє банки для Гр. 2 (Сині): ${placedFor2}/8`;
-            btnSolo.style.display = 'inline-block';
-            if (placedFor2 >= MAX_CANS) {
-                btnPassTurn.style.display = 'inline-block';
-                statusBoard.textContent = "Чудово! Натисніть 'Передати хід'";
-            }
-        } else if (gameState === 'PLACE_2') {
-            let placedFor1 = cans.filter(c => c.targetFor === 1).length;
-            statusBoard.textContent = `Гр. 2 розставляє банки для Гр. 1 (Червоні): ${placedFor1}/8`;
-            btnSolo.style.display = 'inline-block';
-            if (placedFor1 >= MAX_CANS) {
-                btnPassTurn.style.display = 'inline-block';
-                statusBoard.textContent = "Чудово! Натисніть 'Передати хід' для початку стрільби!";
-            }
-        } else if (gameState === 'TURN_END') {
-            statusBoard.textContent = `Хід Гравця ${currentPlayer} завершено. Передайте хід.`;
-            btnPassTurn.style.display = 'inline-block';
-        } else if (gameState === 'GAME_OVER') {
-            statusBoard.textContent = "ГРА ЗАКІНЧЕНА!";
+        if (gamePhase === 'PLACE') {
+            UI.board.textContent = `Розстановка банок: ${activeCansCount}/${MAX_CANS}`;
+            UI.btnSwitch.style.display = 'inline-block';
+            UI.btnSolo.style.display = 'inline-block';
         } else {
-            // MATH, AIM, FLY
-            let redLeft = countActiveCans(1);
-            let blueLeft = countActiveCans(2);
-            let colorWord = currentPlayer === 1 ? "Червоні" : "Сині";
-            statusBoard.innerHTML = `Хід: <b>Гравець ${currentPlayer}</b> (Ціль: ${colorWord}) | Залишилось: Червоні (${redLeft}), Сині (${blueLeft})`;
+            UI.board.textContent = `Гравець ${currentRoom} стріляє! Залишилось: ${activeCansCount}`;
+            UI.btnSolo.style.display = 'none';
+            // Кнопку переходу показуємо коли камінь лежить
+            UI.btnSwitch.style.display = (turnState === 'WAITING' || turnState === 'MATH') ? 'inline-block' : 'none';
         }
     }
 
     function initGame() {
-        cans = []; stone.active = false; particles = [];
-        gameState = 'PLACE_1'; currentPlayer = 1;
-        document.getElementById('winner-overlay').style.display = 'none';
-        mathModal.classList.remove('active');
+        cans = { 1: [], 2: [] };
+        currentRoom = 1; gamePhase = 'PLACE'; turnState = 'WAITING';
+        stone.active = false; dragStart = null; particles = [];
+        UI.winner.style.display = 'none';
+        UI.mathModal.classList.remove('active');
         updateUI();
     }
 
@@ -970,17 +977,19 @@
     let lastSyncTime = 0;
 
     function updatePhysics() {
-        if (gameState === 'FLY') {
+        if (turnState === 'FLY') {
             stone.x += stone.vx; stone.y += stone.vy; stone.vy += GRAVITY;
             if (stone.y > 850) { stone.y = 850; stone.vy *= -BOUNCE; stone.vx *= FRICTION; }
         }
 
-        cans.forEach(can => {
+        let activeCans = cans[currentRoom];
+
+        activeCans.forEach(can => {
             if (!can.active || can.y > 850) { 
                 can.x += can.vx; can.y += can.vy; can.vy += GRAVITY; can.angle += can.va;
                 if (can.y > 850) { can.y = 850; can.vy *= -BOUNCE; can.vx *= FRICTION; can.va *= 0.8; }
             } else {
-                if (gameState === 'FLY') {
+                if (turnState === 'FLY') {
                     let testX = stone.x, testY = stone.y;
                     if (stone.x < can.x) testX = can.x; else if (stone.x > can.x + can.w) testX = can.x + can.w;
                     if (stone.y < can.y) testY = can.y; else if (stone.y > can.y + can.h) testY = can.y + can.h;
@@ -990,16 +999,15 @@
                         can.vx = stone.vx * 0.4 + (Math.random()-0.5)*5; can.vy = stone.vy * 0.4 - Math.random()*5;
                         can.va = (Math.random() - 0.5) * 0.2;
                         stone.vx *= 0.8; stone.vy *= 0.8;
-                        playSound('hit');
-                        spawnParticles(can.x + can.w/2, can.y + can.h/2, can.targetFor === 1 ? '#FF0000' : '#0000FF');
+                        playSound('hit'); spawnParticles(can.x + can.w/2, can.y + can.h/2, '#FF4500');
                     }
                 }
             }
         });
 
-        for(let i=0; i<cans.length; i++) {
-            for(let j=i+1; j<cans.length; j++) {
-                let c1 = cans[i], c2 = cans[j];
+        for(let i=0; i<activeCans.length; i++) {
+            for(let j=i+1; j<activeCans.length; j++) {
+                let c1 = activeCans[i], c2 = activeCans[j];
                 if (Math.hypot((c1.x + c1.w/2) - (c2.x + c2.w/2), (c1.y + c1.h/2) - (c2.y + c2.h/2)) < 50) {
                     if (!c1.active && c2.active && Math.abs(c1.vx) + Math.abs(c1.vy) > 2) {
                         c2.active = false; c2.vx = c1.vx * 0.5; c2.vy = -3; c2.va = (Math.random() - 0.5) * 0.2; playSound('hit');
@@ -1015,73 +1023,71 @@
             if (p.life <= 0) particles.splice(i, 1);
         }
 
-        // Перевірка перемоги
-        if (gameState === 'FLY' || gameState === 'AIM' || gameState === 'TURN_END') {
-            if (countActiveCans(1) === 0) triggerWin(1);
-            else if (countActiveCans(2) === 0) triggerWin(2);
+        // Перевірка перемоги в поточній кімнаті
+        if (gamePhase === 'PLAY' && (turnState === 'FLY' || turnState === 'AIM' || turnState === 'WAITING')) {
+            if (cans[currentRoom].filter(c => c.active).length === 0) {
+                turnState = 'END';
+                playSound('win');
+                UI.winnerText.textContent = `ПЕРЕМОГА В КІМНАТІ ${currentRoom}!`;
+                UI.winner.style.display = 'flex';
+                for(let i=0; i<8; i++) setTimeout(() => spawnParticles(Math.random()*1600, Math.random()*900, '#FFD700'), i*200);
+            }
         }
 
         // Завершення польоту
-        if (gameState === 'FLY' && (stone.x > 1700 || Math.abs(stone.vx) < 0.1)) {
+        if (turnState === 'FLY' && (stone.x > 1700 || Math.abs(stone.vx) < 0.1)) {
             setTimeout(() => {
-                if (gameState === 'FLY') {
+                if (turnState === 'FLY') {
                     stone.active = false;
-                    gameState = 'TURN_END';
+                    turnState = 'WAITING';
                     updateUI();
-                    sendGameAction('sync_full', { gs: gameState, cPlayer: currentPlayer, c: cans });
+                    // Автоматично викликаємо приклад знову
+                    if(cans[currentRoom].filter(c=>c.active).length > 0) showMathModal();
                 }
             }, 1000);
         }
 
-        // Синхронізація польоту для плавності
-        if (!isOffline && gameState === 'FLY' && Date.now() - lastSyncTime > 50) {
-            sendGameAction('sync_physics', { s: { x: stone.x, y: stone.y }, c: cans.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), a: Math.round(c.angle*100)/100, act: c.active })) });
+        // Синхронізація фізики (передаємо тільки банки поточної кімнати)
+        if (!isOffline && turnState === 'FLY' && Date.now() - lastSyncTime > 50) {
+            sendGameAction('sync_physics', { s: { x: stone.x, y: stone.y }, c: activeCans.map(c => ({ x: Math.round(c.x), y: Math.round(c.y), a: Math.round(c.angle*100)/100, act: c.active })) });
             lastSyncTime = Date.now();
         }
-    }
-
-    function triggerWin(player) {
-        if (gameState === 'GAME_OVER') return;
-        gameState = 'GAME_OVER';
-        playSound('win');
-        document.getElementById('winner-text').textContent = `ГРАВЕЦЬ ${player} ПЕРЕМІГ!`;
-        document.getElementById('winner-overlay').style.display = 'flex';
-        for(let i=0; i<8; i++) setTimeout(() => spawnParticles(Math.random()*1600, Math.random()*900, '#FFD700'), i*200);
     }
 
     function draw() {
         ctx.clearRect(0, 0, cw, ch);
         ctx.save(); ctx.scale(scaleX, scaleY);
 
-        if (gameState === 'PLACE_1' || gameState === 'PLACE_2') {
+        if (gamePhase === 'PLACE') {
             ctx.fillStyle = 'rgba(255, 255, 255, ' + (Math.sin(Date.now() / 200) * 0.2 + 0.3) + ')';
             shelves.forEach(s => ctx.fillRect(s.x, s.y - 100, s.w, 100));
         }
 
         ctx.drawImage(imgSlingshot, slingshotAnchor.x - 50, slingshotAnchor.y - 100, 100, 200);
 
-        if (gameState === 'AIM' || gameState === 'FLY') {
+        if (turnState === 'AIM' || turnState === 'FLY') {
             ctx.beginPath(); ctx.moveTo(slingshotAnchor.x - 30, slingshotAnchor.y - 70);
-            if (gameState === 'AIM' && dragStart) ctx.lineTo(stone.x, stone.y); else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
+            if (turnState === 'AIM' && dragStart) ctx.lineTo(stone.x, stone.y); else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
             ctx.lineWidth = 6; ctx.strokeStyle = '#8B0000'; ctx.stroke();
         }
 
         if (stone.active) {
             ctx.save(); ctx.translate(stone.x, stone.y);
-            if (gameState === 'FLY') ctx.rotate(stone.x * 0.05);
+            if (turnState === 'FLY') ctx.rotate(stone.x * 0.05);
             ctx.drawImage(imgStone, -20, -20, 40, 40);
             ctx.restore();
         }
 
-        if (gameState === 'AIM' || gameState === 'FLY') {
+        if (turnState === 'AIM' || turnState === 'FLY') {
             ctx.beginPath(); ctx.moveTo(slingshotAnchor.x + 30, slingshotAnchor.y - 80);
-            if (gameState === 'AIM' && dragStart) ctx.lineTo(stone.x, stone.y); else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
+            if (turnState === 'AIM' && dragStart) ctx.lineTo(stone.x, stone.y); else ctx.lineTo(slingshotAnchor.x, slingshotAnchor.y - 60);
             ctx.lineWidth = 6; ctx.strokeStyle = '#B22222'; ctx.stroke();
         }
 
-        cans.forEach(can => {
+        // Малюємо банки ТІЛЬКИ поточної кімнати
+        cans[currentRoom].forEach(can => {
             ctx.save(); ctx.translate(can.x + can.w/2, can.y + can.h/2); ctx.rotate(can.angle || 0);
-            ctx.drawImage(can.targetFor === 1 ? imgCanRed : imgCanBlue, -can.w/2, -can.h/2, can.w, can.h);
+            ctx.drawImage(imgCan, -can.w/2, -can.h/2, can.w, can.h);
             ctx.restore();
         });
 
@@ -1095,24 +1101,26 @@
 
     function loop() { updatePhysics(); draw(); requestAnimationFrame(loop); }
 
-    // Взаємодія з грою
+    // Управління
     canvas.addEventListener('pointerdown', (e) => {
         initAudio();
         const pos = getSafeMousePos(e);
 
-        if (gameState === 'PLACE_1' || gameState === 'PLACE_2') {
-            let targetFor = gameState === 'PLACE_1' ? 2 : 1; // Гр.1 ставить для Гр.2 (Сині)
-            if (countActiveCans(targetFor) < MAX_CANS) {
-                for (let s of shelves) {
-                    if (pos.x >= s.x && pos.x <= s.x + s.w && pos.y >= s.y - 150 && pos.y <= s.y + s.h) {
-                        const newCan = { x: pos.x - 30, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true, targetFor: targetFor };
-                        cans.push(newCan); playSound('place'); updateUI();
-                        sendGameAction('sync_full', { gs: gameState, cPlayer: currentPlayer, c: cans });
-                        break;
+        if (gamePhase === 'PLACE' && cans[currentRoom].length < MAX_CANS) {
+            for (let s of shelves) {
+                if (pos.x >= s.x && pos.x <= s.x + s.w && pos.y >= s.y - 150 && pos.y <= s.y + s.h) {
+                    cans[currentRoom].push({ x: pos.x - 30, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
+                    playSound('place'); updateUI();
+                    sendGameAction('sync_room', { r: currentRoom, c: cans[currentRoom] });
+                    
+                    if (cans[1].length === MAX_CANS && cans[2].length === MAX_CANS) {
+                        gamePhase = 'PLAY'; updateUI(); showMathModal();
+                        sendGameAction('start_play_phase', {});
                     }
+                    break;
                 }
             }
-        } else if (gameState === 'AIM') {
+        } else if (turnState === 'AIM') {
             if (Math.hypot(pos.x - stone.x, pos.y - stone.y) < 100) {
                 dragStart = { x: pos.x, y: pos.y }; playSound('stretch');
             }
@@ -1120,7 +1128,7 @@
     });
 
     canvas.addEventListener('pointermove', (e) => {
-        if (gameState === 'AIM' && dragStart) {
+        if (turnState === 'AIM' && dragStart) {
             const pos = getSafeMousePos(e);
             const dx = pos.x - slingshotAnchor.x, dy = pos.y - (slingshotAnchor.y - 70);
             const dist = Math.hypot(dx, dy); const maxDist = 250; 
@@ -1135,19 +1143,18 @@
     });
 
     canvas.addEventListener('pointerup', () => {
-        if (gameState === 'AIM' && dragStart) {
-            dragStart = null; gameState = 'FLY';
+        if (turnState === 'AIM' && dragStart) {
+            dragStart = null; turnState = 'FLY';
             stone.vx = (slingshotAnchor.x - stone.x) * 0.22; stone.vy = ((slingshotAnchor.y - 70) - stone.y) * 0.22;
             playSound('shoot'); updateUI();
             sendGameAction('shoot', { x: stone.x, y: stone.y, vx: stone.vx, vy: stone.vy });
         }
     });
 
-    // Математика та Кнопки
     function showMathModal(remoteQ = null) {
         currentQuestion = remoteQ || getNextQuestion();
-        currentInput = ''; eqDisplay.textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ?`;
-        mathModal.classList.add('active'); updateUI();
+        currentInput = ''; document.getElementById('equation-display').textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ?`;
+        turnState = 'MATH'; UI.mathModal.classList.add('active'); updateUI();
         if (!remoteQ) sendGameAction('show_math', currentQuestion);
     }
 
@@ -1155,46 +1162,51 @@
         btn.addEventListener('click', (e) => {
             initAudio(); const val = e.currentTarget.textContent.trim();
             if (e.currentTarget.classList.contains('del')) {
-                currentInput = currentInput.slice(0, -1); eqDisplay.textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput ? currentInput : '?'}`;
+                currentInput = currentInput.slice(0, -1); document.getElementById('equation-display').textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput ? currentInput : '?'}`;
                 sendGameAction('math_input', currentInput);
             } else if (e.currentTarget.classList.contains('submit')) {
                 if (parseInt(currentInput) === currentQuestion.ans) {
-                    mathModal.classList.remove('active'); gameState = 'AIM';
+                    UI.mathModal.classList.remove('active'); turnState = 'AIM';
                     stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
                     playSound('place'); updateUI(); sendGameAction('math_success', {});
                 } else {
-                    currentInput = ''; eqDisplay.textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ?`;
-                    eqDisplay.style.color = '#FF4500'; setTimeout(() => eqDisplay.style.color = '#FFF', 500);
+                    currentInput = ''; document.getElementById('equation-display').textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ?`;
+                    document.getElementById('equation-display').style.color = '#FF4500'; setTimeout(() => document.getElementById('equation-display').style.color = '#FFF', 500);
                     playSound('error'); sendGameAction('math_fail', {});
                 }
             } else if (val && currentInput.length < 3) {
-                currentInput += val; eqDisplay.textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput}`;
+                currentInput += val; document.getElementById('equation-display').textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput}`;
                 sendGameAction('math_input', currentInput);
             }
         });
     });
 
-    btnPassTurn.addEventListener('click', () => {
-        if (gameState === 'PLACE_1') {
-            gameState = 'PLACE_2'; currentPlayer = 2; updateUI();
-            sendGameAction('sync_full', { gs: gameState, cPlayer: currentPlayer, c: cans });
-        } else if (gameState === 'PLACE_2') {
-            gameState = 'MATH'; currentPlayer = 1; showMathModal();
-        } else if (gameState === 'TURN_END') {
-            currentPlayer = currentPlayer === 1 ? 2 : 1; gameState = 'MATH'; showMathModal();
+    // Зміна Кімнати
+    UI.btnSwitch.addEventListener('click', () => {
+        currentRoom = currentRoom === 1 ? 2 : 1;
+        UI.mathModal.classList.remove('active');
+        stone.active = false;
+        
+        if (cans[1].length === MAX_CANS && cans[2].length === MAX_CANS) {
+            gamePhase = 'PLAY'; turnState = 'MATH'; showMathModal();
+        } else {
+            gamePhase = 'PLACE'; turnState = 'WAITING';
         }
+        updateUI();
+        sendGameAction('switch_room', { room: currentRoom, phase: gamePhase, turn: turnState });
     });
 
-    btnSolo.addEventListener('click', () => {
+    UI.btnSolo.addEventListener('click', () => {
         initGame();
-        let p1Spots = [{x:830,y:640},{x:930,y:640},{x:1030,y:640},{x:1130,y:640},{x:1230,y:640},{x:1000,y:470},{x:1100,y:470},{x:1075,y:300}];
-        let p2Spots = [{x:860,y:640},{x:960,y:640},{x:1060,y:640},{x:1160,y:640},{x:1260,y:640},{x:1030,y:470},{x:1130,y:470},{x:1045,y:300}];
+        let pSpots = [{x:830,y:640},{x:930,y:640},{x:1030,y:640},{x:1130,y:640},{x:1230,y:640},{x:1000,y:470},{x:1100,y:470},{x:1075,y:300}];
         for(let i=0; i<8; i++) {
-            cans.push({ x: p1Spots[i].x, y: p1Spots[i].y, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true, targetFor: 2 });
-            cans.push({ x: p2Spots[i].x, y: p2Spots[i].y, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true, targetFor: 1 });
+            cans[1].push({ x: pSpots[i].x, y: pSpots[i].y, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
+            cans[2].push({ x: pSpots[i].x, y: pSpots[i].y, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
         }
-        gameState = 'MATH'; currentPlayer = 1; updateUI(); showMathModal();
-        sendGameAction('sync_full', { gs: gameState, cPlayer: currentPlayer, c: cans });
+        gamePhase = 'PLAY'; turnState = 'MATH'; currentRoom = 1; updateUI(); showMathModal();
+        sendGameAction('switch_room', { room: currentRoom, phase: gamePhase, turn: turnState });
+        sendGameAction('sync_room', { r: 1, c: cans[1] });
+        sendGameAction('sync_room', { r: 2, c: cans[2] });
     });
 
     document.getElementById('btn-restart').addEventListener('click', () => { initGame(); sendGameAction('restart_game', {}); });
@@ -1210,29 +1222,34 @@
                 if (val.type === 'draw_line') { drawLineLocal(val.data.x0*window.innerWidth, val.data.y0*window.innerHeight, val.data.x1*window.innerWidth, val.data.y1*window.innerHeight, val.data.c, val.data.s, true); } 
                 else if (val.type === 'clear_canvas') { dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); } 
                 else if (val.type === 'theme_change') { applyTheme(val.data.url, false); } 
-                else if (val.type === 'sync_full') {
-                    gameState = val.data.gs; currentPlayer = val.data.cPlayer;
-                    cans = val.data.c || []; updateUI();
+                else if (val.type === 'sync_room') {
+                    cans[val.data.r] = val.data.c || []; playSound('place'); updateUI();
+                } else if (val.type === 'switch_room') {
+                    currentRoom = val.data.room; gamePhase = val.data.phase; turnState = val.data.turn;
+                    stone.active = false; UI.mathModal.classList.remove('active'); updateUI();
+                } else if (val.type === 'start_play_phase') {
+                    gamePhase = 'PLAY'; updateUI();
                 } else if (val.type === 'show_math') { showMathModal(val.data); } 
                 else if (val.type === 'math_input') {
-                    currentInput = val.data; eqDisplay.textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput}`;
+                    currentInput = val.data; document.getElementById('equation-display').textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput}`;
                 } else if (val.type === 'math_success') {
-                    mathModal.classList.remove('active'); gameState = 'AIM'; stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
+                    UI.mathModal.classList.remove('active'); turnState = 'AIM'; stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
                     playSound('place'); updateUI();
                 } else if (val.type === 'math_fail') {
-                    currentInput = ''; eqDisplay.textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ?`;
-                    eqDisplay.style.color = '#FF4500'; setTimeout(() => eqDisplay.style.color = '#FFF', 500); playSound('error');
+                    currentInput = ''; document.getElementById('equation-display').textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ?`;
+                    document.getElementById('equation-display').style.color = '#FF4500'; setTimeout(() => document.getElementById('equation-display').style.color = '#FFF', 500); playSound('error');
                 } else if (val.type === 'sync_aim') {
-                    gameState = 'AIM'; dragStart = true; stone.x = val.data.x; stone.y = val.data.y;
+                    turnState = 'AIM'; dragStart = true; stone.x = val.data.x; stone.y = val.data.y;
                 } else if (val.type === 'shoot') {
                     stone.x = val.data.x; stone.y = val.data.y; stone.vx = val.data.vx; stone.vy = val.data.vy;
-                    stone.active = true; dragStart = null; gameState = 'FLY'; playSound('shoot'); updateUI();
+                    stone.active = true; dragStart = null; turnState = 'FLY'; playSound('shoot'); updateUI();
                 } else if (val.type === 'sync_physics') {
-                    if (gameState === 'FLY') {
+                    if (turnState === 'FLY') {
                         stone.x = val.data.s.x; stone.y = val.data.s.y;
                         if(val.data.c) {
-                            for(let i=0; i<cans.length; i++) {
-                                if(val.data.c[i]) { cans[i].x = val.data.c[i].x; cans[i].y = val.data.c[i].y; cans[i].angle = val.data.c[i].a; cans[i].active = val.data.c[i].act; }
+                            let actCans = cans[currentRoom];
+                            for(let i=0; i<actCans.length; i++) {
+                                if(val.data.c[i]) { actCans[i].x = val.data.c[i].x; actCans[i].y = val.data.c[i].y; actCans[i].angle = val.data.c[i].a; actCans[i].active = val.data.c[i].act; }
                             }
                         }
                     }
@@ -1242,7 +1259,7 @@
     }
 
     initGame();
-    imgCanRed.onload = () => requestAnimationFrame(loop);
+    imgCan.onload = () => requestAnimationFrame(loop);
     setTimeout(() => requestAnimationFrame(loop), 500);
 
 </script>
