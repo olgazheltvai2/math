@@ -437,7 +437,7 @@
             <rect width="1600" height="900" fill="url(#skyGrad)"/>
             <circle cx="200" cy="150" r="100" fill="url(#sunGrad)"/>
             
-            <!-- Прозорі Хмарки (opacity="0.15") -->
+            <!-- Дуже прозорі Хмарки (opacity="0.15") -->
             <g opacity="0.15">
                 <path class="cloud" style="animation-duration: 40s;" d="M150,150 Q180,110 220,130 Q260,110 280,150 Q310,180 270,190 Q200,210 160,180 Z" fill="#ffffff"/>
                 <path class="cloud" style="animation-duration: 60s; animation-delay: -20s;" d="M850,200 Q880,160 920,180 Q960,160 980,200 Q1010,230 970,240 Q900,260 860,230 Z" fill="#ffffff"/>
@@ -463,7 +463,7 @@
             <circle cx="1415" cy="370" r="50" fill="#228B22"/>
         </g>
 
-        <!-- Асиметричний стіл (3 полиці) -->
+        <!-- Асиметричний стіл (3 полиці різного розміру) -->
         <g id="asymmetric-table">
             <!-- Опори до землі для нижньої полиці -->
             <rect x="850" y="770" width="20" height="130" fill="url(#woodPattern)" stroke="#3E2723" stroke-width="2"/>
@@ -522,7 +522,7 @@
 <script>
     // --- FIREBASE ТА БАЗОВА КОНФІГУРАЦІЯ ---
     const CONFIG = {
-        gameId: 'cans_shooter_v2' 
+        gameId: 'cans_shooter_v3' 
     };
 
     const firebaseConfig = {
@@ -555,6 +555,7 @@
 
     let myTabId = Date.now().toString() + '_' + Math.floor(Math.random() * 10000);
     let isRemoteAction = false;
+    let lastActionId = null;
 
     if (!isOffline) {
         const myPresenceRef = db.ref(`online_users/${myName}/${myTabId}`);
@@ -598,11 +599,13 @@
 
     function sendGameAction(type, data) {
         if (isOffline || isRemoteAction) return;
+        const actionId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         db.ref('game_action').set({
             senderId: myTabId,
+            actionId: actionId,
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             type: type,
-            data: data
+            data: data || {}
         });
     }
 
@@ -617,7 +620,7 @@
     };
     document.getElementById('theme-modal-close').onclick = () => themeModal.style.display = 'none';
 
-    function applyTheme(url) {
+    function applyTheme(url, sync = false) {
         if (url && url !== 'none') {
             document.body.style.backgroundImage = `url(${url})`;
             document.body.style.backgroundSize = 'cover';
@@ -629,10 +632,11 @@
             document.getElementById('game-container').style.background = 'radial-gradient(circle at 50% 100%, #87CEEB 0%, #4682B4 100%)';
         }
         localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+        if (sync) sendGameAction('theme_change', { url: url });
     }
 
     const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
-    if (savedBg) applyTheme(savedBg);
+    if (savedBg) applyTheme(savedBg, false);
 
     async function checkImageExists(url) {
         return new Promise(resolve => {
@@ -648,8 +652,7 @@
         noBgDiv.className = 'theme-card';
         noBgDiv.innerHTML = `<div style="width:100%; height:90px; background:#bdc3c7;"></div><div class="theme-title">Без фону</div>`;
         noBgDiv.onclick = () => {
-            applyTheme('none');
-            sendGameAction('theme_change', { url: 'none' });
+            applyTheme('none', true);
             themeModal.style.display = 'none';
         };
         themeGallery.appendChild(noBgDiv);
@@ -664,26 +667,12 @@
             div.className = 'theme-card';
             div.innerHTML = `<img src="${url}" alt="Фон ${i}"><div class="theme-title">Фон ${i}</div>`;
             div.onclick = () => {
-                applyTheme(url);
-                sendGameAction('theme_change', { url: url });
+                applyTheme(url, true);
                 themeModal.style.display = 'none';
             };
             themeGallery.appendChild(div);
             i++;
         }
-    }
-
-    if (!isOffline) {
-        db.ref('game_action').on('value', snap => {
-            const val = snap.val();
-            if (!val || val.senderId === myTabId) return;
-            
-            isRemoteAction = true;
-            if (val.type === 'theme_change') {
-                applyTheme(val.data.url);
-            }
-            isRemoteAction = false;
-        });
     }
 
     // --- ЗУМ / МАСШТАБУВАННЯ (ЛУПА) ---
@@ -844,6 +833,11 @@
             osc.frequency.exponentialRampToValueAtTime(20, now + 0.2);
             gainNode.gain.setValueAtTime(0.5, now); gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
             osc.start(now); osc.stop(now + 0.2);
+        } else if (type === 'error') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+            gainNode.gain.setValueAtTime(0.4, now); gainNode.gain.linearRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
         } else if (type === 'win') {
             const freqs = [440, 554, 659, 880];
             freqs.forEach((f, i) => {
@@ -944,7 +938,7 @@
 
     let gameState = 'PLACE_CANS'; // PLACE_CANS, MATH, AIM, FLY, END
     let cans = [];
-    const MAX_CANS = 8; // Максимум банок до початку
+    const MAX_CANS = 8;
     let stone = { x: 0, y: 0, vx: 0, vy: 0, r: 20, active: false };
     let dragStart = null;
     let particles = [];
@@ -955,7 +949,7 @@
     const slingshotAnchor = { x: 250, y: 650 };
     const GRAVITY = 0.5, BOUNCE = 0.4, FRICTION = 0.98;
 
-    // Геометрія полиць для розстановки
+    // Геометрія полиць (Асиметрія)
     const shelves = [
         { x: 800, y: 740, w: 500, h: 30 }, // Нижня
         { x: 950, y: 570, w: 300, h: 30 }, // Середня
@@ -1068,9 +1062,9 @@
                         sendGameAction('restart', {});
                     }, 4000);
                 } else {
-                    gameState = 'MATH';
-                    showMathModal();
                     stone.active = false;
+                    showMathModal();
+                    sendGameAction('show_math', { question: currentQuestion });
                 }
             }, 1000);
         }
@@ -1166,9 +1160,8 @@
             if (placed) {
                 playSound('place');
                 if (cans.length >= MAX_CANS) {
-                    gameState = 'MATH';
                     showMathModal();
-                    sendGameAction('state_change', { state: 'MATH' });
+                    sendGameAction('show_math', { question: currentQuestion });
                 }
             }
         } else if (gameState === 'AIM') {
@@ -1189,7 +1182,7 @@
             const dx = x - slingshotAnchor.x;
             const dy = y - (slingshotAnchor.y - 70);
             const dist = Math.hypot(dx, dy);
-            const maxDist = 250; // Збільшено для кращого натягу
+            const maxDist = 250; // Збільшено для кращого натягу та дальності
             
             if (dist > maxDist) {
                 x = slingshotAnchor.x + (dx / dist) * maxDist;
@@ -1198,6 +1191,8 @@
             
             stone.x = x;
             stone.y = y;
+            
+            sendGameAction('aim_drag', { x: stone.x, y: stone.y });
         }
     });
 
@@ -1209,7 +1204,6 @@
             const dx = slingshotAnchor.x - stone.x;
             const dy = (slingshotAnchor.y - 70) - stone.y;
             
-            // Збільшено прискорення для більшої дальності польоту
             stone.vx = dx * 0.22;
             stone.vy = dy * 0.22;
             
@@ -1221,12 +1215,18 @@
     const mathModal = document.getElementById('math-modal');
     const eqDisplay = document.getElementById('equation-display');
 
-    function showMathModal() {
-        currentQuestion = getNextQuestion();
+    function showMathModal(remoteQuestion = null) {
+        if (remoteQuestion) {
+            currentQuestion = remoteQuestion;
+        } else {
+            currentQuestion = getNextQuestion();
+        }
         currentInput = '';
         updateEquationDisplay();
+        gameState = 'MATH';
         mathModal.classList.add('active');
     }
+
     function updateEquationDisplay() {
         eqDisplay.textContent = `${currentQuestion.a} ${currentQuestion.op} ${currentQuestion.b} = ${currentInput ? currentInput : '?'}`;
     }
@@ -1238,24 +1238,27 @@
             if (e.currentTarget.classList.contains('del')) {
                 currentInput = currentInput.slice(0, -1);
                 updateEquationDisplay();
+                sendGameAction('math_input', { input: currentInput });
             } else if (e.currentTarget.classList.contains('submit')) {
                 if (parseInt(currentInput) === currentQuestion.ans) {
                     mathModal.classList.remove('active');
                     gameState = 'AIM';
                     stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
                     playSound('place');
-                    sendGameAction('solve_math', {});
+                    sendGameAction('math_success', {});
                 } else {
                     currentInput = '';
                     updateEquationDisplay();
                     eqDisplay.style.color = '#FF4500';
                     setTimeout(() => eqDisplay.style.color = '#FFF', 500);
-                    playSound('hit');
+                    playSound('error');
+                    sendGameAction('math_fail', {});
                 }
             } else if (val) {
                 if (currentInput.length < 3) {
                     currentInput += val;
                     updateEquationDisplay();
+                    sendGameAction('math_input', { input: currentInput });
                 }
             }
         });
@@ -1273,44 +1276,69 @@
         sendGameAction('switch_player', { player: currentPlayer });
     });
 
+    // --- ОБРОБКА ВХІДНИХ СИНХРОНІЗОВАНИХ ДІЙ (FIREBASE ON VALUE) ---
     if (!isOffline) {
-        db.ref('game_action').on('child_added', snap => {
+        db.ref('game_action').on('value', snap => {
             const val = snap.val();
-            if (!val || val.senderId === myTabId) return;
+            // Ігноруємо якщо немає даних, якщо це ми відправили, або якщо цей actionId вже опрацьовано
+            if (!val || val.senderId === myTabId || val.actionId === lastActionId) return;
             
+            lastActionId = val.actionId;
             isRemoteAction = true;
-            if (val.type === 'draw_line') {
-                drawLineLocal(
-                    val.data.x0 * window.innerWidth, val.data.y0 * window.innerHeight,
-                    val.data.x1 * window.innerWidth, val.data.y1 * window.innerHeight,
-                    val.data.c, val.data.s, true
-                );
-            } else if (val.type === 'clear_canvas') {
-                dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-            } else if (val.type === 'place_can') {
-                cans.push(val.data.can);
-            } else if (val.type === 'state_change') {
-                gameState = val.data.state;
-                if (gameState === 'MATH') showMathModal();
-            } else if (val.type === 'solve_math') {
-                mathModal.classList.remove('active');
-                gameState = 'AIM';
-                stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
-            } else if (val.type === 'shoot') {
-                stone.x = val.data.x;
-                stone.y = val.data.y;
-                stone.vx = val.data.vx;
-                stone.vy = val.data.vy;
-                stone.active = true;
-                gameState = 'FLY';
-                playSound('shoot');
-            } else if (val.type === 'restart') {
-                initGame();
-            } else if (val.type === 'switch_player') {
-                currentPlayer = val.data.player;
-                playerDisplay.textContent = `Хід: Гравець ${currentPlayer}`;
+            
+            try {
+                if (val.type === 'draw_line') {
+                    drawLineLocal(
+                        val.data.x0 * window.innerWidth, val.data.y0 * window.innerHeight,
+                        val.data.x1 * window.innerWidth, val.data.y1 * window.innerHeight,
+                        val.data.c, val.data.s, true
+                    );
+                } else if (val.type === 'clear_canvas') {
+                    dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                } else if (val.type === 'theme_change') {
+                    applyTheme(val.data.url, false);
+                } else if (val.type === 'place_can') {
+                    cans.push(val.data.can);
+                    playSound('place');
+                } else if (val.type === 'show_math') {
+                    showMathModal(val.data.question);
+                } else if (val.type === 'math_input') {
+                    currentInput = val.data.input;
+                    updateEquationDisplay();
+                } else if (val.type === 'math_success') {
+                    mathModal.classList.remove('active');
+                    gameState = 'AIM';
+                    stone = { x: slingshotAnchor.x, y: slingshotAnchor.y - 70, vx: 0, vy: 0, r: 20, active: true };
+                    playSound('place');
+                } else if (val.type === 'math_fail') {
+                    currentInput = '';
+                    updateEquationDisplay();
+                    eqDisplay.style.color = '#FF4500';
+                    setTimeout(() => eqDisplay.style.color = '#FFF', 500);
+                    playSound('error');
+                } else if (val.type === 'aim_drag') {
+                    stone.x = val.data.x;
+                    stone.y = val.data.y;
+                    gameState = 'AIM';
+                    dragStart = true; // візуально показуємо натяг
+                } else if (val.type === 'shoot') {
+                    stone.x = val.data.x;
+                    stone.y = val.data.y;
+                    stone.vx = val.data.vx;
+                    stone.vy = val.data.vy;
+                    stone.active = true;
+                    dragStart = null;
+                    gameState = 'FLY';
+                    playSound('shoot');
+                } else if (val.type === 'restart') {
+                    initGame();
+                } else if (val.type === 'switch_player') {
+                    currentPlayer = val.data.player;
+                    playerDisplay.textContent = `Хід: Гравець ${currentPlayer}`;
+                }
+            } finally {
+                isRemoteAction = false;
             }
-            isRemoteAction = false;
         });
     }
 
