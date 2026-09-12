@@ -529,7 +529,7 @@
 <script>
     // --- FIREBASE ТА БАЗОВА КОНФІГУРАЦІЯ ---
     const CONFIG = {
-        gameId: 'cans_shooter_v3' 
+        gameId: 'cans_shooter_v4' 
     };
 
     const firebaseConfig = {
@@ -945,8 +945,8 @@
 
     // Локальний стан
     let gameState = 'PLACE_CANS'; // PLACE_CANS, MATH, AIM, FLY, END
-    let cans = []; // Банки, які розставив суперник ДЛЯ МЕНЕ (я по них стріляю)
-    let cansPlacedByMe = 0; // Скільки банок Я розставив для суперника
+    let cans = []; // Банки, які розставив суперник ДЛЯ МЕНЕ (я по них стріляю, вони непрозорі)
+    let myGhosts = []; // Банки, які Я розставив для суперника (вони напівпрозорі, щоб я бачив, куди клікнув)
     const MAX_CANS = 8;
     let stone = { x: 0, y: 0, vx: 0, vy: 0, r: 20, active: false };
     let dragStart = null;
@@ -973,7 +973,7 @@
 
     function initGame() {
         cans = [];
-        cansPlacedByMe = 0;
+        myGhosts = [];
         stone.active = false;
         particles = [];
         gameState = 'PLACE_CANS';
@@ -982,8 +982,8 @@
     }
 
     function checkStartCondition() {
-        // Якщо обидва гравці поставили один одному по 8 банок - переходимо до стрільби
-        if (gameState === 'PLACE_CANS' && cans.length === MAX_CANS && cansPlacedByMe === MAX_CANS) {
+        // Якщо я поставив 8 банок і мені поставили 8 банок - переходимо до стрільби
+        if (gameState === 'PLACE_CANS' && cans.length === MAX_CANS && myGhosts.length === MAX_CANS) {
             showMathModal();
         }
     }
@@ -1096,7 +1096,7 @@
             }, 1000);
         }
 
-        // Синхронізація локального стану (Гост-режим)
+        // Синхронізація локального стану (Гост-режим) раз на ~50мс (20 FPS)
         if (!isOffline && Date.now() - lastStateSync > 50) {
             sendGameAction('sync_state', {
                 s: { x: stone.x, y: stone.y, active: stone.active },
@@ -1162,16 +1162,21 @@
 
             ctx.fillStyle = '#FFF';
             ctx.font = '24px Arial';
-            ctx.fillText(`Ви поставили супернику: ${cansPlacedByMe} / ${MAX_CANS}`, 750, 100);
+            ctx.fillText(`Ви поставили супернику: ${myGhosts.length} / ${MAX_CANS}`, 750, 100);
             ctx.fillText(`Суперник поставив вам: ${cans.length} / ${MAX_CANS}`, 750, 140);
         }
 
         // Стовбур рогатки (Малюється один раз непрозорим)
         ctx.drawImage(imgSlingshot, slingshotAnchor.x - 50, slingshotAnchor.y - 100, 100, 200);
 
-        // Привиди суперника (напівпрозорі)
-        if (remoteState.stone) drawBandsAndStone(remoteState.stone, remoteState.dragStart, remoteState.gameState, 0.4);
-        drawCansList(remoteState.cans, 0.4);
+        // Привиди банок, які Я ПОСТАВИВ для суперника (якщо ми ще розставляємо)
+        if (gameState === 'PLACE_CANS') {
+            drawCansList(myGhosts, 0.4);
+        }
+
+        // Привиди суперника (його рогатка, камінь і ЙОГО банки)
+        if (remoteState.stone) drawBandsAndStone(remoteState.stone, remoteState.dragStart, remoteState.gameState, 0.3);
+        drawCansList(remoteState.cans, 0.3);
 
         // Ваші об'єкти (непрозорі)
         drawBandsAndStone(stone, dragStart, gameState, 1.0);
@@ -1201,14 +1206,19 @@
         const x = (e.clientX - rect.left) / scaleX;
         const y = (e.clientY - rect.top) / scaleY;
 
-        if (gameState === 'PLACE_CANS' && cansPlacedByMe < MAX_CANS) {
+        if (gameState === 'PLACE_CANS' && myGhosts.length < MAX_CANS) {
             for (let s of shelves) {
+                // Перевіряємо клік по полиці
                 if (x >= s.x && x <= s.x + s.w && y >= s.y - 150 && y <= s.y + s.h) {
-                    cansPlacedByMe++;
-                    sendGameAction('place_can_for_you', {
+                    const newCan = {
                         x: x - 30, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true
-                    });
+                    };
+                    // Зберігаємо банку локально як привид, щоб ми бачили, що вже клікнули
+                    myGhosts.push(newCan);
                     playSound('place');
+                    // Відправляємо банку супернику
+                    sendGameAction('place_can_for_you', newCan);
+                    // Перевіряємо, чи не час починати
                     checkStartCondition();
                     break;
                 }
@@ -1308,12 +1318,13 @@
         shelves.forEach(s => {
             for(let i=0; i<3; i++) {
                 if (placed < MAX_CANS) {
-                    cans.push({ x: s.x + 50 + i*70, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true });
+                    let canObj = { x: s.x + 50 + i*70, y: s.y - 100, w: 60, h: 100, vx: 0, vy: 0, angle: 0, va: 0, active: true };
+                    cans.push(canObj);
+                    myGhosts.push(canObj);
                     placed++;
                 }
             }
         });
-        cansPlacedByMe = MAX_CANS;
         checkStartCondition();
     });
 
