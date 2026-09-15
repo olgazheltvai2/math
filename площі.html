@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Формули площі фігур</title>
+    
+    <!-- Підключення Firebase (compat версія) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+    <style>
+        * { box-sizing: border-box; font-family: Arial, sans-serif; }
+        body {
+            margin: 0; padding: 0; 
+            background-color: #f4f6f9; 
+            background-size: cover; 
+            background-position: center; 
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            overflow: hidden; 
+            width: 100vw; height: 100vh;
+        }
+
+        /* Контейнер для масштабування (Лупа) */
+        #zoom-container {
+            width: 100vw; height: 100vh;
+            transform-origin: top left;
+            transition: transform 0.2s ease;
+            position: absolute; top: 0; left: 0;
+            display: flex; flex-direction: column;
+        }
+
+        /* Навігація між фігурами */
+        #nav-tabs {
+            display: flex; justify-content: center; gap: 10px; padding: 15px;
+            background: rgba(255, 255, 255, 0.7);
+            flex-wrap: wrap; z-index: 10;
+        }
+        .tab-btn {
+            padding: 10px 15px; font-size: 16px; border: 2px solid #3498db;
+            border-radius: 10px; background: #fff; cursor: pointer;
+            transition: 0.2s; font-weight: bold; color: #3498db;
+        }
+        .tab-btn.active { background: #3498db; color: #fff; }
+        .action-btn {
+            padding: 8px 12px; font-size: 14px; border: none;
+            border-radius: 8px; background: #2ecc71; color: white;
+            cursor: pointer; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .action-btn.reset { background: #e74c3c; }
+
+        /* Ігрове поле - прозоре! */
+        #workspace {
+            flex-grow: 1; position: relative; width: 100%; max-width: 1000px; 
+            margin: 0 auto; background: transparent; display: flex; flex-direction: column;
+        }
+
+        #level-instruction {
+            text-align: center; font-size: 22px; font-weight: bold; 
+            margin-top: 10px; padding: 5px 10px;
+            text-shadow: 1px 1px 3px rgba(255,255,255,0.9);
+            color: #2c3e50;
+        }
+
+        /* Формула площі з кнопкою приховування */
+        #formula-display {
+            position: absolute; right: 20px; top: 80px; 
+            background: rgba(255, 255, 255, 0.9); padding: 10px 15px; 
+            border-radius: 12px; border: 3px solid #3498db; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2); display: none; z-index: 5;
+            text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px;
+        }
+        #toggle-formula-btn {
+            background: #3498db; color: white; border: none; border-radius: 5px;
+            padding: 5px 10px; cursor: pointer; font-weight: bold; font-size: 14px;
+        }
+        #formula-text-container {
+            font-size: 26px; font-weight: bold; color: #2c3e50; margin-top: 5px;
+        }
+
+        /* Панель керування рівнем */
+        #level-controls {
+            display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;
+            padding: 10px; background: rgba(255, 255, 255, 0.8); border-radius: 10px;
+            margin: 0 auto; width: max-content; align-items: center; z-index: 5;
+        }
+        .control-group { display: flex; align-items: center; gap: 5px; font-weight: bold;}
+        .control-group input { width: 60px; padding: 5px; border-radius: 5px; border: 1px solid #ccc; text-align: center;}
+
+        #shape-container {
+            flex-grow: 1; position: relative; width: 100%; height: 100%;
+            margin-top: 10px; background: transparent; touch-action: none;
+        }
+
+        /* Секретне поле (вимога) */
+        .secret-input { color: transparent; caret-color: transparent; border: 1px solid #ccc; padding: 5px;}
+        .secret-input.visible { color: black; caret-color: black; }
+
+        /* Обгортка для фігур та поворотів */
+        .shape-wrapper {
+            position: absolute; touch-action: none;
+        }
+        .shape-element {
+            cursor: grab;
+        }
+        .shape-element:active { cursor: grabbing; }
+
+        /* Ручки для обертання та віддзеркалення (З'являються ТІЛЬКИ при виділенні) */
+        .rot-handle {
+            position: absolute; top: -55px; left: 50%; transform: translateX(-50%);
+            width: 45px; height: 45px; background: rgba(52, 152, 219, 0.2); border: 2px dashed #2980b9;
+            border-radius: 50%; cursor: grab; z-index: 100;
+            display: none; touch-action: none; align-items: center; justify-content: center;
+        }
+        .rot-handle::after {
+            content: ''; width: 20px; height: 20px;
+            background: #2980b9; border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+        }
+        .flip-handle {
+            position: absolute; top: 50%; right: -60px; transform: translateY(-50%);
+            width: 45px; height: 45px; background: rgba(46, 204, 113, 0.2); border: 2px dashed #27ae60;
+            border-radius: 50%; cursor: pointer; z-index: 100;
+            display: none; align-items: center; justify-content: center;
+            font-size: 24px; color: #27ae60; user-select: none; touch-action: none; font-weight: bold;
+        }
+        
+        /* З'являються тільки коли фігура має клас selected */
+        .shape-wrapper.selected .rot-handle,
+        .shape-wrapper.selected .flip-handle {
+            display: flex;
+        }
+        .shape-wrapper.active .rot-handle {
+            background: rgba(52, 152, 219, 0.8); border: 2px solid white;
+        }
+        .shape-wrapper.active .flip-handle {
+            display: none; /* Ховаємо фліп під час обертання, щоб не заважав */
+        }
+        
+        /* Клітинки прямокутника */
+        #rect-grid-wrapper {
+            position: absolute; display: grid; gap: 2px; touch-action: none; cursor: grab;
+            background: rgba(0,0,0,0.1); padding: 2px; border-radius: 4px;
+        }
+        .grid-cell {
+            background: rgba(255,255,255,0.7); cursor: pointer; border: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        #global-color-picker { display: none; justify-content: center; gap: 15px; margin: 10px auto; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 10px; width: max-content; z-index: 5;}
+        .color-btn { width: 35px; height: 35px; border-radius: 50%; border: 2px solid #fff; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3);}
+        .color-btn.eraser { background: repeating-linear-gradient(45deg, #fff, #fff 5px, #ccc 5px, #ccc 10px); }
+        .color-btn.active { border: 3px solid #333; transform: scale(1.1); }
+        
+        /* Кнопки Лупи (+ та -) */
+        .zoom-controls {
+            position: fixed; left: 20px; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 10px; z-index: 80000;
+        }
+        .zoom-btn {
+            width: 50px; height: 50px; border-radius: 50%; background: #34495e;
+            color: white; font-size: 24px; border: none; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* Кнопка налаштувань (Фони) */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 50px; height: 50px; border-radius: 50%;
+            background: #2c3e50; color: white; font-size: 24px;
+            border: none; cursor: pointer; z-index: 80000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* Галерея фонів (Theme Manager) */
+        #theme-modal {
+            display: none; position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); width: 90%; max-width: 600px;
+            background: white; border-radius: 15px; padding: 20px;
+            z-index: 85000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        #theme-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        #theme-header h2 { margin: 0; font-size: 20px; }
+        #close-theme { font-size: 24px; cursor: pointer; background: none; border: none; }
+        
+        #theme-gallery {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px; max-height: 60vh; overflow-y: auto; padding-right: 10px;
+        }
+        .theme-card {
+            position: relative; border-radius: 10px; overflow: hidden;
+            cursor: pointer; border: 3px solid transparent; height: 90px;
+            background-color: #ddd; display: flex; align-items: center; justify-content: center;
+        }
+        .theme-card.active { border-color: #3498db; }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+        .theme-card span {
+            position: relative; z-index: 2; background: rgba(0,0,0,0.6);
+            color: white; padding: 2px 8px; border-radius: 5px; font-size: 12px; font-weight: bold;
+        }
+
+        /* Кнопка малювання */
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px;
+            width: 50px; height: 50px; border-radius: 50%;
+            background: #8e44ad; color: white; font-size: 24px;
+            border: none; cursor: pointer; z-index: 90001; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* Панель малювання */
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; right: 20px;
+            background: white; border-radius: 10px; padding: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 90002;
+            width: 250px;
+        }
+        #draw-panel-header {
+            cursor: grab; background: #ecf0f1; padding: 5px; text-align: center;
+            font-weight: bold; border-radius: 5px; margin-bottom: 10px; user-select: none;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        #draw-panel-close { cursor: pointer; background: none; border: none; font-size: 16px; font-weight: bold; }
+        .draw-controls { display: flex; flex-direction: column; gap: 8px; }
+        .draw-btn-group { display: flex; gap: 5px; }
+        .draw-tool-btn { flex: 1; padding: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 5px; }
+        .draw-tool-btn.active { background: #8e44ad; color: white; border-color: #8e44ad; }
+        #draw-clear-btn { background: #e74c3c; color: white; border: none; padding: 8px; border-radius: 5px; cursor: pointer; }
+        
+        /* Полотно для малювання */
+        #global-draw-canvas {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 90000;
+        }
+
+        /* Екран-заглушка блокування */
+        #block-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85); z-index: 999999;
+            justify-content: center; align-items: center;
+        }
+        #block-overlay h1 { color: red; font-size: 40px; text-align: center; }
+
+        @media (max-width: 768px) {
+            #nav-tabs { flex-direction: row; gap: 5px; padding: 5px;}
+            .tab-btn { font-size: 14px; padding: 5px 10px;}
+            #level-controls { transform: scale(0.9); }
+            #formula-display { top: auto; bottom: 20px; right: 90px; padding: 10px; }
+            #formula-text-container { font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">
+        <h1>Зачекай! Зараз не твій урок.</h1>
+    </div>
+
+    <!-- Лупа -->
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="changeZoom(0.1)">+</button>
+        <button class="zoom-btn" onclick="changeZoom(-0.1)">-</button>
+    </div>
+
+    <div id="zoom-container">
+        <div id="nav-tabs">
+            <button class="tab-btn active" onclick="loadLevel('rect')">Прямокутник</button>
+            <button class="tab-btn" onclick="loadLevel('rtri')">Прямокутний трикутник</button>
+            <button class="tab-btn" onclick="loadLevel('isosceles')">Рівнобедрений трикутник</button>
+            <button class="tab-btn" onclick="loadLevel('parallelogram')">Паралелограм</button>
+            <button class="tab-btn" onclick="loadLevel('rhombus')">Ромб</button>
+        </div>
+
+        <div id="workspace">
+            <div id="level-instruction">Заповни фігуру квадратиками!</div>
+            
+            <div id="level-controls"></div>
+
+            <div id="global-color-picker">
+                <div class="color-btn active" style="background:#e74c3c" onclick="selectShapeColor('#e74c3c', this)"></div>
+                <div class="color-btn" style="background:#3498db" onclick="selectShapeColor('#3498db', this)"></div>
+                <div class="color-btn" style="background:#f1c40f" onclick="selectShapeColor('#f1c40f', this)"></div>
+                <div class="color-btn" style="background:#2ecc71" onclick="selectShapeColor('#2ecc71', this)"></div>
+                <div class="color-btn eraser" onclick="selectShapeColor('transparent', this)" title="Стерти колір"></div>
+            </div>
+
+            <!-- Формула -->
+            <div id="formula-display">
+                <button id="toggle-formula-btn" onclick="toggleFormulaVisibility()">👁️ Сховати формулу</button>
+                <div id="formula-text-container">
+                    Площа:<br><span id="formula-text"></span>
+                </div>
+            </div>
+
+            <div id="shape-container"></div>
+        </div>
+    </div>
+
+    <!-- Theme Manager -->
+    <button id="theme-btn" onclick="openThemeModal()">⚙️</button>
+    <div id="theme-modal">
+        <div id="theme-header">
+            <h2>Обери фон</h2>
+            <button id="close-theme" onclick="closeThemeModal()">✕</button>
+        </div>
+        <div id="theme-gallery">
+            <div class="theme-card" onclick="selectTheme('none')">
+                <span style="z-index:3;">Без фону</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Глобальна малювалка -->
+    <canvas id="global-draw-canvas"></canvas>
+    <button id="toggle-draw-btn-global" onclick="toggleDrawPanel()">✏️</button>
+    <div id="draw-panel-global">
+        <div id="draw-panel-header">
+            Перетягни мене
+            <button id="draw-panel-close" onclick="toggleDrawPanel()">✕</button>
+        </div>
+        <div class="draw-controls">
+            <div class="draw-btn-group">
+                <button class="draw-tool-btn active" id="btn-pencil" onclick="setDrawTool('pencil')">✏️ Олівець</button>
+                <button class="draw-tool-btn" id="btn-eraser" onclick="setDrawTool('eraser')">🧽 Гумка</button>
+            </div>
+            <input type="range" id="draw-size" min="1" max="50" value="5">
+            <input type="color" id="draw-color" value="#ff0000">
+            <button id="draw-clear-btn" onclick="clearCanvasAction()">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. ІДЕНТИФІКАЦІЯ
+        // ==========================================
+        const CONFIG = { gameId: 'area_shapes_v6' };
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user') || sessionStorage.getItem('myName');
+        if (!myName) {
+            myName = "Гість_" + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('myName', myName);
+        const tabId = "tab_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+
+        // ==========================================
+        // 2. FIREBASE ТА УНІВЕРСАЛЬНИЙ КОНТРОЛЬ
+        // ==========================================
+        let db = null;
+        let isOffline = true;
+
+        try {
+            const firebaseConfig = { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/" };
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            isOffline = false;
+        } catch (error) {
+            console.warn("Firebase недоступний. Офлайн режим.");
+        }
+
+        if (!isOffline) {
+            const connectedRef = db.ref('.info/connected');
+            const myStatusRef = db.ref(`online_users/${myName}/${tabId}`);
+            
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    myStatusRef.set(true);
+                    myStatusRef.onDisconnect().remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => myStatusRef.remove());
+
+            db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+                const overlay = document.getElementById('block-overlay');
+                overlay.style.display = snap.val() === true ? 'flex' : 'none';
+            });
+
+            let isFirstRefreshRead = true;
+            db.ref('force_refresh').on('value', (snap) => {
+                if (isFirstRefreshRead) {
+                    isFirstRefreshRead = false;
+                    if (snap.val() === true) db.ref('force_refresh').set(false);
+                    return; 
+                }
+                if (snap.val() === true) window.location.reload();
+            });
+
+            let isFirstLobbyRead = true;
+            db.ref('current_activity').on('value', (snap) => {
+                if (isFirstLobbyRead) { isFirstLobbyRead = false; return; }
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+
+            db.ref(`games/${CONFIG.gameId}/theme`).on('value', (snap) => {
+                const url = snap.val();
+                if (url) applyTheme(url, false);
+            });
+        }
+
+        // ==========================================
+        // 3. ТЕМИ ТА ФОНИ (Theme Manager)
+        // ==========================================
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        
+        function openThemeModal() { themeModal.style.display = 'block'; }
+        function closeThemeModal() { themeModal.style.display = 'none'; }
+
+        const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedBg) applyTheme(savedBg, false);
+
+        async function loadThemes() {
+            let index = 1;
+            while (true) {
+                const url = `${baseUrl}background_${index}.webp`;
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    if (!response.ok) break; 
+                    
+                    const card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.innerHTML = `<img src="${url}" alt="Фон ${index}"><span>Фон ${index}</span>`;
+                    card.onclick = () => selectTheme(url);
+                    themeGallery.appendChild(card);
+                    index++;
+                } catch (e) { break; }
+            }
+        }
+        loadThemes();
+
+        function selectTheme(url) {
+            applyTheme(url, true);
+            closeThemeModal();
+        }
+
+        function applyTheme(url, sync) {
+            if (url === 'none') document.body.style.backgroundImage = 'none';
+            else document.body.style.backgroundImage = `url('${url}')`;
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            if (sync && !isOffline) db.ref(`games/${CONFIG.gameId}/theme`).set(url);
+        }
+
+        // ==========================================
+        // 4. МАСШТАБУВАННЯ (ЛУПА)
+        // ==========================================
+        let currentZoom = 1;
+        function changeZoom(delta) {
+            currentZoom += delta;
+            if (currentZoom < 0.3) currentZoom = 0.3;
+            if (currentZoom > 2.5) currentZoom = 2.5;
+            document.getElementById('zoom-container').style.transform = `scale(${currentZoom})`;
+        }
+
+        // ==========================================
+        // 5. ГЛОБАЛЬНА МАЛЮВАЛКА
+        // ==========================================
+        const drawCanvas = document.getElementById('global-draw-canvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        const drawPanel = document.getElementById('draw-panel-global');
+        
+        let isDrawing = false;
+        let currentTool = 'pencil';
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function toggleDrawPanel() {
+            if (drawPanel.style.display === 'block') {
+                drawPanel.style.display = 'none';
+                drawCanvas.style.pointerEvents = 'none';
+            } else {
+                drawPanel.style.display = 'block';
+                drawCanvas.style.pointerEvents = 'auto';
+                setDrawTool('pencil');
+            }
+        }
+
+        function setDrawTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.draw-tool-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-' + tool).classList.add('active');
+        }
+
+        function clearCanvasAction() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            if (!isOffline) {
+                db.ref(`games/${CONFIG.gameId}/game_action`).set({
+                    type: 'clear_canvas', senderId: myName, timestamp: Date.now()
+                });
+            }
+        }
+
+        function startPosition(e) { isDrawing = true; draw(e); }
+        function endPosition() { isDrawing = false; drawCtx.beginPath(); }
+        function draw(e) {
+            if (!isDrawing) return;
+            const rect = drawCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            drawCtx.lineWidth = document.getElementById('draw-size').value;
+            drawCtx.lineCap = 'round';
+            
+            if (currentTool === 'eraser') {
+                drawCtx.globalCompositeOperation = "destination-out";
+                drawCtx.strokeStyle = "rgba(0,0,0,1)";
+            } else {
+                drawCtx.globalCompositeOperation = "source-over";
+                drawCtx.strokeStyle = document.getElementById('draw-color').value;
+            }
+
+            drawCtx.lineTo(x, y);
+            drawCtx.stroke();
+            drawCtx.beginPath();
+            drawCtx.moveTo(x, y);
+
+            if (!isOffline) {
+                db.ref(`games/${CONFIG.gameId}/game_action`).set({
+                    type: 'draw_line', x: x / window.innerWidth, y: y / window.innerHeight,
+                    color: drawCtx.strokeStyle, size: drawCtx.lineWidth, 
+                    tool: currentTool, senderId: myName, timestamp: Date.now()
+                });
+            }
+        }
+
+        drawCanvas.addEventListener('pointerdown', startPosition);
+        drawCanvas.addEventListener('pointerup', endPosition);
+        drawCanvas.addEventListener('pointermove', draw);
+
+        if (!isOffline) {
+            let lastDrawStamp = 0;
+            db.ref(`games/${CONFIG.gameId}/game_action`).on('value', (snap) => {
+                const data = snap.val();
+                if (!data || data.senderId === myName || data.timestamp <= lastDrawStamp) return;
+                lastDrawStamp = data.timestamp;
+
+                if (data.type === 'clear_canvas') {
+                    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                } else if (data.type === 'draw_line') {
+                    drawCtx.lineWidth = data.size;
+                    drawCtx.lineCap = 'round';
+                    if (data.tool === 'eraser') {
+                        drawCtx.globalCompositeOperation = "destination-out";
+                        drawCtx.strokeStyle = "rgba(0,0,0,1)";
+                    } else {
+                        drawCtx.globalCompositeOperation = "source-over";
+                        drawCtx.strokeStyle = data.color;
+                    }
+                    const realX = data.x * window.innerWidth;
+                    const realY = data.y * window.innerHeight;
+                    drawCtx.lineTo(realX, realY);
+                    drawCtx.stroke();
+                    drawCtx.beginPath();
+                    drawCtx.moveTo(realX, realY);
+                }
+            });
+        }
+
+        const drawHeader = document.getElementById('draw-panel-header');
+        let isDraggingPanel = false, panX = 0, panY = 0;
+        drawHeader.addEventListener('pointerdown', (e) => {
+            if(e.target.id === 'draw-panel-close') return;
+            isDraggingPanel = true;
+            panX = e.clientX - drawPanel.getBoundingClientRect().left;
+            panY = e.clientY - drawPanel.getBoundingClientRect().top;
+        });
+        document.addEventListener('pointermove', (e) => {
+            if (isDraggingPanel) {
+                drawPanel.style.left = (e.clientX - panX) + 'px';
+                drawPanel.style.top = (e.clientY - panY) + 'px';
+                drawPanel.style.right = 'auto';
+            }
+        });
+        document.addEventListener('pointerup', () => isDraggingPanel = false);
+
+        // ==========================================
+        // 6. ІГРОВА ЛОГІКА ТА ОБЕРТАННЯ
+        // ==========================================
+        let currentLevel = 'rect';
+        let currentColor = '#e74c3c';
+        const shapeContainer = document.getElementById('shape-container');
+        const instruction = document.getElementById('level-instruction');
+        const controlsPanel = document.getElementById('level-controls');
+        const globalColorPicker = document.getElementById('global-color-picker');
+        
+        // Формула
+        const formulaDisplay = document.getElementById('formula-display');
+        const formulaTextContainer = document.getElementById('formula-text-container');
+        const formulaText = document.getElementById('formula-text');
+        const toggleFormulaBtn = document.getElementById('toggle-formula-btn');
+        let isFormulaVisible = true;
+
+        function toggleFormulaVisibility() {
+            isFormulaVisible = !isFormulaVisible;
+            if (isFormulaVisible) {
+                formulaTextContainer.style.display = 'block';
+                toggleFormulaBtn.innerText = '👁️ Сховати формулу';
+            } else {
+                formulaTextContainer.style.display = 'none';
+                toggleFormulaBtn.innerText = '👁️ Показати формулу';
+            }
+        }
+
+        function selectShapeColor(color, btn) {
+            currentColor = color;
+            document.querySelectorAll('#global-color-picker .color-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        // Клік по контейнеру знімає виділення з усіх фігур
+        shapeContainer.addEventListener('pointerdown', (e) => {
+            if(e.target === shapeContainer) {
+                document.querySelectorAll('.shape-wrapper').forEach(w => w.classList.remove('selected'));
+            }
+        });
+
+        function loadLevel(level) {
+            currentLevel = level;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            event?.currentTarget?.classList.add('active');
+            shapeContainer.innerHTML = ''; 
+            controlsPanel.innerHTML = '';
+            globalColorPicker.style.display = 'none';
+            formulaDisplay.style.display = 'flex';
+            
+            if (level === 'rect') {
+                formulaText.innerHTML = "S = a &times; b";
+                initRect();
+            } else if (level === 'rtri') {
+                formulaText.innerHTML = "S = (a &times; b) / 2";
+                initRightTriangle();
+            } else if (level === 'isosceles') {
+                formulaText.innerHTML = "S = (a &times; h) / 2";
+                initIsosceles();
+            } else if (level === 'parallelogram') {
+                formulaText.innerHTML = "S = a &times; h";
+                initParallelogram();
+            } else if (level === 'rhombus') {
+                formulaText.innerHTML = "S = (d₁ &times; d₂) / 2";
+                initRhombus();
+            }
+        }
+
+        function makeElementInteractive(wrapper, isGrid = false) {
+            let startX = 0, startY = 0, x = parseFloat(wrapper.dataset.x || 0), y = parseFloat(wrapper.dataset.y || 0);
+            let angle = parseFloat(wrapper.dataset.angle || 0);
+            
+            wrapper.dataset.x = x; wrapper.dataset.y = y; wrapper.dataset.angle = angle;
+            wrapper.dataset.scaleX = 1; // Для віддзеркалення
+            updateTransform(wrapper);
+            
+            if(!isGrid) {
+                // Ручка обертання
+                let rotHandle = document.createElement('div');
+                rotHandle.className = 'rot-handle';
+                
+                // Ручка віддзеркалення (перегортання)
+                let flipHandle = document.createElement('div');
+                flipHandle.className = 'flip-handle';
+                flipHandle.innerHTML = '↔';
+                
+                wrapper.appendChild(rotHandle);
+                wrapper.appendChild(flipHandle);
+                
+                let isRotating = false;
+                let startAngle = 0;
+
+                rotHandle.onpointerdown = (e) => {
+                    e.stopPropagation(); e.preventDefault();
+                    isRotating = true;
+                    wrapper.classList.add('active');
+                    const rect = wrapper.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    
+                    startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI - parseFloat(wrapper.dataset.angle);
+                    
+                    document.onpointermove = (moveEvent) => {
+                        if (!isRotating) return;
+                        let a = Math.atan2(moveEvent.clientY - centerY, moveEvent.clientX - centerX) * 180 / Math.PI;
+                        wrapper.dataset.angle = a - startAngle;
+                        updateTransform(wrapper);
+                    };
+                    document.onpointerup = () => {
+                        isRotating = false;
+                        wrapper.classList.remove('active');
+                        document.onpointermove = null; document.onpointerup = null;
+                    };
+                };
+
+                flipHandle.onpointerdown = (e) => {
+                    e.stopPropagation(); e.preventDefault();
+                    wrapper.dataset.scaleX = wrapper.dataset.scaleX == 1 ? -1 : 1;
+                    updateTransform(wrapper);
+                };
+            }
+
+            const targetElement = isGrid ? wrapper : wrapper.querySelector('.shape-element');
+            if(targetElement) {
+                targetElement.onpointerdown = (e) => {
+                    // Виділяємо поточну фігуру (показуємо крутілки)
+                    if(!isGrid) {
+                        document.querySelectorAll('.shape-wrapper').forEach(w => w.classList.remove('selected'));
+                        wrapper.classList.add('selected');
+                    }
+
+                    // Якщо клікнули на лінію сторони для фарбування
+                    if(e.target.tagName === 'line' && globalColorPicker.style.display === 'flex' && currentColor) {
+                        e.stopPropagation(); e.preventDefault();
+                        e.target.setAttribute("stroke", currentColor === 'transparent' ? 'transparent' : currentColor);
+                        e.target.parentNode.appendChild(e.target);
+                        return;
+                    }
+
+                    if(e.target.classList.contains('grid-cell') || e.target.classList.contains('rot-handle') || e.target.classList.contains('flip-handle')) return; 
+
+                    e.preventDefault(); e.stopPropagation();
+                    startX = e.clientX; startY = e.clientY;
+                    wrapper.style.zIndex = 1000;
+                    
+                    document.onpointermove = (moveEvent) => {
+                        moveEvent.preventDefault();
+                        let dx = (moveEvent.clientX - startX) / currentZoom;
+                        let dy = (moveEvent.clientY - startY) / currentZoom;
+                        startX = moveEvent.clientX; startY = moveEvent.clientY;
+                        
+                        wrapper.dataset.x = parseFloat(wrapper.dataset.x) + dx;
+                        wrapper.dataset.y = parseFloat(wrapper.dataset.y) + dy;
+                        updateTransform(wrapper);
+                    };
+                    document.onpointerup = () => {
+                        document.onpointermove = null; document.onpointerup = null;
+                        wrapper.style.zIndex = 1;
+                    };
+                };
+            }
+        }
+
+        function updateTransform(el) {
+            el.style.transform = `translate(${el.dataset.x}px, ${el.dataset.y}px) rotate(${el.dataset.angle}deg) scaleX(${el.dataset.scaleX})`;
+        }
+
+        function createSVGWrapper(points, color, w, h, left, top) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'shape-wrapper';
+            wrapper.style.width = w + 'px';
+            wrapper.style.height = h + 'px';
+            wrapper.dataset.x = left;
+            wrapper.dataset.y = top;
+            wrapper.dataset.angle = 0;
+            wrapper.dataset.scaleX = 1;
+
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "shape-element");
+            svg.setAttribute("width", "100%");
+            svg.setAttribute("height", "100%");
+            
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("points", points);
+            polygon.setAttribute("fill", color);
+            polygon.setAttribute("stroke", "#2c3e50");
+            polygon.setAttribute("stroke-width", "2");
+            svg.appendChild(polygon);
+
+            // Товсті лінії для кожної сторони (щоб їх можна було розфарбовувати)
+            const ptArray = points.trim().split(/\s+/).map(p => p.split(',').map(Number));
+            for (let i = 0; i < ptArray.length; i++) {
+                let p1 = ptArray[i];
+                let p2 = ptArray[(i + 1) % ptArray.length];
+                let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", p1[0]);
+                line.setAttribute("y1", p1[1]);
+                line.setAttribute("x2", p2[0]);
+                line.setAttribute("y2", p2[1]);
+                line.setAttribute("stroke", "transparent");
+                line.setAttribute("stroke-width", "18");
+                line.setAttribute("stroke-linecap", "round");
+                line.style.cursor = "pointer";
+                svg.appendChild(line);
+            }
+
+            wrapper.appendChild(svg);
+            shapeContainer.appendChild(wrapper);
+            makeElementInteractive(wrapper);
+            return wrapper;
+        }
+
+        // --- РІВЕНЬ 1: Прямокутник ---
+        function initRect() {
+            instruction.innerText = "Заповни фігуру квадратиками!";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <div class="control-group">Рядки: <input id="r-rows" type="number" value="4" min="1" max="15"></div>
+                <div class="control-group">Стовпці: <input id="r-cols" type="number" value="6" min="1" max="15"></div>
+                <button class="action-btn" onclick="drawRectGrid()">Створити</button>
+            `;
+            drawRectGrid();
+        }
+
+        function drawRectGrid() {
+            shapeContainer.innerHTML = '';
+            const rows = document.getElementById('r-rows').value;
+            const cols = document.getElementById('r-cols').value;
+            const cellSize = 50;
+
+            const wrapper = document.createElement('div');
+            wrapper.id = 'rect-grid-wrapper';
+            wrapper.dataset.x = 100; wrapper.dataset.y = 50; wrapper.dataset.angle = 0;
+            wrapper.dataset.scaleX = 1;
+            wrapper.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+            wrapper.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
+            
+            for(let i=0; i < rows*cols; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'grid-cell';
+                cell.onpointerdown = (e) => { 
+                    e.stopPropagation(); 
+                    cell.style.backgroundColor = (currentColor === 'transparent') ? '' : currentColor; 
+                };
+                cell.onpointerenter = (e) => {
+                    if(e.buttons > 0) cell.style.backgroundColor = (currentColor === 'transparent') ? '' : currentColor;
+                };
+                wrapper.appendChild(cell);
+            }
+            shapeContainer.appendChild(wrapper);
+            makeElementInteractive(wrapper, true);
+        }
+
+        // --- РІВЕНЬ 2: Прямокутний трикутник ---
+        function initRightTriangle() {
+            instruction.innerText = "Клікай на сторони, щоб їх розфарбувати. Зроби копію і склади фігуру!";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <div class="control-group">Ширина: <input id="rt-w" type="number" value="200" step="10"></div>
+                <div class="control-group">Висота: <input id="rt-h" type="number" value="200" step="10"></div>
+                <button class="action-btn" onclick="drawRightTriangle()">Оновити фігуру</button>
+                <button class="action-btn" onclick="copyRightTriangle()">➕ Копія</button>
+                <button class="action-btn reset" onclick="initRightTriangle()">🔄 Спочатку</button>
+            `;
+            drawRightTriangle();
+        }
+
+        let mainRightTriData = {};
+        function drawRightTriangle() {
+            shapeContainer.innerHTML = '';
+            const w = document.getElementById('rt-w').value;
+            const h = document.getElementById('rt-h').value;
+            mainRightTriData = {w, h};
+            createSVGWrapper(`0,${h} ${w},${h} 0,0`, "rgba(231, 76, 60, 0.3)", w, h, 200, 100);
+        }
+        function copyRightTriangle() {
+            const {w, h} = mainRightTriData;
+            createSVGWrapper(`0,${h} ${w},${h} 0,0`, "rgba(52, 152, 219, 0.3)", w, h, 450, 100);
+        }
+
+        // --- РІВЕНЬ 3: Рівнобедрений трикутник ---
+        function initIsosceles() {
+            instruction.innerText = "Розріж навпіл і склади фігури! (Клікай на сторони, щоб розфарбувати їх)";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <div class="control-group">Основа: <input id="iso-w" type="number" value="300" step="10"></div>
+                <div class="control-group">Висота: <input id="iso-h" type="number" value="200" step="10"></div>
+                <button class="action-btn" onclick="drawIsosceles()">Оновити фігуру</button>
+                <button class="action-btn" onclick="cutIsosceles()">✂️ Розрізати</button>
+                <button class="action-btn reset" onclick="initIsosceles()">🔄 Спочатку</button>
+            `;
+            drawIsosceles();
+        }
+
+        let mainIso;
+        function drawIsosceles() {
+            shapeContainer.innerHTML = '';
+            const w = document.getElementById('iso-w').value;
+            const h = document.getElementById('iso-h').value;
+            mainIso = createSVGWrapper(`${w/2},0 ${w},${h} 0,${h}`, "rgba(155, 89, 182, 0.3)", w, h, 250, 100);
+        }
+        function cutIsosceles() {
+            if(!mainIso) return;
+            const w = parseFloat(document.getElementById('iso-w').value);
+            const h = parseFloat(document.getElementById('iso-h').value);
+            const startX = parseFloat(mainIso.dataset.x);
+            const startY = parseFloat(mainIso.dataset.y);
+            shapeContainer.removeChild(mainIso);
+            mainIso = null;
+
+            createSVGWrapper(`${w/2},0 ${w/2},${h} 0,${h}`, "rgba(155, 89, 182, 0.3)", w/2, h, startX, startY);
+            createSVGWrapper(`0,0 ${w/2},${h} 0,${h}`, "rgba(142, 68, 173, 0.3)", w/2, h, startX + w/2, startY);
+        }
+
+        // --- РІВЕНЬ 4: Паралелограм ---
+        function initParallelogram() {
+            instruction.innerText = "Відріж трикутник і перемісти його куди потрібно! Можеш пофарбувати сторони.";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <button class="action-btn" onclick="cutParallelogram()">✂️ Відрізати трикутник</button>
+                <button class="action-btn reset" onclick="initParallelogram()">🔄 Спочатку</button>
+            `;
+            drawParallelogram();
+        }
+
+        let mainParallelogram;
+        function drawParallelogram() {
+            shapeContainer.innerHTML = '';
+            mainParallelogram = createSVGWrapper(`100,0 400,0 300,200 0,200`, "rgba(241, 196, 15, 0.3)", 400, 200, 200, 100);
+        }
+        function cutParallelogram() {
+            if(!mainParallelogram) return;
+            const startX = parseFloat(mainParallelogram.dataset.x);
+            const startY = parseFloat(mainParallelogram.dataset.y);
+            shapeContainer.removeChild(mainParallelogram);
+            mainParallelogram = null;
+
+            createSVGWrapper(`100,0 100,200 0,200`, "rgba(243, 156, 18, 0.3)", 100, 200, startX, startY);
+            createSVGWrapper(`0,0 300,0 200,200 0,200`, "rgba(241, 196, 15, 0.3)", 300, 200, startX + 100, startY);
+        }
+
+        // --- РІВЕНЬ 5: Ромб ---
+        function initRhombus() {
+            instruction.innerText = "Розріж на 4 частини! (Обери колір і клікай на конкретну сторону)";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <button class="action-btn" onclick="cutRhombus()">✂️ Розрізати на 4 частини</button>
+                <button class="action-btn" onclick="addRhombusTriangle()">➕ Додати трикутник</button>
+                <button class="action-btn reset" onclick="initRhombus()">🔄 Спочатку</button>
+            `;
+            drawRhombus();
+        }
+
+        let mainRhombus;
+        function drawRhombus() {
+            shapeContainer.innerHTML = '';
+            mainRhombus = createSVGWrapper(`150,0 300,100 150,200 0,100`, "rgba(26, 188, 156, 0.3)", 300, 200, 250, 100);
+        }
+        function cutRhombus() {
+            if(!mainRhombus) return;
+            const startX = parseFloat(mainRhombus.dataset.x);
+            const startY = parseFloat(mainRhombus.dataset.y);
+            shapeContainer.removeChild(mainRhombus);
+            mainRhombus = null;
+
+            createSVGWrapper(`0,100 150,100 0,0`, "rgba(26, 188, 156, 0.3)", 150, 100, startX + 150, startY); 
+            createSVGWrapper(`150,100 150,0 0,100`, "rgba(22, 160, 133, 0.3)", 150, 100, startX, startY); 
+            createSVGWrapper(`150,0 150,100 0,0`, "rgba(26, 188, 156, 0.3)", 150, 100, startX, startY + 100); 
+            createSVGWrapper(`0,0 0,100 150,0`, "rgba(22, 160, 133, 0.3)", 150, 100, startX + 150, startY + 100); 
+        }
+        function addRhombusTriangle() {
+            createSVGWrapper(`0,100 150,100 0,0`, "rgba(52, 152, 219, 0.3)", 150, 100, 450, 150);
+        }
+
+        // Запуск
+        loadLevel('rect');
+    </script>
+</body>
+</html>
