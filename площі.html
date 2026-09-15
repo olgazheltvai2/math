@@ -69,7 +69,7 @@
             background: rgba(255, 255, 255, 0.9); padding: 10px 15px; 
             border-radius: 12px; border: 3px solid #3498db; 
             box-shadow: 0 4px 10px rgba(0,0,0,0.2); display: none; z-index: 5;
-            text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px;
+            text-align: center; flex-direction: column; align-items: center; gap: 5px;
         }
         #toggle-formula-btn {
             background: #3498db; color: white; border: none; border-radius: 5px;
@@ -93,8 +93,8 @@
             margin-top: 10px; background: transparent; touch-action: none;
         }
 
-        /* Секретне поле */
-        .secret-input { color: transparent; caret-color: transparent; border: 1px solid #ccc; padding: 5px;}
+        /* Секретне поле (вимога) */
+        .secret-input { color: transparent; caret-color: transparent; border: 1px solid #ccc; padding: 5px; border-radius: 5px;}
         .secret-input.visible { color: black; caret-color: black; }
 
         /* Обгортка для фігур та поворотів */
@@ -106,7 +106,7 @@
         }
         .shape-element:active { cursor: grabbing; }
 
-        /* Ручки для обертання та віддзеркалення (З'являються ТІЛЬКИ при виділенні) */
+        /* Ручки для обертання та віддзеркалення */
         .rot-handle {
             position: absolute; top: -55px; left: 50%; transform: translateX(-50%);
             width: 45px; height: 45px; background: rgba(52, 152, 219, 0.2); border: 2px dashed #2980b9;
@@ -126,7 +126,6 @@
             font-size: 24px; color: #27ae60; user-select: none; touch-action: none; font-weight: bold;
         }
         
-        /* З'являються тільки коли фігура має клас selected */
         .shape-wrapper.selected .rot-handle,
         .shape-wrapper.selected .flip-handle {
             display: flex;
@@ -287,7 +286,7 @@
 
             <!-- Формула -->
             <div id="formula-display">
-                <button id="toggle-formula-btn" onclick="toggleFormulaVisibility(false)">👁️ Сховати формулу</button>
+                <button id="toggle-formula-btn" onclick="toggleFormulaVisibility()">👁️ Сховати формулу</button>
                 <div id="formula-text-container">
                     Площа:<br><span id="formula-text"></span>
                 </div>
@@ -329,11 +328,12 @@
             <button id="draw-clear-btn" onclick="clearCanvasAction()">🗑️ Очистити</button>
         </div>
     </div>
+
     <script>
         // ==========================================
         // 1. ІДЕНТИФІКАЦІЯ ТА КОНФІГУРАЦІЯ
         // ==========================================
-        const CONFIG = { gameId: 'area_shapes_v7' };
+        const CONFIG = { gameId: 'area_shapes_v8_sync_fixed' };
         
         const urlParams = new URLSearchParams(window.location.search);
         let myName = urlParams.get('user') || sessionStorage.getItem('myName');
@@ -343,8 +343,7 @@
         sessionStorage.setItem('myName', myName);
         const tabId = "tab_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
 
-        // Прапорець для уникнення зациклення під час синхронізації
-        let isRemoteAction = false;
+        let isRemoteAction = false; // Прапорець для запобігання зацикленню синхронізації
 
         // ==========================================
         // 2. FIREBASE ТА УНІВЕРСАЛЬНИЙ КОНТРОЛЬ
@@ -392,7 +391,7 @@
                 if (snap.val() === true) window.location.reload();
             });
 
-            // Повернення в лоббі з імунітетом
+            // Повернення в лоббі
             let isFirstLobbyRead = true;
             db.ref('current_activity').on('value', (snap) => {
                 if (isFirstLobbyRead) { isFirstLobbyRead = false; return; }
@@ -422,14 +421,14 @@
         const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
         if (savedBg) applyTheme(savedBg, false);
 
-        // Строго послідовне завантаження
+        // Послідовне завантаження (як замовлено)
         async function loadThemes() {
             let index = 1;
             while (true) {
                 const url = `${baseUrl}background_${index}.webp`;
                 try {
                     const response = await fetch(url, { method: 'HEAD' });
-                    if (!response.ok) break; // Негайна зупинка при 404
+                    if (!response.ok) break; 
                     
                     const card = document.createElement('div');
                     card.className = 'theme-card';
@@ -594,12 +593,10 @@
         });
         document.addEventListener('pointerup', () => isDraggingPanel = false);
 
-
         // ==========================================
-        // 6. ІГРОВА ЛОГІКА ТА СИНХРОНІЗАЦІЯ ДІЙ
+        // 6. ІГРОВА ЛОГІКА ТА ТОТАЛЬНА СИНХРОНІЗАЦІЯ
         // ==========================================
         
-        // Централізована відправка ігрових дій (Синхронізація)
         function sendGameAction(type, data) {
             if (isOffline || isRemoteAction) return;
             db.ref(`games/${CONFIG.gameId}/game_action`).set({
@@ -610,7 +607,6 @@
             });
         }
 
-        // Слухач ігрових дій
         if (!isOffline) {
             let lastGameActionStamp = 0;
             db.ref(`games/${CONFIG.gameId}/game_action`).on('value', (snap) => {
@@ -618,7 +614,7 @@
                 if (!action || action.senderId === myName || action.timestamp <= lastGameActionStamp) return;
                 lastGameActionStamp = action.timestamp;
                 
-                isRemoteAction = true; // Запобігаємо зацикленню
+                isRemoteAction = true; 
                 handleRemoteAction(action.type, action.data);
                 isRemoteAction = false;
             });
@@ -628,7 +624,7 @@
             if (type === 'LOAD_LEVEL') {
                 loadLevel(data.level, true);
             } else if (type === 'TOGGLE_FORMULA') {
-                toggleFormulaVisibility(true);
+                toggleFormulaVisibility(data.state, true);
             } else if (type === 'TRANSFORM_SHAPE') {
                 const el = document.getElementById(data.id);
                 if (el) {
@@ -639,32 +635,38 @@
             } else if (type === 'COLOR_LINE') {
                 const el = document.getElementById(data.id);
                 if (el) {
-                    const lines = el.querySelectorAll('line');
-                    if (lines[data.index]) lines[data.index].setAttribute("stroke", data.color);
+                    // Шукаємо за статичним індексом для надійності
+                    const line = el.querySelector(`line[data-line-index="${data.index}"]`);
+                    if (line) {
+                        line.setAttribute("stroke", data.color);
+                        line.parentNode.appendChild(line); // Виносимо наперед
+                    }
                 }
             } else if (type === 'COLOR_CELL') {
-                const cells = document.querySelectorAll('.grid-cell');
+                const cells = document.querySelectorAll('#rect-grid-wrapper .grid-cell');
                 if (cells[data.index]) cells[data.index].style.backgroundColor = data.color;
             } else if (type === 'ACTION_BTN') {
-                // Виклик кнопок (Створити, Розрізати, Копія)
                 if (data.action === 'drawRectGrid') {
                     document.getElementById('r-rows').value = data.rows;
                     document.getElementById('r-cols').value = data.cols;
                     drawRectGrid();
-                }
-                else if (data.action === 'drawRightTriangle') {
+                } else if (data.action === 'drawRightTriangle') {
                     document.getElementById('rt-w').value = data.w; document.getElementById('rt-h').value = data.h;
                     drawRightTriangle();
-                }
-                else if (data.action === 'copyRightTriangle') copyRightTriangle();
-                else if (data.action === 'drawIsosceles') {
+                } else if (data.action === 'copyRightTriangle') {
+                    copyRightTriangle(data.newId);
+                } else if (data.action === 'drawIsosceles') {
                     document.getElementById('iso-w').value = data.w; document.getElementById('iso-h').value = data.h;
                     drawIsosceles();
+                } else if (data.action === 'cutIsosceles') {
+                    cutIsosceles();
+                } else if (data.action === 'cutParallelogram') {
+                    cutParallelogram();
+                } else if (data.action === 'cutRhombus') {
+                    cutRhombus();
+                } else if (data.action === 'addRhombusTriangle') {
+                    addRhombusTriangle(data.newId);
                 }
-                else if (data.action === 'cutIsosceles') cutIsosceles();
-                else if (data.action === 'cutParallelogram') cutParallelogram();
-                else if (data.action === 'cutRhombus') cutRhombus();
-                else if (data.action === 'addRhombusTriangle') addRhombusTriangle();
             }
         }
 
@@ -681,14 +683,15 @@
         const toggleFormulaBtn = document.getElementById('toggle-formula-btn');
         let isFormulaVisible = true;
 
-        // Секретне поле (перемикач видимості)
         window.toggleSecret = function(id) {
             const el = document.getElementById(id);
             if(el) el.classList.toggle('visible');
         };
 
-        function toggleFormulaVisibility(isRemote = false) {
-            isFormulaVisible = !isFormulaVisible;
+        function toggleFormulaVisibility(forcedState = null, isRemote = false) {
+            if (forcedState !== null) isFormulaVisible = forcedState;
+            else isFormulaVisible = !isFormulaVisible;
+            
             if (isFormulaVisible) {
                 formulaTextContainer.style.display = 'block';
                 toggleFormulaBtn.innerText = '👁️ Сховати формулу';
@@ -696,7 +699,7 @@
                 formulaTextContainer.style.display = 'none';
                 toggleFormulaBtn.innerText = '👁️ Показати формулу';
             }
-            if(!isRemote) sendGameAction('TOGGLE_FORMULA', {});
+            if(!isRemote && !isRemoteAction) sendGameAction('TOGGLE_FORMULA', { state: isFormulaVisible });
         }
 
         function selectShapeColor(color, btn) {
@@ -723,7 +726,6 @@
             globalColorPicker.style.display = 'none';
             formulaDisplay.style.display = 'flex';
             
-            // Завжди додаємо секретне поле до панелі управління (вимога)
             const secretHTML = `
                 <div class="control-group" style="margin-left: 20px; border-left: 2px solid #ccc; padding-left: 10px;">
                     <input type="text" class="secret-input" id="secret-note" placeholder="Нотатки (секретно)" title="Діти не бачать текст">
@@ -748,7 +750,7 @@
                 initRhombus(secretHTML);
             }
 
-            if(!isRemote) sendGameAction('LOAD_LEVEL', { level });
+            if(!isRemote && !isRemoteAction) sendGameAction('LOAD_LEVEL', { level });
         }
 
         function makeElementInteractive(wrapper, isGrid = false) {
@@ -762,7 +764,6 @@
             if(!isGrid) {
                 let rotHandle = document.createElement('div');
                 rotHandle.className = 'rot-handle';
-                
                 let flipHandle = document.createElement('div');
                 flipHandle.className = 'flip-handle';
                 flipHandle.innerHTML = '↔';
@@ -789,7 +790,6 @@
                         wrapper.dataset.angle = a - startAngle;
                         updateTransform(wrapper);
                         
-                        // Синхронізація повороту
                         sendGameAction('TRANSFORM_SHAPE', {
                             id: wrapper.id, x: wrapper.dataset.x, y: wrapper.dataset.y, 
                             angle: wrapper.dataset.angle, scaleX: wrapper.dataset.scaleX
@@ -805,6 +805,7 @@
                     e.stopPropagation(); e.preventDefault();
                     wrapper.dataset.scaleX = wrapper.dataset.scaleX == 1 ? -1 : 1;
                     updateTransform(wrapper);
+                    
                     sendGameAction('TRANSFORM_SHAPE', {
                         id: wrapper.id, x: wrapper.dataset.x, y: wrapper.dataset.y, 
                         angle: wrapper.dataset.angle, scaleX: wrapper.dataset.scaleX
@@ -820,17 +821,14 @@
                         wrapper.classList.add('selected');
                     }
 
-                    // Фарбування ліній
                     if(e.target.tagName === 'line' && globalColorPicker.style.display === 'flex' && currentColor) {
                         e.stopPropagation(); e.preventDefault();
                         const colorToSet = currentColor === 'transparent' ? 'transparent' : currentColor;
                         e.target.setAttribute("stroke", colorToSet);
                         e.target.parentNode.appendChild(e.target);
                         
-                        // Шукаємо індекс лінії для синхронізації
-                        const allLines = Array.from(wrapper.querySelectorAll('line'));
-                        const lineIndex = allLines.indexOf(e.target);
-                        sendGameAction('COLOR_LINE', { id: wrapper.id, index: lineIndex, color: colorToSet });
+                        const staticIndex = e.target.getAttribute("data-line-index");
+                        sendGameAction('COLOR_LINE', { id: wrapper.id, index: staticIndex, color: colorToSet });
                         return;
                     }
 
@@ -850,7 +848,6 @@
                         wrapper.dataset.y = parseFloat(wrapper.dataset.y) + dy;
                         updateTransform(wrapper);
                         
-                        // Синхронізація перетягування
                         sendGameAction('TRANSFORM_SHAPE', {
                             id: wrapper.id, x: wrapper.dataset.x, y: wrapper.dataset.y, 
                             angle: wrapper.dataset.angle, scaleX: wrapper.dataset.scaleX
@@ -868,7 +865,6 @@
             el.style.transform = `translate(${el.dataset.x}px, ${el.dataset.y}px) rotate(${el.dataset.angle}deg) scaleX(${el.dataset.scaleX})`;
         }
 
-        // Додано параметр ID для ідентифікації при синхронізації
         function createSVGWrapper(points, color, w, h, left, top, id = null) {
             const wrapper = document.createElement('div');
             wrapper.id = id || ('shape_' + Math.random().toString(36).substr(2, 9));
@@ -898,6 +894,7 @@
                 line.setAttribute("stroke", "transparent");
                 line.setAttribute("stroke-width", "18");
                 line.setAttribute("stroke-linecap", "round");
+                line.setAttribute("data-line-index", i); // СТАТИЧНИЙ ІНДЕКС
                 line.style.cursor = "pointer";
                 svg.appendChild(line);
             }
@@ -951,7 +948,7 @@
                 <button class="action-btn" onclick="drawRectGrid()">Створити</button>
                 ${secretHTML}
             `;
-            if(!isRemoteAction) drawRectGrid();
+            drawRectGrid();
         }
 
         // --- РІВЕНЬ 2: Прямокутний трикутник ---
@@ -962,11 +959,12 @@
             createSVGWrapper(`0,${h} ${w},${h} 0,0`, "rgba(231, 76, 60, 0.3)", w, h, 200, 100, 'rt_main');
             if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'drawRightTriangle', w, h });
         };
-        window.copyRightTriangle = function() {
+        window.copyRightTriangle = function(remoteId = null) {
             const w = document.getElementById('rt-w').value;
             const h = document.getElementById('rt-h').value;
-            createSVGWrapper(`0,${h} ${w},${h} 0,0`, "rgba(52, 152, 219, 0.3)", w, h, 450, 100, 'rt_copy_' + Date.now());
-            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'copyRightTriangle' });
+            const newId = remoteId || ('rt_copy_' + Date.now() + Math.floor(Math.random()*1000));
+            createSVGWrapper(`0,${h} ${w},${h} 0,0`, "rgba(52, 152, 219, 0.3)", w, h, 450, 100, newId);
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'copyRightTriangle', newId: newId });
         };
 
         function initRightTriangle(secretHTML) {
@@ -980,7 +978,7 @@
                 <button class="action-btn reset" onclick="loadLevel('rtri')">🔄 Спочатку</button>
                 ${secretHTML}
             `;
-            if(!isRemoteAction) drawRightTriangle();
+            drawRightTriangle();
         }
 
         // --- РІВЕНЬ 3: Рівнобедрений трикутник ---
@@ -1016,7 +1014,7 @@
                 <button class="action-btn reset" onclick="loadLevel('isosceles')">🔄 Спочатку</button>
                 ${secretHTML}
             `;
-            if(!isRemoteAction) drawIsosceles();
+            drawIsosceles();
         }
 
         // --- РІВЕНЬ 4: Паралелограм ---
@@ -1044,7 +1042,7 @@
                 <button class="action-btn reset" onclick="loadLevel('parallelogram')">🔄 Спочатку</button>
                 ${secretHTML}
             `;
-            if(!isRemoteAction) drawParallelogram();
+            drawParallelogram();
         }
 
         // --- РІВЕНЬ 5: Ромб ---
@@ -1066,9 +1064,10 @@
             
             if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'cutRhombus' });
         };
-        window.addRhombusTriangle = function() {
-            createSVGWrapper(`0,100 150,100 0,0`, "rgba(52, 152, 219, 0.3)", 150, 100, 450, 150, 'rh_extra_' + Date.now());
-            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'addRhombusTriangle' });
+        window.addRhombusTriangle = function(remoteId = null) {
+            const newId = remoteId || ('rh_extra_' + Date.now() + Math.floor(Math.random()*1000));
+            createSVGWrapper(`0,100 150,100 0,0`, "rgba(52, 152, 219, 0.3)", 150, 100, 450, 150, newId);
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'addRhombusTriangle', newId: newId });
         };
 
         function initRhombus(secretHTML) {
@@ -1080,7 +1079,7 @@
                 <button class="action-btn reset" onclick="loadLevel('rhombus')">🔄 Спочатку</button>
                 ${secretHTML}
             `;
-            if(!isRemoteAction) drawRhombus();
+            drawRhombus();
         }
 
         // Запуск
