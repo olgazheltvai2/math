@@ -329,3 +329,762 @@
             <button id="draw-clear-btn" onclick="clearCanvasAction()">🗑️ Очистити</button>
         </div>
     </div>
+    <script>
+        // ==========================================
+        // 1. ІДЕНТИФІКАЦІЯ ТА КОНФІГУРАЦІЯ
+        // ==========================================
+        const CONFIG = { gameId: 'area_shapes_v7' };
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user') || sessionStorage.getItem('myName');
+        if (!myName) {
+            myName = "Гість_" + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('myName', myName);
+        const tabId = "tab_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+
+        // Прапорець для уникнення зациклення під час синхронізації
+        let isRemoteAction = false;
+
+        // ==========================================
+        // 2. FIREBASE ТА УНІВЕРСАЛЬНИЙ КОНТРОЛЬ
+        // ==========================================
+        let db = null;
+        let isOffline = true;
+
+        try {
+            const firebaseConfig = { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/" };
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            isOffline = false;
+        } catch (error) {
+            console.warn("Firebase недоступний. Гра працює в ОФЛАЙН режимі.");
+        }
+
+        if (!isOffline) {
+            // Радар
+            const connectedRef = db.ref('.info/connected');
+            const myStatusRef = db.ref(`online_users/${myName}/${tabId}`);
+            
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    myStatusRef.set(true);
+                    myStatusRef.onDisconnect().remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => myStatusRef.remove());
+
+            // Блокування
+            db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+                const overlay = document.getElementById('block-overlay');
+                overlay.style.display = snap.val() === true ? 'flex' : 'none';
+            });
+
+            // Примусове оновлення
+            let isFirstRefreshRead = true;
+            db.ref('force_refresh').on('value', (snap) => {
+                if (isFirstRefreshRead) {
+                    isFirstRefreshRead = false;
+                    if (snap.val() === true) db.ref('force_refresh').set(false);
+                    return; 
+                }
+                if (snap.val() === true) window.location.reload();
+            });
+
+            // Повернення в лоббі з імунітетом
+            let isFirstLobbyRead = true;
+            db.ref('current_activity').on('value', (snap) => {
+                if (isFirstLobbyRead) { isFirstLobbyRead = false; return; }
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+
+            // Синхронізація фону (Theme Manager)
+            db.ref(`games/${CONFIG.gameId}/theme`).on('value', (snap) => {
+                const url = snap.val();
+                if (url) applyTheme(url, false);
+            });
+        }
+
+        // ==========================================
+        // 3. ТЕМИ ТА ФОНИ (Theme Manager)
+        // ==========================================
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        
+        function openThemeModal() { themeModal.style.display = 'block'; }
+        function closeThemeModal() { themeModal.style.display = 'none'; }
+
+        // Збереження індивідуального фону гри
+        const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedBg) applyTheme(savedBg, false);
+
+        // Строго послідовне завантаження
+        async function loadThemes() {
+            let index = 1;
+            while (true) {
+                const url = `${baseUrl}background_${index}.webp`;
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    if (!response.ok) break; // Негайна зупинка при 404
+                    
+                    const card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.innerHTML = `<img src="${url}" alt="Фон ${index}"><span>Фон ${index}</span>`;
+                    card.onclick = () => selectTheme(url);
+                    themeGallery.appendChild(card);
+                    index++;
+                } catch (e) { break; }
+            }
+        }
+        loadThemes();
+
+        function selectTheme(url) {
+            applyTheme(url, true);
+            closeThemeModal();
+        }
+
+        function applyTheme(url, sync) {
+            if (url === 'none') document.body.style.backgroundImage = 'none';
+            else document.body.style.backgroundImage = `url('${url}')`;
+            
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            if (sync && !isOffline) db.ref(`games/${CONFIG.gameId}/theme`).set(url);
+        }
+
+        // ==========================================
+        // 4. МАСШТАБУВАННЯ (ЛУПА)
+        // ==========================================
+        let currentZoom = 1;
+        function changeZoom(delta) {
+            currentZoom += delta;
+            if (currentZoom < 0.3) currentZoom = 0.3;
+            if (currentZoom > 2.5) currentZoom = 2.5;
+            document.getElementById('zoom-container').style.transform = `scale(${currentZoom})`;
+        }
+
+        // ==========================================
+        // 5. ГЛОБАЛЬНА МАЛЮВАЛКА
+        // ==========================================
+        const drawCanvas = document.getElementById('global-draw-canvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        const drawPanel = document.getElementById('draw-panel-global');
+        
+        let isDrawing = false;
+        let currentTool = 'pencil';
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function toggleDrawPanel() {
+            if (drawPanel.style.display === 'block') {
+                drawPanel.style.display = 'none';
+                drawCanvas.style.pointerEvents = 'none';
+            } else {
+                drawPanel.style.display = 'block';
+                drawCanvas.style.pointerEvents = 'auto';
+                setDrawTool('pencil');
+            }
+        }
+
+        function setDrawTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.draw-tool-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('btn-' + tool).classList.add('active');
+        }
+
+        function clearCanvasAction() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            if (!isOffline) {
+                db.ref(`games/${CONFIG.gameId}/draw_action`).set({
+                    type: 'clear_canvas', senderId: myName, timestamp: Date.now()
+                });
+            }
+        }
+
+        function startPosition(e) { isDrawing = true; draw(e); }
+        function endPosition() { isDrawing = false; drawCtx.beginPath(); }
+        function draw(e) {
+            if (!isDrawing) return;
+            const rect = drawCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+
+            drawCtx.lineWidth = document.getElementById('draw-size').value;
+            drawCtx.lineCap = 'round';
+            
+            if (currentTool === 'eraser') {
+                drawCtx.globalCompositeOperation = "destination-out";
+                drawCtx.strokeStyle = "rgba(0,0,0,1)";
+            } else {
+                drawCtx.globalCompositeOperation = "source-over";
+                drawCtx.strokeStyle = document.getElementById('draw-color').value;
+            }
+
+            drawCtx.lineTo(x, y);
+            drawCtx.stroke();
+            drawCtx.beginPath();
+            drawCtx.moveTo(x, y);
+
+            if (!isOffline) {
+                db.ref(`games/${CONFIG.gameId}/draw_action`).set({
+                    type: 'draw_line', x: x / window.innerWidth, y: y / window.innerHeight,
+                    color: drawCtx.strokeStyle, size: drawCtx.lineWidth, 
+                    tool: currentTool, senderId: myName, timestamp: Date.now()
+                });
+            }
+        }
+
+        drawCanvas.addEventListener('pointerdown', startPosition);
+        drawCanvas.addEventListener('pointerup', endPosition);
+        drawCanvas.addEventListener('pointermove', draw);
+
+        if (!isOffline) {
+            let lastDrawStamp = 0;
+            db.ref(`games/${CONFIG.gameId}/draw_action`).on('value', (snap) => {
+                const data = snap.val();
+                if (!data || data.senderId === myName || data.timestamp <= lastDrawStamp) return;
+                lastDrawStamp = data.timestamp;
+
+                if (data.type === 'clear_canvas') {
+                    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                } else if (data.type === 'draw_line') {
+                    drawCtx.lineWidth = data.size;
+                    drawCtx.lineCap = 'round';
+                    if (data.tool === 'eraser') {
+                        drawCtx.globalCompositeOperation = "destination-out";
+                        drawCtx.strokeStyle = "rgba(0,0,0,1)";
+                    } else {
+                        drawCtx.globalCompositeOperation = "source-over";
+                        drawCtx.strokeStyle = data.color;
+                    }
+                    const realX = data.x * window.innerWidth;
+                    const realY = data.y * window.innerHeight;
+                    drawCtx.lineTo(realX, realY);
+                    drawCtx.stroke();
+                    drawCtx.beginPath();
+                    drawCtx.moveTo(realX, realY);
+                }
+            });
+        }
+
+        const drawHeader = document.getElementById('draw-panel-header');
+        let isDraggingPanel = false, panX = 0, panY = 0;
+        drawHeader.addEventListener('pointerdown', (e) => {
+            if(e.target.id === 'draw-panel-close') return;
+            isDraggingPanel = true;
+            panX = e.clientX - drawPanel.getBoundingClientRect().left;
+            panY = e.clientY - drawPanel.getBoundingClientRect().top;
+        });
+        document.addEventListener('pointermove', (e) => {
+            if (isDraggingPanel) {
+                drawPanel.style.left = (e.clientX - panX) + 'px';
+                drawPanel.style.top = (e.clientY - panY) + 'px';
+                drawPanel.style.right = 'auto';
+            }
+        });
+        document.addEventListener('pointerup', () => isDraggingPanel = false);
+
+
+        // ==========================================
+        // 6. ІГРОВА ЛОГІКА ТА СИНХРОНІЗАЦІЯ ДІЙ
+        // ==========================================
+        
+        // Централізована відправка ігрових дій (Синхронізація)
+        function sendGameAction(type, data) {
+            if (isOffline || isRemoteAction) return;
+            db.ref(`games/${CONFIG.gameId}/game_action`).set({
+                senderId: myName,
+                timestamp: Date.now(),
+                type: type,
+                data: data
+            });
+        }
+
+        // Слухач ігрових дій
+        if (!isOffline) {
+            let lastGameActionStamp = 0;
+            db.ref(`games/${CONFIG.gameId}/game_action`).on('value', (snap) => {
+                const action = snap.val();
+                if (!action || action.senderId === myName || action.timestamp <= lastGameActionStamp) return;
+                lastGameActionStamp = action.timestamp;
+                
+                isRemoteAction = true; // Запобігаємо зацикленню
+                handleRemoteAction(action.type, action.data);
+                isRemoteAction = false;
+            });
+        }
+
+        function handleRemoteAction(type, data) {
+            if (type === 'LOAD_LEVEL') {
+                loadLevel(data.level, true);
+            } else if (type === 'TOGGLE_FORMULA') {
+                toggleFormulaVisibility(true);
+            } else if (type === 'TRANSFORM_SHAPE') {
+                const el = document.getElementById(data.id);
+                if (el) {
+                    el.dataset.x = data.x; el.dataset.y = data.y;
+                    el.dataset.angle = data.angle; el.dataset.scaleX = data.scaleX;
+                    updateTransform(el);
+                }
+            } else if (type === 'COLOR_LINE') {
+                const el = document.getElementById(data.id);
+                if (el) {
+                    const lines = el.querySelectorAll('line');
+                    if (lines[data.index]) lines[data.index].setAttribute("stroke", data.color);
+                }
+            } else if (type === 'COLOR_CELL') {
+                const cells = document.querySelectorAll('.grid-cell');
+                if (cells[data.index]) cells[data.index].style.backgroundColor = data.color;
+            } else if (type === 'ACTION_BTN') {
+                // Виклик кнопок (Створити, Розрізати, Копія)
+                if (data.action === 'drawRectGrid') {
+                    document.getElementById('r-rows').value = data.rows;
+                    document.getElementById('r-cols').value = data.cols;
+                    drawRectGrid();
+                }
+                else if (data.action === 'drawRightTriangle') {
+                    document.getElementById('rt-w').value = data.w; document.getElementById('rt-h').value = data.h;
+                    drawRightTriangle();
+                }
+                else if (data.action === 'copyRightTriangle') copyRightTriangle();
+                else if (data.action === 'drawIsosceles') {
+                    document.getElementById('iso-w').value = data.w; document.getElementById('iso-h').value = data.h;
+                    drawIsosceles();
+                }
+                else if (data.action === 'cutIsosceles') cutIsosceles();
+                else if (data.action === 'cutParallelogram') cutParallelogram();
+                else if (data.action === 'cutRhombus') cutRhombus();
+                else if (data.action === 'addRhombusTriangle') addRhombusTriangle();
+            }
+        }
+
+        let currentLevel = 'rect';
+        let currentColor = '#e74c3c';
+        const shapeContainer = document.getElementById('shape-container');
+        const instruction = document.getElementById('level-instruction');
+        const controlsPanel = document.getElementById('level-controls');
+        const globalColorPicker = document.getElementById('global-color-picker');
+        
+        const formulaDisplay = document.getElementById('formula-display');
+        const formulaTextContainer = document.getElementById('formula-text-container');
+        const formulaText = document.getElementById('formula-text');
+        const toggleFormulaBtn = document.getElementById('toggle-formula-btn');
+        let isFormulaVisible = true;
+
+        // Секретне поле (перемикач видимості)
+        window.toggleSecret = function(id) {
+            const el = document.getElementById(id);
+            if(el) el.classList.toggle('visible');
+        };
+
+        function toggleFormulaVisibility(isRemote = false) {
+            isFormulaVisible = !isFormulaVisible;
+            if (isFormulaVisible) {
+                formulaTextContainer.style.display = 'block';
+                toggleFormulaBtn.innerText = '👁️ Сховати формулу';
+            } else {
+                formulaTextContainer.style.display = 'none';
+                toggleFormulaBtn.innerText = '👁️ Показати формулу';
+            }
+            if(!isRemote) sendGameAction('TOGGLE_FORMULA', {});
+        }
+
+        function selectShapeColor(color, btn) {
+            currentColor = color;
+            document.querySelectorAll('#global-color-picker .color-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
+
+        shapeContainer.addEventListener('pointerdown', (e) => {
+            if(e.target === shapeContainer) {
+                document.querySelectorAll('.shape-wrapper').forEach(w => w.classList.remove('selected'));
+            }
+        });
+
+        function loadLevel(level, isRemote = false) {
+            currentLevel = level;
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('active');
+                if(b.innerText.toLowerCase().includes(level.substring(0,3))) b.classList.add('active');
+            });
+            
+            shapeContainer.innerHTML = ''; 
+            controlsPanel.innerHTML = '';
+            globalColorPicker.style.display = 'none';
+            formulaDisplay.style.display = 'flex';
+            
+            // Завжди додаємо секретне поле до панелі управління (вимога)
+            const secretHTML = `
+                <div class="control-group" style="margin-left: 20px; border-left: 2px solid #ccc; padding-left: 10px;">
+                    <input type="text" class="secret-input" id="secret-note" placeholder="Нотатки (секретно)" title="Діти не бачать текст">
+                    <button class="action-btn" onclick="toggleSecret('secret-note')">👁️</button>
+                </div>
+            `;
+
+            if (level === 'rect') {
+                formulaText.innerHTML = "S = a &times; b";
+                initRect(secretHTML);
+            } else if (level === 'rtri') {
+                formulaText.innerHTML = "S = (a &times; b) / 2";
+                initRightTriangle(secretHTML);
+            } else if (level === 'isosceles') {
+                formulaText.innerHTML = "S = (a &times; h) / 2";
+                initIsosceles(secretHTML);
+            } else if (level === 'parallelogram') {
+                formulaText.innerHTML = "S = a &times; h";
+                initParallelogram(secretHTML);
+            } else if (level === 'rhombus') {
+                formulaText.innerHTML = "S = (d₁ &times; d₂) / 2";
+                initRhombus(secretHTML);
+            }
+
+            if(!isRemote) sendGameAction('LOAD_LEVEL', { level });
+        }
+
+        function makeElementInteractive(wrapper, isGrid = false) {
+            let startX = 0, startY = 0, x = parseFloat(wrapper.dataset.x || 0), y = parseFloat(wrapper.dataset.y || 0);
+            let angle = parseFloat(wrapper.dataset.angle || 0);
+            
+            wrapper.dataset.x = x; wrapper.dataset.y = y; wrapper.dataset.angle = angle;
+            wrapper.dataset.scaleX = wrapper.dataset.scaleX || 1;
+            updateTransform(wrapper);
+            
+            if(!isGrid) {
+                let rotHandle = document.createElement('div');
+                rotHandle.className = 'rot-handle';
+                
+                let flipHandle = document.createElement('div');
+                flipHandle.className = 'flip-handle';
+                flipHandle.innerHTML = '↔';
+                
+                wrapper.appendChild(rotHandle);
+                wrapper.appendChild(flipHandle);
+                
+                let isRotating = false;
+                let startAngle = 0;
+
+                rotHandle.onpointerdown = (e) => {
+                    e.stopPropagation(); e.preventDefault();
+                    isRotating = true;
+                    wrapper.classList.add('active');
+                    const rect = wrapper.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    
+                    startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180 / Math.PI - parseFloat(wrapper.dataset.angle);
+                    
+                    document.onpointermove = (moveEvent) => {
+                        if (!isRotating) return;
+                        let a = Math.atan2(moveEvent.clientY - centerY, moveEvent.clientX - centerX) * 180 / Math.PI;
+                        wrapper.dataset.angle = a - startAngle;
+                        updateTransform(wrapper);
+                        
+                        // Синхронізація повороту
+                        sendGameAction('TRANSFORM_SHAPE', {
+                            id: wrapper.id, x: wrapper.dataset.x, y: wrapper.dataset.y, 
+                            angle: wrapper.dataset.angle, scaleX: wrapper.dataset.scaleX
+                        });
+                    };
+                    document.onpointerup = () => {
+                        isRotating = false; wrapper.classList.remove('active');
+                        document.onpointermove = null; document.onpointerup = null;
+                    };
+                };
+
+                flipHandle.onpointerdown = (e) => {
+                    e.stopPropagation(); e.preventDefault();
+                    wrapper.dataset.scaleX = wrapper.dataset.scaleX == 1 ? -1 : 1;
+                    updateTransform(wrapper);
+                    sendGameAction('TRANSFORM_SHAPE', {
+                        id: wrapper.id, x: wrapper.dataset.x, y: wrapper.dataset.y, 
+                        angle: wrapper.dataset.angle, scaleX: wrapper.dataset.scaleX
+                    });
+                };
+            }
+
+            const targetElement = isGrid ? wrapper : wrapper.querySelector('.shape-element');
+            if(targetElement) {
+                targetElement.onpointerdown = (e) => {
+                    if(!isGrid) {
+                        document.querySelectorAll('.shape-wrapper').forEach(w => w.classList.remove('selected'));
+                        wrapper.classList.add('selected');
+                    }
+
+                    // Фарбування ліній
+                    if(e.target.tagName === 'line' && globalColorPicker.style.display === 'flex' && currentColor) {
+                        e.stopPropagation(); e.preventDefault();
+                        const colorToSet = currentColor === 'transparent' ? 'transparent' : currentColor;
+                        e.target.setAttribute("stroke", colorToSet);
+                        e.target.parentNode.appendChild(e.target);
+                        
+                        // Шукаємо індекс лінії для синхронізації
+                        const allLines = Array.from(wrapper.querySelectorAll('line'));
+                        const lineIndex = allLines.indexOf(e.target);
+                        sendGameAction('COLOR_LINE', { id: wrapper.id, index: lineIndex, color: colorToSet });
+                        return;
+                    }
+
+                    if(e.target.classList.contains('grid-cell') || e.target.classList.contains('rot-handle') || e.target.classList.contains('flip-handle')) return; 
+
+                    e.preventDefault(); e.stopPropagation();
+                    startX = e.clientX; startY = e.clientY;
+                    wrapper.style.zIndex = 1000;
+                    
+                    document.onpointermove = (moveEvent) => {
+                        moveEvent.preventDefault();
+                        let dx = (moveEvent.clientX - startX) / currentZoom;
+                        let dy = (moveEvent.clientY - startY) / currentZoom;
+                        startX = moveEvent.clientX; startY = moveEvent.clientY;
+                        
+                        wrapper.dataset.x = parseFloat(wrapper.dataset.x) + dx;
+                        wrapper.dataset.y = parseFloat(wrapper.dataset.y) + dy;
+                        updateTransform(wrapper);
+                        
+                        // Синхронізація перетягування
+                        sendGameAction('TRANSFORM_SHAPE', {
+                            id: wrapper.id, x: wrapper.dataset.x, y: wrapper.dataset.y, 
+                            angle: wrapper.dataset.angle, scaleX: wrapper.dataset.scaleX
+                        });
+                    };
+                    document.onpointerup = () => {
+                        document.onpointermove = null; document.onpointerup = null;
+                        wrapper.style.zIndex = 1;
+                    };
+                };
+            }
+        }
+
+        function updateTransform(el) {
+            el.style.transform = `translate(${el.dataset.x}px, ${el.dataset.y}px) rotate(${el.dataset.angle}deg) scaleX(${el.dataset.scaleX})`;
+        }
+
+        // Додано параметр ID для ідентифікації при синхронізації
+        function createSVGWrapper(points, color, w, h, left, top, id = null) {
+            const wrapper = document.createElement('div');
+            wrapper.id = id || ('shape_' + Math.random().toString(36).substr(2, 9));
+            wrapper.className = 'shape-wrapper';
+            wrapper.style.width = w + 'px'; wrapper.style.height = h + 'px';
+            wrapper.dataset.x = left; wrapper.dataset.y = top;
+            wrapper.dataset.angle = 0; wrapper.dataset.scaleX = 1;
+
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "shape-element");
+            svg.setAttribute("width", "100%"); svg.setAttribute("height", "100%");
+            
+            const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+            polygon.setAttribute("points", points);
+            polygon.setAttribute("fill", color);
+            polygon.setAttribute("stroke", "#2c3e50");
+            polygon.setAttribute("stroke-width", "2");
+            svg.appendChild(polygon);
+
+            const ptArray = points.trim().split(/\s+/).map(p => p.split(',').map(Number));
+            for (let i = 0; i < ptArray.length; i++) {
+                let p1 = ptArray[i];
+                let p2 = ptArray[(i + 1) % ptArray.length];
+                let line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", p1[0]); line.setAttribute("y1", p1[1]);
+                line.setAttribute("x2", p2[0]); line.setAttribute("y2", p2[1]);
+                line.setAttribute("stroke", "transparent");
+                line.setAttribute("stroke-width", "18");
+                line.setAttribute("stroke-linecap", "round");
+                line.style.cursor = "pointer";
+                svg.appendChild(line);
+            }
+
+            wrapper.appendChild(svg);
+            shapeContainer.appendChild(wrapper);
+            makeElementInteractive(wrapper);
+            return wrapper;
+        }
+
+        // --- РІВЕНЬ 1: Прямокутник ---
+        window.drawRectGrid = function() {
+            shapeContainer.innerHTML = '';
+            const rows = document.getElementById('r-rows').value;
+            const cols = document.getElementById('r-cols').value;
+            const cellSize = 50;
+
+            const wrapper = document.createElement('div');
+            wrapper.id = 'rect-grid-wrapper';
+            wrapper.dataset.x = 100; wrapper.dataset.y = 50; wrapper.dataset.angle = 0; wrapper.dataset.scaleX = 1;
+            wrapper.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+            wrapper.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
+            
+            for(let i=0; i < rows*cols; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'grid-cell';
+                
+                const paintCell = (e) => {
+                    e.stopPropagation(); 
+                    const colorToSet = (currentColor === 'transparent') ? '' : currentColor;
+                    cell.style.backgroundColor = colorToSet;
+                    sendGameAction('COLOR_CELL', { index: i, color: colorToSet });
+                };
+
+                cell.onpointerdown = paintCell;
+                cell.onpointerenter = (e) => { if(e.buttons > 0) paintCell(e); };
+                wrapper.appendChild(cell);
+            }
+            shapeContainer.appendChild(wrapper);
+            makeElementInteractive(wrapper, true);
+            
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'drawRectGrid', rows, cols });
+        };
+
+        function initRect(secretHTML) {
+            instruction.innerText = "Заповни фігуру квадратиками!";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <div class="control-group">Рядки: <input id="r-rows" type="number" value="4" min="1" max="15"></div>
+                <div class="control-group">Стовпці: <input id="r-cols" type="number" value="6" min="1" max="15"></div>
+                <button class="action-btn" onclick="drawRectGrid()">Створити</button>
+                ${secretHTML}
+            `;
+            if(!isRemoteAction) drawRectGrid();
+        }
+
+        // --- РІВЕНЬ 2: Прямокутний трикутник ---
+        window.drawRightTriangle = function() {
+            shapeContainer.innerHTML = '';
+            const w = document.getElementById('rt-w').value;
+            const h = document.getElementById('rt-h').value;
+            createSVGWrapper(`0,${h} ${w},${h} 0,0`, "rgba(231, 76, 60, 0.3)", w, h, 200, 100, 'rt_main');
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'drawRightTriangle', w, h });
+        };
+        window.copyRightTriangle = function() {
+            const w = document.getElementById('rt-w').value;
+            const h = document.getElementById('rt-h').value;
+            createSVGWrapper(`0,${h} ${w},${h} 0,0`, "rgba(52, 152, 219, 0.3)", w, h, 450, 100, 'rt_copy_' + Date.now());
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'copyRightTriangle' });
+        };
+
+        function initRightTriangle(secretHTML) {
+            instruction.innerText = "Клікай на сторони, щоб їх розфарбувати. Зроби копію і склади фігуру!";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <div class="control-group">Ширина: <input id="rt-w" type="number" value="200" step="10"></div>
+                <div class="control-group">Висота: <input id="rt-h" type="number" value="200" step="10"></div>
+                <button class="action-btn" onclick="drawRightTriangle()">Оновити фігуру</button>
+                <button class="action-btn" onclick="copyRightTriangle()">➕ Копія</button>
+                <button class="action-btn reset" onclick="loadLevel('rtri')">🔄 Спочатку</button>
+                ${secretHTML}
+            `;
+            if(!isRemoteAction) drawRightTriangle();
+        }
+
+        // --- РІВЕНЬ 3: Рівнобедрений трикутник ---
+        window.drawIsosceles = function() {
+            shapeContainer.innerHTML = '';
+            const w = document.getElementById('iso-w').value;
+            const h = document.getElementById('iso-h').value;
+            createSVGWrapper(`${w/2},0 ${w},${h} 0,${h}`, "rgba(155, 89, 182, 0.3)", w, h, 250, 100, 'iso_main');
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'drawIsosceles', w, h });
+        };
+        window.cutIsosceles = function() {
+            const mainIso = document.getElementById('iso_main');
+            if(!mainIso) return;
+            const w = parseFloat(document.getElementById('iso-w').value);
+            const h = parseFloat(document.getElementById('iso-h').value);
+            const startX = parseFloat(mainIso.dataset.x);
+            const startY = parseFloat(mainIso.dataset.y);
+            shapeContainer.removeChild(mainIso);
+
+            createSVGWrapper(`${w/2},0 ${w/2},${h} 0,${h}`, "rgba(155, 89, 182, 0.3)", w/2, h, startX, startY, 'iso_left');
+            createSVGWrapper(`0,0 ${w/2},${h} 0,${h}`, "rgba(142, 68, 173, 0.3)", w/2, h, startX + w/2, startY, 'iso_right');
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'cutIsosceles' });
+        };
+
+        function initIsosceles(secretHTML) {
+            instruction.innerText = "Розріж навпіл і склади фігури! (Клікай на сторони, щоб розфарбувати їх)";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <div class="control-group">Основа: <input id="iso-w" type="number" value="300" step="10"></div>
+                <div class="control-group">Висота: <input id="iso-h" type="number" value="200" step="10"></div>
+                <button class="action-btn" onclick="drawIsosceles()">Оновити фігуру</button>
+                <button class="action-btn" onclick="cutIsosceles()">✂️ Розрізати</button>
+                <button class="action-btn reset" onclick="loadLevel('isosceles')">🔄 Спочатку</button>
+                ${secretHTML}
+            `;
+            if(!isRemoteAction) drawIsosceles();
+        }
+
+        // --- РІВЕНЬ 4: Паралелограм ---
+        window.drawParallelogram = function() {
+            shapeContainer.innerHTML = '';
+            createSVGWrapper(`100,0 400,0 300,200 0,200`, "rgba(241, 196, 15, 0.3)", 400, 200, 200, 100, 'para_main');
+        };
+        window.cutParallelogram = function() {
+            const mainPara = document.getElementById('para_main');
+            if(!mainPara) return;
+            const startX = parseFloat(mainPara.dataset.x);
+            const startY = parseFloat(mainPara.dataset.y);
+            shapeContainer.removeChild(mainPara);
+
+            createSVGWrapper(`100,0 100,200 0,200`, "rgba(243, 156, 18, 0.3)", 100, 200, startX, startY, 'para_cut1');
+            createSVGWrapper(`0,0 300,0 200,200 0,200`, "rgba(241, 196, 15, 0.3)", 300, 200, startX + 100, startY, 'para_cut2');
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'cutParallelogram' });
+        };
+
+        function initParallelogram(secretHTML) {
+            instruction.innerText = "Відріж трикутник і перемісти його куди потрібно! Можеш пофарбувати сторони.";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <button class="action-btn" onclick="cutParallelogram()">✂️ Відрізати трикутник</button>
+                <button class="action-btn reset" onclick="loadLevel('parallelogram')">🔄 Спочатку</button>
+                ${secretHTML}
+            `;
+            if(!isRemoteAction) drawParallelogram();
+        }
+
+        // --- РІВЕНЬ 5: Ромб ---
+        window.drawRhombus = function() {
+            shapeContainer.innerHTML = '';
+            createSVGWrapper(`150,0 300,100 150,200 0,100`, "rgba(26, 188, 156, 0.3)", 300, 200, 250, 100, 'rhombus_main');
+        };
+        window.cutRhombus = function() {
+            const mainRhombus = document.getElementById('rhombus_main');
+            if(!mainRhombus) return;
+            const startX = parseFloat(mainRhombus.dataset.x);
+            const startY = parseFloat(mainRhombus.dataset.y);
+            shapeContainer.removeChild(mainRhombus);
+
+            createSVGWrapper(`0,100 150,100 0,0`, "rgba(26, 188, 156, 0.3)", 150, 100, startX + 150, startY, 'rh_1'); 
+            createSVGWrapper(`150,100 150,0 0,100`, "rgba(22, 160, 133, 0.3)", 150, 100, startX, startY, 'rh_2'); 
+            createSVGWrapper(`150,0 150,100 0,0`, "rgba(26, 188, 156, 0.3)", 150, 100, startX, startY + 100, 'rh_3'); 
+            createSVGWrapper(`0,0 0,100 150,0`, "rgba(22, 160, 133, 0.3)", 150, 100, startX + 150, startY + 100, 'rh_4'); 
+            
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'cutRhombus' });
+        };
+        window.addRhombusTriangle = function() {
+            createSVGWrapper(`0,100 150,100 0,0`, "rgba(52, 152, 219, 0.3)", 150, 100, 450, 150, 'rh_extra_' + Date.now());
+            if(!isRemoteAction) sendGameAction('ACTION_BTN', { action: 'addRhombusTriangle' });
+        };
+
+        function initRhombus(secretHTML) {
+            instruction.innerText = "Розріж на 4 частини! (Обери колір і клікай на конкретну сторону)";
+            globalColorPicker.style.display = 'flex';
+            controlsPanel.innerHTML = `
+                <button class="action-btn" onclick="cutRhombus()">✂️ Розрізати на 4 частини</button>
+                <button class="action-btn" onclick="addRhombusTriangle()">➕ Додати трикутник</button>
+                <button class="action-btn reset" onclick="loadLevel('rhombus')">🔄 Спочатку</button>
+                ${secretHTML}
+            `;
+            if(!isRemoteAction) drawRhombus();
+        }
+
+        // Запуск
+        loadLevel('rect');
+    </script>
+</body>
+</html>
