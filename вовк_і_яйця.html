@@ -573,15 +573,30 @@
         const db = firebase.database();
 
         let isHost = false;
-        db.ref(`game_host_${CONFIG.gameId}`).on('value', snap => {
-            if (!snap.val()) {
-                db.ref(`game_host_${CONFIG.gameId}`).set(myName);
+        const hostRef = db.ref(`game_host_${CONFIG.gameId}`);
+        
+        hostRef.on('value', snap => {
+            const currentHost = snap.val();
+            if (!currentHost) {
+                hostRef.set(myName);
+                hostRef.onDisconnect().remove();
             } else {
-                isHost = (snap.val() === myName);
+                isHost = (currentHost === myName);
+                if (isHost) {
+                    hostRef.onDisconnect().remove();
+                } else {
+                    // Перевіряємо, чи живий поточний хост (перехоплення прав зависшого хоста)
+                    db.ref(`online_users/${currentHost}`).once('value', userSnap => {
+                        if (!userSnap.exists() || Object.keys(userSnap.val()).length === 0) {
+                            hostRef.set(myName);
+                            hostRef.onDisconnect().remove();
+                        }
+                    });
+                }
             }
         });
         window.addEventListener('beforeunload', () => {
-            if(isHost) db.ref(`game_host_${CONFIG.gameId}`).remove();
+            if(isHost) hostRef.remove();
         });
 
         // Час сервера для абсолютної синхронізації
@@ -1281,6 +1296,7 @@
             if (!lastTime) lastTime = timestamp;
             let deltaTime = timestamp - lastTime;
             lastTime = timestamp;
+            if (deltaTime > 100) deltaTime = 16; // Запобігання стрибкам при згортанні вкладки
 
             if (isGameRunning) {
                 updateEyes();
