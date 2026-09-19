@@ -42,6 +42,15 @@
             transform-origin: center center;
         }
 
+        /* Полотно малювання всередині контейнера гри для збереження пропорцій та зуму */
+        #global-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none; /* Вимкнено за замовчуванням */
+            z-index: 90000;
+        }
+
         svg {
             position: absolute;
             top: 0;
@@ -102,7 +111,7 @@
             position: relative;
         }
 
-        /* Математична панель (перенесена нагору, щоб не закривати картинку) */
+        /* Математична панель */
         #math-board {
             position: absolute;
             top: 2%;
@@ -197,7 +206,7 @@
         }
         .wrong-anim { animation: shake 0.4s; }
 
-        /* --- ГЛОБАЛЬНІ СТИЛІ ІНСТРУМЕНТІВ (Теми, Зуми, Олівець, Блокування) --- */
+        /* --- ГЛОБАЛЬНІ СТИЛІ ІНСТРУМЕНТІВ --- */
         
         #block-overlay {
             position: fixed;
@@ -419,15 +428,6 @@
             font-weight: bold;
         }
 
-        /* Полотно малювання */
-        #global-canvas {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            pointer-events: none; /* Вимкнено за замовчуванням */
-            z-index: 90000;
-        }
-
         /* Адаптивність для мобільних */
         @media (max-width: 800px) {
             #expression { font-size: 5vw; padding: 5px 20px; }
@@ -441,9 +441,6 @@
 
 <!-- Екран-заглушка -->
 <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
-
-<!-- Полотно для малювання -->
-<canvas id="global-canvas"></canvas>
 
 <!-- Кнопки зуму -->
 <div id="zoom-controls" class="global-tools">
@@ -485,6 +482,10 @@
 
 <!-- ІГРОВИЙ КОНТЕЙНЕР -->
 <div id="game-container">
+    
+    <!-- Полотно для малювання (знаходиться всередині контейнера для збереження пропорцій при зумі) -->
+    <canvas id="global-canvas" width="1920" height="1080"></canvas>
+
     <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
         <defs>
             <!-- Фільтр розмиття фону -->
@@ -558,7 +559,7 @@
             <path d="M 0 -50 Q -20 -80 10 -70 Q -5 -60 0 -50" fill="#10b981" />
         </g>
 
-        <!-- Група перетягування (Тут канат і два силача) -->
+        <!-- Група перетягування -->
         <g id="tug-group" transform="translate(0, 0)">
             <!-- Канат -->
             <path d="M 400 750 L 1520 750" fill="none" stroke="#b45309" stroke-width="25" stroke-linecap="round" />
@@ -654,7 +655,7 @@
     const CONFIG = {
         projectId: 'lesson-13c44',
         dbUrl: 'https://lesson-13c44-default-rtdb.firebaseio.com/',
-        gameId: 'math_tug_of_war' // Унікальний ID для localStorage
+        gameId: 'math_tug_of_war' 
     };
 
     let myName = new URLSearchParams(window.location.search).get('user');
@@ -684,7 +685,6 @@
     // 2. РАДАР ТА БЛОКУВАННЯ (БЛОК КОНТРОЛЮ)
     // ==========================================
     if (isFirebaseActive) {
-        // Радар
         const myRef = db.ref(`online_users/${myName}/${tabId}`);
         db.ref('.info/connected').on('value', snap => {
             if (snap.val() === true) {
@@ -694,13 +694,11 @@
         });
         window.addEventListener('beforeunload', () => myRef.remove());
 
-        // Блокування екрану
         const overlay = document.getElementById('block-overlay');
         db.ref(`blocked_users/${myName}`).on('value', snap => {
             overlay.style.display = snap.val() ? 'flex' : 'none';
         });
 
-        // Перезавантаження (із захистом від зациклення при старті)
         let isFirstRefreshLoad = true;
         db.ref('force_refresh').on('value', snap => {
             if (isFirstRefreshLoad) {
@@ -712,7 +710,6 @@
             }
         });
 
-        // Повернення в лоббі з імунітетом (1 сек)
         let immunity = true;
         setTimeout(() => immunity = false, 1000);
         db.ref('current_activity').on('value', snap => {
@@ -741,7 +738,6 @@
     async function loadThemes() {
         const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
         
-        // Перша картка: Без фону
         themeGallery.innerHTML = `
             <div class="theme-card" onclick="selectTheme('none')">
                 <div style="width:100%; height:100%; background:#0f172a;"></div>
@@ -749,12 +745,11 @@
             </div>
         `;
 
-        // Строго послідовне завантаження фонів
         for (let i = 1; i <= 1000; i++) {
             const url = `${baseUrl}background_${i}.webp`;
             try {
                 const res = await fetch(url, { method: 'HEAD' });
-                if (!res.ok) break; // Зупиняємось при помилці 404
+                if (!res.ok) break;
                 
                 themeGallery.innerHTML += `
                     <div class="theme-card" onclick="selectTheme('${url}')">
@@ -786,7 +781,6 @@
         }
     }
 
-    // Слухаємо глобальну тему
     if (isFirebaseActive) {
         db.ref('game_theme').on('value', snap => {
             if (!localStorage.getItem(localBgKey) && snap.exists()) {
@@ -795,13 +789,12 @@
         });
     }
 
-    // Застосування індивідуального фону гри при завантаженні сторінки
     const savedBg = localStorage.getItem(localBgKey);
     if (savedBg) applyTheme(savedBg);
 
 
     // ==========================================
-    // 4. ГЛОБАЛЬНЕ МАЛЮВАННЯ (Олівець / Гумка) ТА ЗУМ
+    // 4. ГЛОБАЛЬНЕ МАЛЮВАННЯ ТА ЗУМ
     // ==========================================
     let currentScale = 1.0;
     function adjustZoom(delta) {
@@ -815,14 +808,10 @@
     const ctx = canvas.getContext('2d');
     const drawPanel = document.getElementById('draw-panel-global');
     
-    let isDrawing = false;
-    let drawMode = 'pencil';
-    let currentThickness = 5;
-    let currentColor = '#ff0000';
-    let lastX = 0, lastY = 0;
-
+    let isDrawing = false, drawMode = 'pencil', currentThickness = 5, currentColor = '#ff0000', lastX = 0, lastY = 0;
     const colors = ['#ffffff', '#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#e67e22', '#8e44ad'];
     const palette = document.getElementById('color-palette');
+    
     colors.forEach(c => {
         let div = document.createElement('div');
         div.className = 'color-swatch';
@@ -837,32 +826,28 @@
         palette.appendChild(div);
     });
 
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
-
     function openDrawPanel() {
         drawPanel.style.display = 'block';
-        canvas.style.pointerEvents = 'auto'; // Вмикаємо малювання
-        setDrawMode('pencil'); // Автоматична активація
+        canvas.style.pointerEvents = 'auto';
+        setDrawMode('pencil');
     }
+    
     function closeDrawPanel() {
         drawPanel.style.display = 'none';
-        canvas.style.pointerEvents = 'none'; // Вимикаємо малювання
+        canvas.style.pointerEvents = 'none';
     }
+    
     function setDrawMode(mode) {
         drawMode = mode;
         document.getElementById('btn-pencil').classList.toggle('active', mode === 'pencil');
         document.getElementById('btn-eraser').classList.toggle('active', mode === 'eraser');
     }
+    
     function updateThickness() {
         currentThickness = document.getElementById('draw-thickness').value;
     }
 
-    // Перетягування панелі
+    // Перетягування панелі малювання
     let isDraggingPanel = false, panelOffsetX, panelOffsetY;
     document.getElementById('draw-panel-header').addEventListener('mousedown', e => {
         isDraggingPanel = true;
@@ -877,6 +862,15 @@
         }
     });
     window.addEventListener('mouseup', () => isDraggingPanel = false);
+
+    // Функція малювання та координати (вираховані відносно ігрового контейнера)
+    function getNormCoords(e) {
+        let rect = canvas.getBoundingClientRect();
+        let evt = e.touches ? e.touches[0] : e;
+        let x = (evt.clientX - rect.left) / rect.width;
+        let y = (evt.clientY - rect.top) / rect.height;
+        return { x, y };
+    }
 
     function drawLine(x0, y0, x1, y1, color, thick, mode, emit = true) {
         ctx.beginPath();
@@ -906,11 +900,6 @@
         }
     }
 
-    function getNormCoords(e) {
-        let evt = e.touches ? e.touches[0] : e;
-        return { x: evt.clientX / canvas.width, y: evt.clientY / canvas.height };
-    }
-
     canvas.addEventListener('mousedown', e => {
         if(drawPanel.style.display !== 'block') return;
         isDrawing = true;
@@ -937,26 +926,9 @@
     }, {passive: false});
     canvas.addEventListener('touchend', () => isDrawing = false);
 
-    // Синхронізація малювання та канату
-    if (isFirebaseActive) {
-        db.ref('game_action').orderByChild('timestamp').startAt(Date.now()).on('child_added', snap => {
-            const action = snap.val();
-            if (action.senderId === myName) return; 
-            
-            if (action.type === 'draw_line') {
-                let d = action.data; drawLine(d.x0, d.y0, d.x1, d.y1, d.color, d.thick, d.mode, false);
-            }
-            else if (action.type === 'clear_canvas') {
-                clearCanvasAction(false);
-            }
-            else if (action.type === 'tug_pull') {
-                tugPosition = action.data.pos; updateTugVisuals();
-            }
-        });
-    }
 
     // ==========================================
-    // 5. ЛОГІКА ГРИ (Математичний канат)
+    // 5. ЛОГІКА ГРИ ТА СИНХРОНІЗАЦІЯ ПРИКЛАДІВ
     // ==========================================
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     const audioCtx = new AudioContext();
@@ -1031,25 +1003,48 @@
     document.getElementById('btn-next').onclick = () => { playSound('click'); generateTask(); };
     document.getElementById('btn-prev').onclick = () => { playSound('click'); generateTask(); };
 
-    function generateTask() {
+    // Функція генерації із синхронізацією
+    function generateTask(isRemote = false, remoteData = null) {
         currentAnswer = "";
         answerInputEl.innerText = "?";
         answerInputEl.style.color = "#67e8f9";
         
-        if (Math.random() > 0.5) {
-            let a = Math.floor(Math.random() * 8) + 2; 
-            let b = Math.floor(Math.random() * (10 - (11 - a))) + (11 - a); 
-            if(b > 9) b = 9;
-            if(a + b <= 10) b = 11 - a;
-            num1El.innerText = a; operatorEl.innerText = "+"; num2El.innerText = b;
-            correctAnswer = a + b;
+        if (isRemote && remoteData) {
+            // Застосовуємо отримані з Firebase дані
+            num1El.innerText = remoteData.a;
+            operatorEl.innerText = remoteData.op;
+            num2El.innerText = remoteData.b;
+            correctAnswer = remoteData.ans;
         } else {
-            let b = Math.floor(Math.random() * 8) + 2; 
-            let c = Math.floor(Math.random() * (b - 1)) + 11; 
-            if(c > 18) c = 18;
-            num1El.innerText = c; operatorEl.innerText = "-"; num2El.innerText = b;
-            correctAnswer = c - b;
+            // Локальна генерація
+            let a, b, op, ans;
+            if (Math.random() > 0.5) {
+                a = Math.floor(Math.random() * 8) + 2; 
+                b = Math.floor(Math.random() * (10 - (11 - a))) + (11 - a); 
+                if(b > 9) b = 9;
+                if(a + b <= 10) b = 11 - a;
+                op = "+"; ans = a + b;
+            } else {
+                b = Math.floor(Math.random() * 8) + 2; 
+                let c = Math.floor(Math.random() * (b - 1)) + 11; 
+                if(c > 18) c = 18;
+                a = c; op = "-"; ans = c - b;
+            }
+            
+            num1El.innerText = a; 
+            operatorEl.innerText = op; 
+            num2El.innerText = b;
+            correctAnswer = ans;
+
+            // Відправка прикладу іншим
+            if (isFirebaseActive) {
+                db.ref('game_action').push({
+                    senderId: myName, timestamp: Date.now(),
+                    type: 'new_task', data: { a: a, op: op, b: b, ans: ans }
+                });
+            }
         }
+        
         resetBotPull();
     }
 
@@ -1079,7 +1074,7 @@
             syncTug();
             updateTugVisuals();
             checkWinCondition();
-            setTimeout(generateTask, 800);
+            setTimeout(() => generateTask(), 800); // Гравцю згенерується новий приклад і відправиться іншим
         } else {
             playSound('wrong');
             expressionEl.classList.remove('wrong-anim');
@@ -1175,6 +1170,27 @@
         playerStrongman.style.transition = '';
         updateTugVisuals();
         generateTask();
+    }
+
+    // Слухач синхронізації (усіх ігрових дій)
+    if (isFirebaseActive) {
+        db.ref('game_action').orderByChild('timestamp').startAt(Date.now()).on('child_added', snap => {
+            const action = snap.val();
+            if (action.senderId === myName) return; // Ігноруємо свої ж дії
+            
+            if (action.type === 'draw_line') {
+                let d = action.data; drawLine(d.x0, d.y0, d.x1, d.y1, d.color, d.thick, d.mode, false);
+            }
+            else if (action.type === 'clear_canvas') {
+                clearCanvasAction(false);
+            }
+            else if (action.type === 'tug_pull') {
+                tugPosition = action.data.pos; updateTugVisuals();
+            }
+            else if (action.type === 'new_task') {
+                generateTask(true, action.data);
+            }
+        });
     }
 
     // Запуск гри
