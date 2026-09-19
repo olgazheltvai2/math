@@ -20,7 +20,7 @@
             align-items: center;
             font-family: 'Fredoka One', cursive;
             overflow: hidden;
-            background: radial-gradient(circle at bottom, #1e3c72 0%, #2a5298 50%, #000000 100%); /* Дефолтний фон */
+            background: radial-gradient(circle at bottom, #1e3c72 0%, #2a5298 50%, #000000 100%);
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -79,7 +79,7 @@
         /* --- ІГРОВА ЗОНА --- */
         #game-area {
             position: relative; width: 900px; max-width: 95vw; height: 420px;
-            background: rgba(13, 20, 24, 0.3); backdrop-filter: blur(4px); /* Зроблено більш прозорим для динамічних фонів */
+            background: rgba(13, 20, 24, 0.3); backdrop-filter: blur(4px);
             border: 4px solid #000000;
             border-radius: 30px;
             box-shadow: 0 20px 50px rgba(0,0,0,0.5);
@@ -379,7 +379,7 @@
 
     <script>
         // ================= CONFIG & FIREBASE =================
-        const CONFIG = { gameId: 'owl_measure_1' }; // Унікальний ID гри
+        const CONFIG = { gameId: 'owl_measure_1' };
 
         const firebaseConfig = {
             databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
@@ -434,7 +434,7 @@
                 if (snap.val() && snap.val().timestamp > Date.now() - 5000) window.location.reload();
             });
 
-            // Lobby Return (з імунітетом)
+            // Lobby Return
             let immunity = true;
             setTimeout(() => immunity = false, 1000);
             db.ref('current_activity').on('value', (snap) => {
@@ -446,7 +446,7 @@
             // Слухач ігрових дій (sync)
             db.ref('game_action').on('value', snap => {
                 const val = snap.val();
-                if (!val || val.senderId === mySenderId) return; // Не дублювати власні дії
+                if (!val || val.senderId === mySenderId) return;
                 isRemoteAction = true;
                 handleSync(val);
                 isRemoteAction = false;
@@ -482,7 +482,7 @@
             while (i <= 1000) {
                 const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
                 const exists = await checkImage(url);
-                if (!exists) break; // Зупиняємось на першій помилці (404)
+                if (!exists) break; // Суворо послідовне завантаження, зупинка на 404
                 
                 const card = document.createElement('div');
                 card.className = 'theme-card';
@@ -515,7 +515,6 @@
                 document.body.style.backgroundImage = `url('${url}')`;
             }
             
-            // Завжди зберігаємо індивідуально для цієї гри в localStorage
             localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
             
             if (isFirebaseActive && saveRemote && !isRemoteAction) {
@@ -528,7 +527,6 @@
             closeThemeManager();
         }
 
-        // Ініціалізація фону при старті
         const localSavedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
         if (localSavedBg) {
             applyBackground(localSavedBg, false);
@@ -574,7 +572,7 @@
                 closeDrawPanel();
             } else {
                 panel.style.display = 'block';
-                canvas.style.pointerEvents = 'auto'; // Вмикаємо малювання
+                canvas.style.pointerEvents = 'auto';
                 isDrawingMode = true;
                 setDrawTool('pencil');
             }
@@ -582,7 +580,7 @@
 
         function closeDrawPanel() {
             document.getElementById('draw-panel-global').style.display = 'none';
-            canvas.style.pointerEvents = 'none'; // Вимикаємо малювання
+            canvas.style.pointerEvents = 'none';
             isDrawingMode = false;
         }
 
@@ -595,7 +593,6 @@
 
         function getPointerPos(e) {
             let evt = e.touches ? e.touches[0] : e;
-            // Корегування для zoom, якщо використовується CSS zoom
             let zoom = parseFloat(document.body.style.zoom || 1);
             return { x: evt.clientX / zoom, y: evt.clientY / zoom };
         }
@@ -616,7 +613,6 @@
 
             drawLine(lastX, lastY, pos.x, pos.y, color, width, currentDrawTool === 'eraser');
             
-            // Синхронізація
             syncAction('draw_line', {
                 x0: lastX / canvas.width, y0: lastY / canvas.height,
                 x1: pos.x / canvas.width, y1: pos.y / canvas.height,
@@ -659,7 +655,6 @@
             syncAction('clear_canvas', {});
         }
 
-        // Dragging для панелі малювання
         const drawPanel = document.getElementById('draw-panel-global');
         const drawDragHandle = document.getElementById('draw-drag-handle');
         let isPanelDragging = false, pOffsetX, pOffsetY;
@@ -771,14 +766,17 @@
             mascot.className = 'mascot-normal';
         }
 
+        // Синхронізація введення тексту
+        document.getElementById('answer-input').addEventListener('input', function(e) {
+            syncAction('sync_input', { value: e.target.value });
+        });
+
         function makeDraggable(el) {
             let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
             
-            // Mouse events
             el.onmousedown = dragMouseDown;
-            // Touch events for mobile
             el.ontouchstart = (e) => {
-                if (e.touches.length > 1) return; // Ігноруємо мультитач
+                if (e.touches.length > 1) return;
                 dragMouseDown(e.touches[0], true);
             };
 
@@ -819,9 +817,15 @@
             }
         }
 
-        function checkAnswer() {
+        function checkAnswer(isRemote = false) {
             const input = document.getElementById('answer-input');
             const val = parseInt(input.value);
+
+            // Синхронізуємо подію перевірки
+            if (!isRemote) {
+                syncAction('check_answer', { value: input.value });
+            }
+
             if (val === currentLength) {
                 playSound('correct');
                 input.style.backgroundColor = '#c8e6c9';
@@ -869,6 +873,17 @@
                     worm.style.top = action.data.top;
                     worm.style.left = action.data.left;
                 }
+            } else if (action.type === 'sync_input') {
+                const input = document.getElementById('answer-input');
+                if (input) {
+                    input.value = action.data.value;
+                }
+            } else if (action.type === 'check_answer') {
+                const input = document.getElementById('answer-input');
+                if (input) {
+                    input.value = action.data.value;
+                }
+                checkAnswer(true); // Викликаємо локальну перевірку (анімацію/звук) як віддалену дію
             }
         }
 
