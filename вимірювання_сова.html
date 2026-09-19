@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Магічний Ліс: Вимірювання (Desktop)</title>
+    
+    <!-- Підключення Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap');
+
+        body {
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: 'Fredoka One', cursive;
+            overflow: hidden;
+            background: radial-gradient(circle at bottom, #1e3c72 0%, #2a5298 50%, #000000 100%); /* Дефолтний фон */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            color: white;
+            user-select: none;
+            position: relative;
+        }
+
+        /* --- ФОН --- */
+        .moon {
+            position: absolute; top: 40px; left: 40px; width: 80px; height: 80px;
+            background: #fff; border-radius: 50%;
+            box-shadow: 0 0 40px #fff, 0 0 80px #ffeb3b; opacity: 0.9; z-index: 1;
+        }
+
+        .forest-layer {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 2;
+        }
+
+        .tree {
+            position: absolute; bottom: 0;
+            background: rgba(13, 20, 24, 0.8);
+            border-radius: 50% 50% 0 0;
+            box-shadow: 10px 0 20px rgba(0,0,0,0.5);
+        }
+        .tree-1 { left: -50px; width: 150px; height: 70vh; z-index: 2; }
+        .tree-2 { left: 20%; width: 80px; height: 40vh; opacity: 0.6; filter: blur(2px); z-index: 1; }
+        .tree-3 { left: 70%; width: 100px; height: 50vh; opacity: 0.6; filter: blur(2px); z-index: 1; }
+        .tree-4 { right: -80px; width: 220px; height: 90vh; z-index: 3; }
+
+        .owl-branch {
+            position: absolute; bottom: 180px; right: 0;
+            width: 320px; height: 25px; background: rgba(13, 20, 24, 0.9);
+            border-radius: 20px 0 0 20px;
+            transform-origin: right center; transform: rotate(-5deg); z-index: 3;
+        }
+
+        .firefly {
+            position: absolute; width: 6px; height: 6px; background: #fffbcc; border-radius: 50%;
+            box-shadow: 0 0 10px #fffbcc, 0 0 20px #ffeb3b; opacity: 0;
+            animation: fly 15s infinite ease-in-out; pointer-events: none; z-index: 4;
+        }
+        @keyframes fly {
+            0% { transform: translate(0, 0); opacity: 0; }
+            10% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { transform: translate(-100px, -100vh); opacity: 0; }
+        }
+
+        h1 {
+            margin-top: 30px; font-size: 42px; text-shadow: 0 0 15px #00d2ff;
+            z-index: 10; letter-spacing: 2px; text-align: center;
+        }
+
+        /* --- ІГРОВА ЗОНА --- */
+        #game-area {
+            position: relative; width: 900px; max-width: 95vw; height: 420px;
+            background: rgba(13, 20, 24, 0.3); backdrop-filter: blur(4px); /* Зроблено більш прозорим для динамічних фонів */
+            border: 4px solid #000000;
+            border-radius: 30px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            margin: 20px; overflow: hidden; z-index: 5;
+        }
+
+        /* ЛІНІЙКА */
+        .ruler-container {
+            position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);
+            width: 860px;
+            height: 90px;
+            background: #5D4037; border-radius: 10px;
+            border: 2px solid #3E2723;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+            display: flex; align-items: flex-start; padding-left: 20px; z-index: 6;
+            overflow-x: auto;
+        }
+        .tick { 
+            width: 40px; height: 100%; flex-shrink: 0;
+            border-left: 1px solid rgba(255,255,255,0.4); 
+            position: relative; box-sizing: border-box; 
+        }
+        .tick.major { border-left: 3px solid #fff; }
+
+        .tick-number { position: absolute; top: 35px; left: -15px; width: 30px; text-align: center; font-size: 20px; color: #FFE082; }
+        .zero-helper { position: absolute; left: 20px; top: -20px; bottom: 0; width: 0; border-left: 2px dashed rgba(255,255,255,0.5); pointer-events: none; }
+
+        /* ГУСЕНИЦЯ */
+        .worm {
+            position: absolute; height: 50px; cursor: grab; z-index: 20; 
+            border-radius: 10px; 
+            box-shadow: 0 0 20px currentColor; 
+            display: flex; align-items: center; justify-content: flex-end;
+            box-sizing: border-box;
+            touch-action: none;
+            will-change: top, left; 
+            animation: breathe 3s infinite ease-in-out;
+        }
+        
+        .worm.dragging {
+            cursor: grabbing; opacity: 0.9;
+            box-shadow: none !important; animation: none !important;
+        }
+
+        .worm-eyes { 
+            position: relative; width: 40px; height: 100%; pointer-events: none;
+        }
+        .worm-eyes::before, .worm-eyes::after {
+            content: ''; position: absolute; top: 12px; width: 8px; height: 8px; background: white; border-radius: 50%; box-shadow: 0 0 2px black;
+        }
+        .worm-eyes::before { left: 8px; } .worm-eyes::after { left: 24px; }
+        
+        @keyframes breathe { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.2); } }
+
+        /* ПАНЕЛЬ КЕРУВАННЯ */
+        #control-panel {
+            background: rgba(40, 25, 20, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 20px 30px;
+            border-radius: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            display: flex; gap: 15px; align-items: center; flex-wrap: wrap; justify-content: center;
+            color: #FFE082; z-index: 100;
+            border: 4px solid #000000;
+        }
+        
+        #answer-input {
+            width: 80px; height: 50px; font-size: 32px; text-align: center;
+            border: 4px solid #000000;
+            border-radius: 12px; background: rgba(255,255,255,0.95); color: #3E2723;
+            font-family: 'Fredoka One', cursive; outline: none;
+        }
+        
+        .btn {
+            font-family: 'Fredoka One', cursive; padding: 10px 20px; font-size: 20px; border: none; border-radius: 12px;
+            cursor: pointer; color: white; box-shadow: 0 4px 0 rgba(0,0,0,0.3); transition: transform 0.1s;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+        }
+        .btn:active { transform: translateY(4px); box-shadow: none; }
+        
+        .check-btn { background: linear-gradient(to bottom, #7cb342, #558b2f); }
+        .next-btn { background: linear-gradient(to bottom, #039be5, #0277bd); display: none; }
+        .regen-btn { background: linear-gradient(to bottom, #ffa726, #f57c00); font-size: 24px; padding: 10px 15px; }
+
+        /* МАСКОТ - СОВА */
+        #mascot {
+            position: absolute; 
+            bottom: 170px;
+            right: 150px;
+            font-size: 90px;
+            filter: drop-shadow(0 5px 10px rgba(0,0,0,0.5));
+            transform-origin: bottom center; z-index: 20; transition: transform 0.3s;
+        }
+        
+        .mascot-normal { animation: blink 4s infinite; }
+        .mascot-happy { animation: jumpHappy 0.6s ease-in-out 3; }
+        .mascot-sad { animation: shakeHead 0.4s ease-in-out; }
+        
+        @keyframes jumpHappy { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-40px) scale(1.1); } }
+        @keyframes shakeHead { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-20deg); } 75% { transform: rotate(20deg); } }
+        @keyframes blink { 0%, 90%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.9) scaleX(1.05); } }
+
+        .sparkle {
+            position: absolute; width: 8px; height: 8px; background: gold;
+            clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+            animation: sparkleAnim 1s linear forwards; z-index: 50;
+        }
+        @keyframes sparkleAnim { 0% { transform: translate(0,0) scale(0); opacity: 1; } 100% { transform: translate(var(--tx), var(--ty)) scale(1.5); opacity: 0; } }
+
+        /* ================= ДОДАНІ СТИЛІ ================= */
+        
+        /* THEME MANAGER */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 50px; height: 50px; border-radius: 50%;
+            background: #2c3e50; color: white; font-size: 24px;
+            border: 2px solid white; cursor: pointer; z-index: 100000;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-family: Arial, sans-serif;
+        }
+        #theme-modal {
+            display: none; position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); background: white;
+            padding: 20px; border-radius: 15px; z-index: 100001;
+            width: 80%; max-width: 600px; max-height: 60vh;
+            overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+            font-family: Arial, sans-serif; color: black;
+        }
+        .theme-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-family: Arial, sans-serif; }
+        .theme-header h2 { margin: 0; font-size: 20px; }
+        .close-theme { cursor: pointer; font-size: 24px; font-weight: bold; }
+        #theme-gallery {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px;
+        }
+        .theme-card {
+            cursor: pointer; border: 2px solid transparent; border-radius: 10px;
+            overflow: hidden; text-align: center; transition: 0.2s; position: relative;
+        }
+        .theme-card:hover { border-color: #3498db; transform: scale(1.05); }
+        .theme-thumb {
+            width: 100%; height: 80px; background-size: cover; background-position: center;
+        }
+        .theme-title {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.7); color: white; font-size: 12px;
+            padding: 4px; font-family: Arial, sans-serif; pointer-events: none;
+        }
+        #theme-overlay-bg {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.5); z-index: 100000;
+        }
+
+        /* DRAW TOOL */
+        #draw-canvas {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 90000;
+        }
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px;
+            background: #8e44ad; color: white; border: 2px solid white;
+            border-radius: 25px; padding: 10px 15px; font-size: 16px; font-family: Arial, sans-serif;
+            cursor: pointer; z-index: 100000; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            display: flex; align-items: center; gap: 5px;
+        }
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; left: 20px;
+            background: white; border: 2px solid #ccc; border-radius: 10px;
+            padding: 10px; z-index: 100001; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            font-family: Arial, sans-serif; color: black; min-width: 250px;
+        }
+        .draw-panel-header {
+            cursor: move; background: #ecf0f1; padding: 5px; border-radius: 5px;
+            text-align: center; margin-bottom: 10px; font-weight: bold; position: relative;
+        }
+        .close-draw-btn {
+            position: absolute; right: 5px; top: 5px; cursor: pointer; color: red; font-weight: bold;
+        }
+        .draw-controls { display: flex; flex-direction: column; gap: 10px; }
+        .draw-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+        .draw-tool-btn {
+            flex: 1; padding: 5px; cursor: pointer; border: 1px solid #ccc;
+            border-radius: 5px; background: #f9f9f9; text-align: center;
+        }
+        .draw-tool-btn.active { background: #3498db; color: white; border-color: #2980b9; }
+
+        /* ZOOM TOOLS */
+        #zoom-tools {
+            position: fixed; bottom: 140px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 100000;
+        }
+        .zoom-btn {
+            width: 50px; height: 50px; border-radius: 50%; font-size: 24px;
+            background: #27ae60; color: white; border: 2px solid white;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-family: Arial, sans-serif;
+        }
+
+        /* ACCESS CONTROL OVERLAY */
+        #block-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.9); z-index: 999999;
+            align-items: center; justify-content: center; flex-direction: column;
+            color: red; font-size: 48px; font-family: Arial, sans-serif; text-align: center; font-weight: bold;
+        }
+
+        /* Адаптивність */
+        @media (max-width: 950px) {
+            #game-area { width: 100%; border-radius: 0; border-left: none; border-right: none; margin: 10px 0; }
+            h1 { font-size: 32px; }
+            #mascot { bottom: 120px; right: 50px; font-size: 60px; }
+            .ruler-container { transform: translateX(0) scale(0.8); left: -10%; transform-origin: left bottom; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">
+        <span>Зачекай!</span>
+        <span style="font-size: 32px; color: white; margin-top: 20px;">Зараз не твій урок.</span>
+    </div>
+
+    <div class="moon"></div>
+    <div id="fireflies-container"></div>
+    
+    <div class="forest-layer">
+        <div class="tree tree-1"></div>
+        <div class="tree tree-2"></div>
+        <div class="tree tree-3"></div>
+        <div class="tree tree-4"></div>
+        <div class="owl-branch"></div>
+    </div>
+
+    <div id="mascot" class="mascot-normal">🦉</div>
+
+    <h1>✨ Лісова Майстерня</h1>
+
+    <div id="game-area">
+        <div class="ruler-container" id="ruler">
+            <div class="zero-helper"></div>
+        </div>
+        <div id="item-container"></div>
+    </div>
+
+    <div id="control-panel">
+        <span style="font-size: 24px;">Розмір:</span>
+        <input type="number" id="answer-input" placeholder="?">
+        <span style="font-size: 24px;">см</span>
+        
+        <button class="btn check-btn" onclick="checkAnswer()">ОК</button>
+        <button class="btn next-btn" id="next-btn" onclick="nextLevel()">ДАЛІ ➡</button>
+        <button class="btn regen-btn" onclick="triggerCreateItem()" title="Інший черв'як">🔄</button>
+    </div>
+
+    <!-- Theme Manager -->
+    <button id="theme-btn" onclick="openThemeManager()">⚙️</button>
+    <div id="theme-overlay-bg" onclick="closeThemeManager()"></div>
+    <div id="theme-modal">
+        <div class="theme-header">
+            <h2>Вибір фону</h2>
+            <div class="close-theme" onclick="closeThemeManager()">✕</div>
+        </div>
+        <div id="theme-gallery">
+            <div class="theme-card" onclick="selectTheme('none')">
+                <div class="theme-thumb" style="background: #333;"></div>
+                <div class="theme-title">Без фону</div>
+            </div>
+            <!-- Динамічні фони -->
+        </div>
+    </div>
+
+    <!-- Zoom Tools -->
+    <div id="zoom-tools">
+        <button class="zoom-btn" onclick="changeZoom(0.1)">🔍+</button>
+        <button class="zoom-btn" onclick="changeZoom(-0.1)">🔍-</button>
+    </div>
+
+    <!-- Global Draw Tool -->
+    <canvas id="draw-canvas"></canvas>
+    <button id="toggle-draw-btn-global" onclick="toggleDrawPanel()">✏️ Малювати</button>
+    <div id="draw-panel-global">
+        <div class="draw-panel-header" id="draw-drag-handle">
+            Панель малювання
+            <span class="close-draw-btn" onclick="closeDrawPanel()">✕</span>
+        </div>
+        <div class="draw-controls">
+            <div class="draw-row">
+                <div id="tool-pencil" class="draw-tool-btn active" onclick="setDrawTool('pencil')">✏️ Олівець</div>
+                <div id="tool-eraser" class="draw-tool-btn" onclick="setDrawTool('eraser')">🧽 Гумка</div>
+            </div>
+            <div class="draw-row">
+                <input type="color" id="draw-color" value="#ff0000">
+                <input type="range" id="draw-size" min="1" max="50" value="5">
+            </div>
+            <button class="draw-tool-btn" style="background: #ff7675; color: white;" onclick="triggerClearCanvas()">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <script>
+        // ================= CONFIG & FIREBASE =================
+        const CONFIG = { gameId: 'owl_measure_1' }; // Унікальний ID гри
+
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+
+        let isFirebaseActive = false;
+        let db = null;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            isFirebaseActive = true;
+            console.log("Firebase ініціалізовано.");
+        } catch (e) {
+            console.warn("Робота без Firebase (офлайн/локально).", e);
+        }
+
+        // ================= ACCESS CONTROL =================
+        let myName = sessionStorage.getItem('userName');
+        if (!myName) {
+            const urlParams = new URLSearchParams(window.location.search);
+            myName = urlParams.get('user');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+            }
+            sessionStorage.setItem('userName', myName);
+        }
+        
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const mySenderId = myName + '_' + tabId;
+        let isRemoteAction = false;
+
+        if (isFirebaseActive) {
+            // Radar
+            const connectedRef = db.ref('.info/connected');
+            const userRef = db.ref('online_users/' + myName + '/' + tabId);
+            connectedRef.on('value', (snap) => {
+                if (snap.val() === true) {
+                    userRef.set(true);
+                    userRef.onDisconnect().remove();
+                }
+            });
+            window.addEventListener('beforeunload', () => userRef.remove());
+
+            // Blocked
+            db.ref('blocked_users/' + myName).on('value', (snap) => {
+                document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+            });
+
+            // Force refresh
+            db.ref('force_refresh').on('value', (snap) => {
+                if (snap.val() && snap.val().timestamp > Date.now() - 5000) window.location.reload();
+            });
+
+            // Lobby Return (з імунітетом)
+            let immunity = true;
+            setTimeout(() => immunity = false, 1000);
+            db.ref('current_activity').on('value', (snap) => {
+                if (!immunity && snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+
+            // Слухач ігрових дій (sync)
+            db.ref('game_action').on('value', snap => {
+                const val = snap.val();
+                if (!val || val.senderId === mySenderId) return; // Не дублювати власні дії
+                isRemoteAction = true;
+                handleSync(val);
+                isRemoteAction = false;
+            });
+        }
+
+        function syncAction(type, data) {
+            if (!isFirebaseActive || isRemoteAction) return;
+            db.ref('game_action').set({
+                senderId: mySenderId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+
+        // ================= ТЕМИ ТА ФОНИ =================
+        const gallery = document.getElementById('theme-gallery');
+        let themesLoaded = false;
+
+        function checkImage(url) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(true);
+                img.onerror = () => resolve(false);
+                img.src = url;
+            });
+        }
+
+        async function loadThemes() {
+            if (themesLoaded) return;
+            let i = 1;
+            while (i <= 1000) {
+                const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                const exists = await checkImage(url);
+                if (!exists) break; // Зупиняємось на першій помилці (404)
+                
+                const card = document.createElement('div');
+                card.className = 'theme-card';
+                card.onclick = () => selectTheme(url);
+                card.innerHTML = `
+                    <div class="theme-thumb" style="background-image: url('${url}')"></div>
+                    <div class="theme-title">Фон ${i}</div>
+                `;
+                gallery.appendChild(card);
+                i++;
+            }
+            themesLoaded = true;
+        }
+
+        function openThemeManager() {
+            document.getElementById('theme-modal').style.display = 'block';
+            document.getElementById('theme-overlay-bg').style.display = 'block';
+            loadThemes();
+        }
+
+        function closeThemeManager() {
+            document.getElementById('theme-modal').style.display = 'none';
+            document.getElementById('theme-overlay-bg').style.display = 'none';
+        }
+
+        function applyBackground(url, saveRemote = true) {
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+            } else {
+                document.body.style.backgroundImage = `url('${url}')`;
+            }
+            
+            // Завжди зберігаємо індивідуально для цієї гри в localStorage
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            
+            if (isFirebaseActive && saveRemote && !isRemoteAction) {
+                db.ref('game_theme').set(url);
+            }
+        }
+
+        function selectTheme(url) {
+            applyBackground(url, true);
+            closeThemeManager();
+        }
+
+        // Ініціалізація фону при старті
+        const localSavedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (localSavedBg) {
+            applyBackground(localSavedBg, false);
+        }
+        
+        if (isFirebaseActive) {
+            db.ref('game_theme').on('value', snap => {
+                if (snap.val() && snap.val() !== localStorage.getItem('mySavedBg_' + CONFIG.gameId)) {
+                    isRemoteAction = true;
+                    applyBackground(snap.val(), false);
+                    isRemoteAction = false;
+                }
+            });
+        }
+
+        // ================= ZOOM TOOLS =================
+        let currentZoomLevel = 1;
+        function changeZoom(delta) {
+            currentZoomLevel += delta;
+            if (currentZoomLevel < 0.3) currentZoomLevel = 0.3;
+            if (currentZoomLevel > 3) currentZoomLevel = 3;
+            document.body.style.zoom = currentZoomLevel;
+        }
+
+        // ================= DRAW TOOL =================
+        const canvas = document.getElementById('draw-canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let currentDrawTool = 'pencil';
+        let lastX = 0, lastY = 0;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function toggleDrawPanel() {
+            const panel = document.getElementById('draw-panel-global');
+            if (panel.style.display === 'block') {
+                closeDrawPanel();
+            } else {
+                panel.style.display = 'block';
+                canvas.style.pointerEvents = 'auto'; // Вмикаємо малювання
+                isDrawingMode = true;
+                setDrawTool('pencil');
+            }
+        }
+
+        function closeDrawPanel() {
+            document.getElementById('draw-panel-global').style.display = 'none';
+            canvas.style.pointerEvents = 'none'; // Вимикаємо малювання
+            isDrawingMode = false;
+        }
+
+        function setDrawTool(tool) {
+            currentDrawTool = tool;
+            document.getElementById('tool-pencil').classList.remove('active');
+            document.getElementById('tool-eraser').classList.remove('active');
+            document.getElementById(`tool-${tool}`).classList.add('active');
+        }
+
+        function getPointerPos(e) {
+            let evt = e.touches ? e.touches[0] : e;
+            // Корегування для zoom, якщо використовується CSS zoom
+            let zoom = parseFloat(document.body.style.zoom || 1);
+            return { x: evt.clientX / zoom, y: evt.clientY / zoom };
+        }
+
+        function startDrawing(e) {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            let pos = getPointerPos(e);
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function draw(e) {
+            if (!isDrawing || !isDrawingMode) return;
+            e.preventDefault();
+            let pos = getPointerPos(e);
+            let color = currentDrawTool === 'eraser' ? null : document.getElementById('draw-color').value;
+            let width = document.getElementById('draw-size').value;
+
+            drawLine(lastX, lastY, pos.x, pos.y, color, width, currentDrawTool === 'eraser');
+            
+            // Синхронізація
+            syncAction('draw_line', {
+                x0: lastX / canvas.width, y0: lastY / canvas.height,
+                x1: pos.x / canvas.width, y1: pos.y / canvas.height,
+                color: color, width: width, isEraser: currentDrawTool === 'eraser'
+            });
+
+            lastX = pos.x; lastY = pos.y;
+        }
+
+        function stopDrawing() { isDrawing = false; }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing, {passive: false});
+        canvas.addEventListener('touchmove', draw, {passive: false});
+        canvas.addEventListener('touchend', stopDrawing);
+
+        function drawLine(x0, y0, x1, y1, color, width, isEraserLoc) {
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = width;
+            if (isEraserLoc) {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.strokeStyle = 'rgba(0,0,0,1)';
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = color;
+            }
+            ctx.stroke();
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        function triggerClearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            syncAction('clear_canvas', {});
+        }
+
+        // Dragging для панелі малювання
+        const drawPanel = document.getElementById('draw-panel-global');
+        const drawDragHandle = document.getElementById('draw-drag-handle');
+        let isPanelDragging = false, pOffsetX, pOffsetY;
+        
+        drawDragHandle.addEventListener('mousedown', (e) => {
+            isPanelDragging = true;
+            pOffsetX = e.clientX - drawPanel.getBoundingClientRect().left;
+            pOffsetY = e.clientY - drawPanel.getBoundingClientRect().top;
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isPanelDragging) return;
+            drawPanel.style.left = (e.clientX - pOffsetX) + 'px';
+            drawPanel.style.top = (e.clientY - pOffsetY) + 'px';
+        });
+        document.addEventListener('mouseup', () => isPanelDragging = false);
+        drawDragHandle.addEventListener('touchstart', (e) => {
+            isPanelDragging = true;
+            pOffsetX = e.touches[0].clientX - drawPanel.getBoundingClientRect().left;
+            pOffsetY = e.touches[0].clientY - drawPanel.getBoundingClientRect().top;
+        }, {passive:true});
+        document.addEventListener('touchmove', (e) => {
+            if (!isPanelDragging) return;
+            drawPanel.style.left = (e.touches[0].clientX - pOffsetX) + 'px';
+            drawPanel.style.top = (e.touches[0].clientY - pOffsetY) + 'px';
+        }, {passive:true});
+        document.addEventListener('touchend', () => isPanelDragging = false);
+
+
+        // ================= ОРИГІНАЛЬНА ЛОГІКА ГРИ З СИНХРОНІЗАЦІЄЮ =================
+        const fireflyContainer = document.getElementById('fireflies-container');
+        for(let i=0; i<25; i++) {
+            let div = document.createElement('div');
+            div.className = 'firefly';
+            div.style.left = Math.random() * 100 + 'vw';
+            div.style.top = Math.random() * 100 + 'vh';
+            div.style.animationDelay = Math.random() * 5 + 's';
+            div.style.animationDuration = (Math.random() * 10 + 8) + 's';
+            fireflyContainer.appendChild(div);
+        }
+
+        const PIXELS_PER_CM = 40;
+        let currentLength = 0;
+        const mascot = document.getElementById('mascot');
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        mascot.addEventListener('animationend', () => {
+            mascot.className = 'mascot-normal';
+        });
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            
+            if (type === 'correct') {
+                osc.frequency.setValueAtTime(523, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1046, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            } else {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            }
+            osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+        }
+
+        const ruler = document.getElementById('ruler');
+        for (let i = 0; i <= 20; i++) {
+            const tick = document.createElement('div');
+            tick.className = 'tick' + (i % 5 === 0 ? ' major' : '');
+            tick.innerHTML = `<div class="tick-number">${i}</div>`;
+            ruler.appendChild(tick);
+        }
+
+        function triggerCreateItem() {
+            createItem();
+        }
+
+        function createItem(forceLength, forceColor, skipSync = false) {
+            const container = document.getElementById('item-container');
+            container.innerHTML = ''; 
+            
+            currentLength = forceLength || (Math.floor(Math.random() * 14) + 3);
+            const color = forceColor || (['#00e676', '#ff1744', '#2979ff', '#ffea00', '#d500f9'][Math.floor(Math.random() * 5)]);
+            
+            if (!skipSync) {
+                syncAction('create_item', { length: currentLength, color: color });
+            }
+
+            const worm = document.createElement('div');
+            worm.className = 'worm';
+            worm.style.width = (currentLength * PIXELS_PER_CM) + 'px';
+            worm.style.backgroundColor = color;
+            worm.style.color = color; 
+            
+            worm.innerHTML = '<div class="worm-eyes"></div>';
+            worm.style.top = '50px';
+            worm.style.left = '50px';
+
+            makeDraggable(worm);
+            container.appendChild(worm);
+
+            document.getElementById('answer-input').value = '';
+            document.getElementById('answer-input').style.backgroundColor = 'white';
+            document.getElementById('next-btn').style.display = 'none';
+            document.querySelector('.check-btn').style.display = 'block';
+            mascot.className = 'mascot-normal';
+        }
+
+        function makeDraggable(el) {
+            let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+            
+            // Mouse events
+            el.onmousedown = dragMouseDown;
+            // Touch events for mobile
+            el.ontouchstart = (e) => {
+                if (e.touches.length > 1) return; // Ігноруємо мультитач
+                dragMouseDown(e.touches[0], true);
+            };
+
+            function dragMouseDown(e, isTouch = false) {
+                e.preventDefault?.();
+                pos3 = e.clientX; pos4 = e.clientY;
+                
+                if (isTouch) {
+                    document.ontouchend = closeDragElement;
+                    document.ontouchmove = (ev) => elementDrag(ev.touches[0]);
+                } else {
+                    document.onmouseup = closeDragElement;
+                    document.onmousemove = elementDrag;
+                }
+            }
+
+            function elementDrag(e) {
+                e.preventDefault?.();
+                let zoom = parseFloat(document.body.style.zoom || 1);
+                pos1 = (pos3 - e.clientX) / zoom; 
+                pos2 = (pos4 - e.clientY) / zoom;
+                pos3 = e.clientX; pos4 = e.clientY;
+                
+                let newTop = (el.offsetTop - pos2);
+                let newLeft = (el.offsetLeft - pos1);
+                
+                el.style.top = newTop + "px";
+                el.style.left = newLeft + "px";
+                el.classList.add('dragging');
+                
+                syncAction('move_worm', { top: el.style.top, left: el.style.left });
+            }
+
+            function closeDragElement() {
+                document.onmouseup = null; document.onmousemove = null;
+                document.ontouchend = null; document.ontouchmove = null;
+                el.classList.remove('dragging');
+            }
+        }
+
+        function checkAnswer() {
+            const input = document.getElementById('answer-input');
+            const val = parseInt(input.value);
+            if (val === currentLength) {
+                playSound('correct');
+                input.style.backgroundColor = '#c8e6c9';
+                document.querySelector('.check-btn').style.display = 'none';
+                document.getElementById('next-btn').style.display = 'block';
+                mascot.className = 'mascot-happy';
+                createSparkles();
+            } else {
+                playSound('wrong');
+                input.style.backgroundColor = '#ffcdd2';
+                mascot.className = 'mascot-sad';
+            }
+        }
+
+        function createSparkles() {
+            const container = document.getElementById('game-area');
+            const worm = document.querySelector('.worm');
+            if(!worm) return;
+            for(let i=0; i<20; i++) {
+                const s = document.createElement('div');
+                s.className = 'sparkle';
+                s.style.left = (worm.offsetLeft + worm.offsetWidth/2) + 'px';
+                s.style.top = (worm.offsetTop + 25) + 'px';
+                s.style.setProperty('--tx', (Math.random()*300 - 150) + 'px');
+                s.style.setProperty('--ty', (Math.random()*300 - 150) + 'px');
+                container.appendChild(s);
+                setTimeout(() => s.remove(), 1000);
+            }
+        }
+
+        function nextLevel() { triggerCreateItem(); }
+        
+        // ================= ОБРОБНИК СИНХРОНІЗАЦІЇ ДІЙ =================
+        function handleSync(action) {
+            if (action.type === 'draw_line') {
+                const d = action.data;
+                drawLine(d.x0 * canvas.width, d.y0 * canvas.height, d.x1 * canvas.width, d.y1 * canvas.height, d.color, d.width, d.isEraser);
+            } else if (action.type === 'clear_canvas') {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            } else if (action.type === 'create_item') {
+                createItem(action.data.length, action.data.color, true);
+            } else if (action.type === 'move_worm') {
+                const worm = document.querySelector('.worm');
+                if (worm) {
+                    worm.style.top = action.data.top;
+                    worm.style.left = action.data.left;
+                }
+            }
+        }
+
+        // Запуск
+        createItem();
+    </script>
+</body>
+</html>
