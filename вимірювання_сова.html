@@ -79,7 +79,8 @@
         /* --- ІГРОВА ЗОНА --- */
         #game-area {
             position: relative; width: 900px; max-width: 95vw; height: 420px;
-            background: rgba(13, 20, 24, 0.3); backdrop-filter: blur(4px);
+            background: rgba(13, 20, 24, 0.15); /* Максимально прозорий для динамічного фону */
+            backdrop-filter: blur(4px);
             border: 4px solid #000000;
             border-radius: 30px;
             box-shadow: 0 20px 50px rgba(0,0,0,0.5);
@@ -136,7 +137,7 @@
 
         /* ПАНЕЛЬ КЕРУВАННЯ */
         #control-panel {
-            background: rgba(40, 25, 20, 0.7);
+            background: rgba(40, 25, 20, 0.6); /* Напівпрозорий для фону */
             backdrop-filter: blur(10px);
             padding: 20px 30px;
             border-radius: 25px;
@@ -443,8 +444,16 @@
                 }
             });
 
-            // Слухач ігрових дій (sync)
-            db.ref('game_action').on('value', snap => {
+            // Слухач ігрових дій (розділені канали для надійності)
+            db.ref(CONFIG.gameId + '/game_action').on('value', snap => {
+                const val = snap.val();
+                if (!val || val.senderId === mySenderId) return;
+                isRemoteAction = true;
+                handleSync(val);
+                isRemoteAction = false;
+            });
+
+            db.ref(CONFIG.gameId + '/game_stream').on('value', snap => {
                 const val = snap.val();
                 if (!val || val.senderId === mySenderId) return;
                 isRemoteAction = true;
@@ -453,14 +462,24 @@
             });
         }
 
+        // Оновлена функція синхронізації
         function syncAction(type, data) {
             if (!isFirebaseActive || isRemoteAction) return;
-            db.ref('game_action').set({
+            
+            const payload = {
                 senderId: mySenderId,
+                actionId: Math.random().toString(36).substring(2, 10), // Унікальний ID, щоб Firebase завжди бачив зміну
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
                 type: type,
                 data: data
-            });
+            };
+
+            // Розділяємо швидкі дії (малювання, рух) від важливих (текст, кнопки)
+            if (type === 'move_worm' || type === 'draw_line') {
+                db.ref(CONFIG.gameId + '/game_stream').set(payload);
+            } else {
+                db.ref(CONFIG.gameId + '/game_action').set(payload);
+            }
         }
 
         // ================= ТЕМИ ТА ФОНИ =================
@@ -482,7 +501,7 @@
             while (i <= 1000) {
                 const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
                 const exists = await checkImage(url);
-                if (!exists) break; // Суворо послідовне завантаження, зупинка на 404
+                if (!exists) break;
                 
                 const card = document.createElement('div');
                 card.className = 'theme-card';
@@ -518,7 +537,7 @@
             localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
             
             if (isFirebaseActive && saveRemote && !isRemoteAction) {
-                db.ref('game_theme').set(url);
+                db.ref(CONFIG.gameId + '/game_theme').set(url);
             }
         }
 
@@ -533,7 +552,7 @@
         }
         
         if (isFirebaseActive) {
-            db.ref('game_theme').on('value', snap => {
+            db.ref(CONFIG.gameId + '/game_theme').on('value', snap => {
                 if (snap.val() && snap.val() !== localStorage.getItem('mySavedBg_' + CONFIG.gameId)) {
                     isRemoteAction = true;
                     applyBackground(snap.val(), false);
@@ -759,17 +778,24 @@
             makeDraggable(worm);
             container.appendChild(worm);
 
-            document.getElementById('answer-input').value = '';
-            document.getElementById('answer-input').style.backgroundColor = 'white';
+            const inputField = document.getElementById('answer-input');
+            inputField.value = '';
+            inputField.style.backgroundColor = 'rgba(255,255,255,0.95)';
             document.getElementById('next-btn').style.display = 'none';
             document.querySelector('.check-btn').style.display = 'block';
+            
             mascot.className = 'mascot-normal';
+            void mascot.offsetWidth; // Апаратне скидання анімації
         }
 
-        // Синхронізація введення тексту
-        document.getElementById('answer-input').addEventListener('input', function(e) {
-            syncAction('sync_input', { value: e.target.value });
-        });
+        // НАДІЙНА СИНХРОНІЗАЦІЯ ПОЛЯ ВВОДУ
+        const answerInput = document.getElementById('answer-input');
+        function broadcastInput() {
+            syncAction('sync_input', { value: answerInput.value });
+        }
+        answerInput.addEventListener('input', broadcastInput);
+        answerInput.addEventListener('change', broadcastInput);
+        answerInput.addEventListener('keyup', broadcastInput);
 
         function makeDraggable(el) {
             let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
@@ -821,10 +847,13 @@
             const input = document.getElementById('answer-input');
             const val = parseInt(input.value);
 
-            // Синхронізуємо подію перевірки
             if (!isRemote) {
                 syncAction('check_answer', { value: input.value });
             }
+
+            // Апаратне скидання класу для гарантованого відтворення анімації кожного разу
+            mascot.className = 'mascot-normal';
+            void mascot.offsetWidth; 
 
             if (val === currentLength) {
                 playSound('correct');
@@ -877,13 +906,14 @@
                 const input = document.getElementById('answer-input');
                 if (input) {
                     input.value = action.data.value;
+                    input.style.backgroundColor = 'rgba(255,255,255,0.95)'; // Скидаємо колір, якщо він був червоний/зелений
                 }
             } else if (action.type === 'check_answer') {
                 const input = document.getElementById('answer-input');
                 if (input) {
                     input.value = action.data.value;
                 }
-                checkAnswer(true); // Викликаємо локальну перевірку (анімацію/звук) як віддалену дію
+                checkAnswer(true);
             }
         }
 
