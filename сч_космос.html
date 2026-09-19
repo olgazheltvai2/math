@@ -209,8 +209,13 @@
             box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 5px 5px 15px rgba(255,255,255,0.5);
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             
-            /* ЖОРСТКИЙ КОНТРАСТ: Чорна обводка + свічення */
-            text-shadow: 2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000, 0 4px 15px rgba(0,0,0,0.9);
+            /* ЖОРСТКИЙ КОНТРАСТ: Чорна обводка зі всіх боків + сильна тінь */
+            text-shadow: 
+                -2px -2px 0 #000,  
+                 2px -2px 0 #000,
+                -2px  2px 0 #000,
+                 2px  2px 0 #000,
+                 0 4px 15px rgba(0,0,0,0.9);
             
             clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
         }
@@ -220,7 +225,7 @@
             filter: brightness(1.2) drop-shadow(0 0 20px #00ffff);
         }
 
-        /* --- Екран Plinko (Новий пропорційний контейнер) --- */
+        /* --- Екран Plinko (Пропорційний масштабований контейнер) --- */
         #plinko-screen {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -233,12 +238,13 @@
             align-items: center;
         }
 
+        /* Контейнер зберігає пропорції 4:3 (1200x900) */
         #canvas-wrapper {
             position: relative;
             width: 100vw;
-            height: 75vw;
+            height: 75vw; /* 900/1200 = 0.75 */
             max-height: 100vh;
-            max-width: 133.33vh; /* Зберігає пропорції 1200x900 (4:3) */
+            max-width: 133.33vh; /* 1200/900 = 1.3333 */
         }
 
         canvas {
@@ -584,6 +590,7 @@
         </div>
 
         <div id="plinko-screen">
+            <!-- Пропорційний обгортка для Canvas. Фіксований логічний розмір Canvas! -->
             <div id="canvas-wrapper">
                 <canvas id="canvas" width="1200" height="900"></canvas>
                 <div id="drop-zone-indicator">
@@ -758,6 +765,7 @@
     let drawCurrentTool = 'pen';
     let lastX = 0, lastY = 0;
 
+    // Змінюємо розмір тільки для полотна малювання, Plinko-полотно залишається фіксованим 1200x900!
     function resizeDrawCanvas() {
         drawCanvas.width = window.innerWidth;
         drawCanvas.height = window.innerHeight;
@@ -1051,7 +1059,6 @@
             playTone('pop');
             setAxoMood('happy');
             
-            // Миттєво приховуємо у себе, щоб не заважало
             mathScreen.style.opacity = '0';
             mathScreen.style.pointerEvents = 'none';
             
@@ -1095,7 +1102,6 @@
         gameState = 'DROP';
         updateCharacterVisibility();
         
-        // Гарантовано приховуємо математику у всіх інших гравців!
         mathScreen.style.opacity = '0';
         mathScreen.style.pointerEvents = 'none';
 
@@ -1113,25 +1119,23 @@
     canvas.addEventListener('pointerdown', (e) => {
         if(gameState !== 'DROP') return;
         
-        // Правильний мапінг координат незалежно від екрану телефону/ПК
+        // Масштабування координат кліку для ідеальної точності на всіх екранах
         const rect = canvas.getBoundingClientRect();
         const scaleX = LOGICAL_WIDTH / rect.width;
         const scaleY = LOGICAL_HEIGHT / rect.height;
         const cx = (e.clientX - rect.left) * scaleX;
         const cy = (e.clientY - rect.top) * scaleY;
 
-        // Дозволяємо клікати тільки у верхній 25% зоні (225px від 900px)
         if(cy > LOGICAL_HEIGHT * 0.25) return; 
         if(hasPlacedBall) return; 
 
         initAudio();
         hasPlacedBall = true;
         
-        // Генеруємо випадковість тут 1 раз і відправляємо всім однакову
         sendGameAction('PLACE_BALL', {
             x: cx, y: cy, vx: (Math.random() - 0.5) * 2, vy: 0,
             r: 18, color: myPlayerColor, owner: myName,
-            hash: Math.floor(Math.random() * 1000) // для детермінованого відскоку
+            hash: Math.floor(Math.random() * 1000) 
         });
     });
 
@@ -1168,9 +1172,9 @@
         ctx.restore();
     }
 
-    // --- ФІКСОВАНИЙ КРОК ЧАСУ (Fixed Timestep) ДЛЯ ІДЕАЛЬНОЇ СИНХРОНІЗАЦІЇ ФІЗИКИ ---
+    // --- ФІКСОВАНИЙ КРОК ЧАСУ ДЛЯ ІДЕАЛЬНОЇ СИНХРОНІЗАЦІЇ ФІЗИКИ ---
     let lastTime = 0;
-    const fixedDelta = 1000 / 60; // 60 оновлень фізики на секунду на всіх пристроях
+    const fixedDelta = 1000 / 60; 
     let accumulator = 0;
 
     function animatePhysicsAndDraw(time) {
@@ -1178,12 +1182,14 @@
         let dt = time - lastTime;
         lastTime = time;
         
-        if(dt > 100) dt = 100; // Захист від зависання вкладки
+        if(dt > 250) dt = 250; // Запобіжник для повільних пристроїв
         accumulator += dt;
 
-        while(accumulator >= fixedDelta) {
+        let steps = 0;
+        while(accumulator >= fixedDelta && steps < 20) {
             updatePhysicsLogic();
             accumulator -= fixedDelta;
+            steps++;
         }
 
         drawAllVisuals();
@@ -1217,8 +1223,8 @@
                         let dot = b.vx * nx + b.vy * ny;
                         b.vx -= 2 * dot * nx; b.vy -= 2 * dot * ny;
                         
-                        // ДЕТЕРМІНОВАНА ВІДДАЧА (Синхронно на всіх екранах)
-                        let pseudoRand = (((b.hash + pIdx) % 11) - 5) / 5; // Значення від -1 до 1
+                        // ДЕТЕРМІНОВАНА ВІДДАЧА (Однакова для всіх екранів)
+                        let pseudoRand = (((b.hash + pIdx) % 11) - 5) / 5; 
                         b.vx += pseudoRand * 1.5; 
                         
                         b.vx *= 0.85; b.vy *= 0.85;
@@ -1244,7 +1250,6 @@
 
         if(gameState === 'PLAY' && !activeBalls && balls.length > 0) {
             gameState = 'END';
-            // Дозволяємо перехід до наступного етапу
             nextBtn.style.display = 'block';
         }
     }
