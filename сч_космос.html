@@ -65,7 +65,7 @@
             100% { opacity: 0.3; transform: scale(0.8); fill: #99ffff; }
         }
 
-        /* Ігрові контейнери (максимально прозорі) */
+        /* Ігрові контейнери */
         #game-container {
             position: relative;
             width: 100vw;
@@ -208,7 +208,10 @@
             cursor: pointer;
             box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 5px 5px 15px rgba(255,255,255,0.5);
             transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            
+            /* ЖОРСТКИЙ КОНТРАСТ: Чорна обводка + свічення */
+            text-shadow: 2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000, 0 4px 15px rgba(0,0,0,0.9);
+            
             clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
         }
 
@@ -217,7 +220,7 @@
             filter: brightness(1.2) drop-shadow(0 0 20px #00ffff);
         }
 
-        /* --- Екран Plinko --- */
+        /* --- Екран Plinko (Новий пропорційний контейнер) --- */
         #plinko-screen {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -225,6 +228,17 @@
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.5s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #canvas-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 75vw;
+            max-height: 100vh;
+            max-width: 133.33vh; /* Зберігає пропорції 1200x900 (4:3) */
         }
 
         canvas {
@@ -235,7 +249,7 @@
 
         #drop-zone-indicator {
             position: absolute;
-            top: 0; left: 0; width: 100%; height: 15vh;
+            top: 0; left: 0; width: 100%; height: 15%;
             background: linear-gradient(to bottom, rgba(255, 0, 255, 0.2), transparent);
             z-index: 6;
             opacity: 0;
@@ -244,7 +258,7 @@
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            padding-top: 2vh;
+            padding-top: 2%;
         }
         
         .arrow-down {
@@ -273,6 +287,7 @@
             box-shadow: 0 10px 20px rgba(0,0,0,0.5), inset 0 0 10px rgba(255,255,255,0.4);
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             font-family: inherit;
+            display: none;
         }
 
         #next-btn:hover {
@@ -282,8 +297,8 @@
 
         #start-drop-btn {
             position: absolute;
-            top: 20vh;
-            right: 4vw;
+            top: 20%;
+            right: 4%;
             background: linear-gradient(45deg, #00ff00, #008000);
             border: 3px solid #ccffcc;
             color: #fff;
@@ -402,7 +417,7 @@
         .draw-close { position: absolute; top: 10px; right: 10px; cursor: pointer; font-weight: bold; }
         
         @media (max-width: 600px) {
-            #start-drop-btn { top: 18vh; right: 50%; transform: translateX(50%); }
+            #start-drop-btn { top: 18%; right: 50%; transform: translateX(50%); }
             #next-btn { bottom: 1vh; right: 50%; transform: translateX(50%); }
         }
     </style>
@@ -568,13 +583,14 @@
             <div class="options-container" id="options"></div>
         </div>
 
-        <div id="drop-zone-indicator">
-            <div class="arrow-down"></div>
-        </div>
-
         <div id="plinko-screen">
-            <canvas id="canvas"></canvas>
-            <button id="start-drop-btn">Запустити!</button>
+            <div id="canvas-wrapper">
+                <canvas id="canvas" width="1200" height="900"></canvas>
+                <div id="drop-zone-indicator">
+                    <div class="arrow-down"></div>
+                </div>
+                <button id="start-drop-btn">Запустити!</button>
+            </div>
         </div>
 
         <button id="next-btn">Магія ➦</button>
@@ -874,6 +890,7 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const character = document.getElementById('character');
+    const nextBtn = document.getElementById('next-btn');
     
     const fIdle = document.getElementById('face-idle');
     const fHappy = document.getElementById('face-happy');
@@ -889,6 +906,10 @@
     let myPlayerColor = `hsl(${Math.random()*360}, 100%, 50%)`;
     let hasPlacedBall = false;
 
+    // Фіксовані розміри для абсолютної синхронізації на будь-якому пристрої
+    const LOGICAL_WIDTH = 1200;
+    const LOGICAL_HEIGHT = 900;
+    
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     let actx = null;
 
@@ -940,13 +961,6 @@
     function updateCharacterVisibility() {
         character.style.display = (gameState === 'MATH') ? 'block' : 'none';
     }
-
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
 
     function sendGameAction(type, data) {
         if (!db) {
@@ -1009,11 +1023,13 @@
         updateCharacterVisibility();
         
         mathScreen.style.opacity = '1'; 
-        mathScreen.style.pointerEvents = 'all'; // Активуємо кліки на прикладі
+        mathScreen.style.pointerEvents = 'all';
+        
         plinkoScreen.style.opacity = '0'; 
         plinkoScreen.style.pointerEvents = 'none';
         dropIndicator.style.opacity = '0'; 
         startDropBtn.style.display = 'none';
+        nextBtn.style.display = 'none';
 
         currentAnswer = data.answer;
         document.getElementById('part1').innerText = data.part1;
@@ -1035,7 +1051,7 @@
             playTone('pop');
             setAxoMood('happy');
             
-            // Локально ховаємо, щоб миттєво не заважало
+            // Миттєво приховуємо у себе, щоб не заважало
             mathScreen.style.opacity = '0';
             mathScreen.style.pointerEvents = 'none';
             
@@ -1054,16 +1070,16 @@
 
     function generatePegsData() {
         let tempPegs = [];
-        const rows = Math.floor(canvas.height / 80) - 2;
-        const cols = Math.floor(canvas.width / 90);
-        const startY = canvas.height * 0.25;
+        const rows = Math.floor(LOGICAL_HEIGHT / 80) - 2;
+        const cols = Math.floor(LOGICAL_WIDTH / 90);
+        const startY = LOGICAL_HEIGHT * 0.25;
 
         for(let i=0; i<rows; i++) {
             for(let j=1; j<=cols; j++) {
                 let offset = (i % 2 === 0) ? 45 : 0;
                 let x = j * 90 + offset - 45 + (Math.random()*40 - 20);
                 let y = startY + i * 80 + (Math.random()*30 - 15);
-                if(x > 30 && x < canvas.width - 30) {
+                if(x > 30 && x < LOGICAL_WIDTH - 30) {
                     tempPegs.push({
                         x: x, y: y, r: 12 + Math.random()*8, 
                         rot: Math.random() * Math.PI, 
@@ -1079,38 +1095,43 @@
         gameState = 'DROP';
         updateCharacterVisibility();
         
-        // --- ВИПРАВЛЕННЯ ---
-        // Цей код виконається у ВСІХ гравців, тому ми примусово 
-        // вимикаємо видимість та кліки для екрану з прикладом!
+        // Гарантовано приховуємо математику у всіх інших гравців!
         mathScreen.style.opacity = '0';
-        mathScreen.style.pointerEvents = 'none'; 
+        mathScreen.style.pointerEvents = 'none';
 
         plinkoScreen.style.opacity = '1'; 
-        plinkoScreen.style.pointerEvents = 'all'; // Відкриваємо доступ до Canvas
+        plinkoScreen.style.pointerEvents = 'all';
         dropIndicator.style.opacity = '1'; 
         startDropBtn.style.display = 'block';
         pegs = pegsData;
         
         cancelAnimationFrame(animFrame);
-        animate();
+        lastTime = 0;
+        animFrame = requestAnimationFrame(animatePhysicsAndDraw);
     }
 
     canvas.addEventListener('pointerdown', (e) => {
         if(gameState !== 'DROP') return;
-        if(e.clientY > canvas.height * 0.25) return; 
-        if(hasPlacedBall) return; 
-
-        initAudio();
+        
+        // Правильний мапінг координат незалежно від екрану телефону/ПК
         const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
+        const scaleX = LOGICAL_WIDTH / rect.width;
+        const scaleY = LOGICAL_HEIGHT / rect.height;
         const cx = (e.clientX - rect.left) * scaleX;
         const cy = (e.clientY - rect.top) * scaleY;
 
+        // Дозволяємо клікати тільки у верхній 25% зоні (225px від 900px)
+        if(cy > LOGICAL_HEIGHT * 0.25) return; 
+        if(hasPlacedBall) return; 
+
+        initAudio();
         hasPlacedBall = true;
+        
+        // Генеруємо випадковість тут 1 раз і відправляємо всім однакову
         sendGameAction('PLACE_BALL', {
             x: cx, y: cy, vx: (Math.random() - 0.5) * 2, vy: 0,
-            r: 18, color: myPlayerColor, owner: myName
+            r: 18, color: myPlayerColor, owner: myName,
+            hash: Math.floor(Math.random() * 1000) // для детермінованого відскоку
         });
     });
 
@@ -1147,32 +1168,46 @@
         ctx.restore();
     }
 
-    function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // --- ФІКСОВАНИЙ КРОК ЧАСУ (Fixed Timestep) ДЛЯ ІДЕАЛЬНОЇ СИНХРОНІЗАЦІЇ ФІЗИКИ ---
+    let lastTime = 0;
+    const fixedDelta = 1000 / 60; // 60 оновлень фізики на секунду на всіх пристроях
+    let accumulator = 0;
 
-        ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
-        ctx.fillRect(0, canvas.height - gateHeight, canvas.width, gateHeight);
-        ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff'; ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 3; ctx.beginPath();
-        ctx.moveTo(0, canvas.height - gateHeight); ctx.lineTo(canvas.width, canvas.height - gateHeight);
-        ctx.stroke(); ctx.shadowBlur = 0;
+    function animatePhysicsAndDraw(time) {
+        if (!lastTime) lastTime = time;
+        let dt = time - lastTime;
+        lastTime = time;
+        
+        if(dt > 100) dt = 100; // Захист від зависання вкладки
+        accumulator += dt;
 
-        pegs.forEach(p => {
-            p.rot += 0.02; drawCrystal(p.x, p.y, p.r, p.rot, p.color);
-        });
+        while(accumulator >= fixedDelta) {
+            updatePhysicsLogic();
+            accumulator -= fixedDelta;
+        }
 
+        drawAllVisuals();
+
+        if (gameState === 'DROP' || gameState === 'PLAY' || gameState === 'END') {
+            animFrame = requestAnimationFrame(animatePhysicsAndDraw);
+        }
+    }
+
+    function updatePhysicsLogic() {
+        pegs.forEach(p => { p.rot += 0.02; });
         let activeBalls = false;
 
-        balls.forEach(b => {
+        balls.forEach((b, idx) => {
             if(gameState === 'PLAY') {
                 b.vy += 0.25; b.vx *= 0.99; b.vy *= 0.99;
                 b.x += b.vx; b.y += b.vy;
+                
                 if(b.y < canvas.height - gateHeight + b.r) activeBalls = true;
 
                 if(b.x < b.r) { b.x = b.r; b.vx *= -0.7; }
                 if(b.x > canvas.width - b.r) { b.x = canvas.width - b.r; b.vx *= -0.7; }
 
-                pegs.forEach(p => {
+                pegs.forEach((p, pIdx) => {
                     let dx = b.x - p.x; let dy = b.y - p.y;
                     let dist = Math.sqrt(dx*dx + dy*dy);
                     if(dist < b.r + p.r * 0.8) { 
@@ -1181,7 +1216,11 @@
                         b.x += nx * overlap; b.y += ny * overlap;
                         let dot = b.vx * nx + b.vy * ny;
                         b.vx -= 2 * dot * nx; b.vy -= 2 * dot * ny;
-                        b.vx += (Math.random() - 0.5) * 3; 
+                        
+                        // ДЕТЕРМІНОВАНА ВІДДАЧА (Синхронно на всіх екранах)
+                        let pseudoRand = (((b.hash + pIdx) % 11) - 5) / 5; // Значення від -1 до 1
+                        b.vx += pseudoRand * 1.5; 
+                        
                         b.vx *= 0.85; b.vy *= 0.85;
                         spawnParticles(p.x, p.y, p.color, 4); 
                         p.r += 3; setTimeout(() => p.r -= 3, 100);
@@ -1195,7 +1234,34 @@
                     playTone('win');
                 }
             }
+        });
 
+        for(let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy *= 0.96; p.life -= 0.02;
+            if(p.life <= 0) particles.splice(i, 1);
+        }
+
+        if(gameState === 'PLAY' && !activeBalls && balls.length > 0) {
+            gameState = 'END';
+            // Дозволяємо перехід до наступного етапу
+            nextBtn.style.display = 'block';
+        }
+    }
+
+    function drawAllVisuals() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+        ctx.fillRect(0, canvas.height - gateHeight, canvas.width, gateHeight);
+        ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff'; ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 3; ctx.beginPath();
+        ctx.moveTo(0, canvas.height - gateHeight); ctx.lineTo(canvas.width, canvas.height - gateHeight);
+        ctx.stroke(); ctx.shadowBlur = 0;
+
+        pegs.forEach(p => drawCrystal(p.x, p.y, p.r, p.rot, p.color));
+
+        balls.forEach(b => {
             ctx.save(); ctx.translate(b.x, b.y);
             ctx.shadowBlur = 20; ctx.shadowColor = b.color;
             ctx.beginPath();
@@ -1209,31 +1275,20 @@
             grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.5, b.color); grad.addColorStop(1, '#000');
             ctx.beginPath(); ctx.arc(0, 0, b.r, 0, Math.PI*2);
             ctx.fillStyle = grad; ctx.fill();
-            spawnParticles(b.x, b.y, b.color, 1); 
+            if(gameState === 'PLAY') spawnParticles(b.x, b.y, b.color, 1); 
             ctx.restore();
         });
 
-        for(let i = particles.length - 1; i >= 0; i--) {
+        for(let i = 0; i < particles.length; i++) {
             let p = particles[i];
-            p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy *= 0.96; p.life -= 0.02;
-            if(p.life <= 0) { particles.splice(i, 1); continue; }
             ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.shadowBlur = 10; ctx.shadowColor = p.color;
             ctx.beginPath(); ctx.moveTo(p.x, p.y - p.size); ctx.lineTo(p.x + p.size, p.y);
             ctx.lineTo(p.x, p.y + p.size); ctx.lineTo(p.x - p.size, p.y); ctx.fill();
         }
         ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-
-        if(gameState === 'PLAY' && !activeBalls && balls.length > 0) {
-            gameState = 'END';
-            setTimeout(startMath, 3500);
-        }
-
-        if(gameState === 'DROP' || gameState === 'PLAY' || gameState === 'END') {
-            animFrame = requestAnimationFrame(animate);
-        }
     }
 
-    document.getElementById('next-btn').addEventListener('click', () => {
+    nextBtn.addEventListener('click', () => {
         initAudio();
         startMath();
     });
