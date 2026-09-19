@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Математичний Канат</title>
+    
+    <!-- Підключення Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+    <style>
+        /* Глобальні налаштування, шрифт Arial */
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Контейнер гри - прозорий, без фонових прямокутників */
+        #game-container {
+            width: 100vw;
+            height: 56.25vw; /* 16:9 співвідношення */
+            max-height: 100vh;
+            max-width: 177.77vh;
+            position: relative;
+            background: transparent;
+            border-radius: 20px;
+            overflow: hidden;
+            transition: transform 0.3s ease;
+            transform-origin: center center;
+        }
+
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        /* Інтерфейс користувача */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 2%;
+            box-sizing: border-box;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            pointer-events: auto;
+            position: absolute;
+            top: 50%;
+            width: 96%;
+            transform: translateY(-50%);
+            z-index: 10;
+        }
+
+        .nav-btn {
+            background: linear-gradient(135deg, #f59e0b, #ea580c);
+            border: 4px solid #7c2d12;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 8px 0 #7c2d12, 0 15px 20px rgba(0,0,0,0.5);
+            transition: all 0.1s;
+        }
+        
+        .nav-btn:active {
+            transform: translateY(8px);
+            box-shadow: 0 0 0 #7c2d12, 0 5px 10px rgba(0,0,0,0.5);
+        }
+
+        .nav-btn svg {
+            width: 30px;
+            height: 30px;
+            position: relative;
+        }
+
+        /* Математична панель (перенесена нагору, щоб не закривати картинку) */
+        #math-board {
+            position: absolute;
+            top: 2%;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 20;
+        }
+
+        #expression {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.9), rgba(76, 29, 149, 0.95));
+            border: 5px solid #a78bfa;
+            border-radius: 30px;
+            padding: 10px 40px;
+            font-size: 4vw;
+            color: #fde047;
+            text-shadow: 3px 3px 0 #4c1d95, -1px -1px 0 #4c1d95;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5), inset 0 0 20px rgba(255,255,255,0.2);
+            margin-bottom: 10px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            gap: 15px;
+            font-weight: bold;
+        }
+
+        #answer-input {
+            color: #67e8f9;
+            min-width: 6vw;
+            text-align: center;
+            border-bottom: 4px dashed #67e8f9;
+        }
+
+        #numpad {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.7);
+            padding: 10px;
+            border-radius: 20px;
+            border: 2px solid rgba(56, 189, 248, 0.4);
+            backdrop-filter: blur(8px);
+        }
+
+        .num-btn {
+            background: linear-gradient(to bottom, #22d3ee, #0891b2);
+            border: 3px solid #164e63;
+            border-radius: 12px;
+            color: #ecfeff;
+            font-size: 2vw;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            padding: 8px 15px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #164e63, 0 10px 10px rgba(0,0,0,0.4);
+            text-shadow: 2px 2px 0 #164e63;
+            transition: all 0.1s;
+        }
+
+        .num-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0 0 #164e63, 0 4px 4px rgba(0,0,0,0.4);
+        }
+
+        .action-btn {
+            background: linear-gradient(to bottom, #ef4444, #b91c1c);
+            border-color: #7f1d1d;
+            box-shadow: 0 6px 0 #7f1d1d, 0 10px 10px rgba(0,0,0,0.4);
+            text-shadow: 2px 2px 0 #7f1d1d;
+        }
+
+        /* Анімації */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+        @keyframes strain {
+            0%, 100% { transform: translateX(0) rotate(0deg); }
+            25% { transform: translateX(-2px) rotate(-1deg); }
+            75% { transform: translateX(2px) rotate(1deg); }
+        }
+        @keyframes wingFlap {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(-30deg); }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); color: #ef4444; }
+            40%, 80% { transform: translateX(10px); color: #ef4444; }
+        }
+        .wrong-anim { animation: shake 0.4s; }
+
+        /* --- ГЛОБАЛЬНІ СТИЛІ ІНСТРУМЕНТІВ (Теми, Зуми, Олівець, Блокування) --- */
+        
+        #block-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            color: #ef4444;
+            font-size: 5vw;
+            font-weight: bold;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+            text-transform: uppercase;
+        }
+
+        .global-tools {
+            position: fixed;
+            pointer-events: auto;
+            z-index: 80000;
+        }
+
+        /* Кнопка налаштувань теми */
+        #theme-btn {
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #475569;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 24px;
+            border: 2px solid #cbd5e1;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Кнопка малювання */
+        #toggle-draw-btn-global {
+            bottom: 85px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #8e44ad;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 24px;
+            border: 2px solid #fff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Кнопки зуму */
+        #zoom-controls {
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .zoom-btn {
+            width: 50px;
+            height: 50px;
+            background: #3b82f6;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 28px;
+            color: white;
+            border: 2px solid #bfdbfe;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Модальне вікно тем */
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vw;
+            max-width: 600px;
+            background: #1e293b;
+            border: 2px solid #475569;
+            border-radius: 15px;
+            z-index: 100000;
+            padding: 20px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }
+        #theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 24px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        #close-theme-modal {
+            cursor: pointer;
+            color: #ef4444;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        .theme-card {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #334155;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+        .theme-card:hover {
+            transform: scale(1.05);
+            border-color: #38bdf8;
+        }
+        .theme-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .theme-card span {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            text-align: center;
+            font-size: 14px;
+            padding: 4px 0;
+            font-weight: bold;
+        }
+
+        /* Панель малювання */
+        #draw-panel-global {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #2c3e50;
+            border-radius: 10px;
+            border: 2px solid #8e44ad;
+            z-index: 90001;
+            padding: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            color: white;
+            width: 250px;
+            pointer-events: auto;
+        }
+        #draw-panel-header {
+            cursor: move;
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #475569;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        #close-draw-panel {
+            cursor: pointer;
+            color: #ef4444;
+        }
+        .draw-controls-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .draw-btn {
+            flex: 1;
+            background: #34495e;
+            border: 1px solid #475569;
+            color: white;
+            padding: 8px;
+            margin: 0 2px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .draw-btn.active {
+            background: #8e44ad;
+            border-color: #9b59b6;
+        }
+        #draw-thickness {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .color-palette {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+        .color-swatch {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .color-swatch.active { border-color: white; }
+        #clear-canvas-btn {
+            width: 100%;
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* Полотно малювання */
+        #global-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            pointer-events: none; /* Вимкнено за замовчуванням */
+            z-index: 90000;
+        }
+
+        /* Адаптивність для мобільних */
+        @media (max-width: 800px) {
+            #expression { font-size: 5vw; padding: 5px 20px; }
+            .num-btn { font-size: 4vw; padding: 10px; }
+            #numpad { grid-template-columns: repeat(4, 1fr); } 
+            .nav-btn { width: 45px; height: 45px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Екран-заглушка -->
+<div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+<!-- Полотно для малювання -->
+<canvas id="global-canvas"></canvas>
+
+<!-- Кнопки зуму -->
+<div id="zoom-controls" class="global-tools">
+    <div class="zoom-btn" onclick="adjustZoom(0.1)">+</div>
+    <div class="zoom-btn" onclick="adjustZoom(-0.1)">-</div>
+</div>
+
+<!-- Кнопки інструментів -->
+<div id="toggle-draw-btn-global" class="global-tools" onclick="openDrawPanel()">✏️</div>
+<div id="theme-btn" class="global-tools" onclick="openThemeModal()">⚙️</div>
+
+<!-- Модальне вікно тем -->
+<div id="theme-modal">
+    <div id="theme-modal-header">
+        <span>Вибір фону</span>
+        <span id="close-theme-modal" onclick="closeThemeModal()">✕</span>
+    </div>
+    <div id="theme-gallery">
+        <!-- Заповнюється через JS -->
+    </div>
+</div>
+
+<!-- Панель малювання -->
+<div id="draw-panel-global">
+    <div id="draw-panel-header">
+        <span>Малювання</span>
+        <span id="close-draw-panel" onclick="closeDrawPanel()">✕</span>
+    </div>
+    <div class="draw-controls-row">
+        <button class="draw-btn active" id="btn-pencil" onclick="setDrawMode('pencil')">✏️ Олівець</button>
+        <button class="draw-btn" id="btn-eraser" onclick="setDrawMode('eraser')">🧽 Гумка</button>
+    </div>
+    <input type="range" id="draw-thickness" min="1" max="50" value="5" onchange="updateThickness()">
+    <div class="color-palette" id="color-palette">
+        <!-- Заповнюється JS -->
+    </div>
+    <button id="clear-canvas-btn" onclick="clearCanvasAction()">🗑️ Очистити</button>
+</div>
+
+<!-- ІГРОВИЙ КОНТЕЙНЕР -->
+<div id="game-container">
+    <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <!-- Фільтр розмиття фону -->
+            <filter id="bg-blur" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="15" result="blur" />
+            </filter>
+            
+            <!-- Градієнти для природи та арени -->
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#fdba74" />
+                <stop offset="50%" stop-color="#fbcfe8" />
+                <stop offset="100%" stop-color="#8b5cf6" />
+            </linearGradient>
+            <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4ade80" />
+                <stop offset="100%" stop-color="#166534" />
+            </linearGradient>
+            
+            <!-- Текстури -->
+            <pattern id="grass-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M10,40 Q15,20 20,40 Q25,25 30,40" fill="none" stroke="#15803d" stroke-width="3" stroke-linecap="round"/>
+            </pattern>
+
+            <!-- ГЛОБАЛЬНІ ГРАДІЄНТИ СИЛАЧІВ (Винесено сюди для виправлення багу зникнення) -->
+            <linearGradient id="bot-suit" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#b91c1c" />
+                <stop offset="100%" stop-color="#7f1d1d" />
+            </linearGradient>
+            <linearGradient id="player-suit" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#3b82f6" />
+                <stop offset="100%" stop-color="#1d4ed8" />
+            </linearGradient>
+        </defs>
+
+        <!-- Розмитий Фон за замовчуванням (Сюжетний). Ховається при виборі динамічного -->
+        <g id="default-svg-bg" filter="url(#bg-blur)">
+            <rect width="1920" height="1080" fill="url(#sky)" />
+            <circle cx="960" cy="400" r="200" fill="#fef08a" opacity="0.6"/>
+            <path d="M 300 200 Q 350 150 400 200 Q 450 180 500 220 Q 450 250 350 250 Q 250 240 300 200" fill="#ffffff" opacity="0.8"/>
+            <path d="M 1400 300 Q 1450 250 1500 300 Q 1550 280 1600 320 Q 1550 350 1450 350 Q 1350 340 1400 300" fill="#ffffff" opacity="0.7"/>
+            <path d="M -200 700 L 300 400 L 800 700 Z" fill="#6366f1" opacity="0.5"/>
+            <path d="M 600 700 L 1100 300 L 1700 700 Z" fill="#4f46e5" opacity="0.6"/>
+            <path d="M 1300 700 L 1700 450 L 2100 700 Z" fill="#4338ca" opacity="0.5"/>
+            <rect y="600" width="1920" height="480" fill="url(#ground)" />
+            <rect y="600" width="1920" height="480" fill="url(#grass-pattern)" opacity="0.5"/>
+        </g>
+
+        <!-- Центральний овал - межа -->
+        <g transform="translate(960, 750)">
+            <ellipse cx="0" cy="0" rx="200" ry="60" fill="rgba(0,0,0,0.3)" />
+            <ellipse cx="0" cy="0" rx="180" ry="50" fill="none" stroke="#fde047" stroke-width="12" stroke-dasharray="25,15" />
+            <ellipse cx="0" cy="0" rx="160" ry="40" fill="#fbbf24" opacity="0.2" />
+        </g>
+
+        <!-- Живий персонаж: Папуга-суддя -->
+        <g id="referee" transform="translate(960, 350)" style="animation: float 3s ease-in-out infinite;">
+            <ellipse cx="0" cy="0" rx="40" ry="50" fill="#ef4444" />
+            <ellipse cx="0" cy="10" rx="25" ry="35" fill="#fef08a" />
+            <circle cx="-15" cy="-20" r="12" fill="white" />
+            <circle cx="15" cy="-20" r="12" fill="white" />
+            <circle id="pupilL" cx="-12" cy="-18" r="5" fill="black" />
+            <circle id="pupilR" cx="12" cy="-18" r="5" fill="black" />
+            <path d="M -10 -5 Q 0 15 10 -5 Q 0 5 -10 -5" fill="#f59e0b" />
+            <path d="M -15 -10 Q 0 10 15 -10 Q 0 -5 -15 -10" fill="#fbbf24" />
+            <g id="wingL" style="transform-origin: -40px 0;">
+                <path d="M -35 0 C -60 20, -70 -10, -35 -20 Z" fill="#3b82f6" />
+            </g>
+            <g id="wingR" style="transform-origin: 40px 0;">
+                <path d="M 35 0 C 60 20, 70 -10, 35 -20 Z" fill="#3b82f6" />
+            </g>
+            <path d="M 0 -50 Q -20 -80 10 -70 Q -5 -60 0 -50" fill="#10b981" />
+        </g>
+
+        <!-- Група перетягування (Тут канат і два силача) -->
+        <g id="tug-group" transform="translate(0, 0)">
+            <!-- Канат -->
+            <path d="M 400 750 L 1520 750" fill="none" stroke="#b45309" stroke-width="25" stroke-linecap="round" />
+            <path d="M 400 750 L 1520 750" fill="none" stroke="#fcd34d" stroke-width="25" stroke-dasharray="15, 15" stroke-linecap="round" />
+            
+            <!-- Центральний вузол каната -->
+            <rect x="940" y="725" width="40" height="50" rx="10" fill="#ef4444" />
+            <path d="M 960 775 L 940 820 L 960 800 L 980 820 Z" fill="#ef4444" />
+
+            <!-- Силач Комп'ютера (Зліва) -->
+            <g id="bot-strongman" transform="translate(500, 750)">
+                <ellipse cx="0" cy="50" rx="70" ry="20" fill="rgba(0,0,0,0.4)" />
+                <path d="M -30 0 L -50 50" stroke="#1e293b" stroke-width="25" stroke-linecap="round" />
+                <path d="M 30 0 L 10 50" stroke="#1e293b" stroke-width="25" stroke-linecap="round" />
+                <circle cx="-55" cy="55" r="15" fill="#0f172a" />
+                <circle cx="5" cy="55" r="15" fill="#0f172a" />
+                <!-- Використання глобального градієнта -->
+                <path d="M -40 -120 Q 0 -140 40 -120 L 30 0 Q 0 20 -30 0 Z" fill="url(#bot-suit)" />
+                <rect x="-35" y="-30" width="70" height="20" fill="#fbbf24" />
+                <circle cx="0" cy="-20" r="12" fill="#f59e0b" />
+                <path d="M 30 -110 Q 70 -90 90 -40 Q 100 0 60 0" fill="none" stroke="#fca5a5" stroke-width="28" stroke-linecap="round" />
+                <path d="M -30 -110 Q -70 -90 -30 -30 Q 10 0 60 0" fill="none" stroke="#f87171" stroke-width="28" stroke-linecap="round" />
+                <circle cx="0" cy="-160" r="35" fill="#fca5a5" />
+                <path d="M -20 -180 Q 0 -200 20 -180" fill="none" stroke="#7f1d1d" stroke-width="8" stroke-linecap="round" />
+                <path d="M -15 -165 L -5 -160" stroke="black" stroke-width="4" stroke-linecap="round" />
+                <path d="M 15 -165 L 5 -160" stroke="black" stroke-width="4" stroke-linecap="round" />
+                <circle cx="-10" cy="-155" r="3" fill="black" />
+                <circle cx="10" cy="-155" r="3" fill="black" />
+                <path d="M -15 -140 Q 0 -150 15 -140" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+                <circle cx="-35" cy="-160" r="4" fill="#60a5fa" />
+                <circle cx="-40" cy="-140" r="5" fill="#60a5fa" />
+            </g>
+
+            <!-- Силач Дитини (Справа) -->
+            <g id="player-strongman" transform="translate(1420, 750)">
+                <ellipse cx="0" cy="50" rx="70" ry="20" fill="rgba(0,0,0,0.4)" />
+                <path d="M -30 0 L -10 50" stroke="#1e293b" stroke-width="25" stroke-linecap="round" />
+                <path d="M 30 0 L 50 50" stroke="#1e293b" stroke-width="25" stroke-linecap="round" />
+                <circle cx="-15" cy="55" r="15" fill="#0f172a" />
+                <circle cx="45" cy="55" r="15" fill="#0f172a" />
+                <!-- Використання глобального градієнта -->
+                <path d="M -40 -120 Q 0 -140 40 -120 L 30 0 Q 0 20 -30 0 Z" fill="url(#player-suit)" />
+                <rect x="-35" y="-30" width="70" height="20" fill="#fde047" />
+                <circle cx="0" cy="-20" r="12" fill="#eab308" />
+                <path d="M -30 -110 Q -70 -90 -90 -40 Q -100 0 -60 0" fill="none" stroke="#fed7aa" stroke-width="28" stroke-linecap="round" />
+                <path d="M 30 -110 Q 70 -90 30 -30 Q -10 0 -60 0" fill="none" stroke="#fdba74" stroke-width="28" stroke-linecap="round" />
+                <circle cx="0" cy="-160" r="35" fill="#fed7aa" />
+                <path d="M -35 -160 C -35 -210, 35 -210, 35 -160 C 20 -190, -20 -190, -35 -160 Z" fill="#b45309" />
+                <path d="M -15 -160 L -5 -155" stroke="black" stroke-width="4" stroke-linecap="round" />
+                <path d="M 15 -160 L 5 -155" stroke="black" stroke-width="4" stroke-linecap="round" />
+                <circle cx="-10" cy="-150" r="3" fill="black" />
+                <circle cx="10" cy="-150" r="3" fill="black" />
+                <path d="M -15 -135 Q 0 -145 15 -135" fill="none" stroke="black" stroke-width="4" stroke-linecap="round" />
+            </g>
+        </g>
+    </svg>
+
+    <!-- Інтерфейс -->
+    <div id="ui-layer">
+        <div class="controls">
+            <div class="nav-btn" id="btn-prev">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </div>
+            <div class="nav-btn" id="btn-next">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+            </div>
+        </div>
+
+        <div id="math-board">
+            <div id="expression">
+                <span id="num1">8</span>
+                <span id="operator">+</span>
+                <span id="num2">5</span>
+                <span>=</span>
+                <span id="answer-input">?</span>
+            </div>
+
+            <div id="numpad">
+                <!-- Генерується JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // 1. БАЗОВА КОНФІГУРАЦІЯ ТА ІДЕНТИФІКАЦІЯ
+    // ==========================================
+    const CONFIG = {
+        projectId: 'lesson-13c44',
+        dbUrl: 'https://lesson-13c44-default-rtdb.firebaseio.com/',
+        gameId: 'math_tug_of_war' // Унікальний ID для localStorage
+    };
+
+    let myName = new URLSearchParams(window.location.search).get('user');
+    if (!myName) myName = sessionStorage.getItem('userName');
+    if (!myName) {
+        myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        sessionStorage.setItem('userName', myName);
+    } else {
+        sessionStorage.setItem('userName', myName);
+    }
+    
+    const tabId = Math.random().toString(36).substr(2, 9);
+    let isFirebaseActive = false;
+
+    // Ініціалізація Firebase
+    const firebaseConfig = { databaseURL: CONFIG.dbUrl, projectId: CONFIG.projectId };
+    let app, db;
+    try {
+        app = firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        isFirebaseActive = true;
+    } catch (e) {
+        console.warn("Firebase не завантажено. Гра працює локально.");
+    }
+
+    // ==========================================
+    // 2. РАДАР ТА БЛОКУВАННЯ (БЛОК КОНТРОЛЮ)
+    // ==========================================
+    if (isFirebaseActive) {
+        // Радар
+        const myRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                myRef.set(true);
+                myRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => myRef.remove());
+
+        // Блокування екрану
+        const overlay = document.getElementById('block-overlay');
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            overlay.style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // Перезавантаження (із захистом від зациклення при старті)
+        let isFirstRefreshLoad = true;
+        db.ref('force_refresh').on('value', snap => {
+            if (isFirstRefreshLoad) {
+                isFirstRefreshLoad = false;
+                return; 
+            }
+            if (snap.val()) {
+                setTimeout(() => window.location.reload(), Math.random() * 1000);
+            }
+        });
+
+        // Повернення в лоббі з імунітетом (1 сек)
+        let immunity = true;
+        setTimeout(() => immunity = false, 1000);
+        db.ref('current_activity').on('value', snap => {
+            if (!immunity && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+    }
+
+    // ==========================================
+    // 3. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
+    // ==========================================
+    const themeModal = document.getElementById('theme-modal');
+    const themeGallery = document.getElementById('theme-gallery');
+    const localBgKey = 'mySavedBg_' + CONFIG.gameId;
+
+    function openThemeModal() {
+        themeModal.style.display = 'block';
+        if (themeGallery.children.length === 0) loadThemes();
+    }
+    
+    function closeThemeModal() {
+        themeModal.style.display = 'none';
+    }
+
+    async function loadThemes() {
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        
+        // Перша картка: Без фону
+        themeGallery.innerHTML = `
+            <div class="theme-card" onclick="selectTheme('none')">
+                <div style="width:100%; height:100%; background:#0f172a;"></div>
+                <span>Без фону</span>
+            </div>
+        `;
+
+        // Строго послідовне завантаження фонів
+        for (let i = 1; i <= 1000; i++) {
+            const url = `${baseUrl}background_${i}.webp`;
+            try {
+                const res = await fetch(url, { method: 'HEAD' });
+                if (!res.ok) break; // Зупиняємось при помилці 404
+                
+                themeGallery.innerHTML += `
+                    <div class="theme-card" onclick="selectTheme('${url}')">
+                        <img src="${url}" />
+                        <span>Фон ${i}</span>
+                    </div>
+                `;
+            } catch (e) { break; }
+        }
+    }
+
+    function selectTheme(url) {
+        applyTheme(url);
+        localStorage.setItem(localBgKey, url);
+        closeThemeModal();
+        if (isFirebaseActive) {
+            db.ref('game_theme').set(url);
+        }
+    }
+
+    function applyTheme(url) {
+        const defaultSvgBg = document.getElementById('default-svg-bg');
+        if (url === 'none') {
+            document.body.style.backgroundImage = 'none';
+            defaultSvgBg.style.display = 'block';
+        } else {
+            document.body.style.backgroundImage = `url('${url}')`;
+            defaultSvgBg.style.display = 'none';
+        }
+    }
+
+    // Слухаємо глобальну тему
+    if (isFirebaseActive) {
+        db.ref('game_theme').on('value', snap => {
+            if (!localStorage.getItem(localBgKey) && snap.exists()) {
+                applyTheme(snap.val());
+            }
+        });
+    }
+
+    // Застосування індивідуального фону гри при завантаженні сторінки
+    const savedBg = localStorage.getItem(localBgKey);
+    if (savedBg) applyTheme(savedBg);
+
+
+    // ==========================================
+    // 4. ГЛОБАЛЬНЕ МАЛЮВАННЯ (Олівець / Гумка) ТА ЗУМ
+    // ==========================================
+    let currentScale = 1.0;
+    function adjustZoom(delta) {
+        currentScale += delta;
+        if (currentScale < 0.5) currentScale = 0.5;
+        if (currentScale > 2.0) currentScale = 2.0;
+        document.getElementById('game-container').style.transform = `scale(${currentScale})`;
+    }
+
+    const canvas = document.getElementById('global-canvas');
+    const ctx = canvas.getContext('2d');
+    const drawPanel = document.getElementById('draw-panel-global');
+    
+    let isDrawing = false;
+    let drawMode = 'pencil';
+    let currentThickness = 5;
+    let currentColor = '#ff0000';
+    let lastX = 0, lastY = 0;
+
+    const colors = ['#ffffff', '#000000', '#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#e67e22', '#8e44ad'];
+    const palette = document.getElementById('color-palette');
+    colors.forEach(c => {
+        let div = document.createElement('div');
+        div.className = 'color-swatch';
+        div.style.background = c;
+        if(c === currentColor) div.classList.add('active');
+        div.onclick = () => {
+            currentColor = c;
+            document.querySelectorAll('.color-swatch').forEach(el=>el.classList.remove('active'));
+            div.classList.add('active');
+            setDrawMode('pencil');
+        };
+        palette.appendChild(div);
+    });
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function openDrawPanel() {
+        drawPanel.style.display = 'block';
+        canvas.style.pointerEvents = 'auto'; // Вмикаємо малювання
+        setDrawMode('pencil'); // Автоматична активація
+    }
+    function closeDrawPanel() {
+        drawPanel.style.display = 'none';
+        canvas.style.pointerEvents = 'none'; // Вимикаємо малювання
+    }
+    function setDrawMode(mode) {
+        drawMode = mode;
+        document.getElementById('btn-pencil').classList.toggle('active', mode === 'pencil');
+        document.getElementById('btn-eraser').classList.toggle('active', mode === 'eraser');
+    }
+    function updateThickness() {
+        currentThickness = document.getElementById('draw-thickness').value;
+    }
+
+    // Перетягування панелі
+    let isDraggingPanel = false, panelOffsetX, panelOffsetY;
+    document.getElementById('draw-panel-header').addEventListener('mousedown', e => {
+        isDraggingPanel = true;
+        panelOffsetX = e.clientX - drawPanel.getBoundingClientRect().left;
+        panelOffsetY = e.clientY - drawPanel.getBoundingClientRect().top;
+    });
+    window.addEventListener('mousemove', e => {
+        if(isDraggingPanel) {
+            drawPanel.style.left = (e.clientX - panelOffsetX) + 'px';
+            drawPanel.style.top = (e.clientY - panelOffsetY) + 'px';
+            drawPanel.style.right = 'auto';
+        }
+    });
+    window.addEventListener('mouseup', () => isDraggingPanel = false);
+
+    function drawLine(x0, y0, x1, y1, color, thick, mode, emit = true) {
+        ctx.beginPath();
+        ctx.moveTo(x0 * canvas.width, y0 * canvas.height);
+        ctx.lineTo(x1 * canvas.width, y1 * canvas.height);
+        ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : color;
+        ctx.lineWidth = thick;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
+        ctx.stroke();
+
+        if (emit && isFirebaseActive) {
+            db.ref('game_action').push({
+                senderId: myName, timestamp: Date.now(),
+                type: 'draw_line', data: { x0, y0, x1, y1, color, thick, mode }
+            });
+        }
+    }
+
+    function clearCanvasAction(emit = true) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (emit && isFirebaseActive) {
+            db.ref('game_action').push({
+                senderId: myName, timestamp: Date.now(), type: 'clear_canvas'
+            });
+        }
+    }
+
+    function getNormCoords(e) {
+        let evt = e.touches ? e.touches[0] : e;
+        return { x: evt.clientX / canvas.width, y: evt.clientY / canvas.height };
+    }
+
+    canvas.addEventListener('mousedown', e => {
+        if(drawPanel.style.display !== 'block') return;
+        isDrawing = true;
+        let coords = getNormCoords(e);
+        lastX = coords.x; lastY = coords.y;
+    });
+    canvas.addEventListener('mousemove', e => {
+        if (!isDrawing) return;
+        let coords = getNormCoords(e);
+        drawLine(lastX, lastY, coords.x, coords.y, currentColor, currentThickness, drawMode, true);
+        lastX = coords.x; lastY = coords.y;
+    });
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mouseout', () => isDrawing = false);
+
+    canvas.addEventListener('touchstart', e => {
+        if(drawPanel.style.display !== 'block') return;
+        isDrawing = true; let coords = getNormCoords(e); lastX = coords.x; lastY = coords.y; e.preventDefault();
+    }, {passive: false});
+    canvas.addEventListener('touchmove', e => {
+        if (!isDrawing) return;
+        let coords = getNormCoords(e); drawLine(lastX, lastY, coords.x, coords.y, currentColor, currentThickness, drawMode, true);
+        lastX = coords.x; lastY = coords.y; e.preventDefault();
+    }, {passive: false});
+    canvas.addEventListener('touchend', () => isDrawing = false);
+
+    // Синхронізація малювання та канату
+    if (isFirebaseActive) {
+        db.ref('game_action').orderByChild('timestamp').startAt(Date.now()).on('child_added', snap => {
+            const action = snap.val();
+            if (action.senderId === myName) return; 
+            
+            if (action.type === 'draw_line') {
+                let d = action.data; drawLine(d.x0, d.y0, d.x1, d.y1, d.color, d.thick, d.mode, false);
+            }
+            else if (action.type === 'clear_canvas') {
+                clearCanvasAction(false);
+            }
+            else if (action.type === 'tug_pull') {
+                tugPosition = action.data.pos; updateTugVisuals();
+            }
+        });
+    }
+
+    // ==========================================
+    // 5. ЛОГІКА ГРИ (Математичний канат)
+    // ==========================================
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    function playSound(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+
+        if (type === 'click') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(600, now);
+            osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+            gain.gain.setValueAtTime(0.3, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        } else if (type === 'correct') {
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(400, now);
+            osc.frequency.setValueAtTime(800, now + 0.3);
+            gain.gain.setValueAtTime(0.4, now); gain.gain.linearRampToValueAtTime(0, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
+        } else if (type === 'wrong') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now);
+            osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+            gain.gain.setValueAtTime(0.4, now); gain.gain.linearRampToValueAtTime(0, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+        } else if (type === 'pull-bot') {
+            osc.type = 'square'; osc.frequency.setValueAtTime(120, now);
+            osc.frequency.linearRampToValueAtTime(90, now + 0.2);
+            gain.gain.setValueAtTime(0.1, now); gain.gain.linearRampToValueAtTime(0, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+        } else if (type === 'win') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(440, now);
+            osc.frequency.setValueAtTime(880, now + 0.6);
+            gain.gain.setValueAtTime(0.5, now); gain.gain.linearRampToValueAtTime(0, now + 1.5);
+            osc.start(now); osc.stop(now + 1.5);
+        }
+    }
+
+    let tugPosition = 0;
+    let currentAnswer = "";
+    let correctAnswer = 0;
+    let botPullInterval;
+
+    const num1El = document.getElementById('num1');
+    const operatorEl = document.getElementById('operator');
+    const num2El = document.getElementById('num2');
+    const answerInputEl = document.getElementById('answer-input');
+    const numpad = document.getElementById('numpad');
+    const tugGroup = document.getElementById('tug-group');
+    const playerStrongman = document.getElementById('player-strongman');
+    const botStrongman = document.getElementById('bot-strongman');
+    const expressionEl = document.getElementById('expression');
+    const pupilL = document.getElementById('pupilL');
+    const pupilR = document.getElementById('pupilR');
+    const wingL = document.getElementById('wingL');
+    const wingR = document.getElementById('wingR');
+
+    // Генерація клавіатури
+    const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '✓'];
+    keys.forEach(k => {
+        const btn = document.createElement('button');
+        btn.className = 'num-btn';
+        if (k === 'C' || k === '✓') btn.classList.add('action-btn');
+        btn.innerText = k;
+        btn.onclick = () => handleKey(k);
+        btn.addEventListener('mousedown', () => playSound('click'));
+        numpad.appendChild(btn);
+    });
+
+    document.getElementById('btn-next').onclick = () => { playSound('click'); generateTask(); };
+    document.getElementById('btn-prev').onclick = () => { playSound('click'); generateTask(); };
+
+    function generateTask() {
+        currentAnswer = "";
+        answerInputEl.innerText = "?";
+        answerInputEl.style.color = "#67e8f9";
+        
+        if (Math.random() > 0.5) {
+            let a = Math.floor(Math.random() * 8) + 2; 
+            let b = Math.floor(Math.random() * (10 - (11 - a))) + (11 - a); 
+            if(b > 9) b = 9;
+            if(a + b <= 10) b = 11 - a;
+            num1El.innerText = a; operatorEl.innerText = "+"; num2El.innerText = b;
+            correctAnswer = a + b;
+        } else {
+            let b = Math.floor(Math.random() * 8) + 2; 
+            let c = Math.floor(Math.random() * (b - 1)) + 11; 
+            if(c > 18) c = 18;
+            num1El.innerText = c; operatorEl.innerText = "-"; num2El.innerText = b;
+            correctAnswer = c - b;
+        }
+        resetBotPull();
+    }
+
+    function handleKey(key) {
+        if (key === 'C') {
+            currentAnswer = ""; answerInputEl.innerText = "?";
+        } else if (key === '✓') {
+            checkAnswer();
+        } else {
+            if (currentAnswer.length < 2) {
+                currentAnswer += key;
+                answerInputEl.innerText = currentAnswer;
+            }
+            if(currentAnswer.length === String(correctAnswer).length) {
+                setTimeout(checkAnswer, 100);
+            }
+        }
+    }
+
+    function checkAnswer() {
+        if(currentAnswer === "") return;
+        
+        if (parseInt(currentAnswer) === correctAnswer) {
+            playSound('correct');
+            animateSuccess();
+            tugPosition += 80; 
+            syncTug();
+            updateTugVisuals();
+            checkWinCondition();
+            setTimeout(generateTask, 800);
+        } else {
+            playSound('wrong');
+            expressionEl.classList.remove('wrong-anim');
+            void expressionEl.offsetWidth; 
+            expressionEl.classList.add('wrong-anim');
+            answerInputEl.style.color = "#ef4444";
+            tugPosition -= 40;
+            syncTug();
+            updateTugVisuals();
+            checkWinCondition();
+            
+            setTimeout(() => {
+                currentAnswer = "";
+                answerInputEl.innerText = "?";
+                answerInputEl.style.color = "#67e8f9";
+            }, 500);
+        }
+    }
+
+    function syncTug() {
+        if (isFirebaseActive) {
+            db.ref('game_action').push({
+                senderId: myName, timestamp: Date.now(),
+                type: 'tug_pull', data: { pos: tugPosition }
+            });
+        }
+    }
+
+    function resetBotPull() {
+        clearInterval(botPullInterval);
+        botPullInterval = setInterval(() => {
+            tugPosition -= 5;
+            syncTug();
+            updateTugVisuals();
+            
+            botStrongman.style.animation = 'strain 0.5s ease-in-out';
+            setTimeout(() => botStrongman.style.animation = '', 500);
+            
+            if(Math.random() > 0.7) playSound('pull-bot');
+            checkWinCondition();
+        }, 1000);
+    }
+
+    function updateTugVisuals() {
+        if (tugPosition > 350) tugPosition = 350;
+        if (tugPosition < -350) tugPosition = -350;
+
+        tugGroup.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        tugGroup.style.transform = `translate(${tugPosition}px, 0)`;
+
+        const eyeOffset = (tugPosition / 350) * 8; 
+        pupilL.setAttribute('cx', -12 + eyeOffset);
+        pupilR.setAttribute('cx', 12 + eyeOffset);
+
+        if(tugPosition < 0) {
+            playerStrongman.style.animation = 'strain 0.2s infinite';
+        } else {
+            playerStrongman.style.animation = '';
+        }
+    }
+
+    function animateSuccess() {
+        playerStrongman.style.animation = 'strain 0.1s infinite';
+        wingL.style.animation = 'wingFlap 0.2s infinite';
+        wingR.style.animation = 'wingFlap 0.2s infinite';
+        
+        setTimeout(() => {
+            playerStrongman.style.animation = '';
+            wingL.style.animation = '';
+            wingR.style.animation = '';
+        }, 800);
+    }
+
+    function checkWinCondition() {
+        if (tugPosition >= 220) {
+            clearInterval(botPullInterval);
+            playSound('win');
+            
+            playerStrongman.style.transform = 'translateY(-50px)';
+            playerStrongman.style.transition = 'transform 0.2s alternate infinite';
+            
+            setTimeout(() => resetGame(), 3000);
+        } else if (tugPosition <= -220) {
+            clearInterval(botPullInterval);
+            playSound('wrong'); 
+            setTimeout(() => resetGame(), 2000);
+        }
+    }
+
+    function resetGame() {
+        tugPosition = 0;
+        playerStrongman.style.transform = '';
+        playerStrongman.style.transition = '';
+        updateTugVisuals();
+        generateTask();
+    }
+
+    // Запуск гри
+    generateTask();
+
+    // Забезпечення аудіо контексту
+    document.body.addEventListener('click', () => {
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+    }, { once: true });
+
+</script>
+</body>
+</html>
