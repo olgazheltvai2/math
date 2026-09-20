@@ -474,6 +474,26 @@
                     line.remove();
                 }
             });
+        } else if (type === 'DRAW_TEMP_LINE_START') {
+            // Відображаємо початок малювання пунктирної лінії
+            if (tempLine) tempLine.remove();
+            tempLine = createSVGElement('line', {
+                x1: data.x, y1: data.y, x2: data.x, y2: data.y,
+                class: 'connection-line'
+            });
+            linesContainer.appendChild(tempLine);
+        } else if (type === 'DRAW_TEMP_LINE_MOVE') {
+            // Оновлюємо кінець пунктирної лінії
+            if (tempLine) {
+                tempLine.setAttribute('x2', data.x);
+                tempLine.setAttribute('y2', data.y);
+            }
+        } else if (type === 'DRAW_TEMP_LINE_END') {
+            // Видаляємо пунктирну лінію при відпусканні
+            if (tempLine) {
+                tempLine.remove();
+                tempLine = null;
+            }
         }
     }
 
@@ -779,7 +799,8 @@
     let isDrawingLine = false;
     let startDot = null;
     let tempLine = null;
-    let lastDragSync = 0; // Для оптимізації відправки координат перетягування
+    let lastDragSync = 0; 
+    let lastLineDrawSync = 0; // Для оптимізації малювання пунктирної лінії
 
     function initLevel1() {
         container.innerHTML = '';
@@ -872,11 +893,16 @@
             isDrawingLine = true;
             startDot = evt.target;
             const pos = getAbsoluteDotPos(startDot);
+            
             tempLine = createSVGElement('line', {
                 x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y,
                 class: 'connection-line'
             });
             linesContainer.appendChild(tempLine);
+            
+            // Відправляємо сигнал про початок малювання пунктиру іншим
+            sendGameAction('DRAW_TEMP_LINE_START', { x: pos.x, y: pos.y });
+            
             if(evt.type !== 'touchstart') evt.preventDefault();
         } else if (evt.target.classList.contains('connection-line-solid')) {
             initAudio(); playSound('pop');
@@ -911,6 +937,14 @@
             const pos = getMousePosition(evt);
             tempLine.setAttribute('x2', pos.x);
             tempLine.setAttribute('y2', pos.y);
+            
+            // Синхронізація процесу натягування пунктирної лінії
+            const now = Date.now();
+            if (now - lastLineDrawSync > 40) {
+                sendGameAction('DRAW_TEMP_LINE_MOVE', { x: pos.x, y: pos.y });
+                lastLineDrawSync = now;
+            }
+            
             if (Math.random() > 0.8) playSound('draw');
         }
     }
@@ -945,6 +979,10 @@
             } else {
                 playSound('fail');
             }
+            
+            // Завершуємо малювання пунктирної лінії у всіх
+            sendGameAction('DRAW_TEMP_LINE_END', {});
+            
             if (tempLine) tempLine.remove();
             tempLine = null; startDot = null;
         }
