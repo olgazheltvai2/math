@@ -116,7 +116,7 @@
     }
     .ctrl-btn:active { transform: scale(0.9); }
 
-    /* Невидима кнопка для вчителя */
+    /* Невидима зона вчителя */
     #teacher-trigger {
         position: absolute;
         top: 0;
@@ -188,7 +188,7 @@
         text-transform: lowercase;
     }
     
-    .teacher-only { display: none; } /* Приховано для дітей */
+    .teacher-only { display: none; }
     
     .btn-peek {
         background: linear-gradient(135deg, #9b59b6, #8e44ad);
@@ -267,8 +267,8 @@
         font-weight: bold;
         border-radius: 13px;
         z-index: 50;
-        pointer-events: none; /* Щоб кліки проходили крізь нього до слоту */
-        font-size: calc(1.8vh * var(--font-scale));
+        pointer-events: none; /* Кліки проходять крізь */
+        font-size: calc(2vh * var(--font-scale));
         text-align: center;
         padding: 5px;
     }
@@ -496,7 +496,7 @@
     <button class="ctrl-btn" onclick="changeZoom(0.1)" title="Наблизити">🔍+</button>
 </div>
 
-<!-- Зона для вчителя (невидима кнопка) -->
+<!-- Невидима зона вчителя (Клік у правий верхній кут відкриває кнопки перевірки) -->
 <div id="teacher-trigger" onclick="enableTeacherMode()" title=""></div>
 
 <div class="background-anim" id="bg-anim"></div>
@@ -574,13 +574,16 @@
     
     let isRemoteAction = false;
     
+    // ВАЖЛИВО: Оновлена відправка, щоб Firebase не видаляв порожні об'єкти і гарантував оновлення.
     function sendAction(type, data) {
         if (isRemoteAction) return;
+        const safeData = data ? JSON.parse(JSON.stringify(data)) : { dummy: true };
         db.ref('game_action').set({
             senderId: myName,
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             type: type,
-            data: data
+            data: safeData,
+            actionId: Math.random().toString(36).substr(2, 9) // Гарантує унікальність події
         });
     }
 
@@ -591,9 +594,10 @@
         isRemoteAction = true;
         try {
             if (val.type === 'select_chip') {
-                syncChipSelection(val.data.chipId);
+                syncChipSelection(val.data.chipId || '');
             } else if (val.type === 'place_chip') {
                 placeChipInSlotLocally(val.data.chipId, val.data.slotId);
+                syncChipSelection(''); // Автоматичне зняття виділення у всіх
             } else if (val.type === 'return_chip') {
                 returnChipToBankLocally(val.data.chipId);
             } else if (val.type === 'generate_level') {
@@ -657,28 +661,24 @@
 
     // --- Завдання (20 штук, 4 типи) ---
     const tasks = [
-        // Тип 1: A + B = ? (5 завдань)
         { text: "На кораловому рифі плавало {A} рибок. Згодом до них припливло ще {B}. Скільки всього рибок стало на рифі?", keys: ["Плавало", "Припливло", "Стало"], distractors: ["Сховалося", "Було", "Залишилось"], typeStr: "A+B=?" },
         { text: "У саду росло {A} тюльпанів. Садівник посадив ще {B}. Скільки тюльпанів стало у саду?", keys: ["Росло", "Посадив", "Стало"], distractors: ["Зів'яло", "Було", "Залишилось"], typeStr: "A+B=?" },
         { text: "В гаражі стояло {A} машин. Заїхало ще {B} машин. Скільки машин стало в гаражі?", keys: ["Стояло", "Заїхало", "Стало"], distractors: ["Виїхало", "Було", "Залишилось"], typeStr: "A+B=?" },
         { text: "На тарілці лежало {A} яблук. Мама поклала ще {B}. Скільки яблук стало на тарілці?", keys: ["Лежало", "Поклала", "Стало"], distractors: ["З'їли", "Було", "Залишилось"], typeStr: "A+B=?" },
         { text: "У коробці було {A} олівців. Микита додав туди ще {B}. Скільки олівців стало?", keys: ["Було", "Додав", "Стало"], distractors: ["Забрав", "Лежало", "Залишилось"], typeStr: "A+B=?" },
 
-        // Тип 2: A - B = ? (5 завдань)
         { text: "Серед водоростей ховалося {A} крабів. {B} крабів поповзли шукати їжу. Скільки крабів залишилось у схованці?", keys: ["Ховалося", "Поповзли", "Залишилось"], distractors: ["Припливло", "Стало", "Всього"], typeStr: "A-B=?" },
         { text: "На дереві сиділо {A} горобців. {B} горобців полетіло. Скільки горобців залишилось на дереві?", keys: ["Сиділо", "Полетіло", "Залишилось"], distractors: ["Прилетіло", "Стало", "Всього"], typeStr: "A-B=?" },
         { text: "У вазі було {A} цукерок. Діти з'їли {B} цукерок. Скільки цукерок залишилось у вазі?", keys: ["Було", "З'їли", "Залишилось"], distractors: ["Поклали", "Стало", "Всього"], typeStr: "A-B=?" },
         { text: "На полиці стояло {A} книг. Оленка взяла почитати {B} книг. Скільки книг залишилось на полиці?", keys: ["Стояло", "Взяла", "Залишилось"], distractors: ["Поставила", "Стало", "Всього"], typeStr: "A-B=?" },
         { text: "У басейні плавало {A} дітей. {B} дітей вийшли з води. Скільки дітей залишилось у басейні?", keys: ["Плавало", "Вийшли", "Залишилось"], distractors: ["Зайшли", "Стало", "Всього"], typeStr: "A-B=?" },
 
-        // Тип 3: A + ? = B (Знаходження доданка) (5 завдань)
         { text: "На галявині паслося {A} овечок. Коли до них прийшло ще кілька, їх стало {B}. Скільки овечок прийшло?", keys: ["Паслося", "Прийшло", "Стало"], distractors: ["Пішло", "Було", "Залишилось"], typeStr: "A+?=B" },
         { text: "У скарбничці було {A} монет. Коли туди кинули ще декілька, стало {B} монет. Скільки монет кинули у скарбничку?", keys: ["Було", "Кинули", "Стало"], distractors: ["Витратили", "Лежало", "Залишилось"], typeStr: "A+?=B" },
         { text: "В автобусі їхало {A} пасажирів. На зупинці зайшло кілька людей, і пасажирів стало {B}. Скільки людей зайшло?", keys: ["Їхало", "Зайшло", "Стало"], distractors: ["Вийшло", "Було", "Залишилось"], typeStr: "A+?=B" },
         { text: "У книжці було прочитано {A} сторінок. Коли хлопчик прочитав ще кілька, всього стало {B} прочитаних сторінок. Скільки сторінок він прочитав потім?", keys: ["Прочитано", "Прочитав", "Стало"], distractors: ["Забув", "Було", "Залишилось"], typeStr: "A+?=B" },
         { text: "В альбомі було {A} марок. Коли тато подарував ще кілька, їх стало {B}. Скільки марок подарував тато?", keys: ["Було", "Подарував", "Стало"], distractors: ["Загубив", "Лежало", "Залишилось"], typeStr: "A+?=B" },
 
-        // Тип 4: ? - A = B (Знаходження зменшуваного) (5 завдань)
         { text: "На аеродромі стояли літаки. Коли {A} літаків злетіло, там залишилось {B} літаків. Скільки літаків було спочатку?", keys: ["Було", "Злетіло", "Залишилось"], distractors: ["Приземлилось", "Стало", "Всього"], typeStr: "?-A=B" },
         { text: "У пеналі лежали ручки. Коли звідти взяли {A} ручок, там залишилось {B}. Скільки ручок було в пеналі спочатку?", keys: ["Було", "Взяли", "Залишилось"], distractors: ["Поклали", "Стало", "Всього"], typeStr: "?-A=B" },
         { text: "В магазині продавали торти. Коли продали {A} тортів, на вітрині залишилось {B}. Скільки тортів було спочатку?", keys: ["Було", "Продали", "Залишилось"], distractors: ["Спекли", "Стало", "Всього"], typeStr: "?-A=B" },
@@ -725,27 +725,28 @@
     function handleNextClick() {
         initAudio();
         sndPop();
-        document.body.classList.remove('show-hints'); // Ховаємо підказки, якщо вони були відкриті
+        document.body.classList.remove('show-hints');
+        
         let taskIdx = Math.floor(Math.random() * tasks.length);
         const task = tasks[taskIdx];
-        let A, B;
+        let A, B, wrongNum;
         
         if (task.typeStr === "A+B=?") {
-            A = Math.floor(Math.random() * 8) + 2;
-            B = Math.floor(Math.random() * 8) + 2;
+            A = Math.floor(Math.random() * 8) + 2; B = Math.floor(Math.random() * 8) + 2;
         } else if (task.typeStr === "A-B=?") {
-            B = Math.floor(Math.random() * 8) + 2;
-            A = B + Math.floor(Math.random() * 5) + 1;
+            B = Math.floor(Math.random() * 8) + 2; A = B + Math.floor(Math.random() * 5) + 1;
         } else if (task.typeStr === "A+?=B") {
-            A = Math.floor(Math.random() * 8) + 2;
-            let diff = Math.floor(Math.random() * 8) + 2;
-            B = A + diff;
+            A = Math.floor(Math.random() * 8) + 2; let diff = Math.floor(Math.random() * 8) + 2; B = A + diff;
         } else if (task.typeStr === "?-A=B") {
-            A = Math.floor(Math.random() * 8) + 2;
-            B = Math.floor(Math.random() * 8) + 2;
+            A = Math.floor(Math.random() * 8) + 2; B = Math.floor(Math.random() * 8) + 2;
         }
 
-        let payload = { taskIdx, A, B };
+        // Обчислюємо додаткове число-відволікач тут, щоб воно було однаковим у всіх
+        let ans = (task.typeStr === "A+B=?" || task.typeStr === "?-A=B") ? A+B : (task.typeStr === "A-B=?") ? A-B : B-A;
+        wrongNum = ans + (Math.random() > 0.5 ? 2 : -1);
+        if (wrongNum < 1) wrongNum = ans + 3;
+
+        let payload = { taskIdx, A, B, wrongNum };
         sendAction('generate_level', payload);
         applyLevel(payload);
     }
@@ -758,17 +759,13 @@
         let answerStr, valArr;
 
         if (task.typeStr === "A+B=?") {
-            answerStr = (A + B).toString();
-            valArr = [A.toString(), B.toString(), '?'];
+            answerStr = (A + B).toString(); valArr = [A.toString(), B.toString(), '?'];
         } else if (task.typeStr === "A-B=?") {
-            answerStr = (A - B).toString();
-            valArr = [A.toString(), B.toString(), '?'];
+            answerStr = (A - B).toString(); valArr = [A.toString(), B.toString(), '?'];
         } else if (task.typeStr === "A+?=B") {
-            answerStr = (B - A).toString();
-            valArr = [A.toString(), '?', B.toString()];
+            answerStr = (B - A).toString(); valArr = [A.toString(), '?', B.toString()];
         } else if (task.typeStr === "?-A=B") {
-            answerStr = (A + B).toString();
-            valArr = ['?', A.toString(), B.toString()];
+            answerStr = (A + B).toString(); valArr = ['?', A.toString(), B.toString()];
         }
 
         currentLevel = {
@@ -779,7 +776,7 @@
         };
 
         document.getElementById('task-text').textContent = currentLevel.text;
-        selectedChip = null;
+        syncChipSelection(''); 
         
         chipsData = [
             { id: 'cw0', type: 'word', val: currentLevel.keys[0] },
@@ -790,7 +787,8 @@
             { id: 'cn2', type: 'num', val: currentLevel.values[2] }, 
             { id: 'cw_dist1', type: 'word', val: task.distractors[0] },
             { id: 'cw_dist2', type: 'word', val: task.distractors[1] },
-            { id: 'cn_ans', type: 'num', val: answerStr } 
+            { id: 'cn_ans', type: 'num', val: answerStr },
+            { id: 'cn_dist', type: 'num', val: payload.wrongNum.toString() }
         ];
         
         let uniqueChips = [];
@@ -818,7 +816,6 @@
         for (let i = 0; i < 3; i++) {
             let expectedWord = currentLevel.keys[i];
             let peekNum = currentLevel.values[i];
-            if (peekNum === '?') peekNum = currentLevel.answerStr; // Для вчителя показуємо саму відповідь, а не знак питання
 
             let wSlot = document.querySelector(`.grid-row[data-row="${i}"] .word-slot`);
             let nSlot = document.querySelector(`.grid-row[data-row="${i}"] .num-slot`);
@@ -830,7 +827,7 @@
 
     function syncChipSelection(chipId) {
         document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
-        if (chipId) {
+        if (chipId && chipId !== '') {
             const c = document.querySelector(`.chip[data-id="${chipId}"]`);
             if (c) {
                 c.classList.add('selected');
@@ -847,17 +844,14 @@
         initAudio();
         if (chip.parentElement.id === 'bank-container') {
             if (selectedChip === chip) {
-                // Зняття виділення
-                syncChipSelection(null);
-                sendAction('select_chip', { chipId: null });
+                syncChipSelection('');
+                sendAction('select_chip', { chipId: '' });
             } else {
-                // Нове виділення
                 syncChipSelection(chip.dataset.id);
                 sendAction('select_chip', { chipId: chip.dataset.id });
                 sndPop();
             }
         } else {
-            // Вже у слоті, повертаємо в банк
             let chipId = chip.dataset.id;
             returnChipToBankLocally(chipId);
             sendAction('return_chip', { chipId });
@@ -867,7 +861,7 @@
     function handleSlotClick(slot) {
         if (!selectedChip) return;
         if (slot.dataset.type !== selectedChip.dataset.type) {
-            sndErr(); // Неправильний тип слоту
+            sndErr(); 
             return;
         }
         
@@ -875,11 +869,9 @@
         let slotId = slot.dataset.id;
         
         placeChipInSlotLocally(chipId, slotId);
-        sendAction('place_chip', { chipId, slotId });
-        
-        // Зняти виділення після розміщення
-        syncChipSelection(null);
-        sendAction('select_chip', { chipId: null });
+        syncChipSelection(''); // Очищаємо виділення локально
+        sendAction('place_chip', { chipId, slotId }); 
+        // Подія 'place_chip' викличе автоматичне зняття виділення і в інших гравців
     }
 
     function placeChipInSlotLocally(chipId, slotId) {
@@ -887,7 +879,6 @@
         const slot = document.querySelector(`.slot[data-id="${slotId}"]`);
         if (!chip || !slot) return;
 
-        // Перевіряємо, чи є вже фішка у слоті (не рахуючи hint-overlay)
         const existingChip = slot.querySelector('.chip');
         if (existingChip) {
             existingChip.classList.remove('in-slot');
@@ -914,12 +905,12 @@
 
     // --- Кнопки перевірки для вчителя ---
     function emitCorrect() {
-        sendAction('teacher_correct', {});
+        sendAction('teacher_correct', { dummy: true });
         triggerCorrect();
     }
 
     function emitIncorrect() {
-        sendAction('teacher_incorrect', {});
+        sendAction('teacher_incorrect', { dummy: true });
         triggerIncorrect();
     }
 
@@ -940,7 +931,7 @@
             const wChip = wSlot.querySelector('.chip');
             const nChip = nSlot.querySelector('.chip');
 
-            let expectedNum = currentLevel.values[i]; // Тут очікується '?' якщо в умові стоїть питання
+            let expectedNum = currentLevel.values[i]; // Обов'язково повинна бути фішка '?' якщо вона в умові
 
             if (wChip && wChip.dataset.val !== currentLevel.keys[i]) {
                 toEject.push({ chip: wChip, row: row });
@@ -950,7 +941,6 @@
             }
         });
 
-        // Трусимо рядки і повертаємо ТІЛЬКИ неправильні фішки у банк
         toEject.forEach(item => item.row.classList.add('shake'));
         setTimeout(() => {
             toEject.forEach(item => item.row.classList.remove('shake'));
@@ -1042,11 +1032,9 @@
         if (url) { applyBgStyle(url); }
     });
 
-    // Ініціалізація індивідуального збереженого фону при старті
     const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
     if (savedBg) { applyBgStyle(savedBg); }
 
-    // Асинхронне послідовне завантаження фонів
     async function loadThemes() {
         const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/background_';
         for (let i = 1; i <= 1000; i++) {
@@ -1061,7 +1049,7 @@
                     card.onclick = () => selectTheme(url);
                     themeGallery.appendChild(card);
                 } else {
-                    break; // Перериваємо на 404 за умовою
+                    break;
                 }
             } catch (error) {
                 break;
@@ -1087,7 +1075,7 @@
 
     drawBtn.onclick = () => {
         drawPanel.style.display = 'flex';
-        drawCanvas.style.pointerEvents = 'auto'; // Автоматично вмикаємо малювання
+        drawCanvas.style.pointerEvents = 'auto';
         isDrawMode = true;
         currentTool = 'pencil';
         document.getElementById('tool-pencil').classList.add('active');
@@ -1096,7 +1084,7 @@
 
     document.querySelector('.draw-close').onclick = () => {
         drawPanel.style.display = 'none';
-        drawCanvas.style.pointerEvents = 'none'; // Автоматично вимикаємо малювання
+        drawCanvas.style.pointerEvents = 'none';
         isDrawMode = false;
     };
 
@@ -1185,7 +1173,6 @@
     drawCanvas.addEventListener('touchmove', doDraw, {passive: false});
     drawCanvas.addEventListener('touchend', endDraw);
 
-    // Draggable Draw Panel
     const drawHeader = document.querySelector('.draw-header');
     let isDragging = false, dragX = 0, dragY = 0;
     drawHeader.onmousedown = (e) => {
@@ -1245,10 +1232,9 @@
     loadThemes();
     animate();
     
-    // Перевіряємо чи це перший запуск (якщо в базі ще немає рівня)
     db.ref('game_action').orderByChild('type').equalTo('generate_level').limitToLast(1).once('value', snap => {
         if (!snap.exists()) {
-            handleNextClick(); // Генеруємо перший рівень
+            handleNextClick(); 
         }
     });
 
