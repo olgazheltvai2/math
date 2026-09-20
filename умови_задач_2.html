@@ -116,7 +116,7 @@
     }
     .ctrl-btn:active { transform: scale(0.9); }
 
-    /* Невидима зона вчителя */
+    /* Невидима зона вчителя (Клік у правий верхній кут відкриває кнопки) */
     #teacher-trigger {
         position: absolute;
         top: 0;
@@ -188,7 +188,7 @@
         text-transform: lowercase;
     }
     
-    .teacher-only { display: none; }
+    .teacher-only { display: none; } /* Приховано для всіх, поки не захоплено роль вчителя */
     
     .btn-peek {
         background: linear-gradient(135deg, #9b59b6, #8e44ad);
@@ -267,7 +267,7 @@
         font-weight: bold;
         border-radius: 13px;
         z-index: 50;
-        pointer-events: none; /* Кліки проходять крізь */
+        pointer-events: none;
         font-size: calc(2vh * var(--font-scale));
         text-align: center;
         padding: 5px;
@@ -564,9 +564,8 @@
     });
     const db = firebase.database();
     
-    // Універсальний ідентифікатор сесії (щоб відрізняти вкладки з однаковим іменем)
+    // Ідентифікатори
     const tabId = Math.random().toString(36).substr(2, 9);
-    
     const urlParams = new URLSearchParams(window.location.search);
     let myName = urlParams.get('user');
     if (!myName) myName = sessionStorage.getItem('userName');
@@ -575,17 +574,18 @@
     }
     sessionStorage.setItem('userName', myName);
     
-    // clientId гарантує, що навіть при однаковому імені (скопійоване посилання) пристрої будуть розпізнані як різні
+    // clientId гарантує унікальність пристрою (навіть якщо ім'я однакове)
     const clientId = myName + '_' + tabId;
     
     let isRemoteAction = false;
     let isTeacher = false;
     
+    // ВАЖЛИВО: Окрема гілка action_gameId для надійної синхронізації кліків
     function sendAction(type, data) {
         if (isRemoteAction) return;
         const safeData = data ? JSON.parse(JSON.stringify(data)) : { dummy: true };
-        db.ref('game_action').set({
-            senderId: clientId, // Використовуємо унікальний clientId для дій
+        db.ref(`action_${CONFIG.gameId}`).set({
+            senderId: clientId, // Відправляємо з унікальним ID
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             type: type,
             data: safeData,
@@ -593,9 +593,9 @@
         });
     }
 
-    db.ref('game_action').on('value', snap => {
+    db.ref(`action_${CONFIG.gameId}`).on('value', snap => {
         const val = snap.val();
-        if (!val || val.senderId === clientId) return;
+        if (!val || val.senderId === clientId) return; // Ігноруємо свої ж дії
         
         isRemoteAction = true;
         try {
@@ -606,8 +606,8 @@
                 syncChipSelection(''); 
             } else if (val.type === 'return_chip') {
                 returnChipToBankLocally(val.data.chipId);
-            } else if (val.type === 'generate_level') {
-                applyLevel(val.data);
+            } else if (val.type === 'reset_board') {
+                syncChipSelection('');
             } else if (val.type === 'teacher_correct') {
                 triggerCorrect();
             } else if (val.type === 'teacher_incorrect') {
@@ -619,6 +619,14 @@
             }
         } catch (e) { console.error(e); }
         isRemoteAction = false;
+    });
+
+    // ВАЖЛИВО: Окрема гілка рівня. Завдяки цьому гра гарантовано працює після перезавантаження сторінки
+    db.ref(`level_${CONFIG.gameId}`).on('value', snap => {
+        const val = snap.val();
+        if (val) {
+            applyLevel(val);
+        }
     });
 
     // --- Логіка відображення (Шрифт, Масштаб, Вчитель) ---
@@ -633,14 +641,13 @@
         document.documentElement.style.setProperty('--zoom-scale', currentZoomScale);
     }
 
-    // Захоплення ролі вчителя через Firebase
+    // Захоплення ролі вчителя через Firebase (прив'язано до ІМЕНІ, щоб після рефрешу вчитель міг повернути кнопки)
     function enableTeacherMode() {
         if (isTeacher) return;
-        // Використовуємо ключ, специфічний для цієї гри, щоб не конфліктувати з іншими
-        db.ref('teacher_' + CONFIG.gameId).once('value', snap => {
-            if (!snap.exists() || snap.val() === clientId) {
-                db.ref('teacher_' + CONFIG.gameId).set(clientId);
-                db.ref('teacher_' + CONFIG.gameId).onDisconnect().remove();
+        db.ref(`teacher_${CONFIG.gameId}`).once('value', snap => {
+            if (!snap.exists() || snap.val() === myName) {
+                db.ref(`teacher_${CONFIG.gameId}`).set(myName);
+                db.ref(`teacher_${CONFIG.gameId}`).onDisconnect().remove();
                 activateTeacherUI();
             }
         });
@@ -650,20 +657,17 @@
         isTeacher = true;
         document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'inline-block');
         const trigger = document.getElementById('teacher-trigger');
-        if (trigger) {
-            trigger.style.display = 'none';
-            trigger.style.pointerEvents = 'none';
-        }
+        if (trigger) trigger.style.display = 'none'; // Ховаємо тригер для себе
     }
 
     // Слухаємо статус вчителя для блокування зони в учнів
-    db.ref('teacher_' + CONFIG.gameId).on('value', snap => {
+    db.ref(`teacher_${CONFIG.gameId}`).on('value', snap => {
         const currentTeacher = snap.val();
         if (currentTeacher) {
-            if (currentTeacher === clientId) {
-                activateTeacherUI();
+            if (currentTeacher === myName) {
+                activateTeacherUI(); // Якщо ми оновили сторінку, кнопки повернуться
             } else {
-                // Хтось інший (або навіть "ми" в іншій вкладці) став вчителем. Ховаємо кнопку
+                // Вчитель хтось інший (учень). Блокуємо і ховаємо кнопку.
                 const trigger = document.getElementById('teacher-trigger');
                 if (trigger) {
                     trigger.style.display = 'none';
@@ -673,7 +677,7 @@
                 document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
             }
         } else {
-            // Вчитель відсутній (закрив вкладку), можна знову стати ним
+            // Вчитель вийшов. Зона знову доступна
             const trigger = document.getElementById('teacher-trigger');
             if (trigger) {
                 trigger.style.display = 'block';
@@ -799,8 +803,12 @@
         if (wrongNum < 1) wrongNum = ans + 3;
 
         let payload = { taskIdx, A, B, wrongNum };
-        sendAction('generate_level', payload);
-        applyLevel(payload);
+        
+        // Зберігаємо рівень. Це автоматично запустить applyLevel() в усіх гравців.
+        db.ref(`level_${CONFIG.gameId}`).set(payload);
+        
+        // Знімаємо виділення у всіх
+        sendAction('reset_board', {});
     }
 
     function applyLevel(payload) {
@@ -871,8 +879,26 @@
             let wSlot = document.querySelector(`.grid-row[data-row="${i}"] .word-slot`);
             let nSlot = document.querySelector(`.grid-row[data-row="${i}"] .num-slot`);
             
-            wSlot.innerHTML = `<div class="hint-overlay">${expectedWord}</div>`;
-            nSlot.innerHTML = `<div class="hint-overlay">${peekNum}</div>`;
+            // Чистимо слоти від старих фішок
+            Array.from(wSlot.children).forEach(c => { if(c.classList.contains('chip')) c.remove(); });
+            Array.from(nSlot.children).forEach(c => { if(c.classList.contains('chip')) c.remove(); });
+            
+            // Створюємо або оновлюємо підказку
+            let hintW = wSlot.querySelector('.hint-overlay');
+            if(!hintW) {
+                hintW = document.createElement('div');
+                hintW.className = 'hint-overlay';
+                wSlot.appendChild(hintW);
+            }
+            hintW.textContent = expectedWord;
+
+            let hintN = nSlot.querySelector('.hint-overlay');
+            if(!hintN) {
+                hintN = document.createElement('div');
+                hintN.className = 'hint-overlay';
+                nSlot.appendChild(hintN);
+            }
+            hintN.textContent = peekNum;
         }
     }
 
@@ -1238,14 +1264,13 @@
     };
     window.onmouseup = () => isDragging = false;
 
-    // --- Універсальний Блок Контролю (Ідентифікація, Радар, Блокування) ---
+    // --- Універсальний Блок Контролю (Ідентифікація, Радар, Блокування, Імунітет Лобі) ---
     document.body.insertAdjacentHTML('beforeend', `
         <div id="block-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:999999; justify-content:center; align-items:center;">
             <div style="color:red; font-size:40px; font-weight:bold; font-family:Arial; text-align:center;">Зачекай!<br>Зараз не твій урок.</div>
         </div>
     `);
 
-    // Вже визначений tabId на початку скрипта
     const radarRef = db.ref(`online_users/${myName}/${tabId}`);
     
     db.ref('.info/connected').on('value', snap => {
@@ -1269,12 +1294,12 @@
         document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
     });
 
-    let isInitialActivity = true;
+    // Надійний імунітет Лобі при старті (1500 мс)
+    const loadTime = Date.now();
     db.ref('current_activity').on('value', snap => {
-        if (!isInitialActivity && snap.val() === 'lobby') {
+        if (Date.now() - loadTime > 1500 && snap.val() === 'lobby') {
             window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
         }
-        isInitialActivity = false;
     });
 
     // --- Запуск ---
@@ -1282,7 +1307,8 @@
     loadThemes();
     animate();
     
-    db.ref('game_action').orderByChild('type').equalTo('generate_level').limitToLast(1).once('value', snap => {
+    // Генеруємо рівень, якщо його ще немає в базі
+    db.ref(`level_${CONFIG.gameId}`).once('value', snap => {
         if (!snap.exists()) {
             handleNextClick(); 
         }
