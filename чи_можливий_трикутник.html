@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Магічні Трикутники</title>
+    <!-- Firebase Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    
+    <style>
+        /* Основні стилі сторінки */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: transparent; /* Прозорий фон для динамічного зображення */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            user-select: none;
+            font-family: Arial, sans-serif;
+            font-weight: 900;
+        }
+
+        /* Обгортка для масштабування (Лупа) */
+        #gameZoomWrapper {
+            width: 100vw;
+            height: 100vh;
+            transform-origin: center center;
+            transition: transform 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #gameCanvas {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            flex-shrink: 0;
+        }
+        
+        /* Класи для інтерактивних елементів */
+        .draggable {
+            cursor: grab;
+            transition: filter 0.2s;
+        }
+        .draggable:hover {
+            filter: drop-shadow(0px 10px 15px rgba(0,0,0,0.5)) brightness(1.1);
+        }
+        .draggable:active {
+            cursor: grabbing;
+        }
+        .dot {
+            cursor: pointer;
+            fill: #ff3366;
+            stroke: #ffffff;
+            stroke-width: 5;
+            transition: r 0.2s, fill 0.2s, stroke-width 0.2s;
+        }
+        .dot:hover {
+            r: 22;
+            fill: #ffaa00;
+            stroke-width: 7;
+        }
+        
+        /* Лінії (Рівень 1) */
+        .connection-line {
+            stroke: #ff9800;
+            stroke-width: 14;
+            stroke-linecap: round;
+            stroke-dasharray: 20, 20;
+            cursor: pointer;
+            transition: stroke 0.2s, stroke-width 0.2s;
+            pointer-events: none; 
+        }
+        .connection-line-solid {
+            pointer-events: visibleStroke;
+            stroke-dasharray: none;
+            stroke: #8bc34a;
+            stroke-width: 24; 
+        }
+        .connection-line-solid:hover {
+            stroke: #ff3333;
+            stroke-width: 28;
+        }
+
+        /* Ефекти кнопок */
+        .ui-btn {
+            cursor: pointer;
+        }
+        .ui-btn-inner {
+            transition: transform 0.2s, filter 0.2s;
+            transform-origin: center;
+            transform-box: fill-box;
+        }
+        .ui-btn:hover .ui-btn-inner {
+            transform: scale(1.15);
+            filter: drop-shadow(0px 0px 15px rgba(255,255,255,0.6));
+        }
+        .ui-btn:active .ui-btn-inner {
+            transform: scale(0.9);
+        }
+
+        /* Рівень 2 та 3 - Відрізки і Текст */
+        .segment-group {
+            transition: transform 1.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .segment-text {
+            font-size: 60px; 
+            fill: #ffffff;
+            stroke: #212121;
+            stroke-width: 8px;
+            paint-order: stroke fill;
+            stroke-linejoin: round;
+            text-anchor: middle;
+            dominant-baseline: central;
+            font-family: Arial, sans-serif;
+            /* Властивості для контр-обертання тексту, щоб він завжди стояв рівно */
+            transform-origin: center;
+            transform-box: fill-box;
+            transition: transform 1.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* Анімація показу розриву */
+        @keyframes flashGap {
+            0% { opacity: 0.3; stroke-width: 8; stroke: #ff1744; }
+            100% { opacity: 1; stroke-width: 18; stroke: #ffea00; }
+        }
+        .gap-indicator {
+            animation: flashGap 0.35s alternate infinite;
+            stroke-linecap: round;
+        }
+
+        /* Екран блокування */
+        #block-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85);
+            color: #ff3333;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            z-index: 999999;
+            text-align: center;
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+        }
+
+        /* UI Theme Manager */
+        #settings-btn {
+            position: fixed;
+            bottom: 20px; right: 20px;
+            width: 50px; height: 50px;
+            background: #333; color: #fff;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; cursor: pointer;
+            z-index: 95000; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #theme-modal {
+            position: fixed;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #fff; border-radius: 15px;
+            padding: 20px; display: none;
+            z-index: 95001; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            width: 80%; max-width: 600px; max-height: 60vh;
+            overflow-y: auto;
+            font-family: Arial, sans-serif;
+        }
+        #theme-modal h2 { margin-top: 0; text-align: center; }
+        #theme-close {
+            position: absolute; top: 15px; right: 20px;
+            cursor: pointer; font-size: 24px; font-weight: bold;
+        }
+        #theme-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+        }
+        .theme-card {
+            border: 2px solid #ddd; border-radius: 8px;
+            overflow: hidden; cursor: pointer; position: relative;
+            height: 90px; background-size: cover; background-position: center;
+        }
+        .theme-card:hover { border-color: #4caf50; transform: scale(1.05); }
+        .theme-label {
+            position: absolute; bottom: 0; width: 100%;
+            background: rgba(0,0,0,0.6); color: #fff;
+            text-align: center; font-size: 12px; padding: 4px 0;
+        }
+        .theme-none { background: #ccc; display: flex; align-items: center; justify-content: center; }
+
+        /* Global Drawing Tool */
+        #draw-canvas-global {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 90000;
+        }
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px; right: 20px;
+            background: #8e44ad; color: #fff;
+            border: none; border-radius: 30px;
+            padding: 10px 20px; font-size: 16px; font-weight: bold;
+            cursor: pointer; z-index: 90001; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            font-family: Arial, sans-serif;
+        }
+        #draw-panel-global {
+            position: fixed;
+            top: 20px; left: 20px;
+            background: #fff; border-radius: 10px;
+            padding: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            z-index: 90002; display: none; width: 220px;
+            font-family: Arial, sans-serif;
+        }
+        .draw-handle {
+            background: #eee; text-align: center; cursor: grab;
+            padding: 5px; border-radius: 5px; margin-bottom: 10px; font-weight: bold;
+        }
+        .draw-handle:active { cursor: grabbing; }
+        .draw-close { position: absolute; top: 15px; right: 15px; cursor: pointer; font-weight: bold; }
+        .draw-controls { display: flex; flex-direction: column; gap: 8px; }
+        .draw-row { display: flex; justify-content: space-between; gap: 5px; }
+        .draw-tool-btn {
+            flex: 1; padding: 8px; border: 1px solid #ccc; background: #f9f9f9;
+            cursor: pointer; border-radius: 5px; font-weight: bold;
+        }
+        .draw-tool-btn.active { background: #e0f7fa; border-color: #00bcd4; }
+        input[type="range"], input[type="color"] { width: 100%; cursor: pointer; }
+
+        /* Magnifier */
+        #magnifier-panel {
+            position: fixed;
+            top: 50%; left: 20px; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 10px;
+            z-index: 95000;
+        }
+        .mag-btn {
+            width: 45px; height: 45px;
+            background: rgba(255,255,255,0.8); border: 2px solid #333;
+            border-radius: 50%; font-size: 24px; font-weight: bold;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .mag-btn:hover { background: #ddd; }
+
+        @media (max-width: 768px) {
+            #toggle-draw-btn-global { bottom: 100px; right: 10px; padding: 8px 15px; }
+            #settings-btn { bottom: 30px; right: 10px; }
+            .segment-text { font-size: 50px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Контейнер для масштабування гри -->
+<div id="gameZoomWrapper">
+    <svg id="gameCanvas" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="12" stdDeviation="8" flood-color="#000000" flood-opacity="0.4"/>
+            </filter>
+            
+            <linearGradient id="woodGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#795548" />
+                <stop offset="100%" stop-color="#4e342e" />
+            </linearGradient>
+
+            <!-- Іконки кнопок -->
+            <g id="btnNextSVG">
+                <g class="ui-btn-inner">
+                    <circle cx="0" cy="0" r="50" fill="#ff9800" stroke="#ef6c00" stroke-width="6" filter="url(#dropShadow)"/>
+                    <path d="M-12,-22 L22,0 L-12,22 Z" fill="#ffffff" />
+                </g>
+            </g>
+            <g id="btnPrevSVG">
+                <g class="ui-btn-inner">
+                    <circle cx="0" cy="0" r="50" fill="#ff9800" stroke="#ef6c00" stroke-width="6" filter="url(#dropShadow)"/>
+                    <path d="M12,-22 L-22,0 L12,22 Z" fill="#ffffff" />
+                </g>
+            </g>
+            <g id="btnYesSVG">
+                <g class="ui-btn-inner">
+                    <circle cx="0" cy="0" r="65" fill="#4caf50" stroke="#2e7d32" stroke-width="8" filter="url(#dropShadow)"/>
+                    <path d="M-25,0 L-5,20 L30,-20" fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+                </g>
+            </g>
+            <g id="btnNoSVG">
+                <g class="ui-btn-inner">
+                    <circle cx="0" cy="0" r="65" fill="#f44336" stroke="#c62828" stroke-width="8" filter="url(#dropShadow)"/>
+                    <path d="M-25,-25 L25,25 M25,-25 L-25,25" fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round"/>
+                </g>
+            </g>
+        </defs>
+
+        <!-- ІГРОВИЙ КОНТЕЙНЕР (Прозорий) -->
+        <g id="levelContainer"></g>
+        <g id="linesContainer"></g>
+        <g id="objectsContainer"></g>
+
+        <!-- НАВІГАЦІЯ (КНОПКИ) -->
+        <g transform="translate(1450, 800)" class="ui-btn" id="nextBtn">
+            <use href="#btnNextSVG"/>
+        </g>
+        <g transform="translate(150, 800)" class="ui-btn" id="prevBtn" opacity="0.5">
+            <use href="#btnPrevSVG"/>
+        </g>
+    </svg>
+</div>
+
+<!-- Малювалка (Canvas поверх усього) -->
+<canvas id="draw-canvas-global"></canvas>
+
+<!-- Кнопка відкриття малювалки -->
+<button id="toggle-draw-btn-global">✏️ Малювати</button>
+
+<!-- Панель малювання -->
+<div id="draw-panel-global">
+    <div class="draw-handle">Перетягнути</div>
+    <div class="draw-close" id="draw-close-btn">✕</div>
+    <div class="draw-controls">
+        <div class="draw-row">
+            <button class="draw-tool-btn active" id="tool-pencil">✏️ Олівець</button>
+            <button class="draw-tool-btn" id="tool-eraser">🧽 Гумка</button>
+        </div>
+        <label>Товщина:</label>
+        <input type="range" id="draw-size" min="1" max="50" value="5">
+        <label>Колір:</label>
+        <input type="color" id="draw-color" value="#ff0000">
+        <button class="draw-tool-btn" id="tool-clear">🗑️ Очистити</button>
+    </div>
+</div>
+
+<!-- Theme Manager UI -->
+<div id="settings-btn">⚙️</div>
+<div id="theme-modal">
+    <div id="theme-close">✕</div>
+    <h2>Виберіть фон</h2>
+    <div id="theme-grid">
+        <!-- Фони генеруються скриптом -->
+    </div>
+</div>
+
+<!-- Лупа UI -->
+<div id="magnifier-panel">
+    <button class="mag-btn" id="mag-in">🔍+</button>
+    <button class="mag-btn" id="mag-out">🔍-</button>
+</div>
+
+<!-- Block Overlay -->
+<div id="block-overlay">
+    <h1>Зачекай!</h1>
+    <p>Зараз не твій урок.</p>
+</div>
+
+<script>
+    // --- КОНФІГУРАЦІЯ ТА FIREBASE ---
+    const CONFIG = {
+        gameId: 'magic_triangles_v2', 
+        projectId: 'lesson-13c44'
+    };
+
+    const firebaseConfig = {
+        databaseURL: "https://" + CONFIG.projectId + "-default-rtdb.firebaseio.com/"
+    };
+    
+    let db;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+    } catch(e) {
+        console.warn("Firebase offline або помилка ініціалізації", e);
+    }
+
+    // --- ІДЕНТИФІКАЦІЯ, РАДАР ТА БЛОКУВАННЯ ---
+    let myName = sessionStorage.getItem('userName');
+    if (!myName) {
+        const urlParams = new URLSearchParams(window.location.search);
+        myName = urlParams.get('user');
+        if (!myName) myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        sessionStorage.setItem('userName', myName);
+    }
+
+    const tabId = Math.random().toString(36).substr(2, 9);
+    const senderId = myName + '_' + tabId;
+
+    if (db) {
+        // Радар
+        const presenceRef = db.ref('online_users/' + myName + '/' + tabId);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                presenceRef.set(true);
+                presenceRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => presenceRef.remove());
+
+        // Блокування
+        db.ref('blocked_users/' + myName).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // Ігноруємо перший знімок стану (initial state), щоб сторінка не релоадилась по колу
+        let isInitialRefreshCheck = true;
+        db.ref('force_refresh').on('value', snap => {
+            if (isInitialRefreshCheck) {
+                isInitialRefreshCheck = false;
+                return; 
+            }
+            if (snap.val() === true) {
+                window.location.reload();
+            }
+        });
+
+        // Повернення в лобі (з імунітетом перших 1.5 сек)
+        let lobbyImmunity = true;
+        setTimeout(() => lobbyImmunity = false, 1500);
+        db.ref('current_activity').on('value', snap => {
+            if (!lobbyImmunity && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+    }
+
+    // --- ФУНКЦІЯ СИНХРОНІЗАЦІЇ ДІЙ ---
+    function sendGameAction(type, dataPayload) {
+        if (!db) return;
+        db.ref('game_action').set({
+            senderId: senderId,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: type,
+            data: dataPayload
+        });
+    }
+
+    if (db) {
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === senderId) return; // Ігноруємо свої ж дії
+            
+            // Запобіжник старих дій
+            if (Date.now() - val.timestamp > 10000) return;
+
+            processRemoteAction(val);
+        });
+    }
+
+    function processRemoteAction(val) {
+        const type = val.type;
+        const data = val.data;
+
+        if (type === 'CHANGE_LEVEL') {
+            currentLevel = data.level;
+            loadLevel(currentLevel, true);
+        } else if (type === 'LVL2_CHOICE') {
+            handleLevel2Choice(data.userChoice, data.a, data.b, data.c, true);
+        } else if (type === 'LVL3_CHOICE') {
+            handleLevel3Choice(data.userChoice, data.isPossible, true);
+        } else if (type === 'DRAG_MOVE') {
+            const el = document.getElementById(data.objId);
+            if (el) el.setAttribute('transform', `translate(${data.x}, ${data.y})`);
+            updateLines();
+        } else if (type === 'CONNECT_LINE') {
+            createPermanentLine(data.p1, data.p2);
+        }
+    }
+
+
+    // --- ТЕМИ (THEME MANAGER) ---
+    const themeModal = document.getElementById('theme-modal');
+    const themeGrid = document.getElementById('theme-grid');
+    // Збереження індивідуального фону гри з localStorage
+    let currentThemeUrl = localStorage.getItem('mySavedBg_' + CONFIG.gameId) || 'none';
+    
+    function applyTheme(url) {
+        currentThemeUrl = url;
+        document.body.style.backgroundImage = url === 'none' ? 'none' : `url('${url}')`;
+        localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+    }
+    
+    applyTheme(currentThemeUrl);
+
+    document.getElementById('settings-btn').onclick = () => {
+        themeModal.style.display = 'block';
+        if (themeGrid.children.length === 0) loadBackgrounds();
+    };
+    document.getElementById('theme-close').onclick = () => themeModal.style.display = 'none';
+
+    // СТРОГО ПОСЛІДОВНЕ ЗАВАНТАЖЕННЯ (до першої 404 помилки)
+    async function loadBackgrounds() {
+        // Картка "Без фону"
+        const cardNone = document.createElement('div');
+        cardNone.className = 'theme-card theme-none';
+        cardNone.innerHTML = '<div class="theme-label">Без фону</div>';
+        cardNone.onclick = () => setAndSyncTheme('none');
+        themeGrid.appendChild(cardNone);
+
+        let i = 1;
+        let hasMore = true;
+        
+        while (hasMore) {
+            const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+            
+            try {
+                await new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => resolve();
+                    img.onerror = () => reject();
+                    img.src = url;
+                });
+                
+                // Якщо картинка завантажилась без помилок:
+                const card = document.createElement('div');
+                card.className = 'theme-card';
+                card.style.backgroundImage = `url('${url}')`;
+                card.innerHTML = `<div class="theme-label">Фон ${i}</div>`;
+                card.onclick = () => setAndSyncTheme(url);
+                themeGrid.appendChild(card);
+                i++;
+                
+            } catch (err) {
+                // Помилка (напр. 404), негайно зупиняємо цикл
+                hasMore = false;
+            }
+        }
+    }
+
+    function setAndSyncTheme(url) {
+        applyTheme(url);
+        if (db) db.ref('game_theme').set(url);
+        themeModal.style.display = 'none';
+    }
+
+    if (db) {
+        db.ref('game_theme').on('value', snap => {
+            const val = snap.val();
+            if (val && val !== currentThemeUrl) applyTheme(val);
+        });
+    }
+
+
+    // --- ГЛОБАЛЬНЕ МАЛЮВАННЯ ---
+    const drawBtn = document.getElementById('toggle-draw-btn-global');
+    const drawPanel = document.getElementById('draw-panel-global');
+    const drawCanvas = document.getElementById('draw-canvas-global');
+    const drawCtx = drawCanvas.getContext('2d');
+    
+    let isDrawMode = false;
+    let isDrawingGlobal = false;
+    let lastX = 0, lastY = 0;
+    
+    function resizeDrawCanvas() {
+        drawCanvas.width = window.innerWidth;
+        drawCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeDrawCanvas);
+    resizeDrawCanvas();
+
+    drawBtn.onclick = () => {
+        drawPanel.style.display = 'block';
+        isDrawMode = true;
+        drawCanvas.style.pointerEvents = 'auto';
+    };
+
+    document.getElementById('draw-close-btn').onclick = () => {
+        drawPanel.style.display = 'none';
+        isDrawMode = false;
+        drawCanvas.style.pointerEvents = 'none';
+    };
+
+    const drawHandle = document.querySelector('.draw-handle');
+    let isPanelDragging = false, panelOffX, panelOffY;
+    drawHandle.onmousedown = drawHandle.ontouchstart = (e) => {
+        isPanelDragging = true;
+        const ev = e.touches ? e.touches[0] : e;
+        const rect = drawPanel.getBoundingClientRect();
+        panelOffX = ev.clientX - rect.left;
+        panelOffY = ev.clientY - rect.top;
+    };
+    window.addEventListener('mousemove', (e) => {
+        if (!isPanelDragging) return;
+        drawPanel.style.left = (e.clientX - panelOffX) + 'px';
+        drawPanel.style.top = (e.clientY - panelOffY) + 'px';
+    });
+    window.addEventListener('touchmove', (e) => {
+        if (!isPanelDragging) return;
+        drawPanel.style.left = (e.touches[0].clientX - panelOffX) + 'px';
+        drawPanel.style.top = (e.touches[0].clientY - panelOffY) + 'px';
+    }, {passive: false});
+    window.addEventListener('mouseup', () => isPanelDragging = false);
+    window.addEventListener('touchend', () => isPanelDragging = false);
+
+    let currentTool = 'pencil';
+    document.getElementById('tool-pencil').onclick = function() {
+        currentTool = 'pencil';
+        this.classList.add('active');
+        document.getElementById('tool-eraser').classList.remove('active');
+    };
+    document.getElementById('tool-eraser').onclick = function() {
+        currentTool = 'eraser';
+        this.classList.add('active');
+        document.getElementById('tool-pencil').classList.remove('active');
+    };
+    document.getElementById('tool-clear').onclick = () => {
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        if (db) sendGameAction('clear_canvas', {});
+    };
+
+    function startGlobalDraw(e) {
+        if (!isDrawMode) return;
+        isDrawingGlobal = true;
+        const ev = e.touches ? e.touches[0] : e;
+        lastX = ev.clientX; lastY = ev.clientY;
+    }
+
+    function moveGlobalDraw(e) {
+        if (!isDrawingGlobal || !isDrawMode) return;
+        const ev = e.touches ? e.touches[0] : e;
+        const x = ev.clientX, y = ev.clientY;
+        const color = currentTool === 'eraser' ? null : document.getElementById('draw-color').value;
+        const size = document.getElementById('draw-size').value;
+        
+        drawLine(lastX, lastY, x, y, color, size);
+        
+        if (db) {
+            // Нормалізація координат для різних екранів
+            sendGameAction('draw_line', {
+                x0: lastX / window.innerWidth, y0: lastY / window.innerHeight,
+                x1: x / window.innerWidth, y1: y / window.innerHeight,
+                c: color, s: size
+            });
+        }
+        lastX = x; lastY = y;
+    }
+
+    function stopGlobalDraw() { isDrawingGlobal = false; }
+
+    function drawLine(x0, y0, x1, y1, color, size) {
+        drawCtx.beginPath();
+        if (color === null) {
+            drawCtx.globalCompositeOperation = "destination-out";
+            drawCtx.lineWidth = size * 2;
+        } else {
+            drawCtx.globalCompositeOperation = "source-over";
+            drawCtx.strokeStyle = color;
+            drawCtx.lineWidth = size;
+        }
+        drawCtx.lineCap = "round";
+        drawCtx.moveTo(x0, y0);
+        drawCtx.lineTo(x1, y1);
+        drawCtx.stroke();
+    }
+
+    drawCanvas.addEventListener('mousedown', startGlobalDraw);
+    drawCanvas.addEventListener('mousemove', moveGlobalDraw);
+    window.addEventListener('mouseup', stopGlobalDraw);
+    drawCanvas.addEventListener('touchstart', startGlobalDraw, {passive: true});
+    drawCanvas.addEventListener('touchmove', moveGlobalDraw, {passive: true});
+    window.addEventListener('touchend', stopGlobalDraw);
+
+    if (db) {
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (!val || val.senderId === senderId) return;
+            if (Date.now() - val.timestamp > 5000) return; 
+            
+            if (val.type === 'draw_line') {
+                const w = window.innerWidth, h = window.innerHeight;
+                drawLine(val.data.x0 * w, val.data.y0 * h, val.data.x1 * w, val.data.y1 * h, val.data.c, val.data.s);
+            } else if (val.type === 'clear_canvas') {
+                drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            }
+        });
+    }
+
+    // --- ЛУПА (Масштабування) ---
+    let zoomLevel = 1;
+    const zoomWrapper = document.getElementById('gameZoomWrapper');
+    document.getElementById('mag-in').onclick = () => { zoomLevel += 0.1; zoomWrapper.style.transform = `scale(${zoomLevel})`; };
+    document.getElementById('mag-out').onclick = () => { zoomLevel = Math.max(0.3, zoomLevel - 0.1); zoomWrapper.style.transform = `scale(${zoomLevel})`; };
+
+
+    // --- АУДІО СИСТЕМА ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx;
+
+    function initAudio() {
+        if (!audioCtx) audioCtx = new AudioContext();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+
+        if (type === 'success') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(659.25, now + 0.1);
+            osc.frequency.setValueAtTime(783.99, now + 0.2);
+            osc.frequency.setValueAtTime(1046.50, now + 0.3);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.4, now + 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            osc.start(now); osc.stop(now + 0.5);
+        } else if (type === 'fail') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(250, now);
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.4, now + 0.1);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+            osc.start(now); osc.stop(now + 0.6);
+        } else if (type === 'pop') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(900, now);
+            osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+            gainNode.gain.setValueAtTime(0.4, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        } else if (type === 'draw') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(300, now);
+            gainNode.gain.setValueAtTime(0.1, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+        }
+    }
+
+
+    // --- ГЛОБАЛЬНІ ЗМІННІ ГРИ ---
+    const svg = document.getElementById('gameCanvas');
+    const container = document.getElementById('levelContainer');
+    const objectsContainer = document.getElementById('objectsContainer');
+    const linesContainer = document.getElementById('linesContainer');
+    let currentLevel = 1;
+    const maxLevels = 3;
+
+    // --- УТИЛІТИ ---
+    function getMousePosition(evt) {
+        const CTM = svg.getScreenCTM();
+        if (evt.touches) {
+            return {
+                x: (evt.touches[0].clientX - CTM.e) / CTM.a,
+                y: (evt.touches[0].clientY - CTM.f) / CTM.d
+            };
+        }
+        return {
+            x: (evt.clientX - CTM.e) / CTM.a,
+            y: (evt.clientY - CTM.f) / CTM.d
+        };
+    }
+
+    function createSVGElement(tag, attrs) {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        for (let k in attrs) el.setAttribute(k, attrs[k]);
+        return el;
+    }
+
+    // --- РІВЕНЬ 1: ЛІСОВІ ДРУЗІ ---
+    let draggedObj = null;
+    let dragOffset = {x: 0, y: 0};
+    let isDrawingLine = false;
+    let startDot = null;
+    let tempLine = null;
+
+    function initLevel1() {
+        container.innerHTML = '';
+        objectsContainer.innerHTML = '';
+        linesContainer.innerHTML = '';
+
+        const house1Svg = `
+            <path d="M-60,0 L60,0 L70,80 L-70,80 Z" fill="#ffecb3" stroke="#ffb300" stroke-width="5"/>
+            <path d="M-110,0 Q0,-120 110,0 Z" fill="#d32f2f" stroke="#b71c1c" stroke-width="6"/>
+            <circle cx="-50" cy="-30" r="15" fill="#ffffff" opacity="0.9"/>
+            <circle cx="30" cy="-50" r="22" fill="#ffffff" opacity="0.9"/>
+            <circle cx="60" cy="-15" r="12" fill="#ffffff" opacity="0.9"/>
+            <path d="M-25,80 L-25,30 A25,25 0 0,1 25,30 L25,80 Z" fill="#795548" stroke="#4e342e" stroke-width="4"/>
+            <circle cx="12" cy="55" r="5" fill="#ffca28"/>
+            <circle cx="-30" cy="-70" r="15" fill="#fff59d" stroke="#f57f17" stroke-width="4"/>
+            <line x1="-45" y1="-70" x2="-15" y2="-70" stroke="#f57f17" stroke-width="3"/>
+            <line x1="-30" y1="-85" x2="-30" y2="-55" stroke="#f57f17" stroke-width="3"/>
+        `;
+        
+        const house2Svg = `
+            <path d="M-60,-20 Q-70,70 0,100 Q70,70 60,-20 Z" fill="#a1887f" stroke="#5d4037" stroke-width="5"/>
+            <path d="M-80,-20 Q0,-70 80,-20 Q80,0 0,-10 Q-80,0 -80,-20 Z" fill="#5d4037" stroke="#3e2723" stroke-width="5"/>
+            <path d="M0,-45 Q10,-60 20,-50" fill="none" stroke="#3e2723" stroke-width="8" stroke-linecap="round"/>
+            <path d="M20,-50 Q30,-60 40,-40 Z" fill="#4caf50" stroke="#1b5e20" stroke-width="2"/>
+            <rect x="-20" y="40" width="40" height="50" fill="#ffb74d" rx="8" stroke="#ef6c00" stroke-width="4"/>
+            <circle cx="0" cy="10" r="18" fill="#e0f7fa" stroke="#4dd0e1" stroke-width="4"/>
+        `;
+
+        const kidSvg = `
+            <circle cx="50" cy="15" r="25" fill="#8bc34a" stroke="#33691e" stroke-width="4"/>
+            <circle cx="10" cy="5" r="28" fill="#9ccc65" stroke="#33691e" stroke-width="4"/>
+            <circle cx="-35" cy="0" r="30" fill="#aed581" stroke="#33691e" stroke-width="4"/>
+            <circle cx="-85" cy="-15" r="35" fill="#cddc39" stroke="#827717" stroke-width="4"/>
+            <path d="M-95,-45 Q-110,-70 -120,-60" fill="none" stroke="#e91e63" stroke-width="5" stroke-linecap="round"/>
+            <path d="M-75,-45 Q-60,-70 -50,-60" fill="none" stroke="#e91e63" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="-95" cy="-20" r="6" fill="#000"/>
+            <circle cx="-75" cy="-20" r="6" fill="#000"/>
+            <path d="M-95,-5 Q-85,5 -75,-5" fill="none" stroke="#d32f2f" stroke-width="4" stroke-linecap="round"/>
+            <line x1="-35" y1="30" x2="-35" y2="45" stroke="#33691e" stroke-width="6" stroke-linecap="round"/>
+            <line x1="10" y1="33" x2="10" y2="48" stroke="#33691e" stroke-width="6" stroke-linecap="round"/>
+            <line x1="50" y1="40" x2="50" y2="55" stroke="#33691e" stroke-width="6" stroke-linecap="round"/>
+        `;
+
+        createDraggableObject(600, 300, 'house1', house1Svg, 120);
+        createDraggableObject(1200, 450, 'house2', house2Svg, 120);
+        createDraggableObject(850, 650, 'kid', kidSvg, -70);
+
+        svg.addEventListener('mousedown', startLineDraw);
+        svg.addEventListener('mousemove', moveLineDraw);
+        svg.addEventListener('mouseup', endLineDraw);
+        svg.addEventListener('touchstart', startLineDraw, {passive: false});
+        svg.addEventListener('touchmove', moveLineDraw, {passive: false});
+        svg.addEventListener('touchend', endLineDraw);
+    }
+
+    function createDraggableObject(x, y, id, innerSvg, dotOffsetY) {
+        const g = createSVGElement('g', {
+            class: 'draggable',
+            transform: `translate(${x}, ${y})`,
+            id: id,
+            filter: 'url(#dropShadow)'
+        });
+        g.innerHTML = innerSvg;
+        const dot = createSVGElement('circle', {
+            cx: 0, cy: dotOffsetY, r: 18,
+            class: 'dot',
+            'data-parent': id
+        });
+        g.appendChild(dot);
+        objectsContainer.appendChild(g);
+        g.addEventListener('mousedown', (e) => startDrag(e, g));
+        g.addEventListener('touchstart', (e) => startDrag(e, g), {passive: false});
+    }
+
+    function startDrag(evt, element) {
+        if (evt.target.classList.contains('dot')) return; 
+        if (evt.type === 'touchstart') evt.preventDefault();
+        initAudio(); playSound('pop');
+        draggedObj = element;
+        const pos = getMousePosition(evt);
+        const transforms = draggedObj.getAttribute('transform').replace('translate(', '').replace(')', '').split(',');
+        dragOffset.x = pos.x - parseFloat(transforms[0]);
+        dragOffset.y = pos.y - parseFloat(transforms[1] || transforms[0].split(' ')[1]);
+        objectsContainer.appendChild(draggedObj);
+    }
+
+    function startLineDraw(evt) {
+        if (evt.target.classList.contains('dot')) {
+            initAudio(); playSound('pop');
+            isDrawingLine = true;
+            startDot = evt.target;
+            const pos = getAbsoluteDotPos(startDot);
+            tempLine = createSVGElement('line', {
+                x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y,
+                class: 'connection-line'
+            });
+            linesContainer.appendChild(tempLine);
+            if(evt.type !== 'touchstart') evt.preventDefault();
+        } else if (evt.target.classList.contains('connection-line-solid')) {
+            initAudio(); playSound('pop');
+            evt.target.remove();
+        }
+    }
+
+    function moveLineDraw(evt) {
+        if (draggedObj) {
+            evt.preventDefault();
+            const pos = getMousePosition(evt);
+            const newX = pos.x - dragOffset.x;
+            const newY = pos.y - dragOffset.y;
+            draggedObj.setAttribute('transform', `translate(${newX}, ${newY})`);
+            updateLines();
+        } else if (isDrawingLine && tempLine) {
+            evt.preventDefault();
+            const pos = getMousePosition(evt);
+            tempLine.setAttribute('x2', pos.x);
+            tempLine.setAttribute('y2', pos.y);
+            if (Math.random() > 0.8) playSound('draw');
+        }
+    }
+
+    function endLineDraw(evt) {
+        if (draggedObj) {
+            const transforms = draggedObj.getAttribute('transform').replace('translate(', '').replace(')', '').split(',');
+            sendGameAction('DRAG_MOVE', { objId: draggedObj.id, x: parseFloat(transforms[0]), y: parseFloat(transforms[1] || transforms[0].split(' ')[1]) });
+            draggedObj = null;
+        }
+        if (isDrawingLine) {
+            isDrawingLine = false;
+            let targetDot = null;
+            const pos = getMousePosition(evt);
+            const allDots = document.querySelectorAll('.dot');
+            let minDistance = 70; 
+            allDots.forEach(dot => {
+                if (dot !== startDot) {
+                    const dotPos = getAbsoluteDotPos(dot);
+                    const dist = Math.hypot(dotPos.x - pos.x, dotPos.y - pos.y);
+                    if (dist < minDistance) { minDistance = dist; targetDot = dot; }
+                }
+            });
+
+            if (targetDot) {
+                const id1 = startDot.getAttribute('data-parent');
+                const id2 = targetDot.getAttribute('data-parent');
+                playSound('success');
+                createPermanentLine(id1, id2);
+                sendGameAction('CONNECT_LINE', { p1: id1, p2: id2 });
+            } else {
+                playSound('fail');
+            }
+            if (tempLine) tempLine.remove();
+            tempLine = null; startDot = null;
+        }
+    }
+
+    function createPermanentLine(id1, id2) {
+        const permLine = createSVGElement('line', {
+            class: 'connection-line connection-line-solid',
+            'data-p1': id1, 'data-p2': id2
+        });
+        linesContainer.appendChild(permLine);
+        updateLines();
+    }
+
+    function getAbsoluteDotPos(dotEl) {
+        const parent = dotEl.parentNode;
+        const transforms = parent.getAttribute('transform').replace('translate(', '').replace(')', '').split(',');
+        const tx = parseFloat(transforms[0]);
+        const ty = parseFloat(transforms[1] || transforms[0].split(' ')[1]);
+        const cx = parseFloat(dotEl.getAttribute('cx'));
+        const cy = parseFloat(dotEl.getAttribute('cy'));
+        return { x: tx + cx, y: ty + cy };
+    }
+
+    function updateLines() {
+        const lineElements = linesContainer.querySelectorAll('.connection-line-solid');
+        lineElements.forEach(line => {
+            const dot1 = document.querySelector(`.dot[data-parent="${line.getAttribute('data-p1')}"]`);
+            const dot2 = document.querySelector(`.dot[data-parent="${line.getAttribute('data-p2')}"]`);
+            if (dot1 && dot2) {
+                const pos1 = getAbsoluteDotPos(dot1);
+                const pos2 = getAbsoluteDotPos(dot2);
+                line.setAttribute('x1', pos1.x); line.setAttribute('y1', pos1.y);
+                line.setAttribute('x2', pos2.x); line.setAttribute('y2', pos2.y);
+            }
+        });
+    }
+
+    function cleanupLevel1() {
+        svg.removeEventListener('mousedown', startLineDraw);
+        svg.removeEventListener('mousemove', moveLineDraw);
+        svg.removeEventListener('mouseup', endLineDraw);
+        svg.removeEventListener('touchstart', startLineDraw);
+        svg.removeEventListener('touchmove', moveLineDraw);
+        svg.removeEventListener('touchend', endLineDraw);
+    }
+
+
+    // --- РІВЕНЬ 2: ВІДРІЗКИ ---
+    let segments = [];
+    let level2State = 0;
+    let canFormTriangle = false;
+
+    function initLevel2() {
+        container.innerHTML = ''; objectsContainer.innerHTML = ''; linesContainer.innerHTML = '';
+        level2State = 0;
+
+        let l1 = Math.floor(Math.random() * 8) + 4;
+        let l2 = Math.floor(Math.random() * 8) + 4;
+        let l3 = Math.floor(Math.random() * 10) + 6;
+
+        if (Math.random() > 0.5) {
+            l3 = l1 + l2 + Math.floor(Math.random() * 4) + 1; 
+        } else {
+            while (l1 + l2 <= l3 || l1 + l3 <= l2 || l2 + l3 <= l1) {
+                l1 = Math.floor(Math.random() * 8) + 4; l2 = Math.floor(Math.random() * 8) + 4; l3 = Math.floor(Math.random() * 10) + 6;
+            }
+        }
+
+        let arr = [l1, l2, l3].sort((a,b)=>b-a);
+        const c = arr[0], a = arr[1], b = arr[2];
+        canFormTriangle = (a + b > c);
+        
+        const scale = 38;
+        const colors = ['#e91e63', '#9c27b0', '#03a9f4'];
+        
+        segments = [
+            createSegment(c, scale, colors[0], 900, 200),
+            createSegment(a, scale, colors[1], 900, 320),
+            createSegment(b, scale, colors[2], 900, 440)
+        ];
+
+        segments.forEach(seg => container.appendChild(seg.g));
+
+        const btnY = createSVGElement('g', { class: 'ui-btn', transform: 'translate(700, 650)' });
+        btnY.innerHTML = '<use href="#btnYesSVG"/>';
+        btnY.onclick = () => handleLevel2Choice(true, a, b, c, false);
+
+        const btnN = createSVGElement('g', { class: 'ui-btn', transform: 'translate(1100, 650)' });
+        btnN.innerHTML = '<use href="#btnNoSVG"/>';
+        btnN.onclick = () => handleLevel2Choice(false, a, b, c, false);
+
+        container.appendChild(btnY); container.appendChild(btnN);
+    }
+
+    function createSegment(len, scale, color, startX, startY) {
+        const pxLen = len * scale;
+        const g = createSVGElement('g', {
+            class: 'segment-group',
+            transform: `translate(${startX - pxLen/2}, ${startY}) rotate(0)`,
+            filter: 'url(#dropShadow)'
+        });
+        const line = createSVGElement('line', {
+            x1: 0, y1: 0, x2: pxLen, y2: 0,
+            stroke: color, 'stroke-width': 25, 'stroke-linecap': 'round' 
+        });
+        const txt = createSVGElement('text', {
+            x: pxLen/2, y: 0, class: 'segment-text'
+        });
+        txt.textContent = len;
+        g.appendChild(line); g.appendChild(txt);
+        // Повертаємо посилання на текстовий елемент для подальшого обертання
+        return { g, txt, len, pxLen };
+    }
+
+    function handleLevel2Choice(userChoice, a, b, c, isRemote) {
+        if (level2State !== 0) return;
+        level2State = 1;
+        initAudio();
+        
+        if (!isRemote) sendGameAction('LVL2_CHOICE', { userChoice, a, b, c });
+
+        if (userChoice === canFormTriangle) playSound('success');
+        else playSound('fail');
+
+        const segC = segments[0], segA = segments[1], segB = segments[2];
+        const baseX = 900 - segC.pxLen / 2;
+        const baseY = 420;
+        
+        segC.g.style.transform = `translate(${baseX}px, ${baseY}px) rotate(0deg)`;
+        segC.txt.style.transform = `rotate(0deg)`;
+
+        const btns = container.querySelectorAll('.ui-btn');
+        btns.forEach(b => { b.style.pointerEvents = 'none'; b.style.opacity = '0'; });
+
+        if (canFormTriangle) {
+            const cosA = (a*a + c*c - b*b) / (2 * a * c);
+            const angleADeg = Math.acos(cosA) * (180 / Math.PI);
+            const cosB = (b*b + c*c - a*a) / (2 * b * c);
+            const angleBDeg = Math.acos(cosB) * (180 / Math.PI);
+
+            segA.g.style.transformOrigin = `0px 0px`;
+            segA.g.style.transform = `translate(${baseX}px, ${baseY}px) rotate(${-angleADeg}deg)`;
+            // Контр-обертання тексту для збереження горизонтального положення
+            segA.txt.style.transform = `rotate(${angleADeg}deg)`;
+
+            segB.g.style.transformOrigin = `0px 0px`;
+            segB.g.style.transform = `translate(${baseX + segC.pxLen}px, ${baseY}px) rotate(${180 + angleBDeg}deg)`;
+            // Контр-обертання тексту
+            segB.txt.style.transform = `rotate(${-(180 + angleBDeg)}deg)`;
+
+            setTimeout(() => initLevel2(), 3500);
+        } else {
+            const testAngle = 30; 
+            segA.g.style.transformOrigin = `0px 0px`;
+            segA.g.style.transform = `translate(${baseX}px, ${baseY}px) rotate(${-testAngle}deg)`;
+            segA.txt.style.transform = `rotate(${testAngle}deg)`;
+
+            segB.g.style.transformOrigin = `0px 0px`;
+            segB.g.style.transform = `translate(${baseX + segC.pxLen}px, ${baseY}px) rotate(${180 + testAngle}deg)`;
+            segB.txt.style.transform = `rotate(${-(180 + testAngle)}deg)`;
+
+            setTimeout(() => {
+                const endAx = baseX + segA.pxLen * Math.cos(-testAngle * Math.PI/180);
+                const endAy = baseY + segA.pxLen * Math.sin(-testAngle * Math.PI/180);
+                const endBx = baseX + segC.pxLen + segB.pxLen * Math.cos((180 + testAngle) * Math.PI/180);
+                const endBy = baseY + segB.pxLen * Math.sin((180 + testAngle) * Math.PI/180);
+                
+                const gapLine = createSVGElement('line', {
+                    x1: endAx, y1: endAy, x2: endBx, y2: endBy,
+                    class: 'gap-indicator',
+                    'stroke-dasharray': '20, 20'
+                });
+                container.appendChild(gapLine);
+                if (userChoice === canFormTriangle) playSound('fail'); 
+                
+                setTimeout(() => {
+                    gapLine.remove();
+                    
+                    segA.g.style.transform = `translate(${baseX}px, ${baseY}px) rotate(0deg)`;
+                    segA.txt.style.transform = `rotate(0deg)`;
+                    
+                    segB.g.style.transform = `translate(${baseX + segC.pxLen}px, ${baseY}px) rotate(180deg)`;
+                    segB.txt.style.transform = `rotate(-180deg)`; 
+                    
+                    setTimeout(() => initLevel2(), 2000);
+                }, 2500);
+            }, 1500);
+        }
+    }
+
+
+    // --- РІВЕНЬ 3: АНАЛІЗ ЗА ВЕЛИЧЕЗНИМ ВКАЗІВНИКОМ ---
+    let level3State = 0;
+
+    function initLevel3() {
+        container.innerHTML = ''; objectsContainer.innerHTML = ''; linesContainer.innerHTML = '';
+        level3State = 0;
+
+        let arr = [Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4].sort((a,b)=>b-a);
+        let isPossible = (arr[1] + arr[2] > arr[0]);
+        if (Math.random() > 0.5) {
+            if (isPossible) { arr[0] = arr[1] + arr[2] + Math.floor(Math.random() * 5) + 1; isPossible = false; }
+        } else {
+            while (arr[1] + arr[2] <= arr[0]) {
+                arr = [Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4].sort((x,y)=>y-x);
+            }
+            isPossible = true;
+        }
+
+        const rope1 = createSVGElement('line', {x1: 600, y1: -50, x2: 600, y2: 150, stroke: '#d7ccc8', 'stroke-width': 10});
+        const rope2 = createSVGElement('line', {x1: 1200, y1: -50, x2: 1200, y2: 150, stroke: '#d7ccc8', 'stroke-width': 10});
+        container.appendChild(rope1); container.appendChild(rope2);
+
+        const board = createSVGElement('rect', {
+            x: 500, y: 100, width: 800, height: 500, 
+            fill: 'url(#woodGrad)', rx: 30, 
+            stroke: '#3e2723', 'stroke-width': 25,
+            filter: 'url(#dropShadow)'
+        });
+        container.appendChild(board);
+
+        const visBase = 450, visA = 350, visB = 280;
+        const cosAngle = (visA*visA + visBase*visBase - visB*visB) / (2 * visA * visBase);
+        const angleRad = Math.acos(cosAngle);
+        const topX = visA * Math.cos(angleRad), topY = -visA * Math.sin(angleRad);
+        const startX = 675, startY = 480;
+
+        const triangleGroup = createSVGElement('g', { transform: `translate(${startX}, ${startY})` });
+
+        triangleGroup.appendChild(createStyledLine(0, 0, visBase, 0, '#ffca28', arr[0]));
+        triangleGroup.appendChild(createStyledLine(0, 0, topX, topY, '#29b6f6', arr[1]));
+        triangleGroup.appendChild(createStyledLine(visBase, 0, topX, topY, '#66bb6a', arr[2]));
+
+        [ {x:0,y:0}, {x:visBase,y:0}, {x:topX,y:topY} ].forEach(pt => {
+            triangleGroup.appendChild(createSVGElement('circle', {
+                cx: pt.x, cy: pt.y, r: 15, fill: '#ffffff', stroke: '#212121', 'stroke-width': 5
+            }));
+        });
+        container.appendChild(triangleGroup);
+
+        const btnY = createSVGElement('g', { class: 'ui-btn', transform: 'translate(700, 720)' });
+        btnY.innerHTML = '<use href="#btnYesSVG"/>';
+        btnY.onclick = () => handleLevel3Choice(true, isPossible, false);
+
+        const btnN = createSVGElement('g', { class: 'ui-btn', transform: 'translate(1100, 720)' });
+        btnN.innerHTML = '<use href="#btnNoSVG"/>';
+        btnN.onclick = () => handleLevel3Choice(false, isPossible, false);
+
+        container.appendChild(btnY); container.appendChild(btnN);
+    }
+
+    function createStyledLine(x1, y1, x2, y2, color, textLabel) {
+        const g = createSVGElement('g', {});
+        const line = createSVGElement('line', {
+            x1: x1, y1: y1, x2: x2, y2: y2,
+            stroke: color, 'stroke-width': 25, 'stroke-linecap': 'round' 
+        });
+        
+        const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.sqrt(dx*dx + dy*dy);
+        const nx = -dy / len, ny = dx / len;
+        
+        const txt = createSVGElement('text', {
+            x: midX + nx * 50, y: midY + ny * 50,
+            class: 'segment-text'
+        });
+        txt.textContent = textLabel;
+        g.appendChild(line); g.appendChild(txt);
+        return g;
+    }
+
+    function handleLevel3Choice(userChoice, isPossible, isRemote) {
+        if (level3State !== 0) return;
+        level3State = 1;
+        initAudio();
+        
+        if (!isRemote) sendGameAction('LVL3_CHOICE', { userChoice, isPossible });
+
+        const board = container.querySelector('rect');
+        board.style.transition = 'fill 0.4s';
+        if (userChoice === isPossible) {
+            playSound('success');
+            board.setAttribute('fill', '#33691e'); 
+        } else {
+            playSound('fail');
+            board.setAttribute('fill', '#b71c1c'); 
+        }
+
+        const btns = container.querySelectorAll('.ui-btn');
+        btns.forEach(b => { b.style.pointerEvents = 'none'; b.style.opacity = '0'; });
+
+        setTimeout(() => initLevel3(), 2000);
+    }
+
+    // --- КЕРУВАННЯ РІВНЯМИ ---
+    function loadLevel(level, isRemote = false) {
+        if (currentLevel === 1) cleanupLevel1();
+        currentLevel = level;
+        
+        if (!isRemote) sendGameAction('CHANGE_LEVEL', { level: currentLevel });
+        
+        document.getElementById('prevBtn').style.opacity = (currentLevel > 1) ? '1' : '0.5';
+        document.getElementById('prevBtn').style.pointerEvents = (currentLevel > 1) ? 'auto' : 'none';
+        document.getElementById('nextBtn').style.opacity = (currentLevel < maxLevels) ? '1' : '0.5';
+        document.getElementById('nextBtn').style.pointerEvents = (currentLevel < maxLevels) ? 'auto' : 'none';
+
+        if (level === 1) initLevel1();
+        else if (level === 2) initLevel2();
+        else if (level === 3) initLevel3();
+    }
+
+    document.getElementById('nextBtn').addEventListener('click', () => {
+        initAudio(); playSound('pop');
+        if (currentLevel < maxLevels) loadLevel(currentLevel + 1);
+    });
+
+    document.getElementById('prevBtn').addEventListener('click', () => {
+        initAudio(); playSound('pop');
+        if (currentLevel > 1) loadLevel(currentLevel - 1);
+    });
+
+    window.onload = () => loadLevel(1);
+
+</script>
+</body>
+</html>
