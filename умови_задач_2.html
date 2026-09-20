@@ -84,11 +84,6 @@
         clip-path: polygon(10% 0, 90% 0, 100% 20%, 80% 40%, 100% 60%, 80% 80%, 100% 100%, 0 100%, 20% 80%, 0 60%, 20% 40%, 0 20%);
     }
 
-    @keyframes sway {
-        0% { transform: rotate(-10deg); }
-        100% { transform: rotate(10deg); }
-    }
-
     /* Controls Panel (Шрифт та Масштаб) */
     #view-controls {
         position: absolute;
@@ -171,9 +166,12 @@
 
     .header-buttons {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
+        flex-wrap: wrap;
         gap: 10px;
         flex-shrink: 0;
+        align-items: flex-start;
+        justify-content: flex-end;
     }
 
     .action-btn {
@@ -189,11 +187,25 @@
         transition: transform 0.2s, box-shadow 0.2s;
         text-transform: lowercase;
     }
-    .action-btn.btn-answer {
-        background: linear-gradient(135deg, #f1c40f, #f39c12);
-        box-shadow: 0 0 15px #f1c40f;
-        display: none; /* За замовчуванням прихована */
+    
+    .teacher-only { display: none; } /* Приховано для дітей */
+    
+    .btn-peek {
+        background: linear-gradient(135deg, #9b59b6, #8e44ad);
+        color: white;
+        box-shadow: 0 0 15px #9b59b6;
     }
+    .btn-correct {
+        background: linear-gradient(135deg, #2ecc71, #27ae60);
+        box-shadow: 0 0 15px #2ecc71;
+        padding: 15px !important;
+    }
+    .btn-incorrect {
+        background: linear-gradient(135deg, #e74c3c, #c0392b);
+        box-shadow: 0 0 15px #e74c3c;
+        padding: 15px !important;
+    }
+
     .action-btn:active { transform: scale(0.95); }
 
     #play-area {
@@ -236,11 +248,31 @@
         transition: all 0.3s;
         box-shadow: inset 0 5px 15px rgba(0,0,0,0.6);
         cursor: pointer;
+        position: relative;
     }
     .slot:hover { border-color: var(--accent); }
 
     .slot.word-slot { width: 60%; }
     .slot.num-slot { width: 30%; }
+
+    /* Оверлей-підказка для вчителя */
+    .hint-overlay {
+        display: none;
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.85);
+        color: #00ff00;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        border-radius: 13px;
+        z-index: 50;
+        pointer-events: none; /* Щоб кліки проходили крізь нього до слоту */
+        font-size: calc(1.8vh * var(--font-scale));
+        text-align: center;
+        padding: 5px;
+    }
+    body.show-hints .hint-overlay { display: flex; }
 
     #bank-container {
         flex: 1;
@@ -272,6 +304,8 @@
         align-items: center;
         justify-content: center;
         text-align: center;
+        position: relative;
+        z-index: 10;
     }
 
     .chip:active { transform: scale(0.9); }
@@ -312,7 +346,7 @@
 
     @media (max-width: 768px) {
         #header { flex-direction: column; align-items: stretch; }
-        .header-buttons { flex-direction: row; justify-content: space-between; }
+        .header-buttons { justify-content: space-between; }
         .action-btn { flex: 1; padding: 10px; }
         #play-area { flex-direction: column; }
         .grid-row { height: 75px; }
@@ -462,7 +496,7 @@
     <button class="ctrl-btn" onclick="changeZoom(0.1)" title="Наблизити">🔍+</button>
 </div>
 
-<!-- Зона для вчителя -->
+<!-- Зона для вчителя (невидима кнопка) -->
 <div id="teacher-trigger" onclick="enableTeacherMode()" title=""></div>
 
 <div class="background-anim" id="bg-anim"></div>
@@ -473,7 +507,9 @@
     <div id="header">
         <div id="task-text"></div>
         <div class="header-buttons">
-            <button id="btn-answer" class="action-btn btn-answer" onclick="triggerShowAnswer()">відповідь 👁️</button>
+            <button class="action-btn teacher-only btn-peek" onclick="togglePeek()">відповідь 👁️</button>
+            <button class="action-btn teacher-only btn-correct" onclick="emitCorrect()">✅</button>
+            <button class="action-btn teacher-only btn-incorrect" onclick="emitIncorrect()">❌</button>
             <button class="action-btn" onclick="handleNextClick()">далі ➔</button>
         </div>
     </div>
@@ -554,16 +590,18 @@
         
         isRemoteAction = true;
         try {
-            if (val.type === 'place_chip') {
+            if (val.type === 'select_chip') {
+                syncChipSelection(val.data.chipId);
+            } else if (val.type === 'place_chip') {
                 placeChipInSlotLocally(val.data.chipId, val.data.slotId);
             } else if (val.type === 'return_chip') {
                 returnChipToBankLocally(val.data.chipId);
             } else if (val.type === 'generate_level') {
                 applyLevel(val.data);
-            } else if (val.type === 'validate_level') {
-                validateLocally();
-            } else if (val.type === 'show_answer') {
-                showAnswerLocally();
+            } else if (val.type === 'teacher_correct') {
+                triggerCorrect();
+            } else if (val.type === 'teacher_incorrect') {
+                triggerIncorrect();
             } else if (val.type === 'draw_line') {
                 remoteDrawLine(val.data);
             } else if (val.type === 'clear_canvas') {
@@ -586,8 +624,7 @@
     }
 
     function enableTeacherMode() {
-        const btn = document.getElementById('btn-answer');
-        if (btn) btn.style.display = 'inline-block';
+        document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'inline-block');
     }
 
     // --- Аудіо ---
@@ -688,6 +725,7 @@
     function handleNextClick() {
         initAudio();
         sndPop();
+        document.body.classList.remove('show-hints'); // Ховаємо підказки, якщо вони були відкриті
         let taskIdx = Math.floor(Math.random() * tasks.length);
         const task = tasks[taskIdx];
         let A, B;
@@ -719,7 +757,6 @@
         
         let answerStr, valArr;
 
-        // ПОВЕРНУТО ЗНАК ПИТАННЯ В УМОВУ
         if (task.typeStr === "A+B=?") {
             answerStr = (A + B).toString();
             valArr = [A.toString(), B.toString(), '?'];
@@ -748,15 +785,14 @@
             { id: 'cw0', type: 'word', val: currentLevel.keys[0] },
             { id: 'cw1', type: 'word', val: currentLevel.keys[1] },
             { id: 'cw2', type: 'word', val: currentLevel.keys[2] },
-            { id: 'cn0', type: 'num', val: currentLevel.values[0] }, // тут може бути ?
-            { id: 'cn1', type: 'num', val: currentLevel.values[1] }, // тут може бути ?
-            { id: 'cn2', type: 'num', val: currentLevel.values[2] }, // тут може бути ?
+            { id: 'cn0', type: 'num', val: currentLevel.values[0] }, 
+            { id: 'cn1', type: 'num', val: currentLevel.values[1] }, 
+            { id: 'cn2', type: 'num', val: currentLevel.values[2] }, 
             { id: 'cw_dist1', type: 'word', val: task.distractors[0] },
             { id: 'cw_dist2', type: 'word', val: task.distractors[1] },
-            { id: 'cn_ans', type: 'num', val: answerStr } // Справжня відповідь виступає як відволікач
+            { id: 'cn_ans', type: 'num', val: answerStr } 
         ];
         
-        // Видалення дублікатів
         let uniqueChips = [];
         let seenIds = new Set();
         chipsData.forEach(c => {
@@ -778,20 +814,46 @@
             bank.appendChild(el);
         });
 
-        document.querySelectorAll('.slot').forEach(slot => {
-            slot.innerHTML = '';
-        });
+        // Підготовка слотів та підказок
+        for (let i = 0; i < 3; i++) {
+            let expectedWord = currentLevel.keys[i];
+            let peekNum = currentLevel.values[i];
+            if (peekNum === '?') peekNum = currentLevel.answerStr; // Для вчителя показуємо саму відповідь, а не знак питання
+
+            let wSlot = document.querySelector(`.grid-row[data-row="${i}"] .word-slot`);
+            let nSlot = document.querySelector(`.grid-row[data-row="${i}"] .num-slot`);
+            
+            wSlot.innerHTML = `<div class="hint-overlay">${expectedWord}</div>`;
+            nSlot.innerHTML = `<div class="hint-overlay">${peekNum}</div>`;
+        }
+    }
+
+    function syncChipSelection(chipId) {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+        if (chipId) {
+            const c = document.querySelector(`.chip[data-id="${chipId}"]`);
+            if (c) {
+                c.classList.add('selected');
+                selectedChip = c;
+            } else {
+                selectedChip = null;
+            }
+        } else {
+            selectedChip = null;
+        }
     }
 
     function handleChipClickLocal(chip) {
         initAudio();
         if (chip.parentElement.id === 'bank-container') {
-            if (selectedChip) selectedChip.classList.remove('selected');
             if (selectedChip === chip) {
-                selectedChip = null; // зняти виділення
+                // Зняття виділення
+                syncChipSelection(null);
+                sendAction('select_chip', { chipId: null });
             } else {
-                selectedChip = chip;
-                chip.classList.add('selected');
+                // Нове виділення
+                syncChipSelection(chip.dataset.id);
+                sendAction('select_chip', { chipId: chip.dataset.id });
                 sndPop();
             }
         } else {
@@ -815,8 +877,9 @@
         placeChipInSlotLocally(chipId, slotId);
         sendAction('place_chip', { chipId, slotId });
         
-        selectedChip.classList.remove('selected');
-        selectedChip = null;
+        // Зняти виділення після розміщення
+        syncChipSelection(null);
+        sendAction('select_chip', { chipId: null });
     }
 
     function placeChipInSlotLocally(chipId, slotId) {
@@ -824,23 +887,16 @@
         const slot = document.querySelector(`.slot[data-id="${slotId}"]`);
         if (!chip || !slot) return;
 
-        if (slot.children.length > 0) {
-            const oldChip = slot.children[0];
-            oldChip.classList.remove('in-slot');
-            document.getElementById('bank-container').appendChild(oldChip);
+        // Перевіряємо, чи є вже фішка у слоті (не рахуючи hint-overlay)
+        const existingChip = slot.querySelector('.chip');
+        if (existingChip) {
+            existingChip.classList.remove('in-slot');
+            document.getElementById('bank-container').appendChild(existingChip);
         }
 
         chip.classList.add('in-slot');
         slot.appendChild(chip);
         sndDrop();
-        
-        // Автоматична перевірка, якщо всі 6 слотів заповнені
-        let filled = 0;
-        document.querySelectorAll('.slot').forEach(s => { if (s.children.length > 0) filled++; });
-        if (filled === 6 && !isRemoteAction) {
-            sendAction('validate_level', {});
-            validateLocally();
-        }
     }
 
     function returnChipToBankLocally(chipId) {
@@ -851,99 +907,58 @@
         sndDrop();
     }
 
-    function validateLocally() {
-        let allCorrect = true;
+    // --- Локальний перегляд для вчителя (Peek) ---
+    function togglePeek() {
+        document.body.classList.toggle('show-hints');
+    }
+
+    // --- Кнопки перевірки для вчителя ---
+    function emitCorrect() {
+        sendAction('teacher_correct', {});
+        triggerCorrect();
+    }
+
+    function emitIncorrect() {
+        sendAction('teacher_incorrect', {});
+        triggerIncorrect();
+    }
+
+    function triggerCorrect() {
+        sndWin();
+        spawnConfetti();
+    }
+
+    function triggerIncorrect() {
+        sndErr();
         const rows = document.querySelectorAll('.grid-row');
         let toEject = [];
 
         rows.forEach((row, i) => {
             const wSlot = row.querySelector('.word-slot');
             const nSlot = row.querySelector('.num-slot');
-            
-            if (wSlot.children.length === 0 || nSlot.children.length === 0) {
-                allCorrect = false; return;
+
+            const wChip = wSlot.querySelector('.chip');
+            const nChip = nSlot.querySelector('.chip');
+
+            let expectedNum = currentLevel.values[i]; // Тут очікується '?' якщо в умові стоїть питання
+
+            if (wChip && wChip.dataset.val !== currentLevel.keys[i]) {
+                toEject.push({ chip: wChip, row: row });
             }
-
-            const wChip = wSlot.children[0];
-            const nChip = nSlot.children[0];
-
-            let rowOk = true;
-
-            // Очікується точний збіг (включаючи знак питання)
-            let expectedNum = currentLevel.values[i];
-
-            if (wChip.dataset.val !== currentLevel.keys[i]) {
-                rowOk = false;
-                toEject.push(wChip);
-            }
-            if (nChip.dataset.val !== expectedNum) {
-                rowOk = false;
-                toEject.push(nChip);
-            }
-
-            if (!rowOk) {
-                allCorrect = false;
-                row.classList.add('shake');
-                setTimeout(() => row.classList.remove('shake'), 400);
+            if (nChip && nChip.dataset.val !== expectedNum) {
+                toEject.push({ chip: nChip, row: row });
             }
         });
 
-        if (allCorrect) {
-            sndWin();
-            spawnConfetti();
-        } else {
-            sndErr();
-            setTimeout(() => {
-                toEject.forEach(chip => {
-                    chip.classList.remove('in-slot');
-                    document.getElementById('bank-container').appendChild(chip);
-                });
-            }, 500);
-        }
-    }
-
-    // --- Показати відповідь (Без автоматичного зарахування) ---
-    function triggerShowAnswer() {
-        initAudio();
-        sendAction('show_answer', {});
-        showAnswerLocally();
-    }
-
-    function showAnswerLocally() {
-        if (!currentLevel || !currentLevel.keys) return;
-        
-        // Спочатку повертаємо все у банк
-        document.querySelectorAll('.slot').forEach(slot => {
-            if (slot.children.length > 0) {
-                let chip = slot.children[0];
-                chip.classList.remove('in-slot');
-                document.getElementById('bank-container').appendChild(chip);
-            }
-        });
-
-        // Знаходимо і розставляємо правильні фішки (включно із `?`)
-        for (let i = 0; i < 3; i++) {
-            let expectedWord = currentLevel.keys[i];
-            let expectedNum = currentLevel.values[i]; // тут буде і `?`
-
-            let wordChip = Array.from(document.querySelectorAll(`.chip[data-type="word"]`)).find(c => c.dataset.val === expectedWord && !c.classList.contains('in-slot'));
-            let numChip = Array.from(document.querySelectorAll(`.chip[data-type="num"]`)).find(c => c.dataset.val === expectedNum && !c.classList.contains('in-slot'));
-
-            let wSlot = document.querySelector(`.grid-row[data-row="${i}"] .word-slot`);
-            let nSlot = document.querySelector(`.grid-row[data-row="${i}"] .num-slot`);
-
-            if (wordChip && wSlot) {
-                wordChip.classList.add('in-slot');
-                wSlot.appendChild(wordChip);
-            }
-            if (numChip && nSlot) {
-                numChip.classList.add('in-slot');
-                nSlot.appendChild(numChip);
-            }
-        }
-        
-        // Ми навмисне НЕ викликаємо validateLocally(), щоб завдання не "закривалось" перемогою. 
-        // Всі фішки просто стають на правильні місця.
+        // Трусимо рядки і повертаємо ТІЛЬКИ неправильні фішки у банк
+        toEject.forEach(item => item.row.classList.add('shake'));
+        setTimeout(() => {
+            toEject.forEach(item => item.row.classList.remove('shake'));
+            toEject.forEach(item => {
+                item.chip.classList.remove('in-slot');
+                document.getElementById('bank-container').appendChild(item.chip);
+            });
+        }, 500);
     }
 
     // --- Canvas Confetti ---
