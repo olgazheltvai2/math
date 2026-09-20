@@ -573,8 +573,8 @@
     sessionStorage.setItem('userName', myName);
     
     let isRemoteAction = false;
+    let isTeacher = false;
     
-    // ВАЖЛИВО: Оновлена відправка, щоб Firebase не видаляв порожні об'єкти і гарантував оновлення.
     function sendAction(type, data) {
         if (isRemoteAction) return;
         const safeData = data ? JSON.parse(JSON.stringify(data)) : { dummy: true };
@@ -627,9 +627,41 @@
         document.documentElement.style.setProperty('--zoom-scale', currentZoomScale);
     }
 
+    // Захоплення ролі вчителя через Firebase
     function enableTeacherMode() {
-        document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'inline-block');
+        if (isTeacher) return;
+        db.ref('game_teacher').once('value', snap => {
+            if (!snap.exists() || snap.val() === myName) {
+                db.ref('game_teacher').set(myName);
+                db.ref('game_teacher').onDisconnect().remove();
+                activateTeacherUI();
+            }
+        });
     }
+
+    function activateTeacherUI() {
+        isTeacher = true;
+        document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'inline-block');
+        document.getElementById('teacher-trigger').style.display = 'none';
+    }
+
+    // Слухаємо статус вчителя для блокування зони в учнів
+    db.ref('game_teacher').on('value', snap => {
+        const currentTeacher = snap.val();
+        if (currentTeacher) {
+            if (currentTeacher === myName) {
+                activateTeacherUI();
+            } else {
+                // Хтось інший став вчителем, ховаємо тригер для цього користувача
+                document.getElementById('teacher-trigger').style.display = 'none';
+            }
+        } else {
+            // Вчитель відсутній, можна знову стати ним
+            document.getElementById('teacher-trigger').style.display = 'block';
+            isTeacher = false;
+            document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
+        }
+    });
 
     // --- Аудіо ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -741,7 +773,6 @@
             A = Math.floor(Math.random() * 8) + 2; B = Math.floor(Math.random() * 8) + 2;
         }
 
-        // Обчислюємо додаткове число-відволікач тут, щоб воно було однаковим у всіх
         let ans = (task.typeStr === "A+B=?" || task.typeStr === "?-A=B") ? A+B : (task.typeStr === "A-B=?") ? A-B : B-A;
         wrongNum = ans + (Math.random() > 0.5 ? 2 : -1);
         if (wrongNum < 1) wrongNum = ans + 3;
@@ -812,7 +843,6 @@
             bank.appendChild(el);
         });
 
-        // Підготовка слотів та підказок
         for (let i = 0; i < 3; i++) {
             let expectedWord = currentLevel.keys[i];
             let peekNum = currentLevel.values[i];
@@ -869,9 +899,8 @@
         let slotId = slot.dataset.id;
         
         placeChipInSlotLocally(chipId, slotId);
-        syncChipSelection(''); // Очищаємо виділення локально
+        syncChipSelection(''); 
         sendAction('place_chip', { chipId, slotId }); 
-        // Подія 'place_chip' викличе автоматичне зняття виділення і в інших гравців
     }
 
     function placeChipInSlotLocally(chipId, slotId) {
@@ -931,7 +960,7 @@
             const wChip = wSlot.querySelector('.chip');
             const nChip = nSlot.querySelector('.chip');
 
-            let expectedNum = currentLevel.values[i]; // Обов'язково повинна бути фішка '?' якщо вона в умові
+            let expectedNum = currentLevel.values[i]; 
 
             if (wChip && wChip.dataset.val !== currentLevel.keys[i]) {
                 toEject.push({ chip: wChip, row: row });
