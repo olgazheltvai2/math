@@ -188,7 +188,8 @@
         text-transform: lowercase;
     }
     
-    .teacher-only { display: none; } /* Приховано для всіх, поки не захоплено роль вчителя */
+    /* Приховані від учнів кнопки перевірки */
+    .teacher-only { display: none; }
     
     .btn-peek {
         background: linear-gradient(135deg, #9b59b6, #8e44ad);
@@ -267,7 +268,7 @@
         font-weight: bold;
         border-radius: 13px;
         z-index: 50;
-        pointer-events: none;
+        pointer-events: none; /* Щоб кліки проходили до слоту */
         font-size: calc(2vh * var(--font-scale));
         text-align: center;
         padding: 5px;
@@ -574,7 +575,7 @@
     }
     sessionStorage.setItem('userName', myName);
     
-    // clientId гарантує унікальність пристрою (навіть якщо ім'я однакове)
+    // clientId гарантує унікальність пристрою, myName гарантує збереження ролі за іменем
     const clientId = myName + '_' + tabId;
     
     let isRemoteAction = false;
@@ -621,7 +622,7 @@
         isRemoteAction = false;
     });
 
-    // ВАЖЛИВО: Окрема гілка рівня. Завдяки цьому гра гарантовано працює після перезавантаження сторінки
+    // Окрема гілка рівня. Завдяки цьому гра гарантовано працює після перезавантаження сторінки
     db.ref(`level_${CONFIG.gameId}`).on('value', snap => {
         const val = snap.val();
         if (val) {
@@ -641,13 +642,14 @@
         document.documentElement.style.setProperty('--zoom-scale', currentZoomScale);
     }
 
-    // Захоплення ролі вчителя через Firebase (прив'язано до ІМЕНІ, щоб після рефрешу вчитель міг повернути кнопки)
+    // --- Захоплення ролі вчителя (Прив'язка до Імені, а не до Вкладки) ---
     function enableTeacherMode() {
         if (isTeacher) return;
         db.ref(`teacher_${CONFIG.gameId}`).once('value', snap => {
             if (!snap.exists() || snap.val() === myName) {
                 db.ref(`teacher_${CONFIG.gameId}`).set(myName);
                 db.ref(`teacher_${CONFIG.gameId}`).onDisconnect().remove();
+                sessionStorage.setItem(`isTeacher_${CONFIG.gameId}`, 'true'); // Зберігаємо статус
                 activateTeacherUI();
             }
         });
@@ -657,17 +659,21 @@
         isTeacher = true;
         document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'inline-block');
         const trigger = document.getElementById('teacher-trigger');
-        if (trigger) trigger.style.display = 'none'; // Ховаємо тригер для себе
+        if (trigger) {
+            trigger.style.display = 'none';
+            trigger.style.pointerEvents = 'none';
+        }
     }
 
-    // Слухаємо статус вчителя для блокування зони в учнів
+    // Слухаємо статус вчителя (Блокування зони для учнів і авто-відновлення для вчителя)
     db.ref(`teacher_${CONFIG.gameId}`).on('value', snap => {
         const currentTeacher = snap.val();
         if (currentTeacher) {
             if (currentTeacher === myName) {
-                activateTeacherUI(); // Якщо ми оновили сторінку, кнопки повернуться
+                // Це ми! Автоматично повертаємо собі кнопки, якщо сторінка оновилась
+                activateTeacherUI();
             } else {
-                // Вчитель хтось інший (учень). Блокуємо і ховаємо кнопку.
+                // Вчитель хтось інший (учень). Блокуємо і ховаємо кнопку-тригер.
                 const trigger = document.getElementById('teacher-trigger');
                 if (trigger) {
                     trigger.style.display = 'none';
@@ -687,6 +693,11 @@
             document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
         }
     });
+
+    // Авто-претензія ролі після оновлення, якщо ми були вчителем у цій сесії
+    if (sessionStorage.getItem(`isTeacher_${CONFIG.gameId}`) === 'true') {
+        enableTeacherMode();
+    }
 
     // --- Аудіо ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -1280,7 +1291,12 @@
         }
     });
 
-    window.addEventListener('beforeunload', () => { radarRef.remove(); });
+    window.addEventListener('beforeunload', () => { 
+        radarRef.remove(); 
+        if (isTeacher) {
+            db.ref(`teacher_${CONFIG.gameId}`).remove(); // Відпускаємо роль при виході
+        }
+    });
 
     let isInitialRefresh = true;
     db.ref('force_refresh').on('value', snap => {
