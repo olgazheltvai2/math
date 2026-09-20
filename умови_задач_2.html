@@ -565,9 +565,8 @@
     });
     const db = firebase.database();
     
-    // Унікальний ідентифікатор саме цієї вкладки браузера
+    // Ідентифікатори
     const tabId = Math.random().toString(36).substr(2, 9);
-    
     const urlParams = new URLSearchParams(window.location.search);
     let myName = urlParams.get('user');
     if (!myName) myName = sessionStorage.getItem('userName');
@@ -576,13 +575,13 @@
     }
     sessionStorage.setItem('userName', myName);
     
-    // clientId гарантує абсолютну унікальність конкретного відкритого пристрою/вкладки
+    // clientId гарантує унікальність вкладки
     const clientId = myName + '_' + tabId;
     
     let isRemoteAction = false;
     let isTeacher = false;
     
-    // ВАЖЛИВО: Окрема гілка action_gameId для надійної синхронізації кліків
+    // Гілка action_gameId для надійної синхронізації кліків
     function sendAction(type, data) {
         if (isRemoteAction) return;
         const safeData = data ? JSON.parse(JSON.stringify(data)) : { dummy: true };
@@ -623,7 +622,7 @@
         isRemoteAction = false;
     });
 
-    // Окрема гілка рівня. Завдяки цьому гра гарантовано працює після перезавантаження сторінки
+    // Гілка рівня. Завдяки цьому гра гарантовано працює після перезавантаження сторінки
     db.ref(`level_${CONFIG.gameId}`).on('value', snap => {
         const val = snap.val();
         if (val) {
@@ -643,14 +642,14 @@
         document.documentElement.style.setProperty('--zoom-scale', currentZoomScale);
     }
 
-    // --- Захоплення ролі вчителя (За унікальним clientId) ---
+    // --- Захоплення ролі вчителя (Хто перший натиснув, той і вчитель) ---
     function enableTeacherMode() {
         if (isTeacher) return;
         db.ref(`teacher_${CONFIG.gameId}`).once('value', snap => {
-            // Перевіряємо, чи ще ніхто не зайняв роль вчителя
-            if (!snap.exists()) {
-                db.ref(`teacher_${CONFIG.gameId}`).set(clientId);
-                // При закритті або оновленні цієї конкретної вкладки - роль миттєво звільняється
+            // Записуємо Вчителя за його ІМЕНЕМ. Це дозволяє вчителю оновлювати сторінку без втрати кнопок
+            if (!snap.exists() || snap.val() === myName) {
+                db.ref(`teacher_${CONFIG.gameId}`).set(myName);
+                // При закритті вкладки або втраті з'єднання статус миттєво звільняється
                 db.ref(`teacher_${CONFIG.gameId}`).onDisconnect().remove();
                 activateTeacherUI();
             }
@@ -669,14 +668,14 @@
 
     // Слухаємо статус вчителя (Блокування зони для учнів і звільнення)
     db.ref(`teacher_${CONFIG.gameId}`).on('value', snap => {
-        const currentTeacherId = snap.val();
+        const currentTeacherName = snap.val();
         
-        if (currentTeacherId) {
-            if (currentTeacherId === clientId) {
-                // Це ми (саме ця вкладка). Активуємо кнопки.
+        if (currentTeacherName) {
+            if (currentTeacherName === myName) {
+                // Це ми! Навіть якщо ми щойно оновили сторінку, система нас впізнає
                 activateTeacherUI();
             } else {
-                // Вчитель хтось інший (або навіть ми, але в іншій вкладці). Блокуємо тригер.
+                // Вчитель хтось інший (учень). Блокуємо і ховаємо кнопку-тригер.
                 const trigger = document.getElementById('teacher-trigger');
                 if (trigger) {
                     trigger.style.display = 'none';
@@ -1289,8 +1288,12 @@
         }
     });
 
+    // Надійно очищуємо статус вчителя при виході зі сторінки або переході в Лобі
     window.addEventListener('beforeunload', () => { 
         radarRef.remove(); 
+        if (isTeacher) {
+            db.ref(`teacher_${CONFIG.gameId}`).remove();
+        }
     });
 
     let isInitialRefresh = true;
@@ -1309,6 +1312,7 @@
     const loadTime = Date.now();
     db.ref('current_activity').on('value', snap => {
         if (Date.now() - loadTime > 1500 && snap.val() === 'lobby') {
+            if (isTeacher) db.ref(`teacher_${CONFIG.gameId}`).remove(); // Звільняємо роль перед переходом
             window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
         }
     });
