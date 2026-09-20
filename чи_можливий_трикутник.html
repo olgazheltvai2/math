@@ -455,7 +455,8 @@
 
         if (type === 'CHANGE_LEVEL') {
             currentLevel = data.level;
-            loadLevel(currentLevel, true);
+            // Передаємо згенеровані на іншому пристрої числа для ідеальної синхронізації
+            loadLevel(currentLevel, true, data.levelData);
         } else if (type === 'LVL2_CHOICE') {
             handleLevel2Choice(data.userChoice, data.a, data.b, data.c, true);
         } else if (type === 'LVL3_CHOICE') {
@@ -466,6 +467,13 @@
             updateLines();
         } else if (type === 'CONNECT_LINE') {
             createPermanentLine(data.p1, data.p2);
+        } else if (type === 'REMOVE_LINE') {
+            const lineElements = linesContainer.querySelectorAll('.connection-line-solid');
+            lineElements.forEach(line => {
+                if (line.getAttribute('data-p1') === data.p1 && line.getAttribute('data-p2') === data.p2) {
+                    line.remove();
+                }
+            });
         }
     }
 
@@ -771,6 +779,7 @@
     let isDrawingLine = false;
     let startDot = null;
     let tempLine = null;
+    let lastDragSync = 0; // Для оптимізації відправки координат перетягування
 
     function initLevel1() {
         container.innerHTML = '';
@@ -871,6 +880,12 @@
             if(evt.type !== 'touchstart') evt.preventDefault();
         } else if (evt.target.classList.contains('connection-line-solid')) {
             initAudio(); playSound('pop');
+            
+            // Синхронізація видалення лінії
+            const p1 = evt.target.getAttribute('data-p1');
+            const p2 = evt.target.getAttribute('data-p2');
+            sendGameAction('REMOVE_LINE', { p1: p1, p2: p2 });
+            
             evt.target.remove();
         }
     }
@@ -883,6 +898,14 @@
             const newY = pos.y - dragOffset.y;
             draggedObj.setAttribute('transform', `translate(${newX}, ${newY})`);
             updateLines();
+            
+            // Жива синхронізація перетягування (throttled ~25 fps)
+            const now = Date.now();
+            if (now - lastDragSync > 40) {
+                sendGameAction('DRAG_MOVE', { objId: draggedObj.id, x: newX, y: newY });
+                lastDragSync = now;
+            }
+            
         } else if (isDrawingLine && tempLine) {
             evt.preventDefault();
             const pos = getMousePosition(evt);
@@ -894,6 +917,7 @@
 
     function endLineDraw(evt) {
         if (draggedObj) {
+            // Фінальна відправка координат, щоб гарантовано зафіксувати фігуру на місці у всіх
             const transforms = draggedObj.getAttribute('transform').replace('translate(', '').replace(')', '').split(',');
             sendGameAction('DRAG_MOVE', { objId: draggedObj.id, x: parseFloat(transforms[0]), y: parseFloat(transforms[1] || transforms[0].split(' ')[1]) });
             draggedObj = null;
@@ -974,25 +998,15 @@
     let level2State = 0;
     let canFormTriangle = false;
 
-    function initLevel2() {
+    function initLevel2(data) {
         container.innerHTML = ''; objectsContainer.innerHTML = ''; linesContainer.innerHTML = '';
         level2State = 0;
 
-        let l1 = Math.floor(Math.random() * 8) + 4;
-        let l2 = Math.floor(Math.random() * 8) + 4;
-        let l3 = Math.floor(Math.random() * 10) + 6;
-
-        if (Math.random() > 0.5) {
-            l3 = l1 + l2 + Math.floor(Math.random() * 4) + 1; 
-        } else {
-            while (l1 + l2 <= l3 || l1 + l3 <= l2 || l2 + l3 <= l1) {
-                l1 = Math.floor(Math.random() * 8) + 4; l2 = Math.floor(Math.random() * 8) + 4; l3 = Math.floor(Math.random() * 10) + 6;
-            }
-        }
-
-        let arr = [l1, l2, l3].sort((a,b)=>b-a);
-        const c = arr[0], a = arr[1], b = arr[2];
-        canFormTriangle = (a + b > c);
+        // Використовуємо строго передані дані (згенеровані локально або отримані через Firebase)
+        const c = data.c;
+        const a = data.a;
+        const b = data.b;
+        canFormTriangle = data.canFormTriangle;
         
         const scale = 38;
         const colors = ['#e91e63', '#9c27b0', '#03a9f4'];
@@ -1072,7 +1086,8 @@
             // Контр-обертання тексту
             segB.txt.style.transform = `rotate(${-(180 + angleBDeg)}deg)`;
 
-            setTimeout(() => initLevel2(), 3500);
+            // Запускаємо генерацію НОВОГО рівня з синхронізацією чисел
+            setTimeout(() => loadLevel(2), 3500);
         } else {
             const testAngle = 30; 
             segA.g.style.transformOrigin = `0px 0px`;
@@ -1106,7 +1121,7 @@
                     segB.g.style.transform = `translate(${baseX + segC.pxLen}px, ${baseY}px) rotate(180deg)`;
                     segB.txt.style.transform = `rotate(-180deg)`; 
                     
-                    setTimeout(() => initLevel2(), 2000);
+                    setTimeout(() => loadLevel(2), 2000);
                 }, 2500);
             }, 1500);
         }
@@ -1116,20 +1131,12 @@
     // --- РІВЕНЬ 3: АНАЛІЗ ЗА ВЕЛИЧЕЗНИМ ВКАЗІВНИКОМ ---
     let level3State = 0;
 
-    function initLevel3() {
+    function initLevel3(data) {
         container.innerHTML = ''; objectsContainer.innerHTML = ''; linesContainer.innerHTML = '';
         level3State = 0;
 
-        let arr = [Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4].sort((a,b)=>b-a);
-        let isPossible = (arr[1] + arr[2] > arr[0]);
-        if (Math.random() > 0.5) {
-            if (isPossible) { arr[0] = arr[1] + arr[2] + Math.floor(Math.random() * 5) + 1; isPossible = false; }
-        } else {
-            while (arr[1] + arr[2] <= arr[0]) {
-                arr = [Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4].sort((x,y)=>y-x);
-            }
-            isPossible = true;
-        }
+        let arr = data.arr;
+        let isPossible = data.isPossible;
 
         const rope1 = createSVGElement('line', {x1: 600, y1: -50, x2: 600, y2: 150, stroke: '#d7ccc8', 'stroke-width': 10});
         const rope2 = createSVGElement('line', {x1: 1200, y1: -50, x2: 1200, y2: 150, stroke: '#d7ccc8', 'stroke-width': 10});
@@ -1214,15 +1221,51 @@
         const btns = container.querySelectorAll('.ui-btn');
         btns.forEach(b => { b.style.pointerEvents = 'none'; b.style.opacity = '0'; });
 
-        setTimeout(() => initLevel3(), 2000);
+        setTimeout(() => loadLevel(3), 2000);
     }
 
-    // --- КЕРУВАННЯ РІВНЯМИ ---
-    function loadLevel(level, isRemote = false) {
+    // --- КЕРУВАННЯ РІВНЯМИ З СИНХРОНІЗАЦІЄЮ ДАНИХ ---
+    // Тепер генерація чисел відбувається під час завантаження рівня на пристрої-ініціаторі
+    function loadLevel(level, isRemote = false, remoteData = null) {
         if (currentLevel === 1) cleanupLevel1();
         currentLevel = level;
         
-        if (!isRemote) sendGameAction('CHANGE_LEVEL', { level: currentLevel });
+        let levelData = remoteData;
+
+        // Якщо рівень перемикає/очищує сам користувач (а не отримує по мережі)
+        if (!isRemote) {
+            if (level === 2) {
+                let l1 = Math.floor(Math.random() * 8) + 4;
+                let l2 = Math.floor(Math.random() * 8) + 4;
+                let l3 = Math.floor(Math.random() * 10) + 6;
+
+                if (Math.random() > 0.5) {
+                    l3 = l1 + l2 + Math.floor(Math.random() * 4) + 1; 
+                } else {
+                    while (l1 + l2 <= l3 || l1 + l3 <= l2 || l2 + l3 <= l1) {
+                        l1 = Math.floor(Math.random() * 8) + 4; l2 = Math.floor(Math.random() * 8) + 4; l3 = Math.floor(Math.random() * 10) + 6;
+                    }
+                }
+
+                let arr = [l1, l2, l3].sort((a,b)=>b-a);
+                levelData = { c: arr[0], a: arr[1], b: arr[2], canFormTriangle: (arr[1] + arr[2] > arr[0]) };
+            } else if (level === 3) {
+                let arr = [Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4].sort((a,b)=>b-a);
+                let isPossible = (arr[1] + arr[2] > arr[0]);
+                if (Math.random() > 0.5) {
+                    if (isPossible) { arr[0] = arr[1] + arr[2] + Math.floor(Math.random() * 5) + 1; isPossible = false; }
+                } else {
+                    while (arr[1] + arr[2] <= arr[0]) {
+                        arr = [Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4, Math.floor(Math.random() * 15) + 4].sort((x,y)=>y-x);
+                    }
+                    isPossible = true;
+                }
+                levelData = { arr: arr, isPossible: isPossible };
+            }
+
+            // Відправляємо дані іншим
+            sendGameAction('CHANGE_LEVEL', { level: currentLevel, levelData: levelData });
+        }
         
         document.getElementById('prevBtn').style.opacity = (currentLevel > 1) ? '1' : '0.5';
         document.getElementById('prevBtn').style.pointerEvents = (currentLevel > 1) ? 'auto' : 'none';
@@ -1230,8 +1273,8 @@
         document.getElementById('nextBtn').style.pointerEvents = (currentLevel < maxLevels) ? 'auto' : 'none';
 
         if (level === 1) initLevel1();
-        else if (level === 2) initLevel2();
-        else if (level === 3) initLevel3();
+        else if (level === 2) initLevel2(levelData);
+        else if (level === 3) initLevel3(levelData);
     }
 
     document.getElementById('nextBtn').addEventListener('click', () => {
