@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Лабораторію Мудрої Сови</title>
+
+<!-- Firebase Compat Libraries -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+    :root {
+        /* Палітра старовинної лабораторії */
+        --bg-wall: #1a1a24;
+        --bg-window: #0b0c10;
+        --wood-dark: #3e2723;
+        --wood-light: #5d4037;
+        --parchment: #f4e8c1;
+        --stone-base: #455a64;
+        --stone-highlight: #607d8b;
+        --stone-shadow: #263238;
+        --magic-green: #69f0ae;
+        --magic-purple: #b388ff;
+        
+        --text-dark: #212121;
+        --text-light: #e0f7fa;
+        
+        --font-scale: 1.2;
+        --zoom-scale: 1;
+    }
+
+    * { box-sizing: border-box; user-select: none; }
+
+    body {
+        margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden;
+        font-family: 'Georgia', serif;
+        background-color: var(--bg-wall);
+        color: var(--text-light);
+        display: flex; flex-direction: column; align-items: center; position: relative;
+    }
+
+    /* --- Складний сюжетний фон (Лабораторія) --- */
+    #lab-background {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        z-index: 0; pointer-events: none; overflow: hidden;
+        /* Кам'яна кладка стіни */
+        background-image: 
+            linear-gradient(rgba(26, 26, 36, 0.9), rgba(15, 15, 20, 0.95)),
+            repeating-linear-gradient(0deg, transparent, transparent 40px, rgba(0,0,0,0.4) 40px, rgba(0,0,0,0.4) 42px),
+            repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(0,0,0,0.4) 60px, rgba(0,0,0,0.4) 62px);
+        background-color: #2b2b36;
+    }
+
+    /* Велике готичне вікно */
+    .lab-window {
+        position: absolute; top: 5%; left: 50%; transform: translateX(-50%);
+        width: 60%; height: 60%;
+        background: radial-gradient(circle at bottom, #1a237e, #000000);
+        border: 20px solid #1c1c24;
+        border-radius: 50% 50% 0 0 / 20% 20% 0 0;
+        box-shadow: inset 0 0 50px rgba(0,0,0,1), 0 10px 30px rgba(0,0,0,0.8);
+        overflow: hidden;
+    }
+
+    /* Мерехтливі зірки у вікні */
+    .star {
+        position: absolute; background: white; border-radius: 50%;
+        box-shadow: 0 0 5px white; animation: twinkle infinite alternate;
+    }
+    @keyframes twinkle { 0% { opacity: 0.2; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
+
+    /* Бульбашки з гігантського казана знизу */
+    .cauldron-bubble {
+        position: absolute; bottom: -20px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 30% 30%, rgba(105, 240, 174, 0.8), rgba(0, 200, 83, 0.2));
+        box-shadow: 0 0 10px var(--magic-green), inset 0 0 10px rgba(255,255,255,0.5);
+        animation: floatUp infinite ease-in;
+    }
+    @keyframes floatUp {
+        0% { transform: translateY(0) scale(0.5); opacity: 0; }
+        20% { opacity: 0.8; }
+        80% { opacity: 0.8; }
+        100% { transform: translateY(-100vh) scale(1.5); opacity: 0; }
+    }
+
+    /* --- Живий Персонаж: Мудра Сова-Алхімік --- */
+    #owl-container {
+        position: absolute; bottom: 5%; left: 2%;
+        width: 320px; height: 380px; z-index: 5; pointer-events: none;
+        animation: levitate 5s ease-in-out infinite;
+    }
+    @keyframes levitate { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+    
+    .owl-wing-l { transform-origin: 80% 30%; animation: flapL 3s infinite alternate ease-in-out; }
+    .owl-wing-r { transform-origin: 20% 30%; animation: flapR 3s infinite alternate ease-in-out; }
+    .owl-eye { transform-origin: center; animation: blinkOwl 5s infinite; }
+    .owl-head { transform-origin: 50% 60%; animation: lookAround 8s infinite ease-in-out; }
+    .flask-liquid { transform-origin: bottom; animation: bubbleLiquid 2s infinite alternate; }
+    .magic-glow { animation: pulseGlow 2s infinite alternate; }
+
+    @keyframes flapL { 0% { transform: rotate(0deg); } 100% { transform: rotate(10deg); } }
+    @keyframes flapR { 0% { transform: rotate(0deg); } 100% { transform: rotate(-10deg); } }
+    @keyframes blinkOwl { 0%, 94%, 98%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+    @keyframes lookAround { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-5deg); } 75% { transform: rotate(5deg); } }
+    @keyframes bubbleLiquid { 0% { transform: scaleY(1); } 100% { transform: scaleY(1.1); } }
+    @keyframes pulseGlow { 0% { filter: drop-shadow(0 0 5px #b388ff); } 100% { filter: drop-shadow(0 0 20px #b388ff); } }
+
+    /* --- Контроли --- */
+    #view-controls {
+        position: absolute; top: 15px; left: 15px; z-index: 100; display: flex; gap: 10px;
+        background: rgba(30, 20, 10, 0.8); padding: 8px 12px; border-radius: 5px;
+        border: 2px solid #8d6e63; box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+    }
+    .ctrl-btn {
+        background: linear-gradient(#795548, #3e2723); border: 1px solid #d7ccc8;
+        color: #d7ccc8; border-radius: 3px; width: 36px; height: 36px;
+        font-family: 'Georgia', serif; font-weight: bold; cursor: pointer; transition: 0.2s;
+    }
+    .ctrl-btn:hover { background: #8d6e63; color: #fff; }
+    .ctrl-btn:active { transform: scale(0.9); }
+
+    #teacher-trigger { position: absolute; top: 0; right: 0; width: 70px; height: 70px; z-index: 10000; cursor: default; }
+
+    /* --- Основний Інтерфейс --- */
+    #ui-layer {
+        position: relative; z-index: 10; width: 100%; max-width: 1200px; height: 100%;
+        display: flex; flex-direction: column; padding: 20px; padding-top: 70px; gap: 30px;
+        transform: scale(var(--zoom-scale)); transform-origin: top center; transition: transform 0.3s ease;
+    }
+
+    #header { display: flex; justify-content: space-between; align-items: stretch; width: 100%; gap: 20px; }
+
+    /* Сувій для тексту задачі */
+    #task-text {
+        flex-grow: 1;
+        background-color: var(--parchment);
+        color: var(--text-dark);
+        padding: 30px 40px;
+        font-size: calc(2.2vh * var(--font-scale));
+        line-height: 1.6;
+        font-weight: bold;
+        position: relative;
+        box-shadow: inset 0 0 30px rgba(141, 110, 99, 0.5), 5px 15px 25px rgba(0,0,0,0.8);
+        border-radius: 2px;
+        /* Імітація дерев'яних валиків зверху і знизу через градієнти */
+        border-top: 15px solid #4e342e;
+        border-bottom: 15px solid #4e342e;
+        background-image: 
+            radial-gradient(circle at 10% 20%, rgba(141, 110, 99, 0.1) 0%, transparent 20%),
+            radial-gradient(circle at 80% 70%, rgba(141, 110, 99, 0.15) 0%, transparent 30%);
+    }
+    #task-text::before, #task-text::after {
+        content: ''; position: absolute; left: -10px; right: -10px; height: 6px;
+        background: #3e2723; border-radius: 3px;
+    }
+    #task-text::before { top: -21px; }
+    #task-text::after { bottom: -21px; }
+
+    /* Латунні Кнопки */
+    .header-buttons { display: flex; flex-direction: row; flex-wrap: wrap; gap: 15px; flex-shrink: 0; align-items: center; justify-content: flex-end; }
+    
+    .action-btn {
+        background: radial-gradient(circle, #fbc02d, #f57f17);
+        color: #3e2723; text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+        border: 3px solid #827717;
+        padding: 15px 30px;
+        font-size: calc(1.8vh * var(--font-scale)); font-weight: bold; font-family: 'Georgia', serif;
+        border-radius: 8px; cursor: pointer;
+        box-shadow: inset 0 0 10px rgba(255,255,255,0.5), 0 8px 15px rgba(0,0,0,0.6);
+        transition: transform 0.1s, box-shadow 0.1s;
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+    .action-btn:active { transform: translateY(4px); box-shadow: inset 0 0 10px rgba(255,255,255,0.5), 0 2px 5px rgba(0,0,0,0.6); }
+    
+    .teacher-only { display: none; }
+    .btn-peek { background: radial-gradient(circle, #00acc1, #006064); color: #e0f7fa; border-color: #004d40; text-shadow: none; }
+    .btn-correct { background: radial-gradient(circle, #43a047, #1b5e20); color: white; border-color: #003300; padding: 15px !important; text-shadow: none;}
+    .btn-incorrect { background: radial-gradient(circle, #e53935, #b71c1c); color: white; border-color: #4a0000; padding: 15px !important; text-shadow: none;}
+
+    #play-area { display: flex; flex-direction: row; flex-grow: 1; gap: 40px; min-height: 0; }
+
+    /* Дерев'яні полиці (Ігрове поле) */
+    #grid-container {
+        flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 30px;
+        background: rgba(30, 20, 15, 0.85);
+        border: 15px solid var(--wood-dark); border-radius: 10px;
+        padding: 30px 40px;
+        box-shadow: inset 0 0 50px rgba(0,0,0,1), 0 20px 40px rgba(0,0,0,0.8);
+        position: relative;
+    }
+    /* Імітація дощок на задньому фоні полиці */
+    #grid-container::before {
+        content: ''; position: absolute; top:0; left:0; width:100%; height:100%; z-index:-1;
+        background: repeating-linear-gradient(90deg, transparent, transparent 98px, rgba(0,0,0,0.3) 98px, rgba(0,0,0,0.3) 100px);
+    }
+
+    .grid-row {
+        display: flex; gap: 30px; align-items: center; justify-content: center; height: 100px;
+        /* Полиця, на якій стоять слоти */
+        border-bottom: 20px solid var(--wood-light);
+        box-shadow: 0 15px 15px -10px rgba(0,0,0,0.9);
+        position: relative;
+    }
+    /* Тінь під полицею */
+    .grid-row::after {
+        content: ''; position: absolute; bottom: -35px; left: -20px; right: -20px; height: 15px;
+        background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent); pointer-events: none;
+    }
+
+    /* Магічні слоти-підставки */
+    .slot {
+        background: rgba(0,0,0,0.6);
+        border: 2px dashed #9e9e9e;
+        border-radius: 5px; height: 80%; transform: translateY(-10px);
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.3s;
+        box-shadow: inset 0 5px 20px rgba(0,0,0,0.9);
+        cursor: pointer; position: relative;
+    }
+    .slot:hover { border-color: var(--magic-green); background: rgba(105, 240, 174, 0.1); }
+    .slot.word-slot { width: 55%; }
+    .slot.num-slot { width: 35%; }
+
+    .hint-overlay {
+        display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.9); color: var(--magic-purple);
+        align-items: center; justify-content: center; font-weight: bold; border-radius: 5px;
+        z-index: 50; pointer-events: none; font-size: calc(2vh * var(--font-scale));
+        text-align: center; padding: 5px; border: 1px solid var(--magic-purple);
+    }
+    body.show-hints .hint-overlay { display: flex; }
+
+    /* Скриня з рунами (Банк) */
+    #bank-container {
+        flex: 1;
+        background: linear-gradient(135deg, #4e342e, #21130d);
+        border: 10px solid #2e1a12;
+        border-radius: 10px;
+        padding: 30px;
+        display: flex; flex-wrap: wrap; align-content: flex-start; justify-content: center; gap: 20px;
+        box-shadow: inset 0 0 30px rgba(0,0,0,0.9), 0 20px 40px rgba(0,0,0,0.7);
+        overflow-y: auto;
+        position: relative;
+    }
+    /* Металеві кутники скрині */
+    #bank-container::before, #bank-container::after {
+        content: ''; position: absolute; width: 30px; height: 30px; border: 4px solid #757575; pointer-events: none;
+    }
+    #bank-container::before { top: 0; left: 0; border-right: none; border-bottom: none; }
+    #bank-container::after { bottom: 0; right: 0; border-left: none; border-top: none; }
+
+    /* Фішки: Кам'яні Руни */
+    .chip {
+        background: radial-gradient(circle at 30% 30%, var(--stone-highlight), var(--stone-base), var(--stone-shadow));
+        padding: 15px 25px;
+        font-size: calc(2vh * var(--font-scale)); font-weight: bold; font-family: 'Courier New', monospace;
+        cursor: pointer;
+        /* Форма обрізаного каменю (восьмикутник) */
+        clip-path: polygon(10% 0, 90% 0, 100% 20%, 100% 80%, 90% 100%, 10% 100%, 0 80%, 0 20%);
+        color: #ffcc80; text-shadow: 0 0 8px #ff9800, 1px 1px 2px #000;
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        position: relative; z-index: 10;
+        /* Імітація об'єму за рахунок фільтру, бо clip-path ріже border */
+        filter: drop-shadow(0 8px 6px rgba(0,0,0,0.8));
+        transition: transform 0.1s, filter 0.3s;
+        min-width: 80px; min-height: 50px;
+    }
+    .chip::before { /* Тріщини на камені */
+        content: ''; position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;
+        background: radial-gradient(circle at 70% 80%, rgba(0,0,0,0.2) 0%, transparent 10%);
+    }
+    .chip:active { transform: scale(0.9) translateY(4px); filter: drop-shadow(0 2px 2px rgba(0,0,0,0.8)); }
+    
+    .chip.selected {
+        filter: drop-shadow(0 0 15px var(--magic-green));
+        transform: scale(1.05); z-index: 20;
+        background: radial-gradient(circle at 30% 30%, #546e7a, #37474f, #1c313a);
+        color: var(--magic-green); text-shadow: 0 0 10px var(--magic-green);
+    }
+    
+    .chip.in-slot {
+        width: 100%; height: 100%; margin: 0;
+        transform: none !important; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.9));
+        clip-path: none; border-radius: 3px; border: 2px solid #546e7a;
+    }
+
+    .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+    @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
+
+    #particles { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 100; }
+
+    @media (max-width: 768px) {
+        #header { flex-direction: column; align-items: stretch; }
+        .header-buttons { justify-content: space-between; }
+        .action-btn { flex: 1; padding: 12px; font-size: 14px;}
+        #play-area { flex-direction: column; }
+        .grid-row { height: 80px; border-bottom: 15px solid var(--wood-light); }
+        #task-text { padding: 20px; font-size: 18px;}
+        .chip { padding: 10px 15px; font-size: 16px;}
+        #owl-container { width: 150px; height: 180px; opacity: 0.2; }
+    }
+
+    /* Модалки та Олівець (залишені, стилізовані під загальну тему) */
+    #theme-btn {
+        position: fixed; bottom: 20px; right: 20px; width: 50px; height: 50px; border-radius: 5px;
+        background: #3e2723; color: #fbc02d; font-size: 24px; border: 2px solid #fbc02d;
+        cursor: pointer; z-index: 100000; display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+    }
+    #theme-modal {
+        display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: 90%; max-width: 600px; background: rgba(30, 20, 15, 0.95);
+        border: 4px solid #8d6e63; border-radius: 5px; z-index: 100001; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+    }
+    #theme-header { display: flex; justify-content: space-between; padding: 15px; border-bottom: 2px solid #8d6e63; font-weight: bold; color: #fbc02d; }
+    #theme-close { cursor: pointer; color: #e53935; font-size: 20px; }
+    #theme-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; padding: 15px; max-height: 60vh; overflow-y: auto; }
+    .theme-card { position: relative; height: 90px; border-radius: 3px; cursor: pointer; background-size: cover; background-position: center; border: 2px solid transparent; transition: 0.2s; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+    .theme-card:hover { border-color: #fbc02d; transform: scale(1.05); }
+    .theme-card span { background: rgba(0,0,0,0.8); color: white; width: 100%; text-align: center; font-size: 12px; padding: 4px 0; pointer-events: none; }
+    .theme-card.no-bg { background: #1a1a24; }
+
+    #toggle-draw-btn-global {
+        position: fixed; bottom: 85px; right: 20px; width: 50px; height: 50px; border-radius: 5px;
+        background: #006064; color: white; font-size: 24px; border: 2px solid #00acc1;
+        cursor: pointer; z-index: 100000; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+    }
+    #draw-panel-global {
+        display: none; position: fixed; top: 20px; left: 20px; background: rgba(30, 20, 15, 0.95);
+        border: 2px solid #00acc1; border-radius: 5px; z-index: 100001; padding: 10px; color: white; box-shadow: 0 10px 30px rgba(0,0,0,0.9); flex-direction: column; gap: 10px; width: 180px;
+    }
+    .draw-header { display: flex; justify-content: flex-end; cursor: move; background: rgba(255,255,255,0.05); padding: 5px; border-radius: 3px; height: 25px; }
+    .draw-close { cursor: pointer; color: #e53935; font-weight: bold; font-size: 16px; line-height: 15px;}
+    .draw-controls-row { display: flex; justify-content: space-between; gap: 5px; }
+    .draw-btn { flex: 1; padding: 5px; background: #263238; border: 1px solid #455a64; color: #cfd8dc; cursor: pointer; border-radius: 3px; text-align: center; font-size: 14px; }
+    .draw-btn.active { background: #006064; border-color: #00acc1; color: white;}
+    #draw-canvas-global { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 90000; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="view-controls">
+    <button class="ctrl-btn" onclick="changeFontSize(-0.1)" title="Зменшити шрифт">A-</button>
+    <button class="ctrl-btn" onclick="changeFontSize(0.1)" title="Збільшити шрифт">A+</button>
+    <button class="ctrl-btn" onclick="changeZoom(-0.1)" title="Віддалити">🔍-</button>
+    <button class="ctrl-btn" onclick="changeZoom(0.1)" title="Наблизити">🔍+</button>
+</div>
+
+<div id="teacher-trigger" onclick="enableTeacherMode()" title=""></div>
+
+<!-- Сюжетний фон з вікном та бульбашками -->
+<div id="lab-background">
+    <div class="lab-window" id="bg-window"></div>
+</div>
+
+<!-- Жива Деталізована Сова-Алхімік (SVG) -->
+<div id="owl-container">
+    <svg viewBox="0 0 300 400" width="100%" height="100%">
+        <defs>
+            <radialGradient id="owlFeathers" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#5d4037" />
+                <stop offset="100%" stop-color="#3e2723" />
+            </radialGradient>
+            <radialGradient id="owlBelly" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#d7ccc8" />
+                <stop offset="100%" stop-color="#8d6e63" />
+            </radialGradient>
+            <linearGradient id="hatGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#311b92" />
+                <stop offset="100%" stop-color="#1a237e" />
+            </linearGradient>
+            <radialGradient id="potionGrad" cx="50%" cy="80%" r="50%">
+                <stop offset="0%" stop-color="#69f0ae" />
+                <stop offset="100%" stop-color="#00c853" />
+            </radialGradient>
+        </defs>
+
+        <!-- Хмарка/дим під совою -->
+        <ellipse cx="150" cy="380" rx="60" ry="15" fill="#b388ff" opacity="0.3" filter="blur(10px)" class="magic-glow"/>
+
+        <!-- Тіло -->
+        <ellipse cx="150" cy="220" rx="70" ry="90" fill="url(#owlFeathers)" />
+        <ellipse cx="150" cy="230" rx="45" ry="70" fill="url(#owlBelly)" />
+        
+        <!-- Пір'їнки на пузі -->
+        <path d="M140,190 Q150,200 160,190" stroke="#5d4037" stroke-width="3" fill="none" opacity="0.6"/>
+        <path d="M135,220 Q150,230 165,220" stroke="#5d4037" stroke-width="3" fill="none" opacity="0.6"/>
+        <path d="M140,250 Q150,260 160,250" stroke="#5d4037" stroke-width="3" fill="none" opacity="0.6"/>
+
+        <!-- Крила -->
+        <g class="owl-wing-r" transform="translate(210, 180)">
+            <path d="M0,0 Q40,20 20,100 Q-10,60 -10,10 Z" fill="url(#owlFeathers)" />
+            <path d="M-5,10 Q20,30 10,80 Q-15,50 -5,10 Z" fill="#4e342e" />
+        </g>
+        <g class="owl-wing-l" transform="translate(90, 180)">
+            <path d="M0,0 Q-40,20 -20,100 Q10,60 10,10 Z" fill="url(#owlFeathers)" />
+            <!-- Ліве крило тримає колбу -->
+            <path d="M5,10 Q-20,30 -10,80 Q15,50 5,10 Z" fill="#4e342e" />
+            
+            <!-- Колба в крилі -->
+            <g transform="translate(-40, 60)">
+                <!-- Шийка -->
+                <rect x="-10" y="-30" width="20" height="30" fill="rgba(255,255,255,0.4)" />
+                <rect x="-12" y="-35" width="24" height="5" fill="#9e9e9e" />
+                <!-- Дно -->
+                <circle cx="0" cy="15" r="25" fill="rgba(255,255,255,0.3)" />
+                <!-- Рідина (анімована) -->
+                <circle cx="0" cy="15" r="23" fill="url(#potionGrad)" class="flask-liquid" />
+                <!-- Блік -->
+                <path d="M -15,5 A 20 20 0 0 1 0,-5" stroke="white" stroke-width="3" fill="none" opacity="0.6" stroke-linecap="round"/>
+            </g>
+        </g>
+
+        <!-- Голова -->
+        <g class="owl-head">
+            <ellipse cx="150" cy="120" rx="60" ry="50" fill="url(#owlFeathers)" />
+            <!-- Брови / Вушка -->
+            <path d="M100,90 Q90,50 110,70" stroke="url(#owlFeathers)" stroke-width="15" stroke-linecap="round" fill="none" />
+            <path d="M200,90 Q210,50 190,70" stroke="url(#owlFeathers)" stroke-width="15" stroke-linecap="round" fill="none" />
+            
+            <!-- Лицьовий диск -->
+            <ellipse cx="115" cy="120" rx="30" ry="35" fill="#efebe9" />
+            <ellipse cx="185" cy="120" rx="30" ry="35" fill="#efebe9" />
+            
+            <!-- Очі -->
+            <g class="owl-eye">
+                <circle cx="115" cy="120" r="15" fill="#ffb300" />
+                <circle cx="115" cy="120" r="8" fill="#212121" />
+                <circle cx="112" cy="117" r="3" fill="white" />
+                
+                <circle cx="185" cy="120" r="15" fill="#ffb300" />
+                <circle cx="185" cy="120" r="8" fill="#212121" />
+                <circle cx="182" cy="117" r="3" fill="white" />
+            </g>
+
+            <!-- Дзьоб -->
+            <path d="M140,130 L160,130 L150,155 Z" fill="#ff8f00" />
+            
+            <!-- Капелюх Алхіміка -->
+            <path d="M70,80 Q150,100 230,80 L200,70 L150,0 L100,70 Z" fill="url(#hatGrad)" />
+            <!-- Зірки на капелюсі -->
+            <polygon points="150,30 155,40 165,40 157,47 160,57 150,51 140,57 143,47 135,40 145,40" fill="#ffeb3b" />
+        </g>
+        
+        <!-- Лапки -->
+        <path d="M120,300 L110,320 M125,305 L125,325 M130,300 L140,320" stroke="#ff8f00" stroke-width="4" stroke-linecap="round" />
+        <path d="M180,300 L190,320 M175,305 L175,325 M170,300 L160,320" stroke="#ff8f00" stroke-width="4" stroke-linecap="round" />
+    </svg>
+</div>
+
+<canvas id="particles"></canvas>
+<canvas id="draw-canvas-global"></canvas>
+
+<div id="ui-layer">
+    <div id="header">
+        <div id="task-text"></div>
+        <div class="header-buttons">
+            <button class="action-btn teacher-only btn-peek" onclick="togglePeek()">Підглянути</button>
+            <button class="action-btn teacher-only btn-correct" onclick="emitCorrect()">Вірно</button>
+            <button class="action-btn teacher-only btn-incorrect" onclick="emitIncorrect()">Помилка</button>
+            <button class="action-btn" onclick="handleNextClick()">Наступне зілля ➔</button>
+        </div>
+    </div>
+    <div id="play-area">
+        <div id="grid-container">
+            <div class="grid-row" data-row="0">
+                <div class="slot word-slot" data-type="word" data-id="slot_w0" onclick="handleSlotClick(this)"></div>
+                <div class="slot num-slot" data-type="num" data-id="slot_n0" onclick="handleSlotClick(this)"></div>
+            </div>
+            <div class="grid-row" data-row="1">
+                <div class="slot word-slot" data-type="word" data-id="slot_w1" onclick="handleSlotClick(this)"></div>
+                <div class="slot num-slot" data-type="num" data-id="slot_n1" onclick="handleSlotClick(this)"></div>
+            </div>
+            <div class="grid-row" data-row="2">
+                <div class="slot word-slot" data-type="word" data-id="slot_w2" onclick="handleSlotClick(this)"></div>
+                <div class="slot num-slot" data-type="num" data-id="slot_n2" onclick="handleSlotClick(this)"></div>
+            </div>
+        </div>
+        <div id="bank-container"></div>
+    </div>
+</div>
+
+<button id="theme-btn">⚙️</button>
+<div id="theme-modal">
+    <div id="theme-header"><span>Оберіть стіну лабораторії</span> <span id="theme-close">✕</span></div>
+    <div id="theme-gallery">
+        <div class="theme-card no-bg" onclick="selectTheme('none')"><span>Стандартна</span></div>
+    </div>
+</div>
+
+<button id="toggle-draw-btn-global">✏️</button>
+<div id="draw-panel-global">
+    <div class="draw-header"><span class="draw-close">✕</span></div>
+    <div class="draw-controls-row">
+        <div class="draw-btn active" id="tool-pencil">Вугілля</div>
+        <div class="draw-btn" id="tool-eraser">Ганчірка</div>
+    </div>
+    <input type="range" id="draw-size" min="1" max="50" value="5" style="width:100%">
+    <input type="color" id="draw-color" value="#ffeb3b" style="width:100%; height:30px;">
+    <div class="draw-btn" id="tool-clear" style="background:#c0392b;">Змити все</div>
+</div>
+
+<script>
+    const CONFIG = {
+        projectId: 'lesson-13c44',
+        gameId: 'short_condition_game_v1_final'
+    };
+
+    firebase.initializeApp({
+        databaseURL: `https://${CONFIG.projectId}-default-rtdb.firebaseio.com/`
+    });
+    const db = firebase.database();
+    
+    const tabId = Math.random().toString(36).substr(2, 9);
+    const urlParams = new URLSearchParams(window.location.search);
+    let myName = urlParams.get('user');
+    if (!myName) myName = sessionStorage.getItem('userName');
+    if (!myName) {
+        myName = 'Учень_' + Math.floor(Math.random() * 1000);
+    }
+    sessionStorage.setItem('userName', myName);
+    const clientId = myName + '_' + tabId;
+    let isRemoteAction = false;
+    let isTeacher = false;
+    
+    function sendAction(type, data) {
+        if (isRemoteAction) return;
+        const safeData = data ? JSON.parse(JSON.stringify(data)) : { dummy: true };
+        db.ref(`action_${CONFIG.gameId}`).set({
+            senderId: clientId, 
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: type,
+            data: safeData,
+            actionId: Math.random().toString(36).substr(2, 9)
+        });
+    }
+
+    db.ref(`action_${CONFIG.gameId}`).on('value', snap => {
+        const val = snap.val();
+        if (!val || val.senderId === clientId) return; 
+        
+        isRemoteAction = true;
+        try {
+            if (val.type === 'select_chip') { syncChipSelection(val.data.chipId || ''); } 
+            else if (val.type === 'place_chip') { placeChipInSlotLocally(val.data.chipId, val.data.slotId); syncChipSelection(''); } 
+            else if (val.type === 'return_chip') { returnChipToBankLocally(val.data.chipId); } 
+            else if (val.type === 'reset_board') { syncChipSelection(''); } 
+            else if (val.type === 'teacher_correct') { triggerCorrect(); } 
+            else if (val.type === 'teacher_incorrect') { triggerIncorrect(); } 
+            else if (val.type === 'draw_line') { remoteDrawLine(val.data); } 
+            else if (val.type === 'clear_canvas') { clearCanvasLocally(); }
+        } catch (e) { console.error(e); }
+        isRemoteAction = false;
+    });
+
+    db.ref(`level_${CONFIG.gameId}`).on('value', snap => {
+        const val = snap.val(); if (val) { applyLevel(val); }
+    });
+
+    let currentFontScale = 1.2;
+    let currentZoomScale = 1;
+    function changeFontSize(delta) {
+        currentFontScale = Math.max(0.8, Math.min(2.5, currentFontScale + delta));
+        document.documentElement.style.setProperty('--font-scale', currentFontScale);
+    }
+    function changeZoom(delta) {
+        currentZoomScale = Math.max(0.5, Math.min(2.0, currentZoomScale + delta));
+        document.documentElement.style.setProperty('--zoom-scale', currentZoomScale);
+    }
+
+    function enableTeacherMode() {
+        if (isTeacher) return;
+        db.ref(`teacher_${CONFIG.gameId}`).once('value', snap => {
+            if (!snap.exists() || snap.val() === myName) {
+                db.ref(`teacher_${CONFIG.gameId}`).set(myName);
+                db.ref(`teacher_${CONFIG.gameId}`).onDisconnect().remove();
+                activateTeacherUI();
+            }
+        });
+    }
+
+    function activateTeacherUI() {
+        isTeacher = true;
+        document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'inline-block');
+        const trigger = document.getElementById('teacher-trigger');
+        if (trigger) { trigger.style.display = 'none'; trigger.style.pointerEvents = 'none'; }
+    }
+
+    db.ref(`teacher_${CONFIG.gameId}`).on('value', snap => {
+        const currentTeacherName = snap.val();
+        if (currentTeacherName) {
+            if (currentTeacherName === myName) { activateTeacherUI(); } 
+            else {
+                const trigger = document.getElementById('teacher-trigger');
+                if (trigger) { trigger.style.display = 'none'; trigger.style.pointerEvents = 'none'; }
+                isTeacher = false;
+                document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
+            }
+        } else {
+            const trigger = document.getElementById('teacher-trigger');
+            if (trigger) { trigger.style.display = 'block'; trigger.style.pointerEvents = 'auto'; }
+            isTeacher = false;
+            document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
+        }
+    });
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let actx;
+    function initAudio() { if (!actx) actx = new AudioContext(); }
+    function playTone(freq, type, duration, vol=0.1) {
+        if (!actx) return;
+        const osc = actx.createOscillator(); const gain = actx.createGain();
+        osc.type = type; osc.frequency.setValueAtTime(freq, actx.currentTime);
+        gain.gain.setValueAtTime(vol, actx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, actx.currentTime + duration);
+        osc.connect(gain); gain.connect(actx.destination);
+        osc.start(); osc.stop(actx.currentTime + duration);
+    }
+    function sndPop() { playTone(300, 'triangle', 0.1, 0.2); } // Більш глухий кам'яний звук
+    function sndDrop() { playTone(200, 'square', 0.1, 0.2); }
+    function sndErr() { playTone(100, 'sawtooth', 0.3, 0.3); }
+    function sndWin() { [300, 400, 500, 700].forEach((f, i) => { setTimeout(() => playTone(f, 'sine', 0.2, 0.2), i * 120); }); }
+
+    // --- Переписані 20 задач на Алхімічно-Магічну тематику ---
+    const tasks = [
+        { text: "У котлі кипіло {A} крапель роси. Алхімік додав ще {B}. Скільки крапель роси стало у котлі?", keys: ["Кипіло", "Додав", "Стало"], distractors: ["Випарувалось", "Було", "Залишилось"], typeStr: "A+B=?" },
+        { text: "На полиці лежало {A} старовинних сувоїв. Сова принесла ще {B}. Скільки сувоїв стало?", keys: ["Лежало", "Принесла", "Стало"], distractors: ["Згоріло", "Було", "Залишилось"], typeStr: "A+B=?" },
+        { text: "У ступці було {A} кристалів. Учень поклав туди ще {B}. Скільки кристалів стало у ступці?", keys: ["Було", "Поклав", "Стало"], distractors: ["Розтерли", "Лежало", "Залишилось"], typeStr: "A+B=?" },
+        { text: "В книзі магії було {A} заклинань. Чарівник вписав ще {B}. Скільки заклинань стало у книзі?", keys: ["Було", "Вписав", "Стало"], distractors: ["Викреслив", "Лежало", "Залишилось"], typeStr: "A+B=?" },
+        { text: "На столі горіло {A} свічок. Запалили ще {B}. Скільки свічок стало горіти на столі?", keys: ["Горіло", "Запалили", "Стало"], distractors: ["Згасло", "Було", "Залишилось"], typeStr: "A+B=?" },
+
+        { text: "У колбі було {A} мір зілля. Мудра Сова вилила {B} мір. Скільки мір зілля залишилось у колбі?", keys: ["Було", "Вилила", "Залишилось"], distractors: ["Налила", "Стало", "Всього"], typeStr: "A-B=?" },
+        { text: "У мішечку лежало {A} рун. Звідти дістали {B} рун для ворожіння. Скільки рун залишилось у мішечку?", keys: ["Лежало", "Дістали", "Залишилось"], distractors: ["Сховали", "Стало", "Всього"], typeStr: "A-B=?" },
+        { text: "На люстрі висіло {A} кристалів світла. Впало {B} кристалів. Скільки кристалів залишилось на люстрі?", keys: ["Висіло", "Впало", "Залишилось"], distractors: ["Повісили", "Стало", "Всього"], typeStr: "A-B=?" },
+        { text: "Алхімік зібрав {A} коренів мандрагори. Він використав {B} коренів для зілля. Скільки коренів залишилось?", keys: ["Зібрав", "Використав", "Залишилось"], distractors: ["Знайшов", "Стало", "Всього"], typeStr: "A-B=?" },
+        { text: "В лабораторії літало {A} кажанів. У вікно вилетіло {B} кажанів. Скільки кажанів залишилось?", keys: ["Літало", "Вилетіло", "Залишилось"], distractors: ["Залетіло", "Стало", "Всього"], typeStr: "A-B=?" },
+
+        { text: "У скриньці лежало {A} чарівних перснів. Коли туди поклали ще декілька, їх стало {B}. Скільки перснів поклали?", keys: ["Лежало", "Поклали", "Стало"], distractors: ["Забрали", "Було", "Залишилось"], typeStr: "A+?=B" },
+        { text: "Зорезнавець нарахував {A} комет. Коли з'явилось ще кілька, всього стало {B} комет. Скільки комет з'явилось потім?", keys: ["Нарахував", "З'явилось", "Стало"], distractors: ["Зникло", "Було", "Залишилось"], typeStr: "A+?=B" },
+        { text: "У котлі кипіло {A} літрів води. Коли долили ще трохи, стало {B} літрів. Скільки літрів води долили?", keys: ["Кипіло", "Долили", "Стало"], distractors: ["Википіло", "Було", "Залишилось"], typeStr: "A+?=B" },
+        { text: "В бібліотеці стояло {A} магічних фоліантів. Коли принесли ще кілька, їх стало {B}. Скільки фоліантів принесли?", keys: ["Стояло", "Принесли", "Стало"], distractors: ["Забрали", "Було", "Залишилось"], typeStr: "A+?=B" },
+        { text: "На столі лежало {A} пер. Коли додали ще кілька, їх стало {B}. Скільки пер додали?", keys: ["Лежало", "Додали", "Стало"], distractors: ["Впало", "Було", "Залишилось"], typeStr: "A+?=B" },
+
+        { text: "У баночці був товчений малахіт. Коли звідти взяли {A} ложок, залишилось {B}. Скільки ложок малахіту було спочатку?", keys: ["Було", "Взяли", "Залишилось"], distractors: ["Досипали", "Стало", "Всього"], typeStr: "?-A=B" },
+        { text: "На полиці стояли колби. Коли {A} колб розбилося, залишилось {B}. Скільки колб стояло на полиці спочатку?", keys: ["Стояло", "Розбилося", "Залишилось"], distractors: ["Зліпили", "Стало", "Всього"], typeStr: "?-A=B" },
+        { text: "Маг мав мішок золотих монет. Коли він витратив {A} монет на трави, залишилось {B}. Скільки монет було спочатку?", keys: ["Було", "Витратив", "Залишилось"], distractors: ["Заробив", "Стало", "Всього"], typeStr: "?-A=B" },
+        { text: "Сова зберігала чарівні горіхи. Коли вона з'їла {A} горіхів, залишилось {B}. Скільки горіхів було спочатку?", keys: ["Було", "З'їла", "Залишилось"], distractors: ["Знайшла", "Стало", "Всього"], typeStr: "?-A=B" },
+        { text: "В саду цвіли вогняні квіти. Коли зрізали {A} квітів для еліксиру, залишилось {B}. Скільки квітів цвіло спочатку?", keys: ["Цвіло", "Зрізали", "Залишилось"], distractors: ["Виросло", "Стало", "Всього"], typeStr: "?-A=B" }
+    ];
+
+    let currentLevel = {};
+    let chipsData = [];
+    let selectedChip = null;
+
+    function generateBackgroundEffects() {
+        const bg = document.getElementById('bg-window');
+        bg.innerHTML = '';
+        for(let i=0; i<30; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            const size = Math.random() * 3 + 1;
+            star.style.width = size + 'px';
+            star.style.height = size + 'px';
+            star.style.left = Math.random() * 100 + '%';
+            star.style.top = Math.random() * 100 + '%';
+            star.style.animationDuration = (Math.random() * 2 + 1) + 's';
+            star.style.animationDelay = (Math.random() * 2) + 's';
+            bg.appendChild(star);
+        }
+
+        const labBg = document.getElementById('lab-background');
+        // Очищаємо старі бульбашки, щоб не дублювалися
+        labBg.querySelectorAll('.cauldron-bubble').forEach(e => e.remove());
+        for(let i=0; i<15; i++) {
+            const bubble = document.createElement('div');
+            bubble.className = 'cauldron-bubble';
+            const size = Math.random() * 20 + 10;
+            bubble.style.width = size + 'px';
+            bubble.style.height = size + 'px';
+            bubble.style.left = (Math.random() * 60 + 20) + '%';
+            bubble.style.animationDuration = (Math.random() * 4 + 3) + 's';
+            bubble.style.animationDelay = (Math.random() * 5) + 's';
+            labBg.appendChild(bubble);
+        }
+    }
+
+    function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    function handleNextClick() {
+        initAudio(); sndPop();
+        document.body.classList.remove('show-hints');
+        
+        let taskIdx = Math.floor(Math.random() * tasks.length);
+        const task = tasks[taskIdx];
+        let A, B, wrongNum;
+        
+        if (task.typeStr === "A+B=?") { A = Math.floor(Math.random() * 8) + 2; B = Math.floor(Math.random() * 8) + 2; } 
+        else if (task.typeStr === "A-B=?") { B = Math.floor(Math.random() * 8) + 2; A = B + Math.floor(Math.random() * 5) + 1; } 
+        else if (task.typeStr === "A+?=B") { A = Math.floor(Math.random() * 8) + 2; let diff = Math.floor(Math.random() * 8) + 2; B = A + diff; } 
+        else if (task.typeStr === "?-A=B") { A = Math.floor(Math.random() * 8) + 2; B = Math.floor(Math.random() * 8) + 2; }
+
+        let ans = (task.typeStr === "A+B=?" || task.typeStr === "?-A=B") ? A+B : (task.typeStr === "A-B=?") ? A-B : B-A;
+        wrongNum = ans + (Math.random() > 0.5 ? 2 : -1);
+        if (wrongNum < 1) wrongNum = ans + 3;
+
+        let payload = { taskIdx, A, B, wrongNum };
+        db.ref(`level_${CONFIG.gameId}`).set(payload);
+        sendAction('reset_board', {});
+    }
+
+    function applyLevel(payload) {
+        const task = tasks[payload.taskIdx];
+        const A = payload.A; const B = payload.B;
+        let answerStr, valArr;
+
+        if (task.typeStr === "A+B=?") { answerStr = (A + B).toString(); valArr = [A.toString(), B.toString(), '?']; } 
+        else if (task.typeStr === "A-B=?") { answerStr = (A - B).toString(); valArr = [A.toString(), B.toString(), '?']; } 
+        else if (task.typeStr === "A+?=B") { answerStr = (B - A).toString(); valArr = [A.toString(), '?', B.toString()]; } 
+        else if (task.typeStr === "?-A=B") { answerStr = (A + B).toString(); valArr = ['?', A.toString(), B.toString()]; }
+
+        currentLevel = { text: task.text.replace('{A}', A).replace('{B}', B), keys: task.keys, values: valArr, answerStr: answerStr };
+
+        document.getElementById('task-text').textContent = currentLevel.text;
+        syncChipSelection(''); 
+        
+        chipsData = [
+            { id: 'cw0', type: 'word', val: currentLevel.keys[0] }, { id: 'cw1', type: 'word', val: currentLevel.keys[1] }, { id: 'cw2', type: 'word', val: currentLevel.keys[2] },
+            { id: 'cn0', type: 'num', val: currentLevel.values[0] }, { id: 'cn1', type: 'num', val: currentLevel.values[1] }, { id: 'cn2', type: 'num', val: currentLevel.values[2] },
+            { id: 'cw_dist1', type: 'word', val: task.distractors[0] }, { id: 'cw_dist2', type: 'word', val: task.distractors[1] },
+            { id: 'cn_ans', type: 'num', val: answerStr }, { id: 'cn_dist', type: 'num', val: payload.wrongNum.toString() }
+        ];
+        
+        let uniqueChips = []; let seenIds = new Set();
+        chipsData.forEach(c => { if(!seenIds.has(c.id)) { seenIds.add(c.id); uniqueChips.push(c); } });
+        shuffle(uniqueChips);
+
+        const bank = document.getElementById('bank-container');
+        bank.innerHTML = '';
+        uniqueChips.forEach(c => {
+            const el = document.createElement('div');
+            el.className = 'chip'; el.textContent = c.val;
+            el.dataset.type = c.type; el.dataset.val = c.val; el.dataset.id = c.id;
+            el.addEventListener('click', () => handleChipClickLocal(el));
+            bank.appendChild(el);
+        });
+
+        for (let i = 0; i < 3; i++) {
+            let expectedWord = currentLevel.keys[i]; let peekNum = currentLevel.values[i];
+            let wSlot = document.querySelector(`.grid-row[data-row="${i}"] .word-slot`);
+            let nSlot = document.querySelector(`.grid-row[data-row="${i}"] .num-slot`);
+            
+            Array.from(wSlot.children).forEach(c => { if(c.classList.contains('chip')) c.remove(); });
+            Array.from(nSlot.children).forEach(c => { if(c.classList.contains('chip')) c.remove(); });
+            
+            let hintW = wSlot.querySelector('.hint-overlay');
+            if(!hintW) { hintW = document.createElement('div'); hintW.className = 'hint-overlay'; wSlot.appendChild(hintW); }
+            hintW.textContent = expectedWord;
+
+            let hintN = nSlot.querySelector('.hint-overlay');
+            if(!hintN) { hintN = document.createElement('div'); hintN.className = 'hint-overlay'; nSlot.appendChild(hintN); }
+            hintN.textContent = peekNum;
+        }
+    }
+
+    function syncChipSelection(chipId) {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+        if (chipId && chipId !== '') {
+            const c = document.querySelector(`.chip[data-id="${chipId}"]`);
+            if (c) { c.classList.add('selected'); selectedChip = c; } 
+            else { selectedChip = null; }
+        } else { selectedChip = null; }
+    }
+
+    function handleChipClickLocal(chip) {
+        initAudio();
+        if (chip.parentElement.id === 'bank-container') {
+            if (selectedChip === chip) {
+                syncChipSelection(''); sendAction('select_chip', { chipId: '' });
+            } else {
+                syncChipSelection(chip.dataset.id); sendAction('select_chip', { chipId: chip.dataset.id }); sndPop();
+            }
+        } else {
+            let chipId = chip.dataset.id;
+            returnChipToBankLocally(chipId); sendAction('return_chip', { chipId });
+        }
+    }
+
+    function handleSlotClick(slot) {
+        if (!selectedChip) return;
+        let chipId = selectedChip.dataset.id; let slotId = slot.dataset.id;
+        placeChipInSlotLocally(chipId, slotId);
+        syncChipSelection(''); sendAction('place_chip', { chipId, slotId }); 
+    }
+
+    function placeChipInSlotLocally(chipId, slotId) {
+        const chip = document.querySelector(`.chip[data-id="${chipId}"]`);
+        const slot = document.querySelector(`.slot[data-id="${slotId}"]`);
+        if (!chip || !slot) return;
+        const existingChip = slot.querySelector('.chip');
+        if (existingChip) {
+            existingChip.classList.remove('in-slot'); document.getElementById('bank-container').appendChild(existingChip);
+        }
+        chip.classList.add('in-slot'); slot.appendChild(chip); sndDrop();
+    }
+
+    function returnChipToBankLocally(chipId) {
+        const chip = document.querySelector(`.chip[data-id="${chipId}"]`);
+        if (!chip) return;
+        chip.classList.remove('in-slot'); document.getElementById('bank-container').appendChild(chip); sndDrop();
+    }
+
+    function togglePeek() { document.body.classList.toggle('show-hints'); }
+    function emitCorrect() { sendAction('teacher_correct', { dummy: true }); triggerCorrect(); }
+    function emitIncorrect() { sendAction('teacher_incorrect', { dummy: true }); triggerIncorrect(); }
+
+    function triggerCorrect() { sndWin(); spawnConfetti(); }
+
+    function triggerIncorrect() {
+        sndErr();
+        const rows = document.querySelectorAll('.grid-row');
+        let toEject = [];
+        rows.forEach((row, i) => {
+            const wSlot = row.querySelector('.word-slot'); const nSlot = row.querySelector('.num-slot');
+            const wChip = wSlot.querySelector('.chip'); const nChip = nSlot.querySelector('.chip');
+            let expectedNum = currentLevel.values[i]; 
+            if (wChip && wChip.dataset.val !== currentLevel.keys[i]) { toEject.push({ chip: wChip, row: row }); }
+            if (nChip && nChip.dataset.val !== expectedNum) { toEject.push({ chip: nChip, row: row }); }
+        });
+
+        let rowsToShake = new Set(toEject.map(item => item.row));
+        rowsToShake.forEach(row => row.classList.add('shake'));
+        setTimeout(() => {
+            rowsToShake.forEach(row => row.classList.remove('shake'));
+            toEject.forEach(item => {
+                item.chip.classList.remove('in-slot');
+                document.getElementById('bank-container').appendChild(item.chip);
+            });
+        }, 500);
+    }
+
+    const canvas = document.getElementById('particles');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+    function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+    function spawnConfetti() {
+        // Магічні зелені та фіолетові іскри
+        for(let i=0; i<100; i++) {
+            particles.push({
+                x: canvas.width / 2, y: canvas.height / 2,
+                vx: (Math.random() - 0.5) * 20, vy: (Math.random() - 0.5) * 20,
+                size: Math.random() * 6 + 2,
+                color: Math.random() > 0.5 ? '#69f0ae' : '#b388ff',
+                life: 1
+            });
+        }
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for(let i=particles.length-1; i>=0; i--) {
+            let p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.02;
+            if (p.life <= 0) { particles.splice(i, 1); continue; }
+            ctx.fillStyle = p.color; ctx.globalAlpha = p.life;
+            ctx.beginPath();
+            // Малюємо ромбики (іскри)
+            ctx.moveTo(p.x, p.y - p.size); ctx.lineTo(p.x + p.size, p.y); ctx.lineTo(p.x, p.y + p.size); ctx.lineTo(p.x - p.size, p.y);
+            ctx.fill();
+            ctx.shadowBlur = 15; ctx.shadowColor = p.color;
+        }
+        ctx.globalAlpha = 1; ctx.shadowBlur = 0;
+        requestAnimationFrame(animate);
+    }
+
+    const themeBtn = document.getElementById('theme-btn');
+    const themeModal = document.getElementById('theme-modal');
+    const themeClose = document.getElementById('theme-close');
+    const themeGallery = document.getElementById('theme-gallery');
+    themeBtn.onclick = () => themeModal.style.display = 'flex';
+    themeClose.onclick = () => themeModal.style.display = 'none';
+    
+    function applyBgStyle(url) {
+        localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+        if (url === 'none') {
+            document.body.style.backgroundImage = 'none';
+            document.getElementById('lab-background').style.display = 'block';
+            document.getElementById('owl-container').style.display = 'block';
+        } else {
+            document.body.style.backgroundImage = `url('${url}')`;
+            document.body.style.backgroundSize = 'cover'; document.body.style.backgroundPosition = 'center';
+            document.getElementById('lab-background').style.display = 'none';
+            document.getElementById('owl-container').style.display = 'none';
+        }
+    }
+
+    function selectTheme(url) { applyBgStyle(url); db.ref('game_theme').set(url); themeModal.style.display = 'none'; }
+    db.ref('game_theme').on('value', snap => { const url = snap.val(); if (url) { applyBgStyle(url); } });
+    const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+    if (savedBg) { applyBgStyle(savedBg); }
+
+    async function loadThemes() {
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/background_';
+        for (let i = 1; i <= 1000; i++) {
+            const url = `${baseUrl}${i}.webp`;
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                if (response.ok) {
+                    const card = document.createElement('div'); card.className = 'theme-card'; card.style.backgroundImage = `url('${url}')`;
+                    card.innerHTML = `<span>Стіна ${i}</span>`; card.onclick = () => selectTheme(url); themeGallery.appendChild(card);
+                } else { break; }
+            } catch (error) { break; }
+        }
+    }
+
+    const drawBtn = document.getElementById('toggle-draw-btn-global');
+    const drawPanel = document.getElementById('draw-panel-global');
+    const drawCanvas = document.getElementById('draw-canvas-global');
+    const dCtx = drawCanvas.getContext('2d');
+    let isDrawMode = false, drawing = false, currentTool = 'pencil'; let lastX = 0, lastY = 0;
+
+    function resizeDrawCanvas() { drawCanvas.width = window.innerWidth; drawCanvas.height = window.innerHeight; }
+    window.addEventListener('resize', resizeDrawCanvas); resizeDrawCanvas();
+
+    drawBtn.onclick = () => { drawPanel.style.display = 'flex'; drawCanvas.style.pointerEvents = 'auto'; isDrawMode = true; currentTool = 'pencil'; document.getElementById('tool-pencil').classList.add('active'); document.getElementById('tool-eraser').classList.remove('active'); };
+    document.querySelector('.draw-close').onclick = () => { drawPanel.style.display = 'none'; drawCanvas.style.pointerEvents = 'none'; isDrawMode = false; };
+    document.getElementById('tool-pencil').onclick = (e) => { currentTool = 'pencil'; e.target.classList.add('active'); document.getElementById('tool-eraser').classList.remove('active'); };
+    document.getElementById('tool-eraser').onclick = (e) => { currentTool = 'eraser'; e.target.classList.add('active'); document.getElementById('tool-pencil').classList.remove('active'); };
+    document.getElementById('tool-clear').onclick = () => { clearCanvasLocally(); sendAction('clear_canvas', {}); };
+
+    function clearCanvasLocally() { dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); }
+    function getMousePos(e) { const rect = drawCanvas.getBoundingClientRect(); let clientX = e.touches ? e.touches[0].clientX : e.clientX; let clientY = e.touches ? e.touches[0].clientY : e.clientY; return { x: clientX - rect.left, y: clientY - rect.top }; }
+    function startDraw(e) { if (!isDrawMode) return; drawing = true; const pos = getMousePos(e); lastX = pos.x; lastY = pos.y; }
+    function doDraw(e) {
+        if (!drawing || !isDrawMode) return; e.preventDefault();
+        const pos = getMousePos(e); const color = document.getElementById('draw-color').value; const size = document.getElementById('draw-size').value;
+        drawLineLocally(lastX, lastY, pos.x, pos.y, color, size, currentTool);
+        sendAction('draw_line', { x0: lastX / drawCanvas.width, y0: lastY / drawCanvas.height, x1: pos.x / drawCanvas.width, y1: pos.y / drawCanvas.height, color, size, tool: currentTool });
+        lastX = pos.x; lastY = pos.y;
+    }
+    function endDraw() { drawing = false; }
+    function drawLineLocally(x0, y0, x1, y1, color, size, tool) { dCtx.beginPath(); dCtx.moveTo(x0, y0); dCtx.lineTo(x1, y1); dCtx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color; dCtx.lineWidth = size; dCtx.lineCap = 'round'; dCtx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over'; dCtx.stroke(); }
+    function remoteDrawLine(data) { drawLineLocally(data.x0 * drawCanvas.width, data.y0 * drawCanvas.height, data.x1 * drawCanvas.width, data.y1 * drawCanvas.height, data.color, data.size, data.tool); }
+
+    drawCanvas.addEventListener('mousedown', startDraw); drawCanvas.addEventListener('mousemove', doDraw); drawCanvas.addEventListener('mouseup', endDraw);
+    drawCanvas.addEventListener('touchstart', startDraw, {passive: false}); drawCanvas.addEventListener('touchmove', doDraw, {passive: false}); drawCanvas.addEventListener('touchend', endDraw);
+
+    const drawHeader = document.querySelector('.draw-header'); let isDragging = false, dragX = 0, dragY = 0;
+    drawHeader.onmousedown = (e) => { isDragging = true; dragX = e.clientX - drawPanel.offsetLeft; dragY = e.clientY - drawPanel.offsetTop; };
+    window.onmousemove = (e) => { if (isDragging) { drawPanel.style.left = (e.clientX - dragX) + 'px'; drawPanel.style.top = (e.clientY - dragY) + 'px'; } };
+    window.onmouseup = () => isDragging = false;
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="block-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:999999; justify-content:center; align-items:center;">
+            <div style="color:red; font-size:40px; font-weight:bold; font-family:Arial; text-align:center;">Зачекай!<br>Зараз не твій урок.</div>
+        </div>
+    `);
+
+    const radarRef = db.ref(`online_users/${myName}/${tabId}`);
+    db.ref('.info/connected').on('value', snap => { if (snap.val() === true) { radarRef.set(true); radarRef.onDisconnect().remove(); } });
+    window.addEventListener('beforeunload', () => { radarRef.remove(); if (isTeacher) { db.ref(`teacher_${CONFIG.gameId}`).remove(); } });
+
+    let isInitialRefresh = true;
+    db.ref('force_refresh').on('value', snap => { if (!isInitialRefresh && snap.val() === true) { location.reload(); } isInitialRefresh = false; });
+
+    db.ref(`blocked_users/${myName}`).on('value', snap => { document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none'; });
+
+    const loadTime = Date.now();
+    db.ref('current_activity').on('value', snap => {
+        if (Date.now() - loadTime > 1500 && snap.val() === 'lobby') {
+            if (isTeacher) db.ref(`teacher_${CONFIG.gameId}`).remove();
+            window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+        }
+    });
+
+    generateBackgroundEffects(); loadThemes(); animate();
+    db.ref(`level_${CONFIG.gameId}`).once('value', snap => { if (!snap.exists()) { handleNextClick(); } });
+
+</script>
+</body>
+</html>
