@@ -116,7 +116,7 @@
     }
     .ctrl-btn:active { transform: scale(0.9); }
 
-    /* Невидима зона вчителя (Клік у правий верхній кут відкриває кнопки) */
+    /* Невидима зона вчителя */
     #teacher-trigger {
         position: absolute;
         top: 0;
@@ -565,8 +565,9 @@
     });
     const db = firebase.database();
     
-    // Ідентифікатори
+    // Унікальний ідентифікатор саме цієї вкладки браузера
     const tabId = Math.random().toString(36).substr(2, 9);
+    
     const urlParams = new URLSearchParams(window.location.search);
     let myName = urlParams.get('user');
     if (!myName) myName = sessionStorage.getItem('userName');
@@ -575,7 +576,7 @@
     }
     sessionStorage.setItem('userName', myName);
     
-    // clientId гарантує унікальність пристрою, myName гарантує збереження ролі за іменем
+    // clientId гарантує абсолютну унікальність конкретного відкритого пристрою/вкладки
     const clientId = myName + '_' + tabId;
     
     let isRemoteAction = false;
@@ -586,7 +587,7 @@
         if (isRemoteAction) return;
         const safeData = data ? JSON.parse(JSON.stringify(data)) : { dummy: true };
         db.ref(`action_${CONFIG.gameId}`).set({
-            senderId: clientId, // Відправляємо з унікальним ID
+            senderId: clientId, 
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             type: type,
             data: safeData,
@@ -642,14 +643,15 @@
         document.documentElement.style.setProperty('--zoom-scale', currentZoomScale);
     }
 
-    // --- Захоплення ролі вчителя (Прив'язка до Імені, а не до Вкладки) ---
+    // --- Захоплення ролі вчителя (За унікальним clientId) ---
     function enableTeacherMode() {
         if (isTeacher) return;
         db.ref(`teacher_${CONFIG.gameId}`).once('value', snap => {
-            if (!snap.exists() || snap.val() === myName) {
-                db.ref(`teacher_${CONFIG.gameId}`).set(myName);
+            // Перевіряємо, чи ще ніхто не зайняв роль вчителя
+            if (!snap.exists()) {
+                db.ref(`teacher_${CONFIG.gameId}`).set(clientId);
+                // При закритті або оновленні цієї конкретної вкладки - роль миттєво звільняється
                 db.ref(`teacher_${CONFIG.gameId}`).onDisconnect().remove();
-                sessionStorage.setItem(`isTeacher_${CONFIG.gameId}`, 'true'); // Зберігаємо статус
                 activateTeacherUI();
             }
         });
@@ -665,15 +667,16 @@
         }
     }
 
-    // Слухаємо статус вчителя (Блокування зони для учнів і авто-відновлення для вчителя)
+    // Слухаємо статус вчителя (Блокування зони для учнів і звільнення)
     db.ref(`teacher_${CONFIG.gameId}`).on('value', snap => {
-        const currentTeacher = snap.val();
-        if (currentTeacher) {
-            if (currentTeacher === myName) {
-                // Це ми! Автоматично повертаємо собі кнопки, якщо сторінка оновилась
+        const currentTeacherId = snap.val();
+        
+        if (currentTeacherId) {
+            if (currentTeacherId === clientId) {
+                // Це ми (саме ця вкладка). Активуємо кнопки.
                 activateTeacherUI();
             } else {
-                // Вчитель хтось інший (учень). Блокуємо і ховаємо кнопку-тригер.
+                // Вчитель хтось інший (або навіть ми, але в іншій вкладці). Блокуємо тригер.
                 const trigger = document.getElementById('teacher-trigger');
                 if (trigger) {
                     trigger.style.display = 'none';
@@ -683,7 +686,7 @@
                 document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
             }
         } else {
-            // Вчитель вийшов. Зона знову доступна
+            // Вчитель вийшов/оновив сторінку. Роль вільна, зона знову доступна для кліку всім.
             const trigger = document.getElementById('teacher-trigger');
             if (trigger) {
                 trigger.style.display = 'block';
@@ -693,11 +696,6 @@
             document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
         }
     });
-
-    // Авто-претензія ролі після оновлення, якщо ми були вчителем у цій сесії
-    if (sessionStorage.getItem(`isTeacher_${CONFIG.gameId}`) === 'true') {
-        enableTeacherMode();
-    }
 
     // --- Аудіо ---
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -818,7 +816,7 @@
         // Зберігаємо рівень. Це автоматично запустить applyLevel() в усіх гравців.
         db.ref(`level_${CONFIG.gameId}`).set(payload);
         
-        // Знімаємо виділення у всіх
+        // Очищаємо екран від виділень
         sendAction('reset_board', {});
     }
 
@@ -876,7 +874,7 @@
             const el = document.createElement('div');
             el.className = 'chip';
             el.textContent = c.val;
-            el.dataset.type = c.type;
+            el.dataset.type = c.type; 
             el.dataset.val = c.val;
             el.dataset.id = c.id;
             el.addEventListener('click', () => handleChipClickLocal(el));
@@ -894,7 +892,7 @@
             Array.from(wSlot.children).forEach(c => { if(c.classList.contains('chip')) c.remove(); });
             Array.from(nSlot.children).forEach(c => { if(c.classList.contains('chip')) c.remove(); });
             
-            // Створюємо або оновлюємо підказку
+            // Створюємо або оновлюємо підказку для вчителя
             let hintW = wSlot.querySelector('.hint-overlay');
             if(!hintW) {
                 hintW = document.createElement('div');
@@ -948,11 +946,8 @@
 
     function handleSlotClick(slot) {
         if (!selectedChip) return;
-        if (slot.dataset.type !== selectedChip.dataset.type) {
-            sndErr(); 
-            return;
-        }
         
+        // ВАЖЛИВО: Видалено обмеження за типом. Дитина може ставити що завгодно і куди завгодно.
         let chipId = selectedChip.dataset.id;
         let slotId = slot.dataset.id;
         
@@ -1028,9 +1023,12 @@
             }
         });
 
-        toEject.forEach(item => item.row.classList.add('shake'));
+        // Видаляємо дублікати рядків для візуальної тряски
+        let rowsToShake = new Set(toEject.map(item => item.row));
+        rowsToShake.forEach(row => row.classList.add('shake'));
+
         setTimeout(() => {
-            toEject.forEach(item => item.row.classList.remove('shake'));
+            rowsToShake.forEach(row => row.classList.remove('shake'));
             toEject.forEach(item => {
                 item.chip.classList.remove('in-slot');
                 document.getElementById('bank-container').appendChild(item.chip);
@@ -1293,9 +1291,6 @@
 
     window.addEventListener('beforeunload', () => { 
         radarRef.remove(); 
-        if (isTeacher) {
-            db.ref(`teacher_${CONFIG.gameId}`).remove(); // Відпускаємо роль при виході
-        }
     });
 
     let isInitialRefresh = true;
