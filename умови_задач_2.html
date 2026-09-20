@@ -121,8 +121,8 @@
         position: absolute;
         top: 0;
         right: 0;
-        width: 60px;
-        height: 60px;
+        width: 70px;
+        height: 70px;
         z-index: 10000;
         cursor: default;
     }
@@ -496,7 +496,7 @@
     <button class="ctrl-btn" onclick="changeZoom(0.1)" title="Наблизити">🔍+</button>
 </div>
 
-<!-- Невидима зона вчителя (Клік у правий верхній кут відкриває кнопки перевірки) -->
+<!-- Невидима зона вчителя -->
 <div id="teacher-trigger" onclick="enableTeacherMode()" title=""></div>
 
 <div class="background-anim" id="bg-anim"></div>
@@ -564,6 +564,9 @@
     });
     const db = firebase.database();
     
+    // Універсальний ідентифікатор сесії (щоб відрізняти вкладки з однаковим іменем)
+    const tabId = Math.random().toString(36).substr(2, 9);
+    
     const urlParams = new URLSearchParams(window.location.search);
     let myName = urlParams.get('user');
     if (!myName) myName = sessionStorage.getItem('userName');
@@ -572,6 +575,9 @@
     }
     sessionStorage.setItem('userName', myName);
     
+    // clientId гарантує, що навіть при однаковому імені (скопійоване посилання) пристрої будуть розпізнані як різні
+    const clientId = myName + '_' + tabId;
+    
     let isRemoteAction = false;
     let isTeacher = false;
     
@@ -579,17 +585,17 @@
         if (isRemoteAction) return;
         const safeData = data ? JSON.parse(JSON.stringify(data)) : { dummy: true };
         db.ref('game_action').set({
-            senderId: myName,
+            senderId: clientId, // Використовуємо унікальний clientId для дій
             timestamp: firebase.database.ServerValue.TIMESTAMP,
             type: type,
             data: safeData,
-            actionId: Math.random().toString(36).substr(2, 9) // Гарантує унікальність події
+            actionId: Math.random().toString(36).substr(2, 9)
         });
     }
 
     db.ref('game_action').on('value', snap => {
         const val = snap.val();
-        if (!val || val.senderId === myName) return;
+        if (!val || val.senderId === clientId) return;
         
         isRemoteAction = true;
         try {
@@ -597,7 +603,7 @@
                 syncChipSelection(val.data.chipId || '');
             } else if (val.type === 'place_chip') {
                 placeChipInSlotLocally(val.data.chipId, val.data.slotId);
-                syncChipSelection(''); // Автоматичне зняття виділення у всіх
+                syncChipSelection(''); 
             } else if (val.type === 'return_chip') {
                 returnChipToBankLocally(val.data.chipId);
             } else if (val.type === 'generate_level') {
@@ -630,10 +636,11 @@
     // Захоплення ролі вчителя через Firebase
     function enableTeacherMode() {
         if (isTeacher) return;
-        db.ref('game_teacher').once('value', snap => {
-            if (!snap.exists() || snap.val() === myName) {
-                db.ref('game_teacher').set(myName);
-                db.ref('game_teacher').onDisconnect().remove();
+        // Використовуємо ключ, специфічний для цієї гри, щоб не конфліктувати з іншими
+        db.ref('teacher_' + CONFIG.gameId).once('value', snap => {
+            if (!snap.exists() || snap.val() === clientId) {
+                db.ref('teacher_' + CONFIG.gameId).set(clientId);
+                db.ref('teacher_' + CONFIG.gameId).onDisconnect().remove();
                 activateTeacherUI();
             }
         });
@@ -642,22 +649,36 @@
     function activateTeacherUI() {
         isTeacher = true;
         document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'inline-block');
-        document.getElementById('teacher-trigger').style.display = 'none';
+        const trigger = document.getElementById('teacher-trigger');
+        if (trigger) {
+            trigger.style.display = 'none';
+            trigger.style.pointerEvents = 'none';
+        }
     }
 
     // Слухаємо статус вчителя для блокування зони в учнів
-    db.ref('game_teacher').on('value', snap => {
+    db.ref('teacher_' + CONFIG.gameId).on('value', snap => {
         const currentTeacher = snap.val();
         if (currentTeacher) {
-            if (currentTeacher === myName) {
+            if (currentTeacher === clientId) {
                 activateTeacherUI();
             } else {
-                // Хтось інший став вчителем, ховаємо тригер для цього користувача
-                document.getElementById('teacher-trigger').style.display = 'none';
+                // Хтось інший (або навіть "ми" в іншій вкладці) став вчителем. Ховаємо кнопку
+                const trigger = document.getElementById('teacher-trigger');
+                if (trigger) {
+                    trigger.style.display = 'none';
+                    trigger.style.pointerEvents = 'none';
+                }
+                isTeacher = false;
+                document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
             }
         } else {
-            // Вчитель відсутній, можна знову стати ним
-            document.getElementById('teacher-trigger').style.display = 'block';
+            // Вчитель відсутній (закрив вкладку), можна знову стати ним
+            const trigger = document.getElementById('teacher-trigger');
+            if (trigger) {
+                trigger.style.display = 'block';
+                trigger.style.pointerEvents = 'auto';
+            }
             isTeacher = false;
             document.querySelectorAll('.teacher-only').forEach(el => el.style.display = 'none');
         }
@@ -1224,7 +1245,7 @@
         </div>
     `);
 
-    const tabId = Math.random().toString(36).substr(2, 9);
+    // Вже визначений tabId на початку скрипта
     const radarRef = db.ref(`online_users/${myName}/${tabId}`);
     
     db.ref('.info/connected').on('value', snap => {
