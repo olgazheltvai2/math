@@ -104,9 +104,9 @@
             animation: drawLine 1s ease forwards;
         }
 
-        /* ================= ДОДАНІ СТИЛІ ================= */
+        /* ================= ДОДАНІ СТИЛІ СИСТЕМИ ================= */
         
-        /* Секретне поле вводу */
+        /* Секретне поле вводу (на вимогу промпту) */
         .secret-input-text { color: transparent !important; text-shadow: 0 0 0 transparent !important; }
         .secret-input-text::selection { color: transparent !important; background: transparent !important; }
 
@@ -213,7 +213,7 @@
                 </filter>
             </defs>
             
-            <!-- Вода (Трохи прозора для видимості фону) -->
+            <!-- Вода (Трохи прозора для видимості динамічного фону) -->
             <path d="M0,500 Q400,480 800,500 T1600,500 L1600,900 L0,900 Z" fill="url(#waterGrad)" opacity="0.8"/>
             <path d="M0,550 Q400,530 800,560 T1600,540 L1600,900 L0,900 Z" fill="#0052a3" opacity="0.4"/>
             <path d="M0,620 Q500,650 900,610 T1600,630 L1600,900 L0,900 Z" fill="#003d7a" opacity="0.5"/>
@@ -434,10 +434,15 @@
             firebaseConfig.databaseURL = "https://lesson-13c44-default-rtdb.firebaseio.com/";
         }
 
-        const app = Object.keys(firebaseConfig).length ? initializeApp(firebaseConfig) : null;
-        const db = app ? getFirestore(app) : null;
-        const auth = app ? getAuth(app) : null;
-        const rtdb = app ? getDatabase(app) : null;
+        let app = null, db = null, auth = null, rtdb = null;
+        try {
+            app = Object.keys(firebaseConfig).length ? initializeApp(firebaseConfig) : null;
+            db = app ? getFirestore(app) : null;
+            auth = app ? getAuth(app) : null;
+            rtdb = app ? getDatabase(app) : null;
+        } catch (e) {
+            console.error("Firebase SDK Init Error, falling back to local mode:", e);
+        }
 
         // Змінні стану гри
         let userId = null;
@@ -451,7 +456,6 @@
         // Звуковий рушій
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
-        // Функція для звуку лопання/поїдання
         function playPopSound() {
             if(audioCtx.state === 'suspended') audioCtx.resume();
             const osc = audioCtx.createOscillator();
@@ -467,10 +471,9 @@
             osc.stop(audioCtx.currentTime + 0.1);
         }
 
-        // Функція для звуку успіху
         function playSuccessSound() {
             if(audioCtx.state === 'suspended') audioCtx.resume();
-            const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C
+            const notes = [523.25, 659.25, 783.99, 1046.50];
             notes.forEach((freq, i) => {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
@@ -486,7 +489,6 @@
             });
         }
 
-        // Звук дзижчання комарів (фоновий)
         let buzzOsc, buzzGain;
         function startBuzz() {
             if(audioCtx.state === 'suspended') audioCtx.resume();
@@ -495,7 +497,6 @@
             buzzGain = audioCtx.createGain();
             buzzOsc.type = 'sawtooth';
             buzzOsc.frequency.value = 150;
-            // Модуляція для дзижчання
             const lfo = audioCtx.createOscillator();
             lfo.frequency.value = 15;
             const lfoGain = audioCtx.createGain();
@@ -533,27 +534,15 @@
             }
         }
 
-        // Створення кімнати
+        // Створення кімнати із стійкістю до помилок (Local Fallback)
         async function createRoom() {
-            if(!userId) await initAuth();
+            try { if(!userId && auth) await initAuth(); } catch(e) {}
             if(audioCtx.state === 'suspended') audioCtx.resume();
             
             roomCode = Math.floor(1000 + Math.random() * 9000).toString();
             isHost = true;
             
-            const roomRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'rooms'), roomCode);
-            await setDoc(roomRef, {
-                createdAt: Date.now(),
-                p1: userId,
-                p2: null,
-                status: 'waiting',
-                p1Score: 0,
-                p2Score: 0,
-                timer: 5,
-                hostScoreReady: false,
-                joinerScoreReady: false
-            });
-
+            // Завжди оновлюємо UI миттєво, щоб кнопки не "зависали"
             document.getElementById('btn-create-room').classList.add('hidden');
             document.getElementById('btn-join-room').classList.add('hidden');
             const codeDisplay = document.getElementById('room-code-display');
@@ -561,10 +550,34 @@
             codeDisplay.classList.remove('hidden');
             document.getElementById('waiting-msg').classList.remove('hidden');
 
-            listenToRoom();
+            gameState = { status: 'waiting', p1Score: 0, p2Score: 0, timer: 5 };
+
+            try {
+                if (db) {
+                    const roomRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'rooms'), roomCode);
+                    await setDoc(roomRef, {
+                        createdAt: Date.now(),
+                        p1: userId || 'local_user',
+                        p2: null,
+                        status: 'waiting',
+                        p1Score: 0,
+                        p2Score: 0,
+                        timer: 5
+                    });
+                    listenToRoom();
+                } else {
+                    throw new Error("No DB instance available");
+                }
+            } catch(e) {
+                console.warn("Firebase недоступний, перехід у локальний режим", e);
+                // Імітуємо підключення іншого гравця для локального режиму через 1.5 секунди
+                setTimeout(() => {
+                    gameState.status = 'ready';
+                    handleStateChange(gameState);
+                }, 1500);
+            }
         }
 
-        // Приєднання до кімнати
         function showJoinInput() {
             document.getElementById('btn-create-room').classList.add('hidden');
             document.getElementById('btn-join-room').classList.add('hidden');
@@ -574,24 +587,29 @@
         }
 
         async function joinRoom() {
-            if(!userId) await initAuth();
+            try { if(!userId && auth) await initAuth(); } catch(e){}
             const inputCode = document.getElementById('room-code-input').value;
             if(inputCode.length !== 4) return;
             
             roomCode = inputCode;
             isHost = false;
             
-            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
-            const docSnap = await getDoc(roomRef);
-            
-            if (docSnap.exists() && docSnap.data().status === 'waiting') {
-                await updateDoc(roomRef, {
-                    p2: userId,
-                    status: 'ready'
-                });
-                listenToRoom();
-            } else {
-                // Кімната не знайдена або повна. (Візуально просто трясемо інпут)
+            try {
+                if (db) {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                    const docSnap = await getDoc(roomRef);
+                    if (docSnap.exists() && docSnap.data().status === 'waiting') {
+                        await updateDoc(roomRef, { p2: userId || 'local_joiner', status: 'ready' });
+                        listenToRoom();
+                    } else {
+                        throw new Error("Кімната недоступна");
+                    }
+                } else {
+                    throw new Error("Немає підключення до бази");
+                }
+            } catch (e) {
+                console.error("Join Error:", e);
+                // Трясемо інпут візуально при помилці
                 const inp = document.getElementById('room-code-input');
                 inp.style.transform = 'translateX(10px)';
                 setTimeout(() => inp.style.transform = 'translateX(-10px)', 50);
@@ -599,14 +617,13 @@
             }
         }
 
-        // Підписка на зміни кімнати
         function listenToRoom() {
+            if(!db) return;
             const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
             unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    gameState = data;
-                    handleStateChange(data);
+                    gameState = docSnap.data();
+                    handleStateChange(gameState);
                 }
             }, (error) => {
                 console.error("Помилка підписки:", error);
@@ -620,7 +637,6 @@
             const mathLayer = document.getElementById('math-input-layer');
             const explLayer = document.getElementById('explanation-layer');
 
-            // Оновлення HUD
             document.getElementById('score-p1').textContent = data.p1Score;
             document.getElementById('score-p2').textContent = data.p2Score;
             document.getElementById('game-timer').textContent = data.timer;
@@ -630,23 +646,19 @@
                 setTimeout(() => lobbyUi.classList.add('hidden'), 300);
                 hud.classList.remove('opacity-0');
                 
-                // Показуємо кнопку старт тільки хосту, або автоматично стартуємо (для дітей краще авто або хост)
-                if (isHost) {
-                    btnStart.classList.remove('hidden');
-                }
+                if (isHost) btnStart.classList.remove('hidden');
             } 
             else if (data.status === 'playing') {
                 btnStart.classList.add('hidden');
                 mathLayer.classList.add('hidden');
                 explLayer.classList.add('hidden');
-                explLayer.innerHTML = ''; // Очищаємо попереднє пояснення
+                explLayer.innerHTML = ''; 
                 
                 if (localMosquitoes.length === 0) {
                     generateMosquitoes();
                     startBuzz();
                 }
                 
-                // Таймер обробляється хостом
                 if(isHost && !gameLoopInterval) {
                     startGameTimer();
                 }
@@ -663,7 +675,6 @@
             else if (data.status === 'explanation') {
                 mathLayer.classList.add('hidden');
                 explLayer.classList.remove('hidden');
-                // Запускаємо анімацію пояснення
                 if (explLayer.innerHTML === '') {
                     runVisualExplanation(data.p1Score, data.p2Score);
                 }
@@ -675,109 +686,75 @@
             layer.innerHTML = '';
             localMosquitoes = [];
             
-            // Створюємо 25 комарів
             for(let i=0; i<25; i++) {
                 const mosquito = document.createElement('div');
                 mosquito.className = 'mosquito pointer-events-auto';
                 
-                // Випадкова початкова позиція
                 let x = Math.random() * window.innerWidth;
-                let y = Math.random() * (window.innerHeight * 0.7); // Щоб не літали по жабці
+                let y = Math.random() * (window.innerHeight * 0.7); 
                 
                 mosquito.style.left = `${x}px`;
                 mosquito.style.top = `${y}px`;
                 
-                // Внутрішній SVG комара
                 mosquito.innerHTML = `
                     <svg viewBox="0 0 100 100" width="100%" height="100%">
-                        <!-- Крила -->
                         <path class="wing" d="M 50,50 Q 20,10 10,30 Q 30,50 50,50 Z" fill="#e2e8f0" opacity="0.8"/>
                         <path class="wing" d="M 50,50 Q 80,10 90,30 Q 70,50 50,50 Z" fill="#e2e8f0" opacity="0.8"/>
-                        <!-- Тіло -->
                         <ellipse cx="50" cy="50" rx="8" ry="15" fill="#334155"/>
                         <circle cx="50" cy="35" r="6" fill="#0f172a"/>
-                        <!-- Хоботок -->
                         <line x1="50" y1="29" x2="50" y2="15" stroke="#0f172a" stroke-width="2"/>
                     </svg>
                 `;
 
-                // Дані для анімації
                 let data = {
-                    el: mosquito,
-                    x: x,
-                    y: y,
+                    el: mosquito, x: x, y: y,
                     vx: (Math.random() - 0.5) * 10,
                     vy: (Math.random() - 0.5) * 10,
                     active: true
                 };
                 
-                // Обробник кліку/тапу
                 mosquito.addEventListener('pointerdown', (e) => catchMosquito(e, data));
                 
                 layer.appendChild(mosquito);
                 localMosquitoes.push(data);
             }
-            
-            // Запуск анімації руху комарів (RequestAnimationFrame)
             requestAnimationFrame(animateMosquitoes);
         }
 
         function animateMosquitoes() {
             if(gameState.status !== 'playing') return;
-            
-            const w = window.innerWidth;
-            const h = window.innerHeight;
-            
+            const w = window.innerWidth, h = window.innerHeight;
             localMosquitoes.forEach(m => {
                 if(!m.active) return;
-                
-                // Зміна напрямку хаотично
                 if(Math.random() < 0.05) {
                     m.vx += (Math.random() - 0.5) * 5;
                     m.vy += (Math.random() - 0.5) * 5;
                 }
-                
-                // Обмеження швидкості
                 const maxSpeed = 8;
                 m.vx = Math.max(-maxSpeed, Math.min(maxSpeed, m.vx));
                 m.vy = Math.max(-maxSpeed, Math.min(maxSpeed, m.vy));
-                
-                m.x += m.vx;
-                m.y += m.vy;
-                
-                // Відбивання від стін
+                m.x += m.vx; m.y += m.vy;
                 if(m.x < 20 || m.x > w - 20) m.vx *= -1;
-                if(m.y < 20 || m.y > h - 150) m.vy *= -1; // Не опускаємось занадто низько
-                
-                // Поворот комара за напрямком руху
+                if(m.y < 20 || m.y > h - 150) m.vy *= -1; 
                 const angle = Math.atan2(m.vy, m.vx) * 180 / Math.PI + 90;
-                
                 m.el.style.left = `${m.x}px`;
                 m.el.style.top = `${m.y}px`;
                 m.el.children[0].style.transform = `rotate(${angle}deg)`;
             });
-            
             requestAnimationFrame(animateMosquitoes);
         }
 
         async function catchMosquito(e, mData) {
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             if(!mData.active || gameState.status !== 'playing') return;
             
             mData.active = false;
             mData.el.style.display = 'none';
             
-            // Анімація язика жабки
             const rect = document.getElementById('game-container').getBoundingClientRect();
-            const tapX = e.clientX - rect.left;
-            const tapY = e.clientY - rect.top;
-            
-            // Трансформація координат для SVG, який використовує viewBox 1600x900
-            const scaleX = 1600 / rect.width;
-            const scaleY = 900 / rect.height;
-            const svgX = tapX * scaleX;
-            const svgY = tapY * scaleY;
+            const tapX = e.clientX - rect.left, tapY = e.clientY - rect.top;
+            const scaleX = 1600 / rect.width, scaleY = 900 / rect.height;
+            const svgX = tapX * scaleX, svgY = tapY * scaleY;
             
             const tonguePath = document.getElementById('frog-tongue-path');
             const frogMouthOpen = document.getElementById('frog-mouth-open');
@@ -785,29 +762,28 @@
             
             frogMouth.setAttribute('opacity', '0');
             frogMouthOpen.setAttribute('opacity', '1');
-            
             tonguePath.setAttribute('d', `M 800,740 Q ${(800+svgX)/2},${(740+svgY)/2-100} ${svgX},${svgY}`);
             tonguePath.setAttribute('opacity', '1');
             
             playPopSound();
-            
             setTimeout(() => {
                 tonguePath.setAttribute('opacity', '0');
                 frogMouth.setAttribute('opacity', '1');
                 frogMouthOpen.setAttribute('opacity', '0');
             }, 150);
 
-            // Оновлення рахунку в Firebase
-            if (!userId) return;
-            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            if (isHost) gameState.p1Score++; else gameState.p2Score++;
+
             try {
-                if (isHost) {
-                    await updateDoc(roomRef, { p1Score: gameState.p1Score + 1 });
+                if (db) {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                    if (isHost) await updateDoc(roomRef, { p1Score: gameState.p1Score });
+                    else await updateDoc(roomRef, { p2Score: gameState.p2Score });
                 } else {
-                    await updateDoc(roomRef, { p2Score: gameState.p2Score + 1 });
+                    document.getElementById(isHost ? 'score-p1' : 'score-p2').textContent = isHost ? gameState.p1Score : gameState.p2Score;
                 }
             } catch (err) {
-                console.error("Помилка оновлення рахунку", err);
+                document.getElementById(isHost ? 'score-p1' : 'score-p2').textContent = isHost ? gameState.p1Score : gameState.p2Score;
             }
         }
 
@@ -817,17 +793,25 @@
         }
 
         function startGameTimer() {
-            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
             let timeLeft = 5;
+            const roomRef = db ? doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode) : null;
             
             gameLoopInterval = setInterval(async () => {
                 timeLeft--;
-                // Перевірка, чи хтось набрав 10
                 if (gameState.p1Score >= 10 || gameState.p2Score >= 10 || timeLeft <= 0) {
                     clearInterval(gameLoopInterval);
-                    await updateDoc(roomRef, { status: 'math', timer: 0 });
+                    gameState.status = 'math';
+                    gameState.timer = 0;
+                    try {
+                        if (db) await updateDoc(roomRef, { status: 'math', timer: 0 });
+                        else handleStateChange(gameState);
+                    } catch(e) { handleStateChange(gameState); }
                 } else {
-                    await updateDoc(roomRef, { timer: Math.max(0, timeLeft) });
+                    gameState.timer = timeLeft;
+                    try {
+                        if (db) await updateDoc(roomRef, { timer: Math.max(0, timeLeft) });
+                        else document.getElementById('game-timer').textContent = timeLeft;
+                    } catch(e) { document.getElementById('game-timer').textContent = timeLeft; }
                 }
             }, 1000);
         }
@@ -839,17 +823,21 @@
             const expectedDiff = Math.abs(gameState.p1Score - gameState.p2Score);
             
             if (inputVal === expectedDiff) {
-                // Правильно!
                 playSuccessSound();
                 if(isHost) {
-                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
-                    await updateDoc(roomRef, { status: 'explanation' });
+                    gameState.status = 'explanation';
+                    try {
+                        if (db) {
+                            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                            await updateDoc(roomRef, { status: 'explanation' });
+                        } else {
+                            handleStateChange(gameState);
+                        }
+                    } catch(e) { handleStateChange(gameState); }
                 } else {
-                    // Якщо не хост, просто чекаємо оновлення статусу від хоста, але локально можемо показати ефект
                     document.getElementById('difference-input').style.borderColor = '#10b981';
                 }
             } else {
-                // Неправильно (трясемо інпут)
                 const inp = document.getElementById('difference-input');
                 inp.style.transform = 'translateX(10px)';
                 setTimeout(() => inp.style.transform = 'translateX(-10px)', 50);
@@ -860,69 +848,33 @@
         async function runVisualExplanation(s1, s2) {
             const layer = document.getElementById('explanation-layer');
             layer.innerHTML = '';
-            
-            // Напівпрозорий фон для фокусу на поясненні
             layer.innerHTML += `<rect x="0" y="0" width="1600" height="900" fill="black" opacity="0.5" />`;
 
-            const maxScore = Math.max(s1, s2);
-            const minScore = Math.min(s1, s2);
-            const diff = maxScore - minScore;
+            const maxScore = Math.max(s1, s2), minScore = Math.min(s1, s2), diff = maxScore - minScore;
+            const c1 = '#ef4444', c2 = '#3b82f6'; 
+            const startX = 1600 / 2 - (maxScore * 120) / 2 + 60, y1 = 300, y2 = 500;
             
-            // Кольори гравців
-            const c1 = '#ef4444'; // Червоний
-            const c2 = '#3b82f6'; // Синій
-            
-            const startX = 1600 / 2 - (maxScore * 120) / 2 + 60; // Центрування
-            const y1 = 300;
-            const y2 = 500;
-            
-            // Малюємо комарів P1
-            for(let i=0; i<s1; i++) {
-                layer.innerHTML += createStaticMosquitoSVG(startX + i*120, y1, c1, `p1-mosq-${i}`);
-            }
-            // Малюємо комарів P2
-            for(let i=0; i<s2; i++) {
-                layer.innerHTML += createStaticMosquitoSVG(startX + i*120, y2, c2, `p2-mosq-${i}`);
-            }
+            for(let i=0; i<s1; i++) layer.innerHTML += createStaticMosquitoSVG(startX + i*120, y1, c1, `p1-mosq-${i}`);
+            for(let i=0; i<s2; i++) layer.innerHTML += createStaticMosquitoSVG(startX + i*120, y2, c2, `p2-mosq-${i}`);
 
-            // Анімація з'єднання пар
             for(let i=0; i<minScore; i++) {
-                await new Promise(r => setTimeout(r, 500)); // Затримка між лініями
-                playPopSound(); // Легкий клік
-                layer.innerHTML += `
-                    <line x1="${startX + i*120}" y1="${y1 + 40}" x2="${startX + i*120}" y2="${y2 - 40}" 
-                          stroke="#ffffff" stroke-width="8" stroke-dasharray="15,15" class="math-line"/>
-                `;
+                await new Promise(r => setTimeout(r, 500));
+                playPopSound(); 
+                layer.innerHTML += `<line x1="${startX + i*120}" y1="${y1 + 40}" x2="${startX + i*120}" y2="${y2 - 40}" stroke="#ffffff" stroke-width="8" stroke-dasharray="15,15" class="math-line"/>`;
             }
 
             await new Promise(r => setTimeout(r, 500));
-
-            // Анімація підрахунку різниці
-            const isP1More = s1 > s2;
-            const extraY = isP1More ? y1 : y2;
-            const extraColor = isP1More ? c1 : c2;
+            const isP1More = s1 > s2, extraY = isP1More ? y1 : y2, extraColor = isP1More ? c1 : c2;
 
             for(let i=0; i<diff; i++) {
                 await new Promise(r => setTimeout(r, 600));
-                // Виділення
-                layer.innerHTML += `
-                    <circle cx="${startX + (minScore + i)*120}" cy="${extraY}" r="60" fill="none" stroke="#f59e0b" stroke-width="8" class="pop-in"/>
-                `;
-                // Цифра
-                layer.innerHTML += `
-                    <text x="${startX + (minScore + i)*120}" y="${extraY - 70}" 
-                          fill="#f59e0b" font-size="80" font-weight="900" text-anchor="middle" class="pop-in">
-                          ${i + 1}
-                    </text>
-                `;
-                playSuccessSound(); // Дзинь!
+                layer.innerHTML += `<circle cx="${startX + (minScore + i)*120}" cy="${extraY}" r="60" fill="none" stroke="#f59e0b" stroke-width="8" class="pop-in"/>`;
+                layer.innerHTML += `<text x="${startX + (minScore + i)*120}" y="${extraY - 70}" fill="#f59e0b" font-size="80" font-weight="900" text-anchor="middle" class="pop-in">${i + 1}</text>`;
+                playSuccessSound(); 
             }
 
-            // Якщо різниця 0 (нічия)
             if (diff === 0) {
-                 layer.innerHTML += `
-                    <text x="800" y="450" fill="#10b981" font-size="120" font-weight="900" text-anchor="middle" class="pop-in">=</text>
-                `;
+                 layer.innerHTML += `<text x="800" y="450" fill="#10b981" font-size="120" font-weight="900" text-anchor="middle" class="pop-in">=</text>`;
                 playSuccessSound();
             }
         }
@@ -946,35 +898,36 @@
         
         document.getElementById('btn-start-round').addEventListener('click', async () => {
             if(!isHost) return;
-            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
-            await updateDoc(roomRef, { 
-                status: 'playing',
-                p1Score: 0,
-                p2Score: 0,
-                timer: 5
-            });
+            gameState.status = 'playing'; gameState.p1Score = 0; gameState.p2Score = 0; gameState.timer = 5;
+            try {
+                if (db) {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                    await updateDoc(roomRef, { status: 'playing', p1Score: 0, p2Score: 0, timer: 5 });
+                } else {
+                    handleStateChange(gameState);
+                }
+            } catch(e) { handleStateChange(gameState); }
         });
 
         document.getElementById('btn-submit-math').addEventListener('click', submitMath);
         
-        // Кнопка Далі (перезапуск раунду)
         document.getElementById('btn-next').addEventListener('click', async () => {
-            if(!isHost || !roomCode) return;
-            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
-            await updateDoc(roomRef, { 
-                status: 'ready',
-                p1Score: 0,
-                p2Score: 0
-            });
+            if(!isHost) return;
+            gameState.status = 'ready'; gameState.p1Score = 0; gameState.p2Score = 0;
+            try {
+                if (db && roomCode) {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                    await updateDoc(roomRef, { status: 'ready', p1Score: 0, p2Score: 0 });
+                } else {
+                    handleStateChange(gameState);
+                }
+            } catch(e) { handleStateChange(gameState); }
         });
 
-        // Кнопка Назад (вихід в лобі)
         document.getElementById('btn-back').addEventListener('click', () => {
             if(unsubscribeRoom) unsubscribeRoom();
-            roomCode = null;
-            isHost = false;
+            roomCode = null; isHost = false;
             
-            // Скидання UI
             document.getElementById('hud-layer').classList.add('opacity-0');
             document.getElementById('lobby-ui').classList.remove('hidden', 'opacity-0');
             document.getElementById('btn-create-room').classList.remove('hidden');
@@ -991,7 +944,6 @@
             if(gameLoopInterval) clearInterval(gameLoopInterval);
         });
         
-        // Ініціалізація
         initAuth();
 
         /* ================= ДОДАНІ БЛОКИ СИСТЕМИ ================= */
@@ -1058,7 +1010,7 @@
         themeBtn.addEventListener('click', () => themeModal.style.display = 'block');
         closeThemeModal.addEventListener('click', () => themeModal.style.display = 'none');
 
-        // Відновлення локального фону
+        // Відновлення локального фону виключно для цієї гри
         const localBgKey = 'mySavedBg_' + CONFIG.gameId;
         const savedBg = localStorage.getItem(localBgKey);
         if (savedBg) {
@@ -1082,14 +1034,17 @@
                     
                     themeIndex++;
                     loadTheme();
+                } else {
+                    // Сувора зупинка перевірки при помилці (404)
+                    return; 
                 }
             } catch (e) {
-                // Зупиняємо при помилці / 404
+                return; // Зупиняємо при будь-якій помилці мережі
             }
         };
         loadTheme();
 
-        // Обробка першої картки ("Без фону")
+        // Перша картка "Без фону"
         themeGallery.children[0].addEventListener('click', () => applyTheme('none'));
 
         function applyTheme(url) {
@@ -1123,7 +1078,7 @@
             gc.style.transform = `scale(${currentZoom})`;
         });
 
-        // 4. ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ (З синхронізацією через game_action)
+        // 4. ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ
         const drawBtnGlobal = document.getElementById('toggle-draw-btn-global');
         const drawPanelGlobal = document.getElementById('draw-panel-global');
         const drawCloseBtn = document.getElementById('draw-close-btn');
@@ -1139,7 +1094,7 @@
 
         let isDrawingMode = false;
         let isDrawing = false;
-        let currentTool = 'pencil'; // pencil or eraser
+        let currentTool = 'pencil'; 
         let drawColor = '#ff0000';
         let drawSize = 5;
 
@@ -1178,7 +1133,6 @@
             activeBtn.classList.add('active');
         }
 
-        // Перетягування панелі
         const dragHandle = document.getElementById('draw-drag-handle');
         let isDraggingPanel = false, startX, startY, initialLeft, initialBottom;
         dragHandle.addEventListener('pointerdown', (e) => {
@@ -1198,7 +1152,6 @@
         });
         window.addEventListener('pointerup', () => isDraggingPanel = false);
 
-        // Малювання
         let lastX = 0, lastY = 0;
         
         function getPointerPos(e) {
@@ -1220,7 +1173,6 @@
             const pos = getPointerPos(e);
             drawLine(lastX, lastY, pos.x, pos.y, currentTool, drawColor, drawSize);
             
-            // Відправляємо дію через Firebase
             sendDrawAction('draw_line', {
                 x0: lastX / canvas.width, y0: lastY / canvas.height,
                 x1: pos.x / canvas.width, y1: pos.y / canvas.height,
@@ -1247,7 +1199,6 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
 
-        // Синхронізація дій
         function sendDrawAction(type, data = null) {
             if (!rtdb) return;
             const actionRef = push(ref(rtdb, 'game_action'));
@@ -1269,7 +1220,6 @@
                 const lastKey = keys[keys.length - 1];
                 const action = actions[lastKey];
                 
-                // Запобігання зацикленню
                 if (action.senderId === tabId || (Date.now() - action.timestamp > 5000)) return;
                 
                 if (action.type === 'clear_canvas') {
