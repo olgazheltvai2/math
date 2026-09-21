@@ -51,7 +51,8 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            transition: transform 0.3s ease; /* Для лупи */
+            transition: transform 0.3s ease;
+            transform-origin: center center;
         }
 
         /* Кнопки навігації (космічний стиль) */
@@ -438,6 +439,7 @@
             text-align: center;
             font-size: 12px;
             padding: 3px 0;
+            font-family: Arial, sans-serif;
         }
         #theme-overlay {
             display: none;
@@ -841,34 +843,40 @@
                 type: type,
                 data: data
             };
-            if (window.db) {
-                db.ref('game_action').set(action);
-            } else {
+            try {
+                if (typeof db !== 'undefined' && db !== null) {
+                    db.ref('game_action').set(action);
+                } else {
+                    processGameAction(action); // Якщо Firebase недоступний, виконуємо лише локально
+                }
+            } catch (e) {
                 processGameAction(action);
             }
         }
 
         let lastActionTime = 0;
-        db.ref('game_action').on('value', snap => {
-            const action = snap.val();
-            if (!action || action.timestamp <= lastActionTime) return;
-            lastActionTime = action.timestamp;
-            processGameAction(action);
-        });
+        if (typeof db !== 'undefined' && db !== null) {
+            db.ref('game_action').on('value', snap => {
+                const action = snap.val();
+                if (!action || action.timestamp <= lastActionTime) return;
+                lastActionTime = action.timestamp;
+                processGameAction(action);
+            });
+        }
 
         function processGameAction(action) {
-            // Для малювання обробляємо одразу (від інших), своє ми малюємо локально для швидкості
+            // Для малювання
             if (action.type === 'draw_line' && action.senderId !== myName) remoteDrawLine(action.data);
             if (action.type === 'clear_canvas' && action.senderId !== myName) remoteClearCanvas();
             
-            // Логіка гри (синхронізується для всіх одночасно, щоб не було розбіжностей)
-            if (action.senderId === myName && (action.type !== 'range_change' && action.type !== 'theme_change')) return; // Уникаємо дублювання для себе, якщо вже виконали локально
+            // Логіка гри (уникаємо дублювання для себе, бо локально вже виконали)
+            if (action.senderId === myName) return;
 
-            if (action.type === 'char_click' && action.senderId !== myName) executeCharClick(action.data.charNum, action.data.num);
-            if (action.type === 'visualize' && action.senderId !== myName) executeVisualize(action.data.userAns);
-            if (action.type === 'reset' && action.senderId !== myName) executeReset();
+            if (action.type === 'char_click') executeCharClick(action.data.charNum, action.data.num);
+            if (action.type === 'visualize') executeVisualize(action.data.userAns);
+            if (action.type === 'reset') executeReset();
             
-            if (action.type === 'range_change' && action.senderId !== myName) {
+            if (action.type === 'range_change') {
                 document.getElementById('range-min').value = action.data.min;
                 document.getElementById('range-max').value = action.data.max;
             }
@@ -941,19 +949,25 @@
 
         const getRand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
+        // Генерація відбувається тільки в того, хто клікнув. Всім іншим надсилається готове число.
         function handleCharClick(charNum) {
             if (state[`char${charNum}Done`]) return;
             const minVal = parseInt(document.getElementById('range-min').value) || 1;
             const maxVal = parseInt(document.getElementById('range-max').value) || 10;
             const num = getRand(minVal, maxVal);
             
-            // Виконуємо локально і надсилаємо іншим
+            // Запускаємо анімацію локально і відправляємо число іншим гравцям
             executeCharClick(charNum, num);
-            sendGameAction('char_click', { charNum, num });
+            sendGameAction('char_click', { charNum: charNum, num: num });
         }
 
+        // Функція для фактичного відтворення результату (викликається і локально, і по мережі)
         function executeCharClick(charNum, num) {
-            if (state[`char${charNum}Done`]) return;
+            if (state[`char${charNum}Done`]) return; // Захист від подвійних кліків
+            
+            state[`num${charNum}`] = num;
+            state[`char${charNum}Done`] = true; // Блокуємо одразу
+            
             sounds.click();
             sounds.dance();
             
@@ -962,9 +976,6 @@
             
             setTimeout(() => {
                 charEl.classList.remove('dancing');
-                state[`num${charNum}`] = num;
-                state[`char${charNum}Done`] = true;
-                
                 const bubble = charNum === 1 ? bubble1 : bubble2;
                 bubble.innerText = num;
                 bubble.classList.add('show');
@@ -1177,7 +1188,7 @@
             // Зберігаємо індивідуально для цієї гри
             localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
 
-            if (pushToFirebase) {
+            if (pushToFirebase && typeof db !== 'undefined') {
                 db.ref('game_theme').set(url);
             }
         }
@@ -1189,12 +1200,14 @@
         }
 
         // Слухаємо глобальну зміну теми з Firebase
-        db.ref('game_theme').on('value', snap => {
-            const url = snap.val();
-            if (url && url !== localStorage.getItem('mySavedBg_' + CONFIG.gameId)) {
-                applyTheme(url, false);
-            }
-        });
+        if (typeof db !== 'undefined' && db !== null) {
+            db.ref('game_theme').on('value', snap => {
+                const url = snap.val();
+                if (url && url !== localStorage.getItem('mySavedBg_' + CONFIG.gameId)) {
+                    applyTheme(url, false);
+                }
+            });
+        }
 
         themeBtn.onclick = () => {
             themeModal.style.display = 'block';
@@ -1225,17 +1238,18 @@
             themeGallery.appendChild(card);
         }
 
+        // Суворе послідовне завантаження фонів з зупинкою на першому 404
         async function loadThemes() {
             themesLoaded = true;
             themeGallery.innerHTML = '';
-            addThemeCard('none', 'Без фону'); // Перша картка
+            addThemeCard('none', 'Без фону');
 
             let i = 1;
             while (i <= 1000) {
                 const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
                 try {
                     const res = await fetch(url, { method: 'HEAD' });
-                    if (!res.ok) break;
+                    if (!res.ok) break; // БЛОКУЄТЬСЯ І ЗУПИНЯЄТЬСЯ НА ПЕРШОМУ ЖЕ 404
                     addThemeCard(url, `Фон ${i}`);
                     i++;
                 } catch(e) {
@@ -1254,7 +1268,7 @@
         let isDrawActive = false;
         let isDrawingAction = false;
         let lastX = 0, lastY = 0;
-        let currentDrawMode = 'pencil'; // pencil or eraser
+        let currentDrawMode = 'pencil'; 
 
         function resizeCanvas() {
             drawCanvas.width = window.innerWidth;
@@ -1348,7 +1362,7 @@
             }
             
             drawCtx.stroke();
-            drawCtx.globalCompositeOperation = "source-over"; // reset
+            drawCtx.globalCompositeOperation = "source-over";
         }
 
         function remoteDrawLine(data) {
