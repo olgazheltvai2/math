@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Озеро Комарів</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: transparent; /* Змінено на прозорий для динамічних фонів */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none; 
+            font-family: Arial, sans-serif; /* Встановлено шрифт Arial */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 1200px;
+            aspect-ratio: 16 / 9;
+            background: transparent; /* Прибрано жорсткий градієнт для видимості фону */
+            border-radius: 20px;
+            box-shadow: none; /* Прибрано тінь, щоб контейнер був максимально прозорим */
+            overflow: hidden;
+            transform-origin: center;
+            transition: transform 0.2s ease;
+        }
+
+        /* Анімація дихання жабки */
+        @keyframes breathe {
+            0% { transform: scaleY(1); }
+            50% { transform: scaleY(1.05); }
+            100% { transform: scaleY(1); }
+        }
+        .frog-body {
+            transform-origin: bottom center;
+            animation: breathe 3s infinite ease-in-out;
+        }
+
+        /* Анімація моргання очей */
+        @keyframes blink {
+            0%, 96%, 98% { transform: scaleY(1); }
+            97%, 100% { transform: scaleY(0.1); }
+        }
+        .frog-eye-lid {
+            transform-origin: center;
+            animation: blink 4s infinite linear;
+        }
+
+        /* Анімація крилець комара */
+        @keyframes flutter {
+            0% { transform: rotate(-20deg); }
+            50% { transform: rotate(20deg); }
+            100% { transform: rotate(-20deg); }
+        }
+        .wing {
+            transform-origin: bottom center;
+            animation: flutter 0.02s infinite;
+        }
+
+        /* Анімація появи математичних чисел */
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            80% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .pop-in {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* Комарі як DOM елементи */
+        .mosquito {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s;
+        }
+        
+        /* Спеціальний інпут без стрілочок */
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+
+        /* Анімація лінії */
+        @keyframes drawLine {
+            to { stroke-dashoffset: 0; }
+        }
+        .math-line {
+            stroke-dasharray: 1000;
+            stroke-dashoffset: 1000;
+            animation: drawLine 1s ease forwards;
+        }
+
+        /* ================= ДОДАНІ СТИЛІ ================= */
+        
+        /* Секретне поле вводу */
+        .secret-input-text { color: transparent !important; text-shadow: 0 0 0 transparent !important; }
+        .secret-input-text::selection { color: transparent !important; background: transparent !important; }
+
+        /* Екран-заглушка */
+        #block-overlay {
+            position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85); z-index: 999999;
+            display: none; justify-content: center; align-items: center;
+        }
+        #block-overlay h1 { color: red; font-size: 5vw; font-weight: bold; text-align: center; }
+
+        /* Theme Manager UI */
+        #theme-btn {
+            position: fixed; bottom: 140px; right: 20px; z-index: 80000;
+            width: 50px; height: 50px; background: #34495e; color: white;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-size: 24px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 2px solid white;
+        }
+        #theme-modal {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: rgba(30,41,59,0.95); padding: 20px; border-radius: 20px;
+            z-index: 80001; display: none; width: 90%; max-width: 800px;
+            max-height: 60vh; overflow-y: auto; border: 4px solid #38bdf8;
+            backdrop-filter: blur(10px);
+        }
+        #theme-gallery {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px;
+        }
+        .theme-card {
+            position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 10px;
+            overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: 0.2s;
+            background-color: #0f172a; display: flex; justify-content: center; align-items: center;
+        }
+        .theme-card:hover { border-color: #38bdf8; transform: scale(1.05); }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; }
+        .theme-label {
+            position: absolute; bottom: 0; width: 100%; background: rgba(0,0,0,0.7);
+            color: white; text-align: center; font-size: 14px; padding: 5px 0; font-weight: bold;
+        }
+
+        /* Лупа (Масштабування) */
+        #zoom-controls {
+            position: fixed; bottom: 200px; right: 20px; z-index: 80000;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .zoom-btn {
+            width: 50px; height: 50px; background: #2563eb; color: white;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 2px solid white;
+        }
+
+        /* Глобальна малювалка */
+        #draw-canvas-global {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 90000; pointer-events: none; /* За замовчуванням прозоре для кліків */
+        }
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px; z-index: 90001;
+            width: 50px; height: 50px; background: #8e44ad; color: white;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            font-size: 24px; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 2px solid white;
+        }
+        #draw-panel-global {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: #ffffff; padding: 10px; border-radius: 15px;
+            z-index: 90002; display: none; flex-direction: column; gap: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 3px solid #8e44ad;
+            user-select: none;
+        }
+        .draw-panel-header {
+            width: 100%; height: 20px; background: #e2e8f0; border-radius: 10px;
+            cursor: grab; display: flex; justify-content: center; align-items: center;
+        }
+        .draw-panel-header:active { cursor: grabbing; }
+        .draw-panel-header::after { content: "••••"; color: #94a3b8; font-size: 20px; line-height: 10px; }
+        .draw-controls-row { display: flex; gap: 10px; align-items: center; }
+        .draw-btn {
+            padding: 8px 15px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; background: #f1f5f9;
+        }
+        .draw-btn.active { background: #8e44ad; color: white; }
+        #draw-color-picker { width: 40px; height: 40px; border: none; cursor: pointer; border-radius: 5px; overflow: hidden; }
+        #draw-close-btn { position: absolute; top: -15px; right: -15px; width: 30px; height: 30px; background: red; color: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; font-weight: bold; border: 2px solid white; }
+        
+        @media (max-width: 768px) {
+            #draw-panel-global { bottom: 10px; width: 95%; max-width: 400px; flex-wrap: wrap; }
+            .draw-controls-row { flex-wrap: wrap; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        
+        <!-- Складний SVG фон озера -->
+        <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <!-- Градієнт для води -->
+                <linearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#4db8ff"/>
+                    <stop offset="100%" stop-color="#0066cc"/>
+                </linearGradient>
+                <!-- Тінь -->
+                <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="2" dy="5" stdDeviation="5" flood-opacity="0.3"/>
+                </filter>
+            </defs>
+            
+            <!-- Вода (Трохи прозора для видимості фону) -->
+            <path d="M0,500 Q400,480 800,500 T1600,500 L1600,900 L0,900 Z" fill="url(#waterGrad)" opacity="0.8"/>
+            <path d="M0,550 Q400,530 800,560 T1600,540 L1600,900 L0,900 Z" fill="#0052a3" opacity="0.4"/>
+            <path d="M0,620 Q500,650 900,610 T1600,630 L1600,900 L0,900 Z" fill="#003d7a" opacity="0.5"/>
+
+            <!-- Очерет на задньому плані -->
+            <g opacity="0.8">
+                <!-- Лівий берег -->
+                <path d="M 50,600 Q 60,400 30,300" stroke="#2d5a27" stroke-width="6" fill="none"/>
+                <rect x="25" y="300" width="12" height="60" rx="6" fill="#5c3a21" transform="rotate(-15 30 300)"/>
+                <path d="M 120,650 Q 110,450 140,350" stroke="#3a7533" stroke-width="8" fill="none"/>
+                <rect x="135" y="350" width="14" height="70" rx="7" fill="#4a2e1b" transform="rotate(10 140 350)"/>
+                
+                <!-- Правий берег -->
+                <path d="M 1450,550 Q 1460,350 1430,250" stroke="#2d5a27" stroke-width="5" fill="none"/>
+                <rect x="1425" y="250" width="10" height="50" rx="5" fill="#5c3a21" transform="rotate(-20 1430 250)"/>
+                <path d="M 1520,600 Q 1500,400 1540,300" stroke="#3a7533" stroke-width="7" fill="none"/>
+                <rect x="1535" y="300" width="14" height="65" rx="7" fill="#4a2e1b" transform="rotate(15 1540 300)"/>
+            </g>
+
+            <!-- Листок латаття -->
+            <path d="M800,750 C1000,750 1100,820 800,850 C500,820 600,750 800,750 Z" fill="#2e8b57" stroke="#1f5c3a" stroke-width="4" filter="url(#shadow)"/>
+            <!-- Виріз на листку -->
+            <path d="M800,750 L820,780 L780,780 Z" fill="#0052a3" opacity="0.8"/>
+            
+            <!-- Жабка -->
+            <g transform="translate(800, 720)" class="frog-body">
+                <!-- Лапки задні -->
+                <ellipse cx="-70" cy="50" rx="40" ry="20" fill="#3cb371" transform="rotate(30 -70 50)"/>
+                <ellipse cx="70" cy="50" rx="40" ry="20" fill="#3cb371" transform="rotate(-30 70 50)"/>
+                <!-- Тіло -->
+                <ellipse cx="0" cy="0" rx="80" ry="70" fill="#3cb371"/>
+                <!-- Животик -->
+                <ellipse cx="0" cy="20" rx="60" ry="40" fill="#98fb98"/>
+                <!-- Лапки передні -->
+                <path d="M-50,40 Q-70,80 -40,90" stroke="#3cb371" stroke-width="15" stroke-linecap="round" fill="none"/>
+                <path d="M50,40 Q70,80 40,90" stroke="#3cb371" stroke-width="15" stroke-linecap="round" fill="none"/>
+                
+                <!-- Очі -->
+                <g transform="translate(-40, -50)">
+                    <circle cx="0" cy="0" rx="25" fill="#3cb371"/>
+                    <circle cx="0" cy="-5" rx="18" fill="white"/>
+                    <circle cx="0" cy="-5" rx="8" fill="black" class="pupil"/>
+                    <path d="M-20,-15 Q0,-30 20,-15" stroke="#2e8b57" stroke-width="4" fill="none"/>
+                    <ellipse cx="0" cy="-5" rx="20" ry="20" fill="#3cb371" class="frog-eye-lid" opacity="1"/>
+                </g>
+                <g transform="translate(40, -50)">
+                    <circle cx="0" cy="0" rx="25" fill="#3cb371"/>
+                    <circle cx="0" cy="-5" rx="18" fill="white"/>
+                    <circle cx="0" cy="-5" rx="8" fill="black" class="pupil"/>
+                    <path d="M-20,-15 Q0,-30 20,-15" stroke="#2e8b57" stroke-width="4" fill="none"/>
+                    <ellipse cx="0" cy="-5" rx="20" ry="20" fill="#3cb371" class="frog-eye-lid" opacity="1"/>
+                </g>
+
+                <!-- Рот -->
+                <path d="M-40,10 Q0,40 40,10" stroke="#1f5c3a" stroke-width="4" fill="none" id="frog-mouth"/>
+                <path d="M-30,20 Q0,50 30,20 Z" fill="#ff6b6b" opacity="0" id="frog-mouth-open"/>
+            </g>
+
+            <!-- Язик жабки (буде малюватися динамічно) -->
+            <path id="frog-tongue-path" d="" stroke="#ff6b6b" stroke-width="12" stroke-linecap="round" fill="none" opacity="0" filter="url(#shadow)"/>
+        </svg>
+
+        <div id="mosquitoes-layer" class="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
+            <!-- Комарі будуть додані сюди через JS -->
+        </div>
+
+        
+        <!-- Лобі -->
+        <div id="lobby-ui" class="absolute inset-0 flex flex-col justify-center items-center bg-black/60 z-50 backdrop-blur-sm transition-opacity duration-300">
+            <div class="bg-[#1e293b]/90 p-8 rounded-3xl border-4 border-[#38bdf8] shadow-[0_0_40px_#38bdf8] flex flex-col items-center gap-6 transform scale-100 transition-transform">
+                <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-pulse">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                
+                <div class="flex gap-4">
+                    <button id="btn-create-room" class="group relative px-8 py-4 bg-gradient-to-b from-[#4ade80] to-[#16a34a] rounded-2xl shadow-[0_8px_0_#14532d] active:shadow-[0_0px_0_#14532d] active:translate-y-2 transition-all">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M12 2v20M2 12h20" stroke="white" stroke-width="4" stroke-linecap="round"/></svg>
+                    </button>
+                    <button id="btn-join-room" class="group relative px-8 py-4 bg-gradient-to-b from-[#fbbf24] to-[#d97706] rounded-2xl shadow-[0_8px_0_#78350f] active:shadow-[0_0px_0_#78350f] active:translate-y-2 transition-all">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                    </button>
+                </div>
+
+                <div id="join-input-container" class="hidden flex-col items-center gap-4 mt-4">
+                    <input id="room-code-input" type="number" placeholder="1234" class="text-4xl text-center w-40 h-20 rounded-xl bg-white/10 text-white font-bold outline-none border-2 border-white/30 focus:border-[#38bdf8]" maxlength="4">
+                    <button id="btn-submit-join" class="px-10 py-3 bg-[#38bdf8] text-white font-bold rounded-xl shadow-[0_5px_0_#0284c7] active:translate-y-1 active:shadow-none">
+                        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    </button>
+                </div>
+
+                <div id="room-code-display" class="hidden text-5xl font-black text-[#38bdf8] tracking-widest bg-black/40 px-6 py-3 rounded-2xl border border-[#38bdf8]/50">
+                    <!-- Код кімнати -->
+                </div>
+                
+                <div id="waiting-msg" class="hidden">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" class="animate-spin"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a10 10 0 0 1 10 10"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <div id="hud-layer" class="absolute inset-0 pointer-events-none z-20 flex justify-between p-6 opacity-0 transition-opacity">
+            <!-- Кнопка назад -->
+            <button id="btn-back" class="pointer-events-auto w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex justify-center items-center shadow-lg border-2 border-white/50 active:scale-90 transition-transform">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+
+            <!-- Рахунки гравців -->
+            <div class="flex gap-8 items-start">
+                <div class="flex flex-col items-center bg-[#ef4444]/20 backdrop-blur-md p-4 rounded-3xl border-4 border-[#ef4444] shadow-[0_0_20px_#ef4444]">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="#ef4444" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                    <span id="score-p1" class="text-5xl font-black text-white mt-2 drop-shadow-md">0</span>
+                </div>
+                
+                <!-- Таймер -->
+                <div class="flex items-center justify-center w-24 h-24 bg-white/20 backdrop-blur-md rounded-full border-4 border-white shadow-[0_0_20px_white]">
+                    <span id="game-timer" class="text-5xl font-black text-white drop-shadow-md">5</span>
+                </div>
+
+                <div class="flex flex-col items-center bg-[#3b82f6]/20 backdrop-blur-md p-4 rounded-3xl border-4 border-[#3b82f6] shadow-[0_0_20px_#3b82f6]">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="#3b82f6" stroke="white" stroke-width="2"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                    <span id="score-p2" class="text-5xl font-black text-white mt-2 drop-shadow-md">0</span>
+                </div>
+            </div>
+            
+            <!-- Кнопка далі -->
+            <button id="btn-next" class="pointer-events-auto w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex justify-center items-center shadow-lg border-2 border-white/50 active:scale-90 transition-transform">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </button>
+        </div>
+
+        <!-- Кнопка Старт по центру (до початку раунду) -->
+        <button id="btn-start-round" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30 hidden group relative px-12 py-8 bg-gradient-to-b from-[#10b981] to-[#047857] rounded-[40px] shadow-[0_12px_0_#064e3b] active:shadow-[0_0px_0_#064e3b] active:translate-y-3 transition-all">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="white" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </button>
+
+        <div id="math-input-layer" class="absolute inset-0 flex justify-center items-center bg-black/70 z-40 backdrop-blur-sm hidden">
+            <div class="bg-[#1e293b]/90 p-10 rounded-[40px] border-8 border-[#f59e0b] shadow-[0_0_60px_#f59e0b] flex flex-col items-center gap-8">
+                <!-- Іконка мінуса / різниці -->
+                <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="4" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                
+                <input id="difference-input" type="number" class="text-7xl text-center w-48 h-32 rounded-3xl bg-white/10 text-white font-black outline-none border-4 border-white/30 focus:border-[#f59e0b]">
+                
+                <button id="btn-submit-math" class="w-full py-6 bg-gradient-to-b from-[#f59e0b] to-[#b45309] rounded-2xl shadow-[0_8px_0_#78350f] active:translate-y-2 active:shadow-none transition-all flex justify-center">
+                    <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </button>
+            </div>
+        </div>
+
+        <svg id="explanation-layer" class="absolute inset-0 w-full h-full pointer-events-none z-30 hidden" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+            <!-- Тут малюватимуться лінії та числа під час пояснення -->
+        </svg>
+
+    </div>
+
+    <!-- ДОДАНІ БЛОКИ ІНТЕРФЕЙСУ -->
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">
+        <h1>Зачекай! Зараз не твій урок.</h1>
+    </div>
+
+    <!-- Кнопки зуму -->
+    <div id="zoom-controls">
+        <div class="zoom-btn" id="zoom-in">➕</div>
+        <div class="zoom-btn" id="zoom-out">➖</div>
+    </div>
+
+    <!-- Theme Manager -->
+    <div id="theme-btn">⚙️</div>
+    <div id="theme-modal">
+        <h2 style="color:white; text-align:center; font-size: 24px; margin-bottom: 20px;">Обери фон</h2>
+        <div id="theme-gallery">
+            <div class="theme-card" data-url="none" style="background: #2c3e50;">
+                <div class="theme-label">Без фону</div>
+            </div>
+        </div>
+        <div style="text-align: center; margin-top: 20px;">
+            <button id="close-theme-modal" style="padding: 10px 30px; border-radius: 10px; border: none; background: #ef4444; color: white; font-weight: bold; cursor: pointer;">Закрити</button>
+        </div>
+    </div>
+
+    <!-- Глобальна малювалка -->
+    <canvas id="draw-canvas-global"></canvas>
+    <div id="toggle-draw-btn-global">✏️</div>
+    <div id="draw-panel-global">
+        <div id="draw-close-btn">✕</div>
+        <div class="draw-panel-header" id="draw-drag-handle"></div>
+        <div class="draw-controls-row">
+            <button class="draw-btn active" id="tool-pencil">✏️ Олівець</button>
+            <button class="draw-btn" id="tool-eraser">🧽 Гумка</button>
+            <input type="range" id="draw-size" min="1" max="50" value="5">
+            <input type="color" id="draw-color-picker" value="#ff0000">
+            <button class="draw-btn" id="tool-clear">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getDatabase, ref, set, onValue, onDisconnect, push, remove } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-database.js";
+
+        // Ініціалізація Firebase
+        const CONFIG = { gameId: 'mosquito-lake' };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : CONFIG.gameId;
+        
+        let firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        if (Object.keys(firebaseConfig).length === 0) {
+            // Фолбек для підключення до бази lesson-13c44
+            firebaseConfig = {
+                projectId: "lesson-13c44",
+                databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/"
+            };
+        } else if (!firebaseConfig.databaseURL) {
+            firebaseConfig.databaseURL = "https://lesson-13c44-default-rtdb.firebaseio.com/";
+        }
+
+        const app = Object.keys(firebaseConfig).length ? initializeApp(firebaseConfig) : null;
+        const db = app ? getFirestore(app) : null;
+        const auth = app ? getAuth(app) : null;
+        const rtdb = app ? getDatabase(app) : null;
+
+        // Змінні стану гри
+        let userId = null;
+        let roomCode = null;
+        let isHost = false;
+        let gameState = { status: 'lobby', p1Score: 0, p2Score: 0, timer: 5, activeMosquitoes: 0 };
+        let unsubscribeRoom = null;
+        let gameLoopInterval = null;
+        let localMosquitoes = [];
+        
+        // Звуковий рушій
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Функція для звуку лопання/поїдання
+        function playPopSound() {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // Функція для звуку успіху
+        function playSuccessSound() {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C
+            notes.forEach((freq, i) => {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, audioCtx.currentTime + i*0.1);
+                gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + i*0.1 + 0.05);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + i*0.1 + 0.2);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(audioCtx.currentTime + i*0.1);
+                osc.stop(audioCtx.currentTime + i*0.1 + 0.2);
+            });
+        }
+
+        // Звук дзижчання комарів (фоновий)
+        let buzzOsc, buzzGain;
+        function startBuzz() {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            if(buzzOsc) return;
+            buzzOsc = audioCtx.createOscillator();
+            buzzGain = audioCtx.createGain();
+            buzzOsc.type = 'sawtooth';
+            buzzOsc.frequency.value = 150;
+            // Модуляція для дзижчання
+            const lfo = audioCtx.createOscillator();
+            lfo.frequency.value = 15;
+            const lfoGain = audioCtx.createGain();
+            lfoGain.gain.value = 20;
+            lfo.connect(lfoGain);
+            lfoGain.connect(buzzOsc.frequency);
+            
+            buzzGain.gain.value = 0.05;
+            buzzOsc.connect(buzzGain);
+            buzzGain.connect(audioCtx.destination);
+            lfo.start();
+            buzzOsc.start();
+        }
+        function stopBuzz() {
+            if(buzzGain) {
+                buzzGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+                setTimeout(() => {
+                    if(buzzOsc) { buzzOsc.stop(); buzzOsc = null; }
+                }, 500);
+            }
+        }
+
+        async function initAuth() {
+            if (!auth) return;
+            try {
+                if (typeof __initial_auth_token !== 'undefined') {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                userId = auth.currentUser.uid;
+                console.log("Увійшли як", userId);
+            } catch (e) {
+                console.error("Помилка авторизації:", e);
+            }
+        }
+
+        // Створення кімнати
+        async function createRoom() {
+            if(!userId) await initAuth();
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            
+            roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+            isHost = true;
+            
+            const roomRef = doc(collection(db, 'artifacts', appId, 'public', 'data', 'rooms'), roomCode);
+            await setDoc(roomRef, {
+                createdAt: Date.now(),
+                p1: userId,
+                p2: null,
+                status: 'waiting',
+                p1Score: 0,
+                p2Score: 0,
+                timer: 5,
+                hostScoreReady: false,
+                joinerScoreReady: false
+            });
+
+            document.getElementById('btn-create-room').classList.add('hidden');
+            document.getElementById('btn-join-room').classList.add('hidden');
+            const codeDisplay = document.getElementById('room-code-display');
+            codeDisplay.textContent = roomCode;
+            codeDisplay.classList.remove('hidden');
+            document.getElementById('waiting-msg').classList.remove('hidden');
+
+            listenToRoom();
+        }
+
+        // Приєднання до кімнати
+        function showJoinInput() {
+            document.getElementById('btn-create-room').classList.add('hidden');
+            document.getElementById('btn-join-room').classList.add('hidden');
+            document.getElementById('join-input-container').classList.remove('hidden');
+            document.getElementById('join-input-container').classList.add('flex');
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        async function joinRoom() {
+            if(!userId) await initAuth();
+            const inputCode = document.getElementById('room-code-input').value;
+            if(inputCode.length !== 4) return;
+            
+            roomCode = inputCode;
+            isHost = false;
+            
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            const docSnap = await getDoc(roomRef);
+            
+            if (docSnap.exists() && docSnap.data().status === 'waiting') {
+                await updateDoc(roomRef, {
+                    p2: userId,
+                    status: 'ready'
+                });
+                listenToRoom();
+            } else {
+                // Кімната не знайдена або повна. (Візуально просто трясемо інпут)
+                const inp = document.getElementById('room-code-input');
+                inp.style.transform = 'translateX(10px)';
+                setTimeout(() => inp.style.transform = 'translateX(-10px)', 50);
+                setTimeout(() => inp.style.transform = 'translateX(0)', 100);
+            }
+        }
+
+        // Підписка на зміни кімнати
+        function listenToRoom() {
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            unsubscribeRoom = onSnapshot(roomRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    gameState = data;
+                    handleStateChange(data);
+                }
+            }, (error) => {
+                console.error("Помилка підписки:", error);
+            });
+        }
+
+        function handleStateChange(data) {
+            const lobbyUi = document.getElementById('lobby-ui');
+            const hud = document.getElementById('hud-layer');
+            const btnStart = document.getElementById('btn-start-round');
+            const mathLayer = document.getElementById('math-input-layer');
+            const explLayer = document.getElementById('explanation-layer');
+
+            // Оновлення HUD
+            document.getElementById('score-p1').textContent = data.p1Score;
+            document.getElementById('score-p2').textContent = data.p2Score;
+            document.getElementById('game-timer').textContent = data.timer;
+
+            if (data.status === 'ready') {
+                lobbyUi.classList.add('opacity-0');
+                setTimeout(() => lobbyUi.classList.add('hidden'), 300);
+                hud.classList.remove('opacity-0');
+                
+                // Показуємо кнопку старт тільки хосту, або автоматично стартуємо (для дітей краще авто або хост)
+                if (isHost) {
+                    btnStart.classList.remove('hidden');
+                }
+            } 
+            else if (data.status === 'playing') {
+                btnStart.classList.add('hidden');
+                mathLayer.classList.add('hidden');
+                explLayer.classList.add('hidden');
+                explLayer.innerHTML = ''; // Очищаємо попереднє пояснення
+                
+                if (localMosquitoes.length === 0) {
+                    generateMosquitoes();
+                    startBuzz();
+                }
+                
+                // Таймер обробляється хостом
+                if(isHost && !gameLoopInterval) {
+                    startGameTimer();
+                }
+            }
+            else if (data.status === 'math') {
+                stopBuzz();
+                clearMosquitoes();
+                clearInterval(gameLoopInterval);
+                gameLoopInterval = null;
+                mathLayer.classList.remove('hidden');
+                document.getElementById('difference-input').value = '';
+                document.getElementById('difference-input').focus();
+            }
+            else if (data.status === 'explanation') {
+                mathLayer.classList.add('hidden');
+                explLayer.classList.remove('hidden');
+                // Запускаємо анімацію пояснення
+                if (explLayer.innerHTML === '') {
+                    runVisualExplanation(data.p1Score, data.p2Score);
+                }
+            }
+        }
+
+        function generateMosquitoes() {
+            const layer = document.getElementById('mosquitoes-layer');
+            layer.innerHTML = '';
+            localMosquitoes = [];
+            
+            // Створюємо 25 комарів
+            for(let i=0; i<25; i++) {
+                const mosquito = document.createElement('div');
+                mosquito.className = 'mosquito pointer-events-auto';
+                
+                // Випадкова початкова позиція
+                let x = Math.random() * window.innerWidth;
+                let y = Math.random() * (window.innerHeight * 0.7); // Щоб не літали по жабці
+                
+                mosquito.style.left = `${x}px`;
+                mosquito.style.top = `${y}px`;
+                
+                // Внутрішній SVG комара
+                mosquito.innerHTML = `
+                    <svg viewBox="0 0 100 100" width="100%" height="100%">
+                        <!-- Крила -->
+                        <path class="wing" d="M 50,50 Q 20,10 10,30 Q 30,50 50,50 Z" fill="#e2e8f0" opacity="0.8"/>
+                        <path class="wing" d="M 50,50 Q 80,10 90,30 Q 70,50 50,50 Z" fill="#e2e8f0" opacity="0.8"/>
+                        <!-- Тіло -->
+                        <ellipse cx="50" cy="50" rx="8" ry="15" fill="#334155"/>
+                        <circle cx="50" cy="35" r="6" fill="#0f172a"/>
+                        <!-- Хоботок -->
+                        <line x1="50" y1="29" x2="50" y2="15" stroke="#0f172a" stroke-width="2"/>
+                    </svg>
+                `;
+
+                // Дані для анімації
+                let data = {
+                    el: mosquito,
+                    x: x,
+                    y: y,
+                    vx: (Math.random() - 0.5) * 10,
+                    vy: (Math.random() - 0.5) * 10,
+                    active: true
+                };
+                
+                // Обробник кліку/тапу
+                mosquito.addEventListener('pointerdown', (e) => catchMosquito(e, data));
+                
+                layer.appendChild(mosquito);
+                localMosquitoes.push(data);
+            }
+            
+            // Запуск анімації руху комарів (RequestAnimationFrame)
+            requestAnimationFrame(animateMosquitoes);
+        }
+
+        function animateMosquitoes() {
+            if(gameState.status !== 'playing') return;
+            
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            
+            localMosquitoes.forEach(m => {
+                if(!m.active) return;
+                
+                // Зміна напрямку хаотично
+                if(Math.random() < 0.05) {
+                    m.vx += (Math.random() - 0.5) * 5;
+                    m.vy += (Math.random() - 0.5) * 5;
+                }
+                
+                // Обмеження швидкості
+                const maxSpeed = 8;
+                m.vx = Math.max(-maxSpeed, Math.min(maxSpeed, m.vx));
+                m.vy = Math.max(-maxSpeed, Math.min(maxSpeed, m.vy));
+                
+                m.x += m.vx;
+                m.y += m.vy;
+                
+                // Відбивання від стін
+                if(m.x < 20 || m.x > w - 20) m.vx *= -1;
+                if(m.y < 20 || m.y > h - 150) m.vy *= -1; // Не опускаємось занадто низько
+                
+                // Поворот комара за напрямком руху
+                const angle = Math.atan2(m.vy, m.vx) * 180 / Math.PI + 90;
+                
+                m.el.style.left = `${m.x}px`;
+                m.el.style.top = `${m.y}px`;
+                m.el.children[0].style.transform = `rotate(${angle}deg)`;
+            });
+            
+            requestAnimationFrame(animateMosquitoes);
+        }
+
+        async function catchMosquito(e, mData) {
+            e.preventDefault();
+            e.stopPropagation();
+            if(!mData.active || gameState.status !== 'playing') return;
+            
+            mData.active = false;
+            mData.el.style.display = 'none';
+            
+            // Анімація язика жабки
+            const rect = document.getElementById('game-container').getBoundingClientRect();
+            const tapX = e.clientX - rect.left;
+            const tapY = e.clientY - rect.top;
+            
+            // Трансформація координат для SVG, який використовує viewBox 1600x900
+            const scaleX = 1600 / rect.width;
+            const scaleY = 900 / rect.height;
+            const svgX = tapX * scaleX;
+            const svgY = tapY * scaleY;
+            
+            const tonguePath = document.getElementById('frog-tongue-path');
+            const frogMouthOpen = document.getElementById('frog-mouth-open');
+            const frogMouth = document.getElementById('frog-mouth');
+            
+            frogMouth.setAttribute('opacity', '0');
+            frogMouthOpen.setAttribute('opacity', '1');
+            
+            tonguePath.setAttribute('d', `M 800,740 Q ${(800+svgX)/2},${(740+svgY)/2-100} ${svgX},${svgY}`);
+            tonguePath.setAttribute('opacity', '1');
+            
+            playPopSound();
+            
+            setTimeout(() => {
+                tonguePath.setAttribute('opacity', '0');
+                frogMouth.setAttribute('opacity', '1');
+                frogMouthOpen.setAttribute('opacity', '0');
+            }, 150);
+
+            // Оновлення рахунку в Firebase
+            if (!userId) return;
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            try {
+                if (isHost) {
+                    await updateDoc(roomRef, { p1Score: gameState.p1Score + 1 });
+                } else {
+                    await updateDoc(roomRef, { p2Score: gameState.p2Score + 1 });
+                }
+            } catch (err) {
+                console.error("Помилка оновлення рахунку", err);
+            }
+        }
+
+        function clearMosquitoes() {
+            document.getElementById('mosquitoes-layer').innerHTML = '';
+            localMosquitoes = [];
+        }
+
+        function startGameTimer() {
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            let timeLeft = 5;
+            
+            gameLoopInterval = setInterval(async () => {
+                timeLeft--;
+                // Перевірка, чи хтось набрав 10
+                if (gameState.p1Score >= 10 || gameState.p2Score >= 10 || timeLeft <= 0) {
+                    clearInterval(gameLoopInterval);
+                    await updateDoc(roomRef, { status: 'math', timer: 0 });
+                } else {
+                    await updateDoc(roomRef, { timer: Math.max(0, timeLeft) });
+                }
+            }, 1000);
+        }
+
+        async function submitMath() {
+            const inputVal = parseInt(document.getElementById('difference-input').value);
+            if (isNaN(inputVal)) return;
+
+            const expectedDiff = Math.abs(gameState.p1Score - gameState.p2Score);
+            
+            if (inputVal === expectedDiff) {
+                // Правильно!
+                playSuccessSound();
+                if(isHost) {
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                    await updateDoc(roomRef, { status: 'explanation' });
+                } else {
+                    // Якщо не хост, просто чекаємо оновлення статусу від хоста, але локально можемо показати ефект
+                    document.getElementById('difference-input').style.borderColor = '#10b981';
+                }
+            } else {
+                // Неправильно (трясемо інпут)
+                const inp = document.getElementById('difference-input');
+                inp.style.transform = 'translateX(10px)';
+                setTimeout(() => inp.style.transform = 'translateX(-10px)', 50);
+                setTimeout(() => inp.style.transform = 'translateX(0)', 100);
+            }
+        }
+
+        async function runVisualExplanation(s1, s2) {
+            const layer = document.getElementById('explanation-layer');
+            layer.innerHTML = '';
+            
+            // Напівпрозорий фон для фокусу на поясненні
+            layer.innerHTML += `<rect x="0" y="0" width="1600" height="900" fill="black" opacity="0.5" />`;
+
+            const maxScore = Math.max(s1, s2);
+            const minScore = Math.min(s1, s2);
+            const diff = maxScore - minScore;
+            
+            // Кольори гравців
+            const c1 = '#ef4444'; // Червоний
+            const c2 = '#3b82f6'; // Синій
+            
+            const startX = 1600 / 2 - (maxScore * 120) / 2 + 60; // Центрування
+            const y1 = 300;
+            const y2 = 500;
+            
+            // Малюємо комарів P1
+            for(let i=0; i<s1; i++) {
+                layer.innerHTML += createStaticMosquitoSVG(startX + i*120, y1, c1, `p1-mosq-${i}`);
+            }
+            // Малюємо комарів P2
+            for(let i=0; i<s2; i++) {
+                layer.innerHTML += createStaticMosquitoSVG(startX + i*120, y2, c2, `p2-mosq-${i}`);
+            }
+
+            // Анімація з'єднання пар
+            for(let i=0; i<minScore; i++) {
+                await new Promise(r => setTimeout(r, 500)); // Затримка між лініями
+                playPopSound(); // Легкий клік
+                layer.innerHTML += `
+                    <line x1="${startX + i*120}" y1="${y1 + 40}" x2="${startX + i*120}" y2="${y2 - 40}" 
+                          stroke="#ffffff" stroke-width="8" stroke-dasharray="15,15" class="math-line"/>
+                `;
+            }
+
+            await new Promise(r => setTimeout(r, 500));
+
+            // Анімація підрахунку різниці
+            const isP1More = s1 > s2;
+            const extraY = isP1More ? y1 : y2;
+            const extraColor = isP1More ? c1 : c2;
+
+            for(let i=0; i<diff; i++) {
+                await new Promise(r => setTimeout(r, 600));
+                // Виділення
+                layer.innerHTML += `
+                    <circle cx="${startX + (minScore + i)*120}" cy="${extraY}" r="60" fill="none" stroke="#f59e0b" stroke-width="8" class="pop-in"/>
+                `;
+                // Цифра
+                layer.innerHTML += `
+                    <text x="${startX + (minScore + i)*120}" y="${extraY - 70}" 
+                          fill="#f59e0b" font-size="80" font-weight="900" text-anchor="middle" class="pop-in">
+                          ${i + 1}
+                    </text>
+                `;
+                playSuccessSound(); // Дзинь!
+            }
+
+            // Якщо різниця 0 (нічия)
+            if (diff === 0) {
+                 layer.innerHTML += `
+                    <text x="800" y="450" fill="#10b981" font-size="120" font-weight="900" text-anchor="middle" class="pop-in">=</text>
+                `;
+                playSuccessSound();
+            }
+        }
+
+        function createStaticMosquitoSVG(x, y, color, id) {
+            return `
+                <g transform="translate(${x-50}, ${y-50})" id="${id}">
+                    <circle cx="50" cy="50" r="45" fill="${color}" opacity="0.3"/>
+                    <path d="M 50,50 Q 20,10 10,30 Q 30,50 50,50 Z" fill="#e2e8f0" opacity="0.8"/>
+                    <path d="M 50,50 Q 80,10 90,30 Q 70,50 50,50 Z" fill="#e2e8f0" opacity="0.8"/>
+                    <ellipse cx="50" cy="50" rx="8" ry="15" fill="#334155"/>
+                    <circle cx="50" cy="35" r="6" fill="#0f172a"/>
+                    <line x1="50" y1="29" x2="50" y2="15" stroke="#0f172a" stroke-width="2"/>
+                </g>
+            `;
+        }
+
+        document.getElementById('btn-create-room').addEventListener('click', createRoom);
+        document.getElementById('btn-join-room').addEventListener('click', showJoinInput);
+        document.getElementById('btn-submit-join').addEventListener('click', joinRoom);
+        
+        document.getElementById('btn-start-round').addEventListener('click', async () => {
+            if(!isHost) return;
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            await updateDoc(roomRef, { 
+                status: 'playing',
+                p1Score: 0,
+                p2Score: 0,
+                timer: 5
+            });
+        });
+
+        document.getElementById('btn-submit-math').addEventListener('click', submitMath);
+        
+        // Кнопка Далі (перезапуск раунду)
+        document.getElementById('btn-next').addEventListener('click', async () => {
+            if(!isHost || !roomCode) return;
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            await updateDoc(roomRef, { 
+                status: 'ready',
+                p1Score: 0,
+                p2Score: 0
+            });
+        });
+
+        // Кнопка Назад (вихід в лобі)
+        document.getElementById('btn-back').addEventListener('click', () => {
+            if(unsubscribeRoom) unsubscribeRoom();
+            roomCode = null;
+            isHost = false;
+            
+            // Скидання UI
+            document.getElementById('hud-layer').classList.add('opacity-0');
+            document.getElementById('lobby-ui').classList.remove('hidden', 'opacity-0');
+            document.getElementById('btn-create-room').classList.remove('hidden');
+            document.getElementById('btn-join-room').classList.remove('hidden');
+            document.getElementById('join-input-container').classList.add('hidden');
+            document.getElementById('room-code-display').classList.add('hidden');
+            document.getElementById('waiting-msg').classList.add('hidden');
+            document.getElementById('math-input-layer').classList.add('hidden');
+            document.getElementById('explanation-layer').classList.add('hidden');
+            document.getElementById('btn-start-round').classList.add('hidden');
+            
+            clearMosquitoes();
+            stopBuzz();
+            if(gameLoopInterval) clearInterval(gameLoopInterval);
+        });
+        
+        // Ініціалізація
+        initAuth();
+
+        /* ================= ДОДАНІ БЛОКИ СИСТЕМИ ================= */
+        
+        // 1. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Радар, Ім'я, Блокування)
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user') || sessionStorage.getItem('userName');
+        if (!myName) {
+            myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('userName', myName);
+
+        const tabId = Math.random().toString(36).substr(2, 9);
+        let rtdbConnected = false;
+
+        if (rtdb) {
+            const connectedRef = ref(rtdb, '.info/connected');
+            const userRadarRef = ref(rtdb, `online_users/${myName}/${tabId}`);
+            const blockRef = ref(rtdb, `blocked_users/${myName}`);
+            const forceRefreshRef = ref(rtdb, 'force_refresh');
+            const activityRef = ref(rtdb, 'current_activity');
+
+            onValue(connectedRef, (snap) => {
+                if (snap.val() === true) {
+                    rtdbConnected = true;
+                    set(userRadarRef, true);
+                    onDisconnect(userRadarRef).remove();
+                }
+            });
+
+            window.addEventListener('beforeunload', () => {
+                if (rtdbConnected) set(userRadarRef, null);
+            });
+
+            onValue(blockRef, (snap) => {
+                const overlay = document.getElementById('block-overlay');
+                if (snap.val() === true) {
+                    overlay.style.display = 'flex';
+                } else {
+                    overlay.style.display = 'none';
+                }
+            });
+
+            onValue(forceRefreshRef, (snap) => {
+                if (snap.val()) window.location.reload();
+            });
+
+            let immunity = true;
+            setTimeout(() => immunity = false, 1000);
+            onValue(activityRef, (snap) => {
+                if (immunity) return;
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }
+
+        // 2. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager)
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const closeThemeModal = document.getElementById('close-theme-modal');
+
+        themeBtn.addEventListener('click', () => themeModal.style.display = 'block');
+        closeThemeModal.addEventListener('click', () => themeModal.style.display = 'none');
+
+        // Відновлення локального фону
+        const localBgKey = 'mySavedBg_' + CONFIG.gameId;
+        const savedBg = localStorage.getItem(localBgKey);
+        if (savedBg) {
+            document.body.style.backgroundImage = savedBg !== 'none' ? `url('${savedBg}')` : 'none';
+        }
+
+        let themeIndex = 1;
+        const loadTheme = async () => {
+            if (themeIndex > 1000) return;
+            const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${themeIndex}.webp`;
+            try {
+                const res = await fetch(url, { method: 'HEAD' });
+                if (res.ok) {
+                    const card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.dataset.url = url;
+                    card.innerHTML = `<img src="${url}" alt="Фон ${themeIndex}"><div class="theme-label">Фон ${themeIndex}</div>`;
+                    themeGallery.appendChild(card);
+                    
+                    card.addEventListener('click', () => applyTheme(url));
+                    
+                    themeIndex++;
+                    loadTheme();
+                }
+            } catch (e) {
+                // Зупиняємо при помилці / 404
+            }
+        };
+        loadTheme();
+
+        // Обробка першої картки ("Без фону")
+        themeGallery.children[0].addEventListener('click', () => applyTheme('none'));
+
+        function applyTheme(url) {
+            localStorage.setItem(localBgKey, url);
+            document.body.style.backgroundImage = url !== 'none' ? `url('${url}')` : 'none';
+            if (rtdb) {
+                set(ref(rtdb, 'game_theme'), url);
+            }
+            themeModal.style.display = 'none';
+        }
+
+        if (rtdb) {
+            onValue(ref(rtdb, 'game_theme'), (snap) => {
+                const url = snap.val();
+                if (url) {
+                    document.body.style.backgroundImage = url !== 'none' ? `url('${url}')` : 'none';
+                    localStorage.setItem(localBgKey, url);
+                }
+            });
+        }
+
+        // 3. ІНСТРУМЕНТИ МАСШТАБУВАННЯ (Лупа)
+        let currentZoom = 1;
+        const gc = document.getElementById('game-container');
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            currentZoom += 0.1;
+            gc.style.transform = `scale(${currentZoom})`;
+        });
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            currentZoom -= 0.1;
+            gc.style.transform = `scale(${currentZoom})`;
+        });
+
+        // 4. ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ (З синхронізацією через game_action)
+        const drawBtnGlobal = document.getElementById('toggle-draw-btn-global');
+        const drawPanelGlobal = document.getElementById('draw-panel-global');
+        const drawCloseBtn = document.getElementById('draw-close-btn');
+        const canvas = document.getElementById('draw-canvas-global');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let currentTool = 'pencil'; // pencil or eraser
+        let drawColor = '#ff0000';
+        let drawSize = 5;
+
+        drawBtnGlobal.addEventListener('click', () => {
+            drawPanelGlobal.style.display = 'flex';
+            activateDrawing(true);
+        });
+
+        drawCloseBtn.addEventListener('click', () => {
+            drawPanelGlobal.style.display = 'none';
+            activateDrawing(false);
+        });
+
+        function activateDrawing(active) {
+            isDrawingMode = active;
+            canvas.style.pointerEvents = active ? 'auto' : 'none';
+        }
+
+        document.getElementById('tool-pencil').addEventListener('click', (e) => {
+            currentTool = 'pencil';
+            updateToolUI(e.target);
+        });
+        document.getElementById('tool-eraser').addEventListener('click', (e) => {
+            currentTool = 'eraser';
+            updateToolUI(e.target);
+        });
+        document.getElementById('tool-clear').addEventListener('click', () => {
+            clearCanvas();
+            sendDrawAction('clear_canvas');
+        });
+        document.getElementById('draw-color-picker').addEventListener('input', (e) => drawColor = e.target.value);
+        document.getElementById('draw-size').addEventListener('input', (e) => drawSize = parseInt(e.target.value));
+
+        function updateToolUI(activeBtn) {
+            document.querySelectorAll('.draw-btn').forEach(btn => btn.classList.remove('active'));
+            activeBtn.classList.add('active');
+        }
+
+        // Перетягування панелі
+        const dragHandle = document.getElementById('draw-drag-handle');
+        let isDraggingPanel = false, startX, startY, initialLeft, initialBottom;
+        dragHandle.addEventListener('pointerdown', (e) => {
+            isDraggingPanel = true;
+            startX = e.clientX; startY = e.clientY;
+            const rect = drawPanelGlobal.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialBottom = window.innerHeight - rect.bottom;
+            e.preventDefault();
+        });
+        window.addEventListener('pointermove', (e) => {
+            if (!isDraggingPanel) return;
+            const dx = e.clientX - startX;
+            const dy = startY - e.clientY;
+            drawPanelGlobal.style.left = `${initialLeft + dx + drawPanelGlobal.offsetWidth/2}px`;
+            drawPanelGlobal.style.bottom = `${initialBottom + dy}px`;
+        });
+        window.addEventListener('pointerup', () => isDraggingPanel = false);
+
+        // Малювання
+        let lastX = 0, lastY = 0;
+        
+        function getPointerPos(e) {
+            return {
+                x: e.clientX || (e.touches && e.touches[0].clientX),
+                y: e.clientY || (e.touches && e.touches[0].clientY)
+            };
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getPointerPos(e);
+            lastX = pos.x; lastY = pos.y;
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDrawing || !isDrawingMode) return;
+            const pos = getPointerPos(e);
+            drawLine(lastX, lastY, pos.x, pos.y, currentTool, drawColor, drawSize);
+            
+            // Відправляємо дію через Firebase
+            sendDrawAction('draw_line', {
+                x0: lastX / canvas.width, y0: lastY / canvas.height,
+                x1: pos.x / canvas.width, y1: pos.y / canvas.height,
+                tool: currentTool, color: drawColor, size: drawSize
+            });
+            
+            lastX = pos.x; lastY = pos.y;
+        });
+
+        window.addEventListener('pointerup', () => isDrawing = false);
+
+        function drawLine(x0, y0, x1, y1, tool, color, size) {
+            ctx.beginPath();
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+            ctx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+            ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+            ctx.lineWidth = size;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Синхронізація дій
+        function sendDrawAction(type, data = null) {
+            if (!rtdb) return;
+            const actionRef = push(ref(rtdb, 'game_action'));
+            set(actionRef, {
+                senderId: tabId,
+                timestamp: Date.now(),
+                type: type,
+                data: data
+            });
+        }
+
+        if (rtdb) {
+            const actionNode = ref(rtdb, 'game_action');
+            onValue(actionNode, (snap) => {
+                const actions = snap.val();
+                if (!actions) return;
+                
+                const keys = Object.keys(actions);
+                const lastKey = keys[keys.length - 1];
+                const action = actions[lastKey];
+                
+                // Запобігання зацикленню
+                if (action.senderId === tabId || (Date.now() - action.timestamp > 5000)) return;
+                
+                if (action.type === 'clear_canvas') {
+                    clearCanvas();
+                } else if (action.type === 'draw_line' && action.data) {
+                    const d = action.data;
+                    drawLine(
+                        d.x0 * canvas.width, d.y0 * canvas.height,
+                        d.x1 * canvas.width, d.y1 * canvas.height,
+                        d.tool, d.color, d.size
+                    );
+                }
+            });
+        }
+
+    </script>
+</body>
+</html>
