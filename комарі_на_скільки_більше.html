@@ -64,6 +64,8 @@
         }
         .pupil {
             animation: lookAround 6s infinite ease-in-out;
+            transform-box: fill-box;
+            transform-origin: center;
         }
 
         @keyframes flutter {
@@ -234,17 +236,23 @@
                     <!-- Лапки задні -->
                     <ellipse cx="-80" cy="10" rx="45" ry="20" fill="#228b22" transform="rotate(25 -80 10)"/>
                     <ellipse cx="80" cy="10" rx="45" ry="20" fill="#228b22" transform="rotate(-25 80 10)"/>
+                    
+                    <!-- База очей (виступають за межі тіла, щоб їх точно було видно) -->
+                    <circle cx="-35" cy="-55" rx="22" fill="#32cd32"/>
+                    <circle cx="35" cy="-55" rx="22" fill="#32cd32"/>
+
                     <!-- Тіло -->
                     <ellipse cx="0" cy="0" rx="90" ry="75" fill="#32cd32"/>
+                    
                     <!-- Пузико -->
                     <ellipse cx="0" cy="20" rx="65" ry="45" fill="#98fb98"/>
                     
-                    <!-- Очі (чітко на обличчі) -->
-                    <circle cx="-35" cy="-35" rx="22" fill="white"/>
-                    <circle cx="-35" cy="-35" rx="10" fill="black" class="pupil"/>
+                    <!-- Білки та Зіниці (Чітко малюються ПОВЕРХ тіла) -->
+                    <circle cx="-35" cy="-55" rx="16" fill="white"/>
+                    <g class="pupil"><circle cx="-35" cy="-55" rx="8" fill="black"/></g>
                     
-                    <circle cx="35" cy="-35" rx="22" fill="white"/>
-                    <circle cx="35" cy="-35" rx="10" fill="black" class="pupil"/>
+                    <circle cx="35" cy="-55" rx="16" fill="white"/>
+                    <g class="pupil"><circle cx="35" cy="-55" rx="8" fill="black"/></g>
 
                     <!-- Лапки передні -->
                     <path d="M-40,40 Q-50,90 -20,95" stroke="#32cd32" stroke-width="18" stroke-linecap="round" fill="none"/>
@@ -434,7 +442,7 @@
         let userId = null;
         let isHost = false; 
         const mainRoomPath = `game_rooms/${CONFIG.gameId}/main_room`;
-        let gameState = { status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, hostId: null, mosquitoesState: {}, activePcTarget: null };
+        let gameState = { status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, hostId: null, mosquitoesState: {}, activePcTarget: null, mathInputValue: '' };
         let gameLoopInterval = null;
         let pcLoopInterval = null;
         let localMosquitoes = [];
@@ -519,6 +527,13 @@
             }
         });
 
+        // Синхронізація вводу цифр у реальному часі
+        mathInput.addEventListener('input', (e) => {
+            if (rtdb && mainRoomPath) {
+                update(ref(rtdb, mainRoomPath), { mathInputValue: e.target.value });
+            }
+        });
+
         // Детермінована функція псевдовипадкових чисел для 100% синхронізації руху
         function seededRandom(seed) {
             let x = Math.sin(seed++) * 10000;
@@ -554,7 +569,7 @@
                 
                 runTransaction(roomRef, (currentData) => {
                     if (!currentData) {
-                        return { status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, hostId: userId, mosquitoesState: {}, activePcTarget: null };
+                        return { status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, hostId: userId, mosquitoesState: {}, activePcTarget: null, mathInputValue: '' };
                     }
                     if (!currentData.hostId) {
                         currentData.hostId = userId;
@@ -578,18 +593,18 @@
                         }
                         handleStateChange(data);
                     } else {
-                        handleStateChange({ status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, hostId: isHost ? userId : null, mosquitoesState: {}, activePcTarget: null });
+                        handleStateChange({ status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, hostId: isHost ? userId : null, mosquitoesState: {}, activePcTarget: null, mathInputValue: '' });
                     }
                 });
             } else {
                 isHost = true;
-                handleStateChange({ status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, mosquitoesState: {}, activePcTarget: null });
+                handleStateChange({ status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, mosquitoesState: {}, activePcTarget: null, mathInputValue: '' });
             }
         }
 
         document.getElementById('btn-start-game').addEventListener('click', async () => {
             if(audioCtx.state === 'suspended') audioCtx.resume();
-            const payload = { status: 'playing', p1Score: 0, p2Score: 0, timer: 15, mosquitoesState: {}, activePcTarget: null };
+            const payload = { status: 'playing', p1Score: 0, p2Score: 0, timer: 15, mosquitoesState: {}, activePcTarget: null, mathInputValue: '' };
             if (rtdb) await update(ref(rtdb, mainRoomPath), payload);
             else handleStateChange(Object.assign(gameState, payload));
         });
@@ -599,7 +614,7 @@
             explLayer.classList.add('hidden');
             explLayer.innerHTML = '';
             
-            const payload = { status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, mosquitoesState: {}, activePcTarget: null };
+            const payload = { status: 'waiting', p1Score: 0, p2Score: 0, timer: 15, mosquitoesState: {}, activePcTarget: null, mathInputValue: '' };
             if (rtdb) await update(ref(rtdb, mainRoomPath), payload);
             else handleStateChange(Object.assign(gameState, payload));
         }
@@ -673,10 +688,18 @@
                 hud.classList.add('opacity-0');
                 mathLayer.classList.remove('hidden');
                 
-                const inp = document.getElementById('difference-input');
-                inp.value = '';
-                inp.style.borderColor = 'rgba(255,255,255,0.3)';
-                inp.focus();
+                // Синхронізація поля вводу
+                if (data.mathInputValue !== undefined && data.mathInputValue !== null) {
+                    if (document.activeElement !== mathInput) {
+                        mathInput.value = data.mathInputValue;
+                    }
+                } else {
+                    if (document.activeElement !== mathInput && !mathInput.value) {
+                        mathInput.value = '';
+                    }
+                }
+                
+                mathInput.style.borderColor = 'rgba(255,255,255,0.3)';
             }
             else if (data.status === 'explanation') {
                 mathLayer.classList.add('hidden');
@@ -723,6 +746,7 @@
             if(gameState.status !== 'playing') return;
             const t = Date.now() / 1000;
             
+            // Рух комарів
             localMosquitoes.forEach(m => {
                 if(!m.active) return;
                 const pos = getMosquitoPosition(m.id, t);
@@ -736,6 +760,7 @@
                 m.el.children[0].style.transform = `rotate(${angle}deg)`;
             });
 
+            // Рух долоньки комп'ютера за ціллю
             const pcHand = document.getElementById('pc-hand');
             if (gameState.activePcTarget !== undefined && gameState.activePcTarget !== null) {
                 const targetM = localMosquitoes.find(m => m.id === gameState.activePcTarget);
@@ -894,7 +919,6 @@
             const minScore = Math.min(s1, s2);
             const diff = maxScore - minScore;
             
-            // Динамічний розрахунок відступів (максимум 120, інакше зменшується)
             const gap = Math.min(120, 1200 / Math.max(1, maxScore));
             const scale = Math.min(1, gap / 100);
             const startX = 800 - ((maxScore - 1) * gap) / 2;
@@ -928,12 +952,12 @@
                 for(let i=0; i<diff; i++) {
                     await new Promise(r => setTimeout(r, 400));
                     const cx = startX + (minScore + i)*gap;
-                    svgRoot.innerHTML += `<circle cx="${cx}" cy="${extraY}" r="${55*scale}" fill="none" stroke="#f59e0b" stroke-width="6" />`;
-                    svgRoot.innerHTML += `<text x="${cx}" y="${extraY - 70*scale}" fill="#f59e0b" font-size="${60*scale}" font-weight="900" text-anchor="middle">${i + 1}</text>`;
+                    svgRoot.innerHTML += `<circle cx="${cx}" cy="${extraY}" r="${55*scale}" fill="none" stroke="#f59e0b" stroke-width="6" class="pop-in"/>`;
+                    svgRoot.innerHTML += `<text x="${cx}" y="${extraY - 70*scale}" fill="#f59e0b" font-size="${60*scale}" font-weight="900" text-anchor="middle" class="pop-in">${i + 1}</text>`;
                     playSuccessSound(); 
                 }
             } else {
-                svgRoot.innerHTML += `<text x="800" y="450" fill="#10b981" font-size="150" font-weight="900" text-anchor="middle">=</text>`;
+                svgRoot.innerHTML += `<text x="800" y="450" fill="#10b981" font-size="150" font-weight="900" text-anchor="middle" class="pop-in">=</text>`;
                 playSuccessSound();
             }
 
@@ -1095,7 +1119,7 @@
 
         let isDrawingMode = false, isDrawing = false, currentTool = 'pencil', drawColor = '#ff0000', drawSize = 5;
 
-        // Не вмикається автоматично (за замовчуванням прихована)
+        // Малювалка схована при старті, активується лише по кліку
         drawBtnGlobal.addEventListener('click', () => { drawPanelGlobal.style.display = 'flex'; activateDrawing(true); });
         drawCloseBtn.addEventListener('click', () => { drawPanelGlobal.style.display = 'none'; activateDrawing(false); });
 
