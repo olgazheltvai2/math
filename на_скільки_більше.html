@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Космічна Різниця</title>
+    
+    <!-- Підключення Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        /* Скидання стилів та базові налаштування */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            /* Космічний градієнт */
+            background: radial-gradient(circle at center, #2e004f, #000022);
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Деталізований фон з патернами */
+        #background-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        /* Головний контейнер гри */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.3s ease; /* Для лупи */
+        }
+
+        /* Кнопки навігації (космічний стиль) */
+        .nav-btn {
+            position: absolute;
+            bottom: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+            border: 4px solid #00ffff;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0, 255, 255, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: transform 0.2s, filter 0.2s;
+            z-index: 50;
+        }
+
+        .nav-btn:hover {
+            transform: scale(1.1);
+            filter: brightness(1.3);
+            box-shadow: 0 8px 30px rgba(0, 255, 255, 0.8);
+        }
+
+        .nav-btn:active {
+            transform: scale(0.95);
+        }
+
+        #btn-prev { left: 20px; }
+        #btn-next { right: 20px; }
+
+        .nav-icon {
+            fill: #fff;
+            width: 30px;
+            height: 30px;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        }
+
+        /* Контейнери для персонажів */
+        #stage {
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-end;
+            width: 80%;
+            height: 60%;
+            position: relative;
+            padding-bottom: 50px;
+        }
+
+        .character-wrapper {
+            position: relative;
+            width: 250px;
+            height: 350px;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+
+        .character-wrapper:hover {
+            transform: scale(1.05);
+            filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.6));
+        }
+
+        /* Хмаринки з числами (космічна плазма) */
+        .number-bubble {
+            position: absolute;
+            top: -60px;
+            left: 50%;
+            transform: translateX(-50%) scale(0);
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle, #ff00ff, #8a2be2);
+            border: 4px solid #00ffff;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            color: #fff;
+            font-weight: bold;
+            box-shadow: 0 0 25px rgba(255, 0, 255, 0.8);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 10;
+        }
+
+        .number-bubble.show {
+            transform: translateX(-50%) scale(1);
+        }
+
+        /* Анімації танцю */
+        @keyframes dance-body {
+            0% { transform: translateY(0) rotate(0deg); }
+            25% { transform: translateY(-15px) rotate(5deg); }
+            50% { transform: translateY(0) rotate(0deg); }
+            75% { transform: translateY(-15px) rotate(-5deg); }
+            100% { transform: translateY(0) rotate(0deg); }
+        }
+
+        @keyframes dance-head {
+            0% { transform: rotate(0deg); }
+            25% { transform: rotate(15deg); }
+            50% { transform: rotate(0deg); }
+            75% { transform: rotate(-15deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        @keyframes dance-arm-l {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(-60deg); }
+            100% { transform: rotate(0deg); }
+        }
+
+        @keyframes dance-arm-r {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(60deg); }
+            100% { transform: rotate(0deg); }
+        }
+        
+        @keyframes dance-leg-l {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-20px) rotate(20deg); }
+            100% { transform: translateY(0); }
+        }
+
+        @keyframes dance-leg-r {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-20px) rotate(-20deg); }
+            100% { transform: translateY(0); }
+        }
+
+        .dancing .char-body { animation: dance-body 0.5s infinite; }
+        .dancing .char-head { animation: dance-head 0.5s infinite; }
+        .dancing .char-arm-l { animation: dance-arm-l 0.4s infinite; }
+        .dancing .char-arm-r { animation: dance-arm-r 0.4s infinite; }
+        .dancing .char-leg-l { animation: dance-leg-l 0.6s infinite; }
+        .dancing .char-leg-r { animation: dance-leg-r 0.6s infinite delay 0.3s; }
+
+        /* Ввід результату (кіберпанк стиль) */
+        #input-panel {
+            position: absolute;
+            top: 20%;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s;
+            z-index: 20;
+            background: rgba(0, 0, 30, 0.7);
+            padding: 20px;
+            border-radius: 30px;
+            border: 4px dashed #ff00ff;
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.4);
+        }
+
+        #input-panel.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #diff-input {
+            width: 100px;
+            height: 80px;
+            font-size: 50px;
+            text-align: center;
+            background: #00ffff;
+            color: #000033;
+            border: 5px solid #ff00ff;
+            border-radius: 20px;
+            outline: none;
+            box-shadow: inset 0 5px 10px rgba(0,0,0,0.4), 0 0 15px #00ffff;
+            font-family: inherit;
+            font-weight: bold;
+        }
+
+        #submit-btn {
+            width: 80px;
+            height: 80px;
+            background: #ff00ff;
+            border: 5px solid #00ffff;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 20px #ff00ff;
+            transition: all 0.3s;
+        }
+        
+        #submit-btn:hover { background: #d200d2; transform: scale(1.1); box-shadow: 0 0 30px #00ffff; }
+        #submit-btn svg { width: 50px; height: 50px; fill: #fff; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)); }
+
+        /* Візуалізація результату */
+        #visualization-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 30;
+            pointer-events: none;
+            background: rgba(0, 0, 20, 0.85);
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        #visualization-layer.show {
+            opacity: 1;
+        }
+
+        .vis-item {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            transform: scale(0);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(0 0 10px #ffcf00);
+        }
+
+        .vis-item.pop { transform: scale(1); }
+
+        .vis-line {
+            position: absolute;
+            height: 6px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff);
+            transform-origin: left center;
+            transform: scaleX(0);
+            transition: transform 0.5s linear;
+            border-radius: 3px;
+            box-shadow: 0 0 15px #00ffff, 0 0 20px #ff00ff;
+        }
+
+        .vis-line.draw { transform: scaleX(1); }
+
+        .vis-count {
+            position: absolute;
+            color: #ffcf00;
+            font-size: 45px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 0 0 20px #ff00ff;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.4s;
+        }
+
+        .vis-count.show {
+            opacity: 1;
+            transform: translateY(-30px) scale(1.2);
+        }
+
+        /* Флеш екрану для зворотного зв'язку */
+        #flash-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* ДОДАНІ СТИЛІ ДЛЯ НОВИХ ФУНКЦІЙ */
+        
+        /* Вибір діапазону */
+        #range-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 50;
+            background: rgba(0, 0, 30, 0.8);
+            border: 2px solid #00ffff;
+            border-radius: 15px;
+            padding: 10px 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            box-shadow: 0 0 15px rgba(0,255,255,0.4);
+        }
+        #range-panel input {
+            width: 60px;
+            height: 30px;
+            background: #00ffff;
+            color: #000;
+            font-weight: bold;
+            border: none;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 16px;
+            outline: none;
+        }
+
+        /* Лупа (Масштабування) */
+        #zoom-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 50;
+            display: flex;
+            gap: 10px;
+        }
+        .zoom-btn {
+            width: 45px;
+            height: 45px;
+            background: rgba(0, 0, 30, 0.8);
+            border: 2px solid #ff00ff;
+            color: #ff00ff;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(255,0,255,0.5);
+            transition: all 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .zoom-btn:hover { background: #ff00ff; color: #fff; }
+
+        /* Theme Manager UI (Суворо Arial) */
+        #theme-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 100px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #2c3e50;
+            color: white;
+            font-size: 30px;
+            border: 3px solid #ecf0f1;
+            cursor: pointer;
+            z-index: 90001;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            font-family: Arial, sans-serif;
+        }
+        #theme-modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            width: 80%;
+            max-width: 600px;
+            max-height: 60vh;
+            overflow-y: auto;
+            z-index: 90002;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            font-family: Arial, sans-serif;
+        }
+        #theme-modal h2 { margin-bottom: 15px; text-align: center; color: #333; }
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+        }
+        .theme-card {
+            position: relative;
+            cursor: pointer;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 2px solid transparent;
+            transition: transform 0.2s;
+            height: 80px;
+            background-color: #ecf0f1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .theme-card:hover { transform: scale(1.05); border-color: #3498db; }
+        .theme-card img { width: 100%; height: 100%; object-fit: cover; }
+        .theme-card span {
+            position: absolute;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            bottom: 0; width: 100%;
+            text-align: center;
+            font-size: 12px;
+            padding: 3px 0;
+        }
+        #theme-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.6);
+            z-index: 90001;
+        }
+        .close-modal {
+            position: absolute; top: 10px; right: 15px;
+            cursor: pointer; font-size: 24px; color: #333; font-weight: bold;
+        }
+
+        /* Global Drawing Tool UI */
+        #draw-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 90000;
+            pointer-events: none;
+        }
+        #toggle-draw-btn-global {
+            position: absolute;
+            bottom: 85px; right: 20px;
+            width: 60px; height: 60px;
+            border-radius: 50%;
+            background: #8e44ad;
+            color: white;
+            font-size: 24px;
+            border: 3px solid #ecf0f1;
+            cursor: pointer;
+            z-index: 90001;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            font-family: Arial, sans-serif;
+        }
+        #draw-panel-global {
+            display: none;
+            position: absolute;
+            top: 20px; left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border-radius: 10px;
+            padding: 10px;
+            z-index: 90002;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 250px;
+        }
+        #draw-panel-global.hidden { display: none !important; }
+        .draw-header {
+            cursor: grab;
+            background: #f1c40f;
+            padding: 5px;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 5px;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+        }
+        .draw-controls { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; }
+        .draw-btn {
+            padding: 5px 10px; border: none; border-radius: 5px;
+            cursor: pointer; font-weight: bold; background: #ecf0f1;
+        }
+        .draw-btn.active { background: #3498db; color: white; }
+        .draw-btn.clear { background: #e74c3c; color: white; width: 100%; }
+
+        /* Universal Block Overlay */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 999999;
+            color: red;
+            font-size: 40px;
+            font-weight: bold;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        @media (max-width: 768px) {
+            #range-panel { flex-direction: column; gap: 5px; font-size: 14px; }
+            .nav-btn { width: 50px; height: 50px; }
+            #diff-input { width: 80px; height: 60px; font-size: 40px; }
+            #submit-btn { width: 60px; height: 60px; }
+            .number-bubble { width: 60px; height: 60px; font-size: 30px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Складний сюжетний фон: 16:9 Космос з розмиттям -->
+    <svg id="background-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <filter id="bg-blur"><feGaussianBlur stdDeviation="4" /></filter>
+            <radialGradient id="nebula-grad" cx="50%" cy="40%" r="65%">
+                <stop offset="0%" stop-color="#4b0082" stop-opacity="0.8"/>
+                <stop offset="60%" stop-color="#191970" stop-opacity="0.9"/>
+                <stop offset="100%" stop-color="#00001a" stop-opacity="1"/>
+            </radialGradient>
+            
+            <g id="apple">
+                <path d="M30,0 L38,20 L60,22 L43,37 L48,58 L30,47 L12,58 L17,37 L0,22 L22,20 Z" fill="#ffcf00"/>
+                <path d="M30,8 L35,22 L48,24 L36,34 L39,48 L30,41 L21,48 L24,34 L12,24 L25,22 Z" fill="#ffee88"/>
+                <circle cx="30" cy="30" r="6" fill="#ffffff" opacity="0.9"/>
+            </g>
+        </defs>
+        
+        <g filter="url(#bg-blur)">
+            <rect width="100%" height="100%" fill="url(#nebula-grad)"/>
+            <g opacity="0.7">
+                <circle cx="250" cy="150" r="3" fill="#ffffff"><animate attributeName="opacity" values="0.2;1;0.2" dur="3s" repeatCount="indefinite" /></circle>
+                <circle cx="1600" cy="200" r="4" fill="#00ffff"><animate attributeName="opacity" values="0.5;1;0.5" dur="4s" repeatCount="indefinite" /></circle>
+                <circle cx="800" cy="100" r="2.5" fill="#ff00ff"><animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" /></circle>
+                <circle cx="950" cy="400" r="3.5" fill="#ffffff"><animate attributeName="opacity" values="1;0.2;1" dur="5s" repeatCount="indefinite" /></circle>
+                <circle cx="120" cy="500" r="2" fill="#00ffff" />
+                <circle cx="1750" cy="650" r="3" fill="#ffcf00" />
+            </g>
+            <g transform="translate(1500, 250) rotate(-20)">
+                <ellipse cx="0" cy="0" rx="160" ry="40" fill="none" stroke="#00ffff" stroke-width="15" opacity="0.6"/>
+                <ellipse cx="0" cy="0" rx="140" ry="30" fill="none" stroke="#ff00ff" stroke-width="8" opacity="0.8"/>
+                <circle cx="0" cy="0" r="90" fill="url(#nebula-grad)" stroke="#00ffff" stroke-width="4"/>
+                <path d="M-90,0 A90,90 0 0,0 90,0" fill="#00ffff" opacity="0.2"/>
+            </g>
+            <circle cx="250" cy="450" r="150" fill="#8a2be2" opacity="0.6"/>
+            <path d="M100,450 A150,150 0 0,0 400,450" fill="#4b0082" opacity="0.5"/>
+            <circle cx="300" cy="380" r="20" fill="#4b0082" opacity="0.4"/>
+            <circle cx="180" cy="480" r="35" fill="#4b0082" opacity="0.4"/>
+            <path d="M0,850 Q480,750 960,880 T1920,850 L1920,1080 L0,1080 Z" fill="#1a1a3a"/>
+            <ellipse cx="200" cy="950" rx="90" ry="25" fill="#101025" stroke="#252545" stroke-width="5"/>
+            <ellipse cx="800" cy="1000" rx="120" ry="30" fill="#101025" stroke="#252545" stroke-width="5"/>
+            <ellipse cx="1600" cy="920" rx="150" ry="40" fill="#101025" stroke="#252545" stroke-width="5"/>
+            <path d="M0,880 Q480,780 960,910" fill="none" stroke="#353565" stroke-width="8" stroke-dasharray="20,15"/>
+        </g>
+    </svg>
+
+    <!-- Панель вибору діапазону -->
+    <div id="range-panel">
+        <span>Діапазон:</span>
+        <input type="number" id="range-min" value="1" min="1">
+        <span>-</span>
+        <input type="number" id="range-max" value="10" min="1">
+    </div>
+
+    <!-- Лупа для масштабування -->
+    <div id="zoom-controls">
+        <button class="zoom-btn" id="zoom-in">🔎+</button>
+        <button class="zoom-btn" id="zoom-out">🔎-</button>
+    </div>
+
+    <div id="game-container">
+        
+        <!-- Кнопки керування -->
+        <div id="btn-prev" class="nav-btn">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/></svg>
+        </div>
+        <div id="btn-next" class="nav-btn">
+            <svg class="nav-icon" viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+        </div>
+
+        <!-- Панель вводу різниці -->
+        <div id="input-panel">
+            <input type="number" id="diff-input" min="0" max="100" />
+            <div id="submit-btn">
+                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            </div>
+        </div>
+
+        <!-- Сцена з персонажами -->
+        <div id="stage">
+            
+            <!-- Гравець 1: Космічний Робот -->
+            <div id="char1" class="character-wrapper">
+                <div class="number-bubble" id="bubble1"></div>
+                <svg viewBox="0 0 200 300" width="100%" height="100%">
+                    <g class="char-body" transform-origin="100 200">
+                        <rect x="55" y="125" width="90" height="95" rx="20" fill="#c0c0d0" stroke="#707090" stroke-width="4"/>
+                        <rect x="70" y="140" width="60" height="40" rx="8" fill="#101010"/>
+                        <path d="M75,160 L85,160 L92,145 L100,175 L108,160 L125,160" fill="none" stroke="#00ff00" stroke-width="3" stroke-linecap="round"/>
+                        <circle cx="80" cy="200" r="7" fill="#ff0055"/>
+                        <circle cx="100" cy="200" r="7" fill="#ffcc00"/>
+                        <circle cx="120" cy="200" r="7" fill="#00ffff"/>
+                        
+                        <g class="char-leg-l" transform-origin="75 220">
+                            <circle cx="75" cy="225" r="10" fill="#505070"/>
+                            <rect x="65" y="230" width="20" height="40" fill="#8080a0" rx="5"/>
+                            <path d="M50,270 L100,270 L90,290 L60,290 Z" fill="#404050"/>
+                            <circle cx="65" cy="280" r="4" fill="#00ffff"/>
+                        </g>
+                        <g class="char-leg-r" transform-origin="125 220">
+                            <circle cx="125" cy="225" r="10" fill="#505070"/>
+                            <rect x="115" y="230" width="20" height="40" fill="#8080a0" rx="5"/>
+                            <path d="M100,270 L150,270 L140,290 L110,290 Z" fill="#404050"/>
+                            <circle cx="135" cy="280" r="4" fill="#00ffff"/>
+                        </g>
+
+                        <g class="char-arm-l" transform-origin="50 150">
+                            <rect x="25" y="140" width="30" height="20" fill="#707090" rx="8"/>
+                            <rect x="15" y="155" width="20" height="45" fill="#9090b0" rx="5"/>
+                            <path d="M10,200 Q0,215 15,225" fill="none" stroke="#d0d0e0" stroke-width="8" stroke-linecap="round"/>
+                            <path d="M30,200 Q40,215 25,225" fill="none" stroke="#d0d0e0" stroke-width="8" stroke-linecap="round"/>
+                        </g>
+                        <g class="char-arm-r" transform-origin="150 150">
+                            <rect x="145" y="140" width="30" height="20" fill="#707090" rx="8"/>
+                            <rect x="165" y="155" width="20" height="45" fill="#9090b0" rx="5"/>
+                            <path d="M170,200 Q160,215 175,225" fill="none" stroke="#d0d0e0" stroke-width="8" stroke-linecap="round"/>
+                            <path d="M190,200 Q200,215 185,225" fill="none" stroke="#d0d0e0" stroke-width="8" stroke-linecap="round"/>
+                        </g>
+
+                        <g class="char-head" transform-origin="100 120">
+                            <rect x="90" y="115" width="20" height="15" fill="#505070"/>
+                            <rect x="60" y="45" width="80" height="70" rx="15" fill="#c0c0d0" stroke="#707090" stroke-width="4"/>
+                            <rect x="45" y="65" width="15" height="30" rx="5" fill="#8080a0"/>
+                            <rect x="140" y="65" width="15" height="30" rx="5" fill="#8080a0"/>
+                            <line x1="100" y1="45" x2="100" y2="15" stroke="#707090" stroke-width="5" stroke-linecap="round"/>
+                            <circle cx="100" cy="15" r="8" fill="#ff00ff">
+                                <animate attributeName="fill" values="#ff00ff;#00ffff;#ff00ff" dur="1s" repeatCount="indefinite" />
+                            </circle>
+                            <rect x="70" y="60" width="60" height="30" rx="10" fill="#050515"/>
+                            <circle cx="85" cy="75" r="7" fill="#00ffff" filter="drop-shadow(0 0 5px #00ffff)"/>
+                            <circle cx="115" cy="75" r="7" fill="#00ffff" filter="drop-shadow(0 0 5px #00ffff)"/>
+                        </g>
+                    </g>
+                </svg>
+            </div>
+
+            <!-- Гравець 2: Прибулець у скафандрі -->
+            <div id="char2" class="character-wrapper">
+                <div class="number-bubble" id="bubble2"></div>
+                <svg viewBox="0 0 200 300" width="100%" height="100%">
+                    <g class="char-body" transform-origin="100 210">
+                        <ellipse cx="100" cy="165" rx="45" ry="60" fill="#ff5500" />
+                        <ellipse cx="100" cy="165" rx="30" ry="45" fill="#ff8800" />
+                        <circle cx="100" cy="140" r="15" fill="#ffffff" stroke="#cc4400" stroke-width="2"/>
+                        <path d="M100,128 L103,137 L112,137 L105,143 L107,152 L100,147 L93,152 L95,143 L88,137 L97,137 Z" fill="#00ffff"/>
+                        
+                        <path d="M57,190 Q100,205 143,190 L140,205 Q100,220 60,205 Z" fill="#444444"/>
+                        <circle cx="100" cy="200" r="8" fill="#00ffff"/>
+
+                        <g class="char-leg-l" transform-origin="75 220">
+                            <path d="M60,210 Q50,250 40,270 L75,275 Q80,250 85,210 Z" fill="#ff5500"/>
+                            <path d="M35,270 L80,275 L85,295 L25,290 Z" fill="#444444" rx="5"/>
+                            <path d="M30,290 Q50,285 80,295" fill="none" stroke="#00ffff" stroke-width="3"/>
+                        </g>
+                        <g class="char-leg-r" transform-origin="125 220">
+                            <path d="M140,210 Q150,250 160,270 L125,275 Q120,250 115,210 Z" fill="#ff5500"/>
+                            <path d="M165,270 L120,275 L115,295 L175,290 Z" fill="#444444" rx="5"/>
+                            <path d="M170,290 Q150,285 120,295" fill="none" stroke="#00ffff" stroke-width="3"/>
+                        </g>
+
+                        <g class="char-arm-l" transform-origin="55 140">
+                            <path d="M55,140 Q10,150 20,200" fill="none" stroke="#ff5500" stroke-width="18" stroke-linecap="round"/>
+                            <ellipse cx="35" cy="165" rx="10" ry="5" fill="#ffcc00" transform="rotate(45 35 165)"/>
+                            <circle cx="20" cy="205" r="14" fill="#444444"/>
+                        </g>
+                        <g class="char-arm-r" transform-origin="145 140">
+                            <path d="M145,140 Q190,150 180,200" fill="none" stroke="#ff5500" stroke-width="18" stroke-linecap="round"/>
+                            <ellipse cx="165" cy="165" rx="10" ry="5" fill="#ffcc00" transform="rotate(-45 165 165)"/>
+                            <circle cx="180" cy="205" r="14" fill="#444444"/>
+                        </g>
+
+                        <g class="char-head" transform-origin="100 110">
+                            <circle cx="100" cy="75" r="55" fill="#00ffff" opacity="0.15"/>
+                            <path d="M100,115 C45,115 50,55 100,45 C150,55 155,115 100,115 Z" fill="#00ff66"/>
+                            <g transform="translate(75, 80) rotate(15)">
+                                <ellipse cx="0" cy="0" rx="16" ry="25" fill="#050505"/>
+                                <circle cx="5" cy="-8" r="6" fill="#ffffff"/>
+                                <circle cx="-3" cy="5" r="2" fill="#ffffff"/>
+                            </g>
+                            <g transform="translate(125, 80) rotate(-15)">
+                                <ellipse cx="0" cy="0" rx="16" ry="25" fill="#050505"/>
+                                <circle cx="-5" cy="-8" r="6" fill="#ffffff"/>
+                                <circle cx="3" cy="5" r="2" fill="#ffffff"/>
+                            </g>
+                            <path d="M92,102 Q100,110 108,102" fill="none" stroke="#004400" stroke-width="2.5" stroke-linecap="round"/>
+                            <path d="M82,52 Q70,30 60,35" fill="none" stroke="#00ff66" stroke-width="4" stroke-linecap="round"/>
+                            <circle cx="60" cy="35" r="6" fill="#ff00ff"/>
+                            <path d="M118,52 Q130,30 140,35" fill="none" stroke="#00ff66" stroke-width="4" stroke-linecap="round"/>
+                            <circle cx="140" cy="35" r="6" fill="#ff00ff"/>
+                            
+                            <path d="M60,55 A45,45 0 0,1 120,35" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+                            <ellipse cx="100" cy="120" rx="40" ry="10" fill="#c0c0c0" stroke="#777" stroke-width="2"/>
+                        </g>
+                    </g>
+                </svg>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Шар для візуальної перевірки -->
+    <div id="visualization-layer"></div>
+
+    <!-- Екранний флеш -->
+    <div id="flash-overlay"></div>
+
+    <!-- UI ДЛЯ НОВИХ ІНСТРУМЕНТІВ -->
+    
+    <!-- Theme Manager -->
+    <button id="theme-btn">⚙️</button>
+    <div id="theme-overlay"></div>
+    <div id="theme-modal">
+        <span class="close-modal" id="close-theme">✕</span>
+        <h2>Оберіть фон гри</h2>
+        <div class="theme-grid" id="theme-gallery">
+            <!-- Сюди будуть завантажені фони -->
+        </div>
+    </div>
+
+    <!-- Глобальне малювання -->
+    <canvas id="draw-canvas"></canvas>
+    <button id="toggle-draw-btn-global">✏️</button>
+    
+    <div id="draw-panel-global" class="hidden">
+        <div class="draw-header" id="draw-panel-header">
+            Малювання <span style="cursor:pointer;" id="close-draw-panel">✕</span>
+        </div>
+        <div class="draw-controls">
+            <button class="draw-btn active" id="draw-pencil">✏️ Олівець</button>
+            <button class="draw-btn" id="draw-eraser">🧽 Гумка</button>
+        </div>
+        <input type="range" id="draw-size" min="1" max="50" value="5" style="width:100%">
+        <input type="color" id="draw-color" value="#ff00ff" style="width:100%; height: 30px;">
+        <button class="draw-btn clear" id="draw-clear">🗑️ Очистити</button>
+    </div>
+
+    <!-- Універсальний Екран Блокування -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <script>
+        // CONFIG ІНСТРУМЕНТІВ ТА FIREBASE
+        const CONFIG = {
+            gameId: 'space_math_diff_001' // Унікальний ID гри для localStorage
+        };
+
+        // Firebase ініціалізація
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // ІДЕНТИФІКАЦІЯ КОРИСТУВАЧА
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user');
+        if (myName) {
+            sessionStorage.setItem('gameUserName', myName);
+        } else {
+            myName = sessionStorage.getItem('gameUserName');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('gameUserName', myName);
+            }
+        }
+
+        // РАДАР ТА БЛОКУВАННЯ
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const radarRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                radarRef.set(true);
+                radarRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => radarRef.remove());
+
+        db.ref('force_refresh').on('value', snap => {
+            if (snap.val() && snap.val() > Date.now() - 5000) window.location.reload();
+        });
+
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // ПОВЕРНЕННЯ В ЛОБІ
+        let lobbyImmunity = true;
+        setTimeout(() => lobbyImmunity = false, 1000);
+        db.ref('current_activity').on('value', snap => {
+            if (!lobbyImmunity && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // СИНХРОНІЗАЦІЯ ЛОГІКИ ГРИ ЧЕРЕЗ FIREBASE
+        function sendGameAction(type, data) {
+            const action = {
+                senderId: myName,
+                timestamp: Date.now(),
+                type: type,
+                data: data
+            };
+            if (window.db) {
+                db.ref('game_action').set(action);
+            } else {
+                processGameAction(action);
+            }
+        }
+
+        let lastActionTime = 0;
+        db.ref('game_action').on('value', snap => {
+            const action = snap.val();
+            if (!action || action.timestamp <= lastActionTime) return;
+            lastActionTime = action.timestamp;
+            processGameAction(action);
+        });
+
+        function processGameAction(action) {
+            // Для малювання обробляємо одразу (від інших), своє ми малюємо локально для швидкості
+            if (action.type === 'draw_line' && action.senderId !== myName) remoteDrawLine(action.data);
+            if (action.type === 'clear_canvas' && action.senderId !== myName) remoteClearCanvas();
+            
+            // Логіка гри (синхронізується для всіх одночасно, щоб не було розбіжностей)
+            if (action.senderId === myName && (action.type !== 'range_change' && action.type !== 'theme_change')) return; // Уникаємо дублювання для себе, якщо вже виконали локально
+
+            if (action.type === 'char_click' && action.senderId !== myName) executeCharClick(action.data.charNum, action.data.num);
+            if (action.type === 'visualize' && action.senderId !== myName) executeVisualize(action.data.userAns);
+            if (action.type === 'reset' && action.senderId !== myName) executeReset();
+            
+            if (action.type === 'range_change' && action.senderId !== myName) {
+                document.getElementById('range-min').value = action.data.min;
+                document.getElementById('range-max').value = action.data.max;
+            }
+        }
+
+        // ================= ОРИГІНАЛЬНА ЛОГІКА ГРИ =================
+        let state = {
+            char1Done: false,
+            char2Done: false,
+            num1: 0,
+            num2: 0,
+            isVisualizing: false
+        };
+
+        const char1 = document.getElementById('char1');
+        const char2 = document.getElementById('char2');
+        const bubble1 = document.getElementById('bubble1');
+        const bubble2 = document.getElementById('bubble2');
+        const inputPanel = document.getElementById('input-panel');
+        const diffInput = document.getElementById('diff-input');
+        const submitBtn = document.getElementById('submit-btn');
+        const visLayer = document.getElementById('visualization-layer');
+        const flashOverlay = document.getElementById('flash-overlay');
+        const btnNext = document.getElementById('btn-next');
+        const btnPrev = document.getElementById('btn-prev');
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playTone(frequency, type, duration, vol=0.1, slideFreq=null) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            if(slideFreq) {
+                osc.frequency.exponentialRampToValueAtTime(slideFreq, audioCtx.currentTime + duration);
+            }
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        const sounds = {
+            click: () => playTone(600, 'sine', 0.1, 0.1, 800),
+            dance: () => {
+                let time = 0;
+                for(let i=0; i<6; i++) {
+                    setTimeout(() => playTone(300 + (i%2)*200, 'triangle', 0.15), time);
+                    time += 200;
+                }
+            },
+            pop: () => playTone(800, 'sine', 0.1, 0.2, 1200),
+            line: () => playTone(400, 'square', 0.2, 0.05, 600),
+            count: () => playTone(900, 'sawtooth', 0.15, 0.1, 1500),
+            success: () => {
+                playTone(440, 'sine', 0.1);
+                setTimeout(() => playTone(554, 'sine', 0.1), 100);
+                setTimeout(() => playTone(659, 'sine', 0.3), 200);
+                setTimeout(() => playTone(880, 'sine', 0.5), 300);
+            },
+            error: () => {
+                playTone(200, 'sawtooth', 0.3, 0.2, 150);
+                setTimeout(() => playTone(150, 'sawtooth', 0.5, 0.2, 100), 250);
+            }
+        };
+
+        const getRand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+        function handleCharClick(charNum) {
+            if (state[`char${charNum}Done`]) return;
+            const minVal = parseInt(document.getElementById('range-min').value) || 1;
+            const maxVal = parseInt(document.getElementById('range-max').value) || 10;
+            const num = getRand(minVal, maxVal);
+            
+            // Виконуємо локально і надсилаємо іншим
+            executeCharClick(charNum, num);
+            sendGameAction('char_click', { charNum, num });
+        }
+
+        function executeCharClick(charNum, num) {
+            if (state[`char${charNum}Done`]) return;
+            sounds.click();
+            sounds.dance();
+            
+            const charEl = charNum === 1 ? char1 : char2;
+            charEl.classList.add('dancing');
+            
+            setTimeout(() => {
+                charEl.classList.remove('dancing');
+                state[`num${charNum}`] = num;
+                state[`char${charNum}Done`] = true;
+                
+                const bubble = charNum === 1 ? bubble1 : bubble2;
+                bubble.innerText = num;
+                bubble.classList.add('show');
+                sounds.pop();
+                
+                checkBothDone();
+            }, 2500);
+        }
+
+        char1.addEventListener('click', () => handleCharClick(1));
+        char2.addEventListener('click', () => handleCharClick(2));
+
+        // Синхронізація зміни діапазону
+        document.getElementById('range-min').addEventListener('change', () => {
+            sendGameAction('range_change', {min: document.getElementById('range-min').value, max: document.getElementById('range-max').value});
+        });
+        document.getElementById('range-max').addEventListener('change', () => {
+            sendGameAction('range_change', {min: document.getElementById('range-min').value, max: document.getElementById('range-max').value});
+        });
+
+        function checkBothDone() {
+            if (state.char1Done && state.char2Done) {
+                setTimeout(() => {
+                    inputPanel.classList.add('active');
+                    diffInput.focus();
+                }, 500);
+            }
+        }
+
+        function triggerVisualize() {
+            if(diffInput.value === '' || state.isVisualizing) return;
+            const ans = parseInt(diffInput.value);
+            executeVisualize(ans);
+            sendGameAction('visualize', { userAns: ans });
+        }
+
+        submitBtn.addEventListener('click', triggerVisualize);
+        diffInput.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') triggerVisualize();
+        });
+
+        function executeVisualize(userAns) {
+            if(state.isVisualizing) return;
+            state.isVisualizing = true;
+            inputPanel.classList.remove('active');
+            
+            const actualDiff = Math.abs(state.num1 - state.num2);
+            visLayer.innerHTML = '';
+            visLayer.classList.add('show');
+
+            buildVisualization(userAns, actualDiff);
+        }
+
+        function buildVisualization(userAns, actualDiff) {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const leftX = w * 0.3;
+            const rightX = w * 0.7;
+            const startY = h * 0.15;
+            const spacing = Math.min((h * 0.7) / Math.max(state.num1, state.num2, 1), 80);
+
+            const createGroup = (count, x) => {
+                let group = [];
+                for(let i=0; i<count; i++) {
+                    let y = startY + (i * spacing);
+                    group.push({x: x, y: y});
+                }
+                return group;
+            };
+
+            const group1 = createGroup(state.num1, leftX);
+            const group2 = createGroup(state.num2, rightX);
+            const pairsCount = Math.min(state.num1, state.num2);
+
+            const drawItem = (pos, id) => {
+                let item = document.createElement('div');
+                item.className = 'vis-item';
+                item.style.left = `${pos.x - 30}px`;
+                item.style.top = `${pos.y - 30}px`;
+                item.innerHTML = `<svg viewBox="0 0 60 60"><use href="#apple"></use></svg>`;
+                visLayer.appendChild(item);
+                return item;
+            };
+
+            let domItems1 = group1.map((pos, i) => drawItem(pos, `l${i}`));
+            let domItems2 = group2.map((pos, i) => drawItem(pos, `r${i}`));
+
+            setTimeout(() => {
+                domItems1.forEach((el, i) => setTimeout(() => { el.classList.add('pop'); sounds.pop(); }, i * 100));
+                domItems2.forEach((el, i) => setTimeout(() => { el.classList.add('pop'); sounds.pop(); }, (domItems1.length * 100) + (i * 100)));
+                
+                setTimeout(() => drawLines(group1, group2, pairsCount, userAns, actualDiff), (state.num1 + state.num2) * 100 + 500);
+            }, 100);
+        }
+
+        function drawLines(group1, group2, pairsCount, userAns, actualDiff) {
+            let delay = 0;
+            for(let i=0; i<pairsCount; i++) {
+                setTimeout(() => {
+                    let line = document.createElement('div');
+                    line.className = 'vis-line';
+                    line.style.left = `${group1[i].x + 30}px`;
+                    line.style.top = `${group1[i].y}px`;
+                    line.style.width = `${group2[i].x - group1[i].x - 60}px`;
+                    visLayer.appendChild(line);
+                    
+                    void line.offsetWidth;
+                    line.classList.add('draw');
+                    sounds.line();
+                }, delay);
+                delay += 300;
+            }
+            setTimeout(() => countExtras(group1, group2, pairsCount, userAns, actualDiff), delay + 500);
+        }
+
+        function countExtras(group1, group2, pairsCount, userAns, actualDiff) {
+            let delay = 0;
+            const extraGroup = state.num1 > state.num2 ? group1 : group2;
+            
+            for(let i = pairsCount; i < extraGroup.length; i++) {
+                setTimeout(() => {
+                    let countEl = document.createElement('div');
+                    countEl.className = 'vis-count';
+                    countEl.innerText = (i - pairsCount + 1).toString();
+                    countEl.style.left = `${extraGroup[i].x + 40}px`;
+                    countEl.style.top = `${extraGroup[i].y - 20}px`;
+                    visLayer.appendChild(countEl);
+                    
+                    void countEl.offsetWidth;
+                    countEl.classList.add('show');
+                    sounds.count();
+                }, delay);
+                delay += 500;
+            }
+
+            if(actualDiff === 0) delay = 500;
+            setTimeout(() => finalizeRound(userAns === actualDiff), delay + 800);
+        }
+
+        function finalizeRound(isCorrect) {
+            if(isCorrect) {
+                sounds.success();
+                flashOverlay.style.background = 'rgba(0, 255, 255, 0.4)';
+                flashOverlay.style.opacity = '1';
+                char1.classList.add('dancing');
+                char2.classList.add('dancing');
+            } else {
+                sounds.error();
+                flashOverlay.style.background = 'rgba(255, 0, 85, 0.4)';
+                flashOverlay.style.opacity = '1';
+            }
+
+            setTimeout(() => {
+                flashOverlay.style.opacity = '0';
+                char1.classList.remove('dancing');
+                char2.classList.remove('dancing');
+            }, 1000);
+
+            setTimeout(() => {
+                triggerReset();
+            }, 3500);
+        }
+
+        function triggerReset() {
+            executeReset();
+            sendGameAction('reset', {});
+        }
+
+        function executeReset() {
+            visLayer.classList.remove('show');
+            setTimeout(() => {
+                visLayer.innerHTML = '';
+                state = { char1Done: false, char2Done: false, num1: 0, num2: 0, isVisualizing: false };
+                bubble1.classList.remove('show');
+                bubble2.classList.remove('show');
+                diffInput.value = '';
+            }, 500);
+        }
+
+        btnNext.addEventListener('click', () => { sounds.click(); triggerReset(); });
+        btnPrev.addEventListener('click', () => { sounds.click(); triggerReset(); });
+
+        // ================= МАСШТАБУВАННЯ (ЗУМ) =================
+        let currentZoom = 1;
+        const gameCont = document.getElementById('game-container');
+        document.getElementById('zoom-in').onclick = () => { currentZoom += 0.1; applyZoom(); };
+        document.getElementById('zoom-out').onclick = () => { currentZoom = Math.max(0.5, currentZoom - 0.1); applyZoom(); };
+        function applyZoom() {
+            gameCont.style.transform = `scale(${currentZoom})`;
+        }
+
+        // ================= THEME MANAGER ТА ДИНАМІЧНІ ФОНИ =================
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeOverlay = document.getElementById('theme-overlay');
+        const closeThemeBtn = document.getElementById('close-theme');
+        const themeGallery = document.getElementById('theme-gallery');
+        let themesLoaded = false;
+
+        function applyTheme(url, pushToFirebase = false) {
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+                document.getElementById('background-svg').style.display = 'block'; // Повертаємо рідний космос
+            } else {
+                document.body.style.backgroundImage = `url('${url}')`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundPosition = 'center';
+                document.getElementById('background-svg').style.display = 'none'; // Ховаємо рідний космос
+            }
+            // Зберігаємо індивідуально для цієї гри
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+
+            if (pushToFirebase) {
+                db.ref('game_theme').set(url);
+            }
+        }
+
+        // Завантаження індивідуального збереженого фону при старті
+        const savedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedTheme) {
+            applyTheme(savedTheme, false);
+        }
+
+        // Слухаємо глобальну зміну теми з Firebase
+        db.ref('game_theme').on('value', snap => {
+            const url = snap.val();
+            if (url && url !== localStorage.getItem('mySavedBg_' + CONFIG.gameId)) {
+                applyTheme(url, false);
+            }
+        });
+
+        themeBtn.onclick = () => {
+            themeModal.style.display = 'block';
+            themeOverlay.style.display = 'block';
+            if (!themesLoaded) loadThemes();
+        };
+
+        const closeTheme = () => {
+            themeModal.style.display = 'none';
+            themeOverlay.style.display = 'none';
+        };
+        closeThemeBtn.onclick = closeTheme;
+        themeOverlay.onclick = closeTheme;
+
+        function addThemeCard(url, titleText) {
+            const card = document.createElement('div');
+            card.className = 'theme-card';
+            if (url === 'none') {
+                card.innerHTML = `<span style="position:relative; color:black;">Без фону</span>`;
+                card.style.background = '#bdc3c7';
+            } else {
+                card.innerHTML = `<img src="${url}" alt="${titleText}"><span>${titleText}</span>`;
+            }
+            card.onclick = () => {
+                applyTheme(url, true);
+                closeTheme();
+            };
+            themeGallery.appendChild(card);
+        }
+
+        async function loadThemes() {
+            themesLoaded = true;
+            themeGallery.innerHTML = '';
+            addThemeCard('none', 'Без фону'); // Перша картка
+
+            let i = 1;
+            while (i <= 1000) {
+                const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                try {
+                    const res = await fetch(url, { method: 'HEAD' });
+                    if (!res.ok) break;
+                    addThemeCard(url, `Фон ${i}`);
+                    i++;
+                } catch(e) {
+                    break;
+                }
+            }
+        }
+
+        // ================= ГЛОБАЛЬНЕ МАЛЮВАННЯ (ОЛІВЕЦЬ/ГУМКА) =================
+        const drawBtnGlobal = document.getElementById('toggle-draw-btn-global');
+        const drawPanelGlobal = document.getElementById('draw-panel-global');
+        const drawCanvas = document.getElementById('draw-canvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        const drawHeader = document.getElementById('draw-panel-header');
+        
+        let isDrawActive = false;
+        let isDrawingAction = false;
+        let lastX = 0, lastY = 0;
+        let currentDrawMode = 'pencil'; // pencil or eraser
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        drawBtnGlobal.onclick = () => {
+            isDrawActive = true;
+            drawPanelGlobal.classList.remove('hidden');
+            drawCanvas.style.pointerEvents = 'auto'; // Дозволяємо малювати
+        };
+
+        document.getElementById('close-draw-panel').onclick = (e) => {
+            e.stopPropagation();
+            isDrawActive = false;
+            drawPanelGlobal.classList.add('hidden');
+            drawCanvas.style.pointerEvents = 'none'; // Вимикаємо малювання, повертаємо кліки грі
+        };
+
+        // Перемикачі інструментів
+        document.getElementById('draw-pencil').onclick = function() {
+            currentDrawMode = 'pencil';
+            this.classList.add('active');
+            document.getElementById('draw-eraser').classList.remove('active');
+        };
+        document.getElementById('draw-eraser').onclick = function() {
+            currentDrawMode = 'eraser';
+            this.classList.add('active');
+            document.getElementById('draw-pencil').classList.remove('active');
+        };
+        document.getElementById('draw-clear').onclick = () => {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            sendGameAction('clear_canvas', {});
+        };
+
+        // Логіка малювання
+        function getDrawPos(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) * (drawCanvas.width / rect.width),
+                y: (clientY - rect.top) * (drawCanvas.height / rect.height)
+            };
+        }
+
+        function startDraw(e) {
+            if (!isDrawActive || e.target.closest('#draw-panel-global') || e.target.closest('#toggle-draw-btn-global') || e.target.closest('.nav-btn')) return;
+            isDrawingAction = true;
+            const pos = getDrawPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+
+        function draw(e) {
+            if (!isDrawingAction) return;
+            e.preventDefault();
+            const pos = getDrawPos(e);
+            const size = document.getElementById('draw-size').value;
+            const color = document.getElementById('draw-color').value;
+
+            drawLineLocally(lastX, lastY, pos.x, pos.y, color, size, currentDrawMode === 'eraser');
+            sendGameAction('draw_line', {
+                x0: lastX / drawCanvas.width, y0: lastY / drawCanvas.height,
+                x1: pos.x / drawCanvas.width, y1: pos.y / drawCanvas.height,
+                color: color, size: size, isEraser: currentDrawMode === 'eraser'
+            });
+
+            lastX = pos.x;
+            lastY = pos.y;
+        }
+
+        function stopDraw() { isDrawingAction = false; }
+
+        function drawLineLocally(x0, y0, x1, y1, color, size, isEraser) {
+            drawCtx.beginPath();
+            drawCtx.moveTo(x0, y0);
+            drawCtx.lineTo(x1, y1);
+            drawCtx.lineWidth = size;
+            drawCtx.lineCap = 'round';
+            drawCtx.lineJoin = 'round';
+            
+            if (isEraser) {
+                drawCtx.globalCompositeOperation = "destination-out";
+                drawCtx.strokeStyle = "rgba(0,0,0,1)";
+            } else {
+                drawCtx.globalCompositeOperation = "source-over";
+                drawCtx.strokeStyle = color;
+            }
+            
+            drawCtx.stroke();
+            drawCtx.globalCompositeOperation = "source-over"; // reset
+        }
+
+        function remoteDrawLine(data) {
+            const x0 = data.x0 * drawCanvas.width;
+            const y0 = data.y0 * drawCanvas.height;
+            const x1 = data.x1 * drawCanvas.width;
+            const y1 = data.y1 * drawCanvas.height;
+            drawLineLocally(x0, y0, x1, y1, data.color, data.size, data.isEraser);
+        }
+
+        function remoteClearCanvas() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        }
+
+        drawCanvas.addEventListener('mousedown', startDraw);
+        drawCanvas.addEventListener('mousemove', draw);
+        window.addEventListener('mouseup', stopDraw);
+        drawCanvas.addEventListener('touchstart', startDraw, {passive: false});
+        drawCanvas.addEventListener('touchmove', draw, {passive: false});
+        window.addEventListener('touchend', stopDraw);
+
+        // Перетягування панелі малювання
+        let isDraggingPanel = false, dragOffsetX, dragOffsetY;
+        drawHeader.onmousedown = drawHeader.ontouchstart = (e) => {
+            isDraggingPanel = true;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const rect = drawPanelGlobal.getBoundingClientRect();
+            dragOffsetX = clientX - rect.left;
+            dragOffsetY = clientY - rect.top;
+        };
+        window.onmousemove = window.ontouchmove = (e) => {
+            if (!isDraggingPanel) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            drawPanelGlobal.style.left = (clientX - dragOffsetX + drawPanelGlobal.offsetWidth/2) + 'px';
+            drawPanelGlobal.style.top = (clientY - dragOffsetY) + 'px';
+            drawPanelGlobal.style.transform = 'translate(-50%, 0)';
+        };
+        window.onmouseup = window.ontouchend = () => { isDraggingPanel = false; };
+
+    </script>
+</body>
+</html>
