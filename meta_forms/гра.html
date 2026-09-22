@@ -766,9 +766,8 @@
             isDrawingMode = true;
         };
 
-        // Усунено баг із кнопкою закриття
         drawClose.addEventListener('pointerdown', (e) => {
-            e.stopPropagation(); // Запобігає конфлікту з перетягуванням панелі
+            e.stopPropagation(); // Зупиняємо перетягування панелі при кліку на хрестик
         });
         
         drawClose.onclick = () => {
@@ -1056,7 +1055,7 @@
                 db.ref('game_action').set({
                     type: 'load_level', 
                     level: currentLevel,
-                    poolOrder: allShapes, // Відправляємо згенерований порядок
+                    poolOrder: allShapes,
                     senderId: tabId, 
                     timestamp: Date.now()
                 });
@@ -1077,7 +1076,7 @@
         function setupDrag(element) {
             let isDragging = false;
             let startX, startY;
-            let offsetX, offsetY;
+            let initialLeft, initialTop;
             let lastSyncTime = 0;
 
             element.addEventListener('pointerdown', (e) => {
@@ -1089,15 +1088,19 @@
                 const rect = element.getBoundingClientRect();
                 const containerRect = document.getElementById('game-container').getBoundingClientRect();
                 
-                offsetX = (e.clientX - rect.left) / currentZoom;
-                offsetY = (e.clientY - rect.top) / currentZoom;
+                // Дельта-метод для плавного перетягування
+                initialLeft = (rect.left - containerRect.left) / currentZoom;
+                initialTop = (rect.top - containerRect.top) / currentZoom;
+                
+                startX = e.clientX;
+                startY = e.clientY;
 
                 element.style.width = (rect.width / currentZoom) + 'px';
                 element.style.height = (rect.height / currentZoom) + 'px';
 
                 element.style.position = 'absolute';
-                element.style.left = ((rect.left - containerRect.left) / currentZoom) + 'px';
-                element.style.top = ((rect.top - containerRect.top) / currentZoom) + 'px';
+                element.style.left = initialLeft + 'px';
+                element.style.top = initialTop + 'px';
                 
                 document.getElementById('game-container').appendChild(element);
                 element.style.zIndex = '1000';
@@ -1106,14 +1109,16 @@
             element.addEventListener('pointermove', (e) => {
                 if (!isDragging) return;
                 
-                const containerRect = document.getElementById('game-container').getBoundingClientRect();
-                const newLeft = ((e.clientX - containerRect.left) / currentZoom) - offsetX;
-                const newTop = ((e.clientY - containerRect.top) / currentZoom) - offsetY;
+                const dx = (e.clientX - startX) / currentZoom;
+                const dy = (e.clientY - startY) / currentZoom;
+                
+                const newLeft = initialLeft + dx;
+                const newTop = initialTop + dy;
                 
                 element.style.left = newLeft + 'px';
                 element.style.top = newTop + 'px';
 
-                // Real-time Drag Sync (передаємо координати кожні ~35 мс)
+                // Синхронізація руху в реальному часі
                 if (Date.now() - lastSyncTime > 35) {
                     db.ref('game_action').set({
                         type: 'dragging_shape',
@@ -1130,7 +1135,6 @@
             element.addEventListener('pointerup', (e) => {
                 if (!isDragging) return;
                 isDragging = false;
-                
                 if (element.hasPointerCapture(e.pointerId)) {
                     element.releasePointerCapture(e.pointerId);
                 }
@@ -1141,7 +1145,7 @@
                 element.style.width = '';
                 element.style.height = '';
 
-                // Замість display:none використовуємо visibility, щоб уникнути зависання
+                // Використовуємо visibility замість display для уникнення зависань
                 element.style.visibility = 'hidden';
                 let elemBelow = document.elementFromPoint(e.clientX, e.clientY);
                 element.style.visibility = 'visible';
@@ -1194,14 +1198,15 @@
                 loadLevel(data.level, true, data.poolOrder);
             } 
             else if(data.type === 'dragging_shape') {
-                // Відтворення перетягування фігури для інших гравців
                 const el = shapeElements[data.shapeId];
                 if (el) {
                     el.style.position = 'absolute';
                     el.style.left = data.x + 'px';
                     el.style.top = data.y + 'px';
                     el.style.zIndex = '1000';
-                    document.getElementById('game-container').appendChild(el);
+                    if (el.parentNode.id !== 'game-container') {
+                        document.getElementById('game-container').appendChild(el);
+                    }
                 }
             }
             else if (data.type === 'move_shape') {
@@ -1227,14 +1232,13 @@
             isRemoteAction = false;
         });
 
-        // Картка-завдання
+        // Картка-завдання з дельта-методом
         const taskCard = document.getElementById('task-card');
         const taskHeader = document.getElementById('task-header');
         const taskResizer = document.getElementById('task-resizer');
 
         let isTaskDragging = false;
-        let taskOffsetX, taskOffsetY;
-        let lastTaskSyncTime = 0;
+        let taskStartX, taskStartY, taskInitialLeft, taskInitialTop;
 
         taskHeader.addEventListener('pointerdown', (e) => {
             initAudio();
@@ -1243,23 +1247,24 @@
             const rect = taskCard.getBoundingClientRect();
             const containerRect = document.getElementById('game-container').getBoundingClientRect();
             
-            taskOffsetX = (e.clientX - rect.left) / currentZoom;
-            taskOffsetY = (e.clientY - rect.top) / currentZoom;
+            taskInitialLeft = (rect.left - containerRect.left) / currentZoom;
+            taskInitialTop = (rect.top - containerRect.top) / currentZoom;
+            taskStartX = e.clientX;
+            taskStartY = e.clientY;
             
-            taskCard.style.left = ((rect.left - containerRect.left) / currentZoom) + 'px';
-            taskCard.style.top = ((rect.top - containerRect.top) / currentZoom) + 'px';
+            taskCard.style.left = taskInitialLeft + 'px';
+            taskCard.style.top = taskInitialTop + 'px';
             taskCard.style.transform = 'none'; 
             taskCard.style.zIndex = '200';
         });
 
         taskHeader.addEventListener('pointermove', (e) => {
             if (!isTaskDragging) return;
-            const containerRect = document.getElementById('game-container').getBoundingClientRect();
-            const newLeft = ((e.clientX - containerRect.left) / currentZoom) - taskOffsetX;
-            const newTop = ((e.clientY - containerRect.top) / currentZoom) - taskOffsetY;
+            const dx = (e.clientX - taskStartX) / currentZoom;
+            const dy = (e.clientY - taskStartY) / currentZoom;
             
-            taskCard.style.left = newLeft + 'px';
-            taskCard.style.top = newTop + 'px';
+            taskCard.style.left = (taskInitialLeft + dx) + 'px';
+            taskCard.style.top = (taskInitialTop + dy) + 'px';
         });
 
         taskHeader.addEventListener('pointerup', (e) => {
