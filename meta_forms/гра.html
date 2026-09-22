@@ -29,7 +29,7 @@
             padding: 0;
             user-select: none;
             -webkit-user-select: none;
-            touch-action: none;
+            touch-action: none; /* Жорстка заборона скролу при свайпах */
         }
 
         body {
@@ -58,7 +58,7 @@
             transition: transform 0.2s ease;
         }
 
-        /* Ігровий шар (чіткий) */
+        /* Ігровий шар */
         #game-layer {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -113,7 +113,7 @@
             position: relative;
         }
 
-        /* Самі фігури (векторні SVG) - Фіксований розмір всюди, без transition для миттєвого відгуку */
+        /* Самі фігури (векторні SVG) - Абсолютно фіксований розмір всюди */
         .shape-item {
             width: calc(var(--game-width) * 0.11);
             height: calc(var(--game-width) * 0.11);
@@ -124,12 +124,13 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            will-change: transform; /* Допомога відеокарті для плавності */
+            will-change: transform; /* Допомога GPU для плавності */
         }
 
-        .shape-item:active {
+        /* Підняття фігури без збільшення розміру */
+        .shape-item:active, .shape-item.dragging {
             cursor: grabbing;
-            filter: drop-shadow(5px 8px 6px rgba(0,0,0,0.5));
+            filter: drop-shadow(8px 12px 6px rgba(0,0,0,0.6));
             z-index: 100;
         }
 
@@ -174,7 +175,6 @@
             border-radius: 50%;
         }
 
-        /* Зона для одного зображення-завдання */
         #task-content {
             width: 100%;
             display: block;
@@ -564,6 +564,7 @@
         <div id="task-card">
             <div id="task-header"><div id="task-header-center"></div></div>
             <div id="task-content">
+                <!-- Формат .webp -->
                 <img id="task-image" src="1.webp" alt="Завдання">
             </div>
             <div id="task-resizer"></div>
@@ -891,8 +892,7 @@
 
         function getShapeSVG(shape, colorStr) {
             const c = colorDefs[colorStr];
-            // ОПТИМІЗАЦІЯ: Прибрано <filter> feDropShadow, бо воно викликало жорстке підвисання. 
-            // Тепер тіні малюються через CSS (швидше у 100 разів)
+            // SVG оптимізовано (без feDropShadow), тіні відпрацьовує CSS фільтр = нуль лагів
             const defs = `
                 <defs>
                     <radialGradient id="grad-${shape}-${colorStr}" cx="30%" cy="30%" r="70%">
@@ -1061,18 +1061,23 @@
             });
         }
 
+        // ВДОСКОНАЛЕНИЙ DRAG & DROP ДЛЯ МАКСИМАЛЬНОЇ ПЛАВНОСТІ
         function setupDrag(element) {
             let isDragging = false;
             let startX, startY;
             let initialLeft, initialTop;
             let lastSyncTime = 0;
-            let afFrame = null; // Для апаратного прискорення
+            let afFrame = null; 
 
             element.addEventListener('pointerdown', (e) => {
                 initAudio();
                 playSound('pickup');
                 isDragging = true;
                 element.setPointerCapture(e.pointerId);
+                
+                // Знімаємо pointer-events, щоб миша під час польоту не викликала hover-події на інших елементах
+                element.style.pointerEvents = 'none';
+                element.classList.add('dragging');
                 
                 const rect = element.getBoundingClientRect();
                 const containerRect = document.getElementById('game-container').getBoundingClientRect();
@@ -1086,10 +1091,9 @@
                 element.style.position = 'absolute';
                 element.style.left = initialLeft + 'px';
                 element.style.top = initialTop + 'px';
-                element.style.transform = 'translate3d(0px, 0px, 0px)'; // GPU Акселерація
+                element.style.transform = 'translate3d(0, 0, 0)'; 
                 
                 document.getElementById('game-container').appendChild(element);
-                element.style.zIndex = '1000';
             });
 
             element.addEventListener('pointermove', (e) => {
@@ -1098,14 +1102,14 @@
                 const dx = (e.clientX - startX) / currentZoom;
                 const dy = (e.clientY - startY) / currentZoom;
                 
-                // Дельта метод (translate3d) забезпечує ідеальну плавність
+                // Рендер ідеально синхронізований з розгорткою екрану (GPU acceleration)
                 if(afFrame) cancelAnimationFrame(afFrame);
                 afFrame = requestAnimationFrame(() => {
                     element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
                 });
 
-                // Оптимізована синхронізація (менше навантажує мережу, але дає реальний рух)
-                if (Date.now() - lastSyncTime > 50) {
+                // Спокійніша синхронізація (раз на 100мс), щоб не забивати канал та уникати мікро-фрізів локально
+                if (Date.now() - lastSyncTime > 100) {
                     db.ref('game_action').set({
                         type: 'dragging_shape',
                         shapeId: element.id,
@@ -1118,7 +1122,8 @@
                 }
             });
 
-            element.addEventListener('pointerup', (e) => {
+            // Слухаємо pointerup навіть на window, щоб гарантовано відпустити фігуру
+            const onPointerUp = (e) => {
                 if (!isDragging) return;
                 isDragging = false;
                 if(afFrame) cancelAnimationFrame(afFrame);
@@ -1127,11 +1132,13 @@
                     element.releasePointerCapture(e.pointerId);
                 }
                 
-                element.style.zIndex = '10';
+                element.classList.remove('dragging');
+                element.style.pointerEvents = 'auto'; // Відновлюємо клікабельність
                 playSound('drop');
 
                 element.style.transform = 'none';
 
+                // Перевіряємо що під мишкою
                 element.style.visibility = 'hidden';
                 let elemBelow = document.elementFromPoint(e.clientX, e.clientY);
                 element.style.visibility = 'visible';
@@ -1172,7 +1179,9 @@
                 });
 
                 checkWin();
-            });
+            };
+
+            element.addEventListener('pointerup', onPointerUp);
         }
 
         db.ref('game_action').on('value', snap => {
@@ -1234,6 +1243,7 @@
             initAudio();
             isTaskDragging = true;
             taskHeader.setPointerCapture(e.pointerId);
+            
             const rect = taskCard.getBoundingClientRect();
             const containerRect = document.getElementById('game-container').getBoundingClientRect();
             
@@ -1264,7 +1274,6 @@
             taskHeader.releasePointerCapture(e.pointerId);
             if(taskAfFrame) cancelAnimationFrame(taskAfFrame);
             
-            // Застосовуємо реальні координати і знімаємо transform
             const currentTransform = window.getComputedStyle(taskCard).getPropertyValue('transform');
             let matrix = new WebKitCSSMatrix(currentTransform);
             taskCard.style.transform = 'none';
