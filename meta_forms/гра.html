@@ -29,7 +29,7 @@
             padding: 0;
             user-select: none;
             -webkit-user-select: none;
-            touch-action: none; /* Жорстка заборона скролу при свайпах */
+            touch-action: none;
         }
 
         body {
@@ -69,7 +69,7 @@
             align-items: center;
         }
 
-        /* Зона з сіткою (максимально прозора) */
+        /* Зона з сіткою */
         #grid-zone {
             width: 45%;
             height: 80%;
@@ -95,7 +95,7 @@
             align-items: center;
         }
 
-        /* Зона з фігурами (максимально прозора) */
+        /* Зона з фігурами */
         #pool-zone {
             width: 45%;
             height: 80%;
@@ -113,7 +113,7 @@
             position: relative;
         }
 
-        /* Самі фігури (векторні SVG) - Абсолютно фіксований розмір всюди */
+        /* Фігури (фіксований розмір) */
         .shape-item {
             width: calc(var(--game-width) * 0.11);
             height: calc(var(--game-width) * 0.11);
@@ -124,17 +124,15 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            will-change: transform; /* Допомога GPU для плавності */
         }
 
-        /* Підняття фігури без збільшення розміру */
         .shape-item:active, .shape-item.dragging {
             cursor: grabbing;
             filter: drop-shadow(8px 12px 6px rgba(0,0,0,0.6));
             z-index: 100;
         }
 
-        /* Плаваюча картка-завдання */
+        /* Картка-завдання */
         #task-card {
             position: absolute;
             top: 5%;
@@ -150,10 +148,8 @@
             display: flex;
             flex-direction: column;
             overflow: visible;
-            will-change: transform;
         }
 
-        /* Заголовок для перетягування */
         #task-header {
             width: 100%;
             height: 25px;
@@ -192,7 +188,6 @@
             filter: drop-shadow(2px 3px 4px rgba(0,0,0,0.3));
         }
 
-        /* Ресайзер для картки */
         #task-resizer {
             position: absolute;
             bottom: -5px;
@@ -254,7 +249,7 @@
             filter: drop-shadow(1px 1px 2px rgba(0,0,0,0.5));
         }
 
-        /* Анімації перемоги */
+        /* Анімації */
         .win-bounce {
             animation: bounceGrid 1s ease-in-out;
         }
@@ -266,7 +261,6 @@
             75% { transform: scale(1.02) rotate(1deg); filter: brightness(1.1); }
         }
 
-        /* Конфетті */
         .confetti {
             position: absolute;
             width: 15px;
@@ -280,8 +274,7 @@
             to { transform: translateY(100vh) rotate(720deg); opacity: 0; }
         }
 
-        /* ДОДАТКОВІ UI ЕЛЕМЕНТИ (Фони, Лупа, Малювання, Блокування) */
-        
+        /* ДОДАТКОВІ UI ЕЛЕМЕНТИ */
         #block-overlay {
             display: none;
             position: fixed;
@@ -564,7 +557,6 @@
         <div id="task-card">
             <div id="task-header"><div id="task-header-center"></div></div>
             <div id="task-content">
-                <!-- Формат .webp -->
                 <img id="task-image" src="1.webp" alt="Завдання">
             </div>
             <div id="task-resizer"></div>
@@ -892,7 +884,6 @@
 
         function getShapeSVG(shape, colorStr) {
             const c = colorDefs[colorStr];
-            // SVG оптимізовано (без feDropShadow), тіні відпрацьовує CSS фільтр = нуль лагів
             const defs = `
                 <defs>
                     <radialGradient id="grad-${shape}-${colorStr}" cx="30%" cy="30%" r="70%">
@@ -1057,17 +1048,15 @@
                 item.style.position = 'relative';
                 item.style.left = '0';
                 item.style.top = '0';
-                item.style.transform = 'none';
             });
         }
 
-        // ВДОСКОНАЛЕНИЙ DRAG & DROP ДЛЯ МАКСИМАЛЬНОЇ ПЛАВНОСТІ
+        // КЛАСИЧНИЙ СТАБІЛЬНИЙ DRAG & DROP БЕЗ ЛАГІВ
         function setupDrag(element) {
             let isDragging = false;
             let startX, startY;
             let initialLeft, initialTop;
             let lastSyncTime = 0;
-            let afFrame = null; 
 
             element.addEventListener('pointerdown', (e) => {
                 initAudio();
@@ -1075,8 +1064,6 @@
                 isDragging = true;
                 element.setPointerCapture(e.pointerId);
                 
-                // Знімаємо pointer-events, щоб миша під час польоту не викликала hover-події на інших елементах
-                element.style.pointerEvents = 'none';
                 element.classList.add('dragging');
                 
                 const rect = element.getBoundingClientRect();
@@ -1091,7 +1078,6 @@
                 element.style.position = 'absolute';
                 element.style.left = initialLeft + 'px';
                 element.style.top = initialTop + 'px';
-                element.style.transform = 'translate3d(0, 0, 0)'; 
                 
                 document.getElementById('game-container').appendChild(element);
             });
@@ -1102,19 +1088,19 @@
                 const dx = (e.clientX - startX) / currentZoom;
                 const dy = (e.clientY - startY) / currentZoom;
                 
-                // Рендер ідеально синхронізований з розгорткою екрану (GPU acceleration)
-                if(afFrame) cancelAnimationFrame(afFrame);
-                afFrame = requestAnimationFrame(() => {
-                    element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
-                });
+                const newLeft = initialLeft + dx;
+                const newTop = initialTop + dy;
+                
+                element.style.left = newLeft + 'px';
+                element.style.top = newTop + 'px';
 
-                // Спокійніша синхронізація (раз на 100мс), щоб не забивати канал та уникати мікро-фрізів локально
+                // Синхронізація (кожні 100мс)
                 if (Date.now() - lastSyncTime > 100) {
                     db.ref('game_action').set({
                         type: 'dragging_shape',
                         shapeId: element.id,
-                        x: initialLeft + dx,
-                        y: initialTop + dy,
+                        x: newLeft,
+                        y: newTop,
                         senderId: tabId,
                         timestamp: Date.now()
                     });
@@ -1122,26 +1108,21 @@
                 }
             });
 
-            // Слухаємо pointerup навіть на window, щоб гарантовано відпустити фігуру
             const onPointerUp = (e) => {
                 if (!isDragging) return;
                 isDragging = false;
-                if(afFrame) cancelAnimationFrame(afFrame);
                 
                 if (element.hasPointerCapture(e.pointerId)) {
                     element.releasePointerCapture(e.pointerId);
                 }
                 
                 element.classList.remove('dragging');
-                element.style.pointerEvents = 'auto'; // Відновлюємо клікабельність
                 playSound('drop');
 
-                element.style.transform = 'none';
-
-                // Перевіряємо що під мишкою
-                element.style.visibility = 'hidden';
+                // Перевіряємо що під мишкою (через тимчасовий display:none)
+                element.style.display = 'none';
                 let elemBelow = document.elementFromPoint(e.clientX, e.clientY);
-                element.style.visibility = 'visible';
+                element.style.display = 'flex';
                 
                 let droppableCell = elemBelow ? elemBelow.closest('.grid-cell') : null;
                 let targetLoc = 'pool';
@@ -1198,7 +1179,6 @@
                     el.style.position = 'absolute';
                     el.style.left = data.x + 'px';
                     el.style.top = data.y + 'px';
-                    el.style.transform = 'none';
                     el.style.zIndex = '1000';
                     if (el.parentNode.id !== 'game-container') {
                         document.getElementById('game-container').appendChild(el);
@@ -1215,14 +1195,12 @@
                             el.style.position = 'relative';
                             el.style.left = '0';
                             el.style.top = '0';
-                            el.style.transform = 'none';
                         }
                     } else {
                         document.getElementById('pool-zone').appendChild(el);
                         el.style.position = 'relative';
                         el.style.left = '0';
                         el.style.top = '0';
-                        el.style.transform = 'none';
                     }
                     checkWin();
                 }
@@ -1230,14 +1208,13 @@
             isRemoteAction = false;
         });
 
-        // Картка-завдання з апаратним прискоренням
+        // Картка-завдання 
         const taskCard = document.getElementById('task-card');
         const taskHeader = document.getElementById('task-header');
         const taskResizer = document.getElementById('task-resizer');
 
         let isTaskDragging = false;
         let taskStartX, taskStartY, taskInitialLeft, taskInitialTop;
-        let taskAfFrame = null;
 
         taskHeader.addEventListener('pointerdown', (e) => {
             initAudio();
@@ -1254,7 +1231,7 @@
             
             taskCard.style.left = taskInitialLeft + 'px';
             taskCard.style.top = taskInitialTop + 'px';
-            taskCard.style.transform = 'translate3d(0px, 0px, 0px)'; 
+            taskCard.style.transform = 'none'; 
             taskCard.style.zIndex = '200';
         });
 
@@ -1263,23 +1240,13 @@
             const dx = (e.clientX - taskStartX) / currentZoom;
             const dy = (e.clientY - taskStartY) / currentZoom;
             
-            if(taskAfFrame) cancelAnimationFrame(taskAfFrame);
-            taskAfFrame = requestAnimationFrame(() => {
-                taskCard.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
-            });
+            taskCard.style.left = (taskInitialLeft + dx) + 'px';
+            taskCard.style.top = (taskInitialTop + dy) + 'px';
         });
 
         taskHeader.addEventListener('pointerup', (e) => {
             isTaskDragging = false;
             taskHeader.releasePointerCapture(e.pointerId);
-            if(taskAfFrame) cancelAnimationFrame(taskAfFrame);
-            
-            const currentTransform = window.getComputedStyle(taskCard).getPropertyValue('transform');
-            let matrix = new WebKitCSSMatrix(currentTransform);
-            taskCard.style.transform = 'none';
-            taskCard.style.left = (taskInitialLeft + matrix.m41) + 'px';
-            taskCard.style.top = (taskInitialTop + matrix.m42) + 'px';
-            
             taskCard.style.zIndex = '50';
         });
 
