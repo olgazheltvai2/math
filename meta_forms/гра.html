@@ -451,7 +451,13 @@
             cursor: pointer;
             font-weight: bold;
             color: red;
-            font-size: 14px;
+            font-size: 16px;
+            padding: 2px 10px;
+            border-radius: 5px;
+        }
+
+        .draw-close:hover {
+            background: #ffcccc;
         }
 
         .draw-controls {
@@ -566,7 +572,7 @@
         <div id="task-card">
             <div id="task-header"><div id="task-header-center"></div></div>
             <div id="task-content">
-                <!-- Оновлено на формат .webp -->
+                <!-- Формат .webp -->
                 <img id="task-image" src="1.webp" alt="Завдання">
             </div>
             <div id="task-resizer"></div>
@@ -760,6 +766,11 @@
             isDrawingMode = true;
         };
 
+        // Усунено баг із кнопкою закриття
+        drawClose.addEventListener('pointerdown', (e) => {
+            e.stopPropagation(); // Запобігає конфлікту з перетягуванням панелі
+        });
+        
         drawClose.onclick = () => {
             drawPanel.style.display = 'none';
             canvas.style.pointerEvents = 'none';
@@ -995,12 +1006,11 @@
             }
         }
 
-        function loadLevel(levelIndex, remoteCall = false) {
+        function loadLevel(levelIndex, remoteCall = false, syncedOrder = null) {
             currentLevel = levelIndex;
             
             const taskImage = document.getElementById('task-image');
             if(taskImage) {
-                // Оновлено на формат .webp для картинок-завдань
                 taskImage.src = (currentLevel + 1) + '.webp';
             }
 
@@ -1011,12 +1021,18 @@
             document.querySelectorAll('.grid-cell').forEach(cell => cell.innerHTML = '');
 
             let allShapes = [];
-            SHAPES.forEach(s => {
-                COLORS.forEach(c => {
-                    allShapes.push(`${s}_${c}`);
+            
+            // Синхронізуємо порядок пулу, щоб у всіх гравців фігури лежали однаково
+            if (syncedOrder) {
+                allShapes = syncedOrder;
+            } else {
+                SHAPES.forEach(s => {
+                    COLORS.forEach(c => {
+                        allShapes.push(`${s}_${c}`);
+                    });
                 });
-            });
-            allShapes.sort(() => Math.random() - 0.5);
+                allShapes.sort(() => Math.random() - 0.5);
+            }
 
             allShapes.forEach((item) => {
                 const [shape, color] = item.split('_');
@@ -1038,8 +1054,11 @@
 
             if(!remoteCall) {
                 db.ref('game_action').set({
-                    type: 'load_level', level: currentLevel,
-                    senderId: tabId, timestamp: Date.now()
+                    type: 'load_level', 
+                    level: currentLevel,
+                    poolOrder: allShapes, // Відправляємо згенерований порядок
+                    senderId: tabId, 
+                    timestamp: Date.now()
                 });
             }
         }
@@ -1058,8 +1077,8 @@
         function setupDrag(element) {
             let isDragging = false;
             let startX, startY;
-            let initialX, initialY;
             let offsetX, offsetY;
+            let lastSyncTime = 0;
 
             element.addEventListener('pointerdown', (e) => {
                 initAudio();
@@ -1081,7 +1100,6 @@
                 element.style.top = ((rect.top - containerRect.top) / currentZoom) + 'px';
                 
                 document.getElementById('game-container').appendChild(element);
-
                 element.style.zIndex = '1000';
             });
 
@@ -1089,27 +1107,44 @@
                 if (!isDragging) return;
                 
                 const containerRect = document.getElementById('game-container').getBoundingClientRect();
-                
                 const newLeft = ((e.clientX - containerRect.left) / currentZoom) - offsetX;
                 const newTop = ((e.clientY - containerRect.top) / currentZoom) - offsetY;
                 
                 element.style.left = newLeft + 'px';
                 element.style.top = newTop + 'px';
+
+                // Real-time Drag Sync (передаємо координати кожні ~35 мс)
+                if (Date.now() - lastSyncTime > 35) {
+                    db.ref('game_action').set({
+                        type: 'dragging_shape',
+                        shapeId: element.id,
+                        x: newLeft,
+                        y: newTop,
+                        senderId: tabId,
+                        timestamp: Date.now()
+                    });
+                    lastSyncTime = Date.now();
+                }
             });
 
             element.addEventListener('pointerup', (e) => {
                 if (!isDragging) return;
                 isDragging = false;
-                element.releasePointerCapture(e.pointerId);
+                
+                if (element.hasPointerCapture(e.pointerId)) {
+                    element.releasePointerCapture(e.pointerId);
+                }
+                
                 element.style.zIndex = '10';
                 playSound('drop');
 
                 element.style.width = '';
                 element.style.height = '';
 
-                element.style.display = 'none';
+                // Замість display:none використовуємо visibility, щоб уникнути зависання
+                element.style.visibility = 'hidden';
                 let elemBelow = document.elementFromPoint(e.clientX, e.clientY);
-                element.style.display = 'flex';
+                element.style.visibility = 'visible';
                 
                 let droppableCell = elemBelow ? elemBelow.closest('.grid-cell') : null;
                 let targetLoc = 'pool';
@@ -1156,8 +1191,19 @@
             isRemoteAction = true;
             
             if(data.type === 'load_level') {
-                loadLevel(data.level, true);
+                loadLevel(data.level, true, data.poolOrder);
             } 
+            else if(data.type === 'dragging_shape') {
+                // Відтворення перетягування фігури для інших гравців
+                const el = shapeElements[data.shapeId];
+                if (el) {
+                    el.style.position = 'absolute';
+                    el.style.left = data.x + 'px';
+                    el.style.top = data.y + 'px';
+                    el.style.zIndex = '1000';
+                    document.getElementById('game-container').appendChild(el);
+                }
+            }
             else if (data.type === 'move_shape') {
                 const el = shapeElements[data.shapeId];
                 if (el) {
@@ -1188,6 +1234,7 @@
 
         let isTaskDragging = false;
         let taskOffsetX, taskOffsetY;
+        let lastTaskSyncTime = 0;
 
         taskHeader.addEventListener('pointerdown', (e) => {
             initAudio();
@@ -1312,6 +1359,7 @@
             loadLevel((currentLevel - 1 + LEVELS.length) % LEVELS.length);
         });
 
+        // Запуск
         loadLevel(0);
         
     </script>
