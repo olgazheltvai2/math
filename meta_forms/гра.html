@@ -83,7 +83,6 @@
             gap: 2%;
             padding: 3%;
             position: relative;
-            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
 
         .grid-cell {
@@ -114,7 +113,7 @@
             position: relative;
         }
 
-        /* Самі фігури (векторні SVG) - Тепер фіксований розмір всюди */
+        /* Самі фігури (векторні SVG) - Фіксований розмір всюди, без transition для миттєвого відгуку */
         .shape-item {
             width: calc(var(--game-width) * 0.11);
             height: calc(var(--game-width) * 0.11);
@@ -125,6 +124,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            will-change: transform; /* Допомога відеокарті для плавності */
         }
 
         .shape-item:active {
@@ -149,6 +149,7 @@
             display: flex;
             flex-direction: column;
             overflow: visible;
+            will-change: transform;
         }
 
         /* Заголовок для перетягування */
@@ -563,7 +564,6 @@
         <div id="task-card">
             <div id="task-header"><div id="task-header-center"></div></div>
             <div id="task-content">
-                <!-- Формат .webp -->
                 <img id="task-image" src="1.webp" alt="Завдання">
             </div>
             <div id="task-resizer"></div>
@@ -758,7 +758,7 @@
         };
 
         drawClose.addEventListener('pointerdown', (e) => {
-            e.stopPropagation(); // Запобігає конфлікту з перетягуванням панелі
+            e.stopPropagation(); 
         });
         
         drawClose.onclick = () => {
@@ -891,28 +891,26 @@
 
         function getShapeSVG(shape, colorStr) {
             const c = colorDefs[colorStr];
+            // ОПТИМІЗАЦІЯ: Прибрано <filter> feDropShadow, бо воно викликало жорстке підвисання. 
+            // Тепер тіні малюються через CSS (швидше у 100 разів)
             const defs = `
                 <defs>
                     <radialGradient id="grad-${shape}-${colorStr}" cx="30%" cy="30%" r="70%">
                         <stop offset="0%" stop-color="${c.start}" />
                         <stop offset="100%" stop-color="${c.end}" />
                     </radialGradient>
-                    <filter id="shadow-${shape}-${colorStr}">
-                        <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.5"/>
-                        <feDropShadow dx="0" dy="-2" stdDeviation="2" flood-color="#ffffff" flood-opacity="0.3" result="highlight"/>
-                    </filter>
                 </defs>
             `;
 
             let body = '';
             if (shape === 'square') {
-                body = `<rect x="15" y="15" width="70" height="70" rx="15" fill="url(#grad-${shape}-${colorStr})" filter="url(#shadow-${shape}-${colorStr})" stroke="#fff" stroke-width="2"/>
+                body = `<rect x="15" y="15" width="70" height="70" rx="15" fill="url(#grad-${shape}-${colorStr})" stroke="#fff" stroke-width="2"/>
                         <rect x="25" y="25" width="50" height="50" rx="10" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="3"/>`;
             } else if (shape === 'circle') {
-                body = `<circle cx="50" cy="50" r="38" fill="url(#grad-${shape}-${colorStr})" filter="url(#shadow-${shape}-${colorStr})" stroke="#fff" stroke-width="2"/>
+                body = `<circle cx="50" cy="50" r="38" fill="url(#grad-${shape}-${colorStr})" stroke="#fff" stroke-width="2"/>
                         <circle cx="50" cy="50" r="28" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="3"/>`;
             } else if (shape === 'triangle') {
-                body = `<path d="M50 15 L85 80 L15 80 Z" fill="url(#grad-${shape}-${colorStr})" filter="url(#shadow-${shape}-${colorStr})" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+                body = `<path d="M50 15 L85 80 L15 80 Z" fill="url(#grad-${shape}-${colorStr})" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
                         <path d="M50 30 L73 70 L27 70 Z" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="3" stroke-linejoin="round"/>`;
             }
 
@@ -1012,7 +1010,6 @@
 
             let allShapes = [];
             
-            // Синхронізуємо порядок пулу, щоб у всіх гравців фігури лежали однаково
             if (syncedOrder) {
                 allShapes = syncedOrder;
             } else {
@@ -1069,6 +1066,7 @@
             let startX, startY;
             let initialLeft, initialTop;
             let lastSyncTime = 0;
+            let afFrame = null; // Для апаратного прискорення
 
             element.addEventListener('pointerdown', (e) => {
                 initAudio();
@@ -1079,7 +1077,6 @@
                 const rect = element.getBoundingClientRect();
                 const containerRect = document.getElementById('game-container').getBoundingClientRect();
                 
-                // Дельта-метод для плавного перетягування (без перевантаження CPU)
                 initialLeft = (rect.left - containerRect.left) / currentZoom;
                 initialTop = (rect.top - containerRect.top) / currentZoom;
                 
@@ -1089,6 +1086,7 @@
                 element.style.position = 'absolute';
                 element.style.left = initialLeft + 'px';
                 element.style.top = initialTop + 'px';
+                element.style.transform = 'translate3d(0px, 0px, 0px)'; // GPU Акселерація
                 
                 document.getElementById('game-container').appendChild(element);
                 element.style.zIndex = '1000';
@@ -1100,19 +1098,19 @@
                 const dx = (e.clientX - startX) / currentZoom;
                 const dy = (e.clientY - startY) / currentZoom;
                 
-                const newLeft = initialLeft + dx;
-                const newTop = initialTop + dy;
-                
-                element.style.left = newLeft + 'px';
-                element.style.top = newTop + 'px';
+                // Дельта метод (translate3d) забезпечує ідеальну плавність
+                if(afFrame) cancelAnimationFrame(afFrame);
+                afFrame = requestAnimationFrame(() => {
+                    element.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+                });
 
-                // Оптимізована синхронізація (кожні 80мс), щоб уникнути спаму Firebase і заїдання курсору
-                if (Date.now() - lastSyncTime > 80) {
+                // Оптимізована синхронізація (менше навантажує мережу, але дає реальний рух)
+                if (Date.now() - lastSyncTime > 50) {
                     db.ref('game_action').set({
                         type: 'dragging_shape',
                         shapeId: element.id,
-                        x: newLeft,
-                        y: newTop,
+                        x: initialLeft + dx,
+                        y: initialTop + dy,
                         senderId: tabId,
                         timestamp: Date.now()
                     });
@@ -1123,6 +1121,8 @@
             element.addEventListener('pointerup', (e) => {
                 if (!isDragging) return;
                 isDragging = false;
+                if(afFrame) cancelAnimationFrame(afFrame);
+                
                 if (element.hasPointerCapture(e.pointerId)) {
                     element.releasePointerCapture(e.pointerId);
                 }
@@ -1130,7 +1130,8 @@
                 element.style.zIndex = '10';
                 playSound('drop');
 
-                // Використовуємо visibility замість display для уникнення зависань і стрибків сторінки
+                element.style.transform = 'none';
+
                 element.style.visibility = 'hidden';
                 let elemBelow = document.elementFromPoint(e.clientX, e.clientY);
                 element.style.visibility = 'visible';
@@ -1188,6 +1189,7 @@
                     el.style.position = 'absolute';
                     el.style.left = data.x + 'px';
                     el.style.top = data.y + 'px';
+                    el.style.transform = 'none';
                     el.style.zIndex = '1000';
                     if (el.parentNode.id !== 'game-container') {
                         document.getElementById('game-container').appendChild(el);
@@ -1204,12 +1206,14 @@
                             el.style.position = 'relative';
                             el.style.left = '0';
                             el.style.top = '0';
+                            el.style.transform = 'none';
                         }
                     } else {
                         document.getElementById('pool-zone').appendChild(el);
                         el.style.position = 'relative';
                         el.style.left = '0';
                         el.style.top = '0';
+                        el.style.transform = 'none';
                     }
                     checkWin();
                 }
@@ -1217,13 +1221,14 @@
             isRemoteAction = false;
         });
 
-        // Картка-завдання з оптимізованим дельта-методом
+        // Картка-завдання з апаратним прискоренням
         const taskCard = document.getElementById('task-card');
         const taskHeader = document.getElementById('task-header');
         const taskResizer = document.getElementById('task-resizer');
 
         let isTaskDragging = false;
         let taskStartX, taskStartY, taskInitialLeft, taskInitialTop;
+        let taskAfFrame = null;
 
         taskHeader.addEventListener('pointerdown', (e) => {
             initAudio();
@@ -1239,7 +1244,7 @@
             
             taskCard.style.left = taskInitialLeft + 'px';
             taskCard.style.top = taskInitialTop + 'px';
-            taskCard.style.transform = 'none'; 
+            taskCard.style.transform = 'translate3d(0px, 0px, 0px)'; 
             taskCard.style.zIndex = '200';
         });
 
@@ -1248,13 +1253,24 @@
             const dx = (e.clientX - taskStartX) / currentZoom;
             const dy = (e.clientY - taskStartY) / currentZoom;
             
-            taskCard.style.left = (taskInitialLeft + dx) + 'px';
-            taskCard.style.top = (taskInitialTop + dy) + 'px';
+            if(taskAfFrame) cancelAnimationFrame(taskAfFrame);
+            taskAfFrame = requestAnimationFrame(() => {
+                taskCard.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+            });
         });
 
         taskHeader.addEventListener('pointerup', (e) => {
             isTaskDragging = false;
             taskHeader.releasePointerCapture(e.pointerId);
+            if(taskAfFrame) cancelAnimationFrame(taskAfFrame);
+            
+            // Застосовуємо реальні координати і знімаємо transform
+            const currentTransform = window.getComputedStyle(taskCard).getPropertyValue('transform');
+            let matrix = new WebKitCSSMatrix(currentTransform);
+            taskCard.style.transform = 'none';
+            taskCard.style.left = (taskInitialLeft + matrix.m41) + 'px';
+            taskCard.style.top = (taskInitialTop + matrix.m42) + 'px';
+            
             taskCard.style.zIndex = '50';
         });
 
