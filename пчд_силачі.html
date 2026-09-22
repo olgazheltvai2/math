@@ -219,8 +219,23 @@
         }
         .wrong-anim { animation: shake 0.4s; }
 
+        /* Контроль швидкості бота */
+        #speed-controls {
+            position: absolute; top: 20px; left: 20px; opacity: 0.15; z-index: 50; display: flex; gap: 5px; pointer-events: auto; transition: opacity 0.3s;
+        }
+        #speed-controls:hover { opacity: 1; }
+        .speed-btn { background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 5px; cursor: pointer; font-size: 20px; padding: 2px 10px; font-weight: bold; }
+        .speed-btn:hover { background: rgba(255,255,255,0.2); }
+        #speed-display { color: white; font-size: 20px; align-self: center; font-family: Arial; font-weight: bold; text-shadow: 1px 1px 2px black; min-width: 30px; text-align: center; }
+
+        /* Ефекти перемоги/програшу */
+        #fx-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 70000; overflow: hidden; display: none; }
+        .flash-red { animation: flashRed 1.5s ease-out forwards; }
+        @keyframes flashRed { 0% { background-color: rgba(239, 68, 68, 0.6); } 100% { background-color: transparent; } }
+        .confetti { position: absolute; width: 15px; height: 15px; border-radius: 3px; animation: fall linear forwards; }
+        @keyframes fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+
         /* --- ГЛОБАЛЬНІ СТИЛІ ІНСТРУМЕНТІВ --- */
-        
         #block-overlay {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -499,6 +514,16 @@
 <!-- ІГРОВИЙ КОНТЕЙНЕР -->
 <div id="game-container">
     
+    <!-- Панель швидкості бота (непомітна, але завжди доступна) -->
+    <div id="speed-controls">
+        <button class="speed-btn" onclick="changeBotSpeed(-1)">-</button>
+        <span id="speed-display">5</span>
+        <button class="speed-btn" onclick="changeBotSpeed(1)">+</button>
+    </div>
+
+    <!-- Ефекти перемоги/програшу -->
+    <div id="fx-overlay"></div>
+
     <!-- Полотно для малювання (всередині контейнера для збереження пропорцій при зумі) -->
     <canvas id="global-canvas" width="1920" height="1080"></canvas>
 
@@ -584,7 +609,6 @@
                     <circle cx="-55" cy="55" r="15" fill="#0f172a" />
                     <circle cx="5" cy="55" r="15" fill="#0f172a" />
                     
-                    <!-- ВИПРАВЛЕНО: Суцільний колір замість градієнта для уникнення багів зникнення в браузерах -->
                     <path d="M -40 -120 Q 0 -140 40 -120 L 30 0 Q 0 20 -30 0 Z" fill="#b91c1c" />
                     
                     <rect x="-35" y="-30" width="70" height="20" fill="#fbbf24" />
@@ -612,7 +636,6 @@
                     <circle cx="-15" cy="55" r="15" fill="#0f172a" />
                     <circle cx="45" cy="55" r="15" fill="#0f172a" />
                     
-                    <!-- ВИПРАВЛЕНО: Суцільний колір замість градієнта -->
                     <path d="M -40 -120 Q 0 -140 40 -120 L 30 0 Q 0 20 -30 0 Z" fill="#1d4ed8" />
                     
                     <rect x="-35" y="-30" width="70" height="20" fill="#fde047" />
@@ -987,6 +1010,7 @@
     let currentAnswer = "";
     let correctAnswer = 0;
     let botPullInterval;
+    let botPullStrength = 5; // Змінна швидкості бота
 
     const num1El = document.getElementById('num1');
     const operatorEl = document.getElementById('operator');
@@ -1001,6 +1025,59 @@
     const pupilR = document.getElementById('pupilR');
     const wingL = document.getElementById('wingL');
     const wingR = document.getElementById('wingR');
+    
+    // Функції візуальних ефектів
+    function triggerWinFX() {
+        const fx = document.getElementById('fx-overlay');
+        fx.style.display = 'block';
+        fx.innerHTML = '';
+        fx.className = '';
+        
+        const colors = ['#fca5a5', '#fde047', '#86efac', '#93c5fd', '#d8b4fe'];
+        for(let i = 0; i < 150; i++) {
+            let conf = document.createElement('div');
+            conf.className = 'confetti';
+            conf.style.left = Math.random() * 100 + '%';
+            conf.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            conf.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            conf.style.animationDelay = (Math.random() * 0.5) + 's';
+            fx.appendChild(conf);
+        }
+        setTimeout(() => { fx.innerHTML = ''; fx.style.display = 'none'; }, 4500);
+    }
+
+    function triggerLoseFX() {
+        const fx = document.getElementById('fx-overlay');
+        fx.style.display = 'block';
+        fx.innerHTML = '';
+        fx.className = 'flash-red';
+        
+        let boom = document.createElement('div');
+        boom.innerText = '💥';
+        boom.style.fontSize = '20vw';
+        boom.style.position = 'absolute';
+        boom.style.top = '50%'; boom.style.left = '50%';
+        boom.style.transform = 'translate(-50%, -50%)';
+        boom.style.animation = 'float 1s ease-out';
+        fx.appendChild(boom);
+        
+        setTimeout(() => { fx.className = ''; fx.innerHTML = ''; fx.style.display = 'none'; }, 2000);
+    }
+
+    // Зміна швидкості бота
+    function changeBotSpeed(delta) {
+        botPullStrength += delta;
+        if(botPullStrength < 1) botPullStrength = 1;
+        if(botPullStrength > 30) botPullStrength = 30;
+        document.getElementById('speed-display').innerText = botPullStrength;
+        
+        if (isFirebaseActive) {
+            db.ref('game_action').push({
+                senderId: myName, timestamp: Date.now(),
+                type: 'speed_change', data: { strength: botPullStrength }
+            });
+        }
+    }
 
     // Генерація клавіатури
     const keys = [1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '✓'];
@@ -1121,7 +1198,7 @@
     function resetBotPull() {
         clearInterval(botPullInterval);
         botPullInterval = setInterval(() => {
-            tugPosition -= 5;
+            tugPosition -= botPullStrength;
             syncTug();
             updateTugVisuals();
             
@@ -1167,15 +1244,18 @@
         if (tugPosition >= 220) {
             clearInterval(botPullInterval);
             playSound('win');
+            triggerWinFX();
             
             playerStrongman.style.transform = 'translateY(-50px)';
             playerStrongman.style.transition = 'transform 0.2s alternate infinite';
             
-            setTimeout(() => resetGame(), 3000);
+            setTimeout(() => resetGame(), 4500);
         } else if (tugPosition <= -220) {
             clearInterval(botPullInterval);
             playSound('wrong'); 
-            setTimeout(() => resetGame(), 2000);
+            triggerLoseFX();
+            
+            setTimeout(() => resetGame(), 2500);
         }
     }
 
@@ -1204,6 +1284,10 @@
             }
             else if (action.type === 'new_task') {
                 generateTask(true, action.data);
+            }
+            else if (action.type === 'speed_change') {
+                botPullStrength = action.data.strength;
+                document.getElementById('speed-display').innerText = botPullStrength;
             }
         });
     }
