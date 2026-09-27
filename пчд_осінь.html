@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Складання через десяток - Осіння Меланхолія</title>
+    
+    <!-- Підключення Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
+    
+    <style>
+        /* Основне скидання та налаштування повноекранного режиму */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1c23;
+            touch-action: none;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Живий сюжетний SVG фон (Осіннє місто) */
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+        }
+
+        /* Анімації фону (Дощ та Хмари) */
+        @keyframes cloudMove {
+            0% { transform: translateX(-200px); }
+            100% { transform: translateX(2000px); }
+        }
+        .cloud {
+            animation: cloudMove linear infinite;
+        }
+        
+        @keyframes rainFall {
+            0% { transform: translateY(-100px) translateX(0); opacity: 0; }
+            10% { opacity: 0.8; }
+            90% { opacity: 0.8; }
+            100% { transform: translateY(1200px) translateX(-150px); opacity: 0; }
+        }
+        .rain-layer-1 { animation: rainFall 1.2s linear infinite; }
+        .rain-layer-2 { animation: rainFall 1.5s linear infinite; animation-delay: -0.5s; }
+        .rain-layer-3 { animation: rainFall 0.9s linear infinite; animation-delay: -0.2s; }
+
+        @keyframes puddleRipple {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+            100% { transform: scale(0.8); opacity: 0.5; }
+        }
+        .puddle-ripple { animation: puddleRipple 4s infinite ease-in-out; }
+
+        /* Інтерфейс керування зверху */
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            background: rgba(20, 18, 15, 0.85);
+            padding: 15px 30px;
+            border-radius: 20px;
+            border: 2px solid #ff9900;
+            box-shadow: 0 10px 30px rgba(255,153,0,0.2), inset 0 0 20px rgba(255, 153, 0, 0.1);
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            max-width: calc(100vw - 40px);
+            flex-wrap: wrap;
+        }
+
+        input[type="number"] {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #ffaa00;
+            border-radius: 12px;
+            color: #ffcc00;
+            font-size: 2.5rem;
+            font-weight: bold;
+            width: 100px;
+            height: 70px;
+            text-align: center;
+            outline: none;
+            box-shadow: inset 0 0 15px rgba(255, 170, 0, 0.4);
+            transition: all 0.3s;
+            text-shadow: 0 0 10px #ffcc00;
+        }
+        input[type="number"]:focus {
+            border-color: #ffffff;
+            box-shadow: 0 0 20px #ffcc00, inset 0 0 10px #ffffff;
+            color: #fff;
+        }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+
+        .math-sign {
+            color: #fff;
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 0 0 15px #ffaa00, 0 0 30px #ff9900;
+        }
+
+        #btn-play {
+            background: linear-gradient(135deg, #ff9900, #d35400);
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            width: 70px;
+            height: 70px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 20px rgba(255, 153, 0, 0.6);
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        #btn-play:hover {
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.9);
+        }
+        #btn-play:active {
+            transform: scale(0.95);
+        }
+
+        /* Живий персонаж (Людина з парасолькою) */
+        #robot-char {
+            position: absolute;
+            bottom: 80px;
+            right: 50px;
+            width: 280px;
+            height: 380px;
+            z-index: 80;
+            pointer-events: none;
+            animation: personBreathe 4s ease-in-out infinite;
+            transform-origin: center bottom;
+        }
+        
+        @keyframes personBreathe {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50% { transform: translateY(-5px) scale(1.02, 0.98); }
+        }
+
+        /* Анімація очей */
+        .bot-eye {
+            animation: lookAround 8s infinite;
+        }
+        @keyframes lookAround {
+            0%, 18% { transform: translate(0, 0); }
+            20%, 38% { transform: translate(-4px, 2px); }
+            40%, 58% { transform: translate(4px, -1px); }
+            60%, 78% { transform: translate(-3px, -2px); }
+            80%, 100% { transform: translate(0, 0); }
+        }
+
+        /* Анімація парасольки (від вітру) */
+        .umbrella-group {
+            animation: umbrellaSway 6s infinite alternate ease-in-out;
+            transform-origin: 140px 180px;
+        }
+        @keyframes umbrellaSway {
+            0% { transform: rotate(-5deg); }
+            100% { transform: rotate(8deg); }
+        }
+        
+        /* Радісна реакція персонажа */
+        #robot-char.happy .bot-eye {
+            animation: none;
+        }
+        #robot-char.happy .eye-normal {
+            display: none;
+        }
+        #robot-char.happy .eye-happy {
+            display: block !important;
+        }
+        #robot-char.happy {
+            animation: happyJumpPerson 0.6s ease 3;
+        }
+        #robot-char.happy .umbrella-group {
+            animation: umbrellaSpin 0.6s ease 3;
+        }
+        @keyframes happyJumpPerson {
+            0%, 100% { transform: translateY(0) scale(1, 1); }
+            30% { transform: translateY(10px) scale(1.05, 0.95); }
+            70% { transform: translateY(-50px) scale(0.95, 1.05); }
+        }
+        @keyframes umbrellaSpin {
+            0%, 100% { transform: rotate(0deg) translateY(0); }
+            50% { transform: rotate(15deg) translateY(-20px); }
+        }
+
+        /* Робоча область */
+        #workspace-wrapper {
+            position: absolute;
+            top: 55%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        #workspace {
+            position: relative;
+            width: 1400px;
+            height: 700px;
+            z-index: 10;
+            pointer-events: auto;
+            transform-origin: center center;
+            transition: transform 0.3s ease;
+        }
+
+        /* Кошик */
+        .crate {
+            position: absolute;
+            width: 220px;
+            height: 120px;
+            border-radius: 5px;
+            transition: all 0.5s;
+        }
+        .crate.glow {
+            animation: crateGlow 1.5s infinite alternate;
+        }
+        @keyframes crateGlow {
+            0% { filter: drop-shadow(0 0 10px rgba(255, 153, 0, 0.5)); transform: scale(1); }
+            100% { filter: drop-shadow(0 0 30px rgba(255, 200, 0, 0.9)); transform: scale(1.03); }
+        }
+
+        /* Кленовий листок */
+        .apple {
+            position: absolute;
+            width: 45px;
+            height: 45px;
+            transition: all 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        #interactive-zone {
+            position: absolute;
+            cursor: pointer;
+            z-index: 50;
+            display: none;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 2px dashed #ff9900;
+            animation: pulseZone 2s infinite;
+        }
+        @keyframes pulseZone {
+            0%, 100% { background: rgba(255, 153, 0, 0.02); box-shadow: 0 0 0px #ff9900; }
+            50% { background: rgba(255, 153, 0, 0.15); box-shadow: 0 0 15px #ff9900; }
+        }
+        #interactive-zone:hover ~ #indicator {
+            filter: drop-shadow(0 0 25px #ffffff);
+        }
+
+        #indicator {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            pointer-events: none;
+            z-index: 60;
+            display: none;
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .particle {
+            position: absolute;
+            width: 25px;
+            height: 25px;
+            pointer-events: none;
+            z-index: 100;
+            transition: all 1s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* Кнопки Лупи */
+        .zoom-btn {
+            position: absolute;
+            left: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(20, 18, 15, 0.8);
+            border: 2px solid #ff9900;
+            border-radius: 50%;
+            color: #ff9900;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 0 10px rgba(255,153,0,0.3);
+        }
+        .zoom-btn:hover { background: #ff9900; color: #000; }
+        #btn-zoom-in { bottom: 90px; }
+        #btn-zoom-out { bottom: 30px; }
+
+        /* Екран-заглушка */
+        #block-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(15, 12, 10, 0.98);
+            color: #ff3300;
+            font-size: 50px;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+            visibility: hidden;
+            text-shadow: 0 0 20px #ff3300;
+        }
+
+        /* --- Theme Manager CSS --- */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #3a2211;
+            color: #ffffff;
+            border: 2px solid #ff9900;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 100000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 15px rgba(255,153,0,0.4);
+        }
+        #theme-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(25, 20, 15, 0.95);
+            padding: 20px;
+            border: 2px solid #ffaa00;
+            border-radius: 15px;
+            z-index: 100001;
+            display: none;
+            width: 80%;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(255, 170, 0, 0.5);
+            color: white;
+        }
+        #theme-modal-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: bold;
+            color: #ff3300;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-top: 10px;
+        }
+        .theme-card {
+            position: relative;
+            width: 100%;
+            height: 80px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            overflow: hidden;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-size: cover;
+            background-position: center;
+        }
+        .theme-card:hover { border-color: #ff9900; box-shadow: 0 0 10px #ff9900; }
+        .theme-card span {
+            background: rgba(0,0,0,0.8);
+            color: #ff9900;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        /* --- Global Draw Tool CSS --- */
+        #global-draw-canvas {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 90000;
+            pointer-events: none;
+        }
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #ffaa00;
+            color: white;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 100000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 15px rgba(255, 170, 0, 0.5);
+        }
+        #draw-panel-global {
+            position: fixed;
+            top: 120px;
+            right: 20px;
+            background: rgba(25, 20, 15, 0.95);
+            border: 2px solid #ffaa00;
+            border-radius: 10px;
+            padding: 10px;
+            display: none;
+            z-index: 100001;
+            box-shadow: 0 10px 30px rgba(255, 170, 0, 0.5);
+            width: 180px;
+            cursor: default;
+            color: #fff;
+        }
+        .draw-panel-header {
+            width: 100%;
+            height: 20px;
+            background: #4a2e15;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            cursor: grab;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding-right: 5px;
+        }
+        .draw-panel-header:active { cursor: grabbing; }
+        .close-draw-btn { cursor: pointer; font-weight: bold; color: #ff3300; font-size: 16px; }
+        .draw-btn-group { display: flex; gap: 5px; margin-bottom: 10px; }
+        .draw-btn {
+            flex: 1; padding: 5px; border: 1px solid #ff9900; border-radius: 5px; cursor: pointer; background: transparent; font-size: 14px; color: #ff9900;
+        }
+        .draw-btn.active { background: #ff9900; color: #000; }
+        .draw-slider { width: 100%; margin-bottom: 10px; }
+        .draw-color { width: 100%; height: 30px; border: none; cursor: pointer; margin-bottom: 10px; background: transparent; }
+        .draw-clear { width: 100%; padding: 5px; background: #ff3300; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        @media (max-width: 768px) {
+            #controls { right: 10px; top: 10px; transform: scale(0.7); transform-origin: top right; }
+            #workspace { transform: scale(0.6); transform-origin: top center; }
+            #robot-char { transform: scale(0.6); right: -10px; bottom: 60px; transform-origin: bottom right; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ВЕЛИКИЙ СЮЖЕТНИЙ SVG ФОН (ОСІННЄ МІСТО ПІД ДОЩЕМ) -->
+    <svg id="bg-canvas" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="gloomySky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4a535e"/>
+                <stop offset="40%" stop-color="#69737d"/>
+                <stop offset="80%" stop-color="#89939e"/>
+                <stop offset="100%" stop-color="#a4adb5"/>
+            </linearGradient>
+            
+            <linearGradient id="cityDistant" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#5a636c"/>
+                <stop offset="100%" stop-color="#3f474f"/>
+            </linearGradient>
+
+            <linearGradient id="cityNear" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#343a40"/>
+                <stop offset="100%" stop-color="#1c2024"/>
+            </linearGradient>
+            
+            <linearGradient id="wetRoad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#2a2e33"/>
+                <stop offset="30%" stop-color="#3d434a"/>
+                <stop offset="100%" stop-color="#141618"/>
+            </linearGradient>
+
+            <filter id="puddleGlow">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="5" />
+            </filter>
+        </defs>
+
+        <!-- Небо -->
+        <rect width="1920" height="1080" fill="url(#gloomySky)"/>
+        
+        <!-- Хмари -->
+        <g class="cloud" style="animation-duration: 60s; opacity: 0.6;">
+            <path d="M -200 150 Q -150 100 -100 150 Q -50 80 20 130 Q 80 100 120 160 Q 50 180 -200 180 Z" fill="#5c6670"/>
+            <path d="M 400 200 Q 450 130 520 180 Q 600 120 680 190 Q 750 160 800 220 Q 600 250 400 220 Z" fill="#717c87"/>
+            <path d="M 1200 100 Q 1280 40 1350 120 Q 1420 60 1500 130 Q 1580 110 1620 160 Q 1400 180 1200 160 Z" fill="#5c6670"/>
+        </g>
+        <g class="cloud" style="animation-duration: 85s; animation-delay: -30s; opacity: 0.4;">
+            <path d="M 100 80 Q 150 30 220 70 Q 300 20 380 90 Q 450 60 500 120 Q 300 150 100 120 Z" fill="#3f474f"/>
+            <path d="M 900 250 Q 980 180 1050 240 Q 1150 180 1220 260 Q 1300 230 1350 280 Q 1100 320 900 290 Z" fill="#717c87"/>
+        </g>
+
+        <!-- Далеке місто (силуети) -->
+        <g fill="url(#cityDistant)" opacity="0.7">
+            <rect x="50" y="450" width="120" height="250" />
+            <rect x="190" y="380" width="100" height="320" />
+            <polygon points="190,380 240,320 290,380" />
+            <rect x="310" y="500" width="150" height="200" />
+            <rect x="480" y="420" width="90" height="280" />
+            <rect x="600" y="350" width="130" height="350" />
+            <rect x="750" y="480" width="180" height="220" />
+            <rect x="950" y="320" width="110" height="380" />
+            <polygon points="950,320 1005,250 1060,320" />
+            <rect x="1080" y="440" width="160" height="260" />
+            <rect x="1260" y="390" width="140" height="310" />
+            <rect x="1420" y="490" width="200" height="210" />
+            <rect x="1640" y="360" width="120" height="340" />
+            <rect x="1780" y="450" width="150" height="250" />
+        </g>
+
+        <!-- Ближнє місто (силуети) -->
+        <g fill="url(#cityNear)">
+            <rect x="-50" y="550" width="200" height="200" />
+            <rect x="200" y="600" width="180" height="150" />
+            <rect x="420" y="520" width="160" height="230" />
+            <rect x="620" y="580" width="220" height="170" />
+            <rect x="880" y="490" width="150" height="260" />
+            <rect x="1070" y="620" width="250" height="130" />
+            <rect x="1360" y="540" width="180" height="210" />
+            <rect x="1580" y="600" width="200" height="150" />
+            <rect x="1820" y="510" width="150" height="240" />
+        </g>
+
+        <!-- Вікна, що світяться у місті -->
+        <g fill="#f1c40f" opacity="0.6" filter="blur(1px)">
+            <rect x="450" y="550" width="15" height="25" />
+            <rect x="490" y="600" width="15" height="25" />
+            <rect x="530" y="550" width="15" height="25" />
+            <rect x="910" y="520" width="20" height="30" />
+            <rect x="950" y="580" width="20" height="30" />
+            <rect x="1400" y="570" width="15" height="25" />
+            <rect x="1450" y="630" width="15" height="25" />
+            <rect x="1850" y="550" width="25" height="35" />
+        </g>
+
+        <!-- Мокра дорога / Асфальт -->
+        <path d="M 0 750 Q 960 720 1920 750 L 1920 1080 L 0 1080 Z" fill="url(#wetRoad)"/>
+
+        <!-- Калюжі з відображенням -->
+        <g class="puddle-ripple" opacity="0.6">
+            <ellipse cx="400" cy="850" rx="120" ry="25" fill="#4a535e" filter="url(#puddleGlow)"/>
+            <ellipse cx="420" cy="850" rx="80" ry="15" fill="#f1c40f" opacity="0.3" filter="blur(3px)"/> <!-- Відблиск вікна -->
+        </g>
+        <g class="puddle-ripple" style="animation-delay: -2s;" opacity="0.5">
+            <ellipse cx="1400" cy="950" rx="180" ry="35" fill="#4a535e" filter="url(#puddleGlow)"/>
+            <ellipse cx="1380" cy="950" rx="100" ry="20" fill="#f1c40f" opacity="0.2" filter="blur(4px)"/>
+        </g>
+        <g class="puddle-ripple" style="animation-delay: -1s;" opacity="0.7">
+            <ellipse cx="900" cy="800" rx="90" ry="18" fill="#5c6670" filter="url(#puddleGlow)"/>
+        </g>
+
+        <!-- Анімований дощ (кілька шарів для глибини) -->
+        <g stroke="#ffffff" stroke-width="1.5" stroke-linecap="round">
+            <g class="rain-layer-1">
+                <line x1="200" y1="-50" x2="150" y2="50" />
+                <line x1="800" y1="-150" x2="750" y2="-50" />
+                <line x1="1500" y1="-250" x2="1450" y2="-150" />
+                <line x1="500" y1="-350" x2="450" y2="-250" />
+                <line x1="1100" y1="-50" x2="1050" y2="50" />
+                <line x1="1800" y1="-400" x2="1750" y2="-300" />
+            </g>
+            <g class="rain-layer-2" stroke-width="1" opacity="0.6">
+                <line x1="100" y1="-100" x2="60" y2="-20" />
+                <line x1="600" y1="-20" x2="560" y2="60" />
+                <line x1="1300" y1="-300" x2="1260" y2="-220" />
+                <line x1="900" y1="-150" x2="860" y2="-70" />
+                <line x1="1700" y1="-80" x2="1660" y2="0" />
+            </g>
+            <g class="rain-layer-3" stroke-width="2" opacity="0.8">
+                <line x1="300" y1="-80" x2="230" y2="60" />
+                <line x1="1000" y1="-200" x2="930" y2="-60" />
+                <line x1="1600" y1="-50" x2="1530" y2="90" />
+                <line x1="1850" y1="-150" x2="1780" y2="-10" />
+            </g>
+        </g>
+    </svg>
+
+    <!-- ЖИВИЙ ПЕРСОНАЖ (ЛЮДИНА З ПАРАСОЛЬКОЮ) -->
+    <div id="robot-char">
+        <!-- Персонаж дивиться ліворуч -->
+        <svg viewBox="0 0 280 380" width="100%" height="100%" style="transform: scaleX(-1);">
+            <defs>
+                <linearGradient id="raincoat" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#f1c40f"/>
+                    <stop offset="100%" stop-color="#d35400"/>
+                </linearGradient>
+                <linearGradient id="umbrella" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#e74c3c"/>
+                    <stop offset="100%" stop-color="#900C3F"/>
+                </linearGradient>
+                <radialGradient id="face" cx="40%" cy="40%" r="60%">
+                    <stop offset="0%" stop-color="#ffdfc4"/>
+                    <stop offset="100%" stop-color="#e0ac82"/>
+                </radialGradient>
+                <filter id="softShadowPerson">
+                    <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#000" flood-opacity="0.4"/>
+                </filter>
+            </defs>
+
+            <!-- Тіло (Жовтий дощовик) -->
+            <path d="M 120 180 Q 90 250 80 340 Q 140 360 200 340 Q 190 250 160 180 Z" fill="url(#raincoat)" filter="url(#softShadowPerson)"/>
+            
+            <!-- Деталі дощовика (складки, ґудзики) -->
+            <path d="M 140 180 L 140 350" stroke="#d35400" stroke-width="4" stroke-linecap="round"/>
+            <circle cx="140" cy="220" r="4" fill="#2c3e50"/>
+            <circle cx="140" cy="260" r="4" fill="#2c3e50"/>
+            <circle cx="140" cy="300" r="4" fill="#2c3e50"/>
+            <path d="M 100 280 Q 110 300 105 320" fill="none" stroke="#d35400" stroke-width="3" stroke-linecap="round"/>
+            <path d="M 180 280 Q 170 300 175 320" fill="none" stroke="#d35400" stroke-width="3" stroke-linecap="round"/>
+
+            <!-- Чоботи гумові -->
+            <path d="M 100 340 L 95 370 L 125 375 L 120 345 Z" fill="#2980b9"/>
+            <path d="M 170 340 L 175 370 L 145 375 L 150 345 Z" fill="#2980b9"/>
+            <ellipse cx="110" cy="372" rx="16" ry="6" fill="#2c3e50"/>
+            <ellipse cx="160" cy="372" rx="16" ry="6" fill="#2c3e50"/>
+
+            <!-- Права рука (вільна) -->
+            <path d="M 160 190 Q 200 230 190 280" fill="none" stroke="url(#raincoat)" stroke-width="20" stroke-linecap="round" filter="url(#softShadowPerson)"/>
+            
+            <!-- Голова (Капюшон та обличчя) -->
+            <!-- Капюшон ззаду -->
+            <path d="M 100 190 Q 90 100 140 110 Q 180 100 180 180 Z" fill="url(#raincoat)" filter="url(#softShadowPerson)"/>
+            <!-- Обличчя -->
+            <ellipse cx="140" cy="150" rx="30" ry="35" fill="url(#face)"/>
+            
+            <!-- Очі -->
+            <g class="bot-eye">
+                <g class="eye-normal">
+                    <circle cx="125" cy="145" r="4" fill="#2c3e50"/>
+                    <circle cx="155" cy="145" r="4" fill="#2c3e50"/>
+                    <!-- Відблиск -->
+                    <circle cx="123" cy="143" r="1.5" fill="#fff"/>
+                    <circle cx="153" cy="143" r="1.5" fill="#fff"/>
+                </g>
+                <!-- Щасливі очі (усміхнені дуги) -->
+                <g class="eye-happy" style="display: none;">
+                    <path d="M 118 145 Q 125 135 132 145" fill="none" stroke="#2c3e50" stroke-width="3" stroke-linecap="round"/>
+                    <path d="M 148 145 Q 155 135 162 145" fill="none" stroke="#2c3e50" stroke-width="3" stroke-linecap="round"/>
+                </g>
+            </g>
+
+            <!-- Рум'янець (від холоду) -->
+            <ellipse cx="115" cy="158" rx="7" ry="4" fill="#ff7da9" opacity="0.6"/>
+            <ellipse cx="165" cy="158" rx="7" ry="4" fill="#ff7da9" opacity="0.6"/>
+            
+            <!-- Ніс -->
+            <path d="M 138 152 Q 140 156 142 152" fill="none" stroke="#d35400" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+
+            <!-- Рот -->
+            <g class="eye-normal">
+                <path d="M 135 165 Q 140 167 145 165" fill="none" stroke="#2c3e50" stroke-width="2" stroke-linecap="round"/>
+            </g>
+            <g class="eye-happy" style="display: none;">
+                <path d="M 130 162 Q 140 175 150 162" fill="none" stroke="#2c3e50" stroke-width="3" stroke-linecap="round"/>
+            </g>
+
+            <!-- Капюшон спереду (обіймає обличчя) -->
+            <path d="M 110 120 Q 140 105 170 120 Q 175 160 160 180 Q 140 190 120 180 Q 105 160 110 120 Z" fill="none" stroke="url(#raincoat)" stroke-width="12" stroke-linecap="round"/>
+
+            <!-- Група Парасольки та Лівої руки -->
+            <g class="umbrella-group">
+                <!-- Ручка парасольки -->
+                <line x1="110" y1="260" x2="140" y2="70" stroke="#7f8c8d" stroke-width="6" stroke-linecap="round"/>
+                <path d="M 110 260 A 10 10 0 0 0 130 260" fill="none" stroke="#2c3e50" stroke-width="6" stroke-linecap="round"/>
+                
+                <!-- Купол парасольки -->
+                <path d="M 20 110 Q 140 -20 260 110 Q 200 90 140 110 Q 80 90 20 110 Z" fill="url(#umbrella)" filter="url(#softShadowPerson)"/>
+                <path d="M 140 -5 L 140 110" stroke="#c0392b" stroke-width="2"/>
+                <path d="M 90 35 Q 115 80 140 110" fill="none" stroke="#c0392b" stroke-width="2"/>
+                <path d="M 190 35 Q 165 80 140 110" fill="none" stroke="#c0392b" stroke-width="2"/>
+                
+                <!-- Наконечник парасольки -->
+                <line x1="140" y1="20" x2="140" y2="0" stroke="#7f8c8d" stroke-width="4" stroke-linecap="round"/>
+
+                <!-- Ліва рука (тримає парасольку) -->
+                <path d="M 120 190 Q 90 220 115 250" fill="none" stroke="url(#raincoat)" stroke-width="18" stroke-linecap="round" filter="url(#softShadowPerson)"/>
+                <circle cx="115" cy="250" r="9" fill="#ffdfc4"/> <!-- Кисть руки -->
+            </g>
+        </svg>
+    </div>
+
+    <!-- ВЕРХНЯ ПАНЕЛЬ КЕРУВАННЯ -->
+    <div id="controls">
+        <input type="number" id="valA" value="18" min="1" max="89">
+        <span class="math-sign">+</span>
+        <input type="number" id="valB" value="8" min="1" max="19">
+        <button id="btn-play">
+            <svg viewBox="0 0 24 24" width="35" height="35">
+                <path d="M8 5v14l11-7z" fill="#ffffff" filter="drop-shadow(0 2px 5px rgba(0,0,0,0.5))"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Лупа для масштабування -->
+    <button id="btn-zoom-in" class="zoom-btn">🔍+</button>
+    <button id="btn-zoom-out" class="zoom-btn">🔍-</button>
+
+    <div id="workspace-wrapper">
+        <div id="workspace">
+            <div id="interactive-zone"></div>
+            <div id="indicator">
+                <svg viewBox="0 0 24 24" width="100%" height="100%">
+                    <path d="M12 2L4 10h4v12h8V10h4L12 2z" fill="#ff9900" filter="drop-shadow(0 0 10px #ffffff)" transform="rotate(180 12 12)"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Manager UI -->
+    <button id="theme-btn">⚙️</button>
+    <div id="theme-modal">
+        <div id="theme-modal-close">✕</div>
+        <h3 style="margin-top:0; text-align:center;">Оберіть фон</h3>
+        <div id="theme-gallery">
+            <div class="theme-card" onclick="selectTheme('none')" style="background: #2a2e33;">
+                <span>Без фону</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Draw Tool -->
+    <canvas id="global-draw-canvas"></canvas>
+    <button id="toggle-draw-btn-global">✏️</button>
+    <div id="draw-panel-global">
+        <div class="draw-panel-header" id="draw-panel-header">
+            <div class="close-draw-btn" id="close-draw-btn">✕</div>
+        </div>
+        <div class="draw-btn-group">
+            <button class="draw-btn active" id="tool-pencil">✏️ Олівець</button>
+            <button class="draw-btn" id="tool-eraser">🧽 Гумка</button>
+        </div>
+        <input type="range" class="draw-slider" id="draw-size" min="1" max="50" value="5">
+        <input type="color" class="draw-color" id="draw-color" value="#ff9900">
+        <button class="draw-clear" id="draw-clear">🗑️ Очистити</button>
+    </div>
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">СИСТЕМУ ЗАБЛОКОВАНО! ЗАЧЕКАЙ СВОГО УРОКУ.</div>
+
+    <script>
+        // ==========================================
+        // 1. КОНФІГУРАЦІЯ ТА ІДЕНТИФІКАЦІЯ
+        // ==========================================
+        const CONFIG = { gameId: 'add_over_ten_v1' };
+        
+        let myName = new URLSearchParams(window.location.search).get('user');
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = 'Космонавт_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+        
+        const tabId = Math.random().toString(36).substr(2, 9);
+        let currentScale = 1;
+
+        // Firebase Init
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        function sendGameAction(actionData) {
+            db.ref('game_action').set({
+                senderId: tabId,
+                timestamp: Date.now(),
+                ...actionData
+            });
+        }
+
+        // ==========================================
+        // 2. РАДАР, БЛОКУВАННЯ ТА ЛОБІ
+        // ==========================================
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                userRef.set(true);
+                userRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.visibility = snap.val() ? 'visible' : 'hidden';
+        });
+
+        let isInitialRefreshLoad = true;
+        db.ref('force_refresh').on('value', snap => {
+            if (isInitialRefreshLoad) {
+                isInitialRefreshLoad = false;
+                return;
+            }
+            if (snap.val() === true) {
+                window.location.reload();
+            }
+        });
+
+        setTimeout(() => {
+            db.ref('current_activity').on('value', snap => {
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }, 1000);
+
+        // ==========================================
+        // 3. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
+        // ==========================================
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const bgCanvas = document.getElementById('bg-canvas');
+
+        themeBtn.onclick = () => themeModal.style.display = 'block';
+        document.getElementById('theme-modal-close').onclick = () => themeModal.style.display = 'none';
+
+        function applyTheme(url) {
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+                bgCanvas.style.display = 'block';
+            } else {
+                document.body.style.backgroundImage = `url(${url})`;
+                bgCanvas.style.display = 'none';
+            }
+        }
+
+        const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedBg) applyTheme(savedBg);
+
+        window.selectTheme = function(url) {
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            applyTheme(url);
+            db.ref('game_theme').set(url);
+        };
+
+        db.ref('game_theme').on('value', snap => {
+            const url = snap.val();
+            if (url) {
+                localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+                applyTheme(url);
+            }
+        });
+
+        async function loadBackgrounds() {
+            let i = 1;
+            while(true) {
+                const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    if (!response.ok) break;
+
+                    const card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.style.backgroundImage = `url(${url})`;
+                    card.onclick = () => selectTheme(url);
+                    
+                    const span = document.createElement('span');
+                    span.innerText = `Фон ${i}`;
+                    card.appendChild(span);
+                    
+                    themeGallery.appendChild(card);
+                    i++;
+                } catch (e) {
+                    break;
+                }
+            }
+        }
+        loadBackgrounds();
+
+        // ==========================================
+        // 4. ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ
+        // ==========================================
+        const drawCanvas = document.getElementById('global-draw-canvas');
+        const ctxDraw = drawCanvas.getContext('2d');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        const drawPanel = document.getElementById('draw-panel-global');
+        
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let currentTool = 'pencil';
+        let lastX = 0, lastY = 0;
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        toggleDrawBtn.onclick = () => {
+            drawPanel.style.display = 'block';
+            isDrawingMode = true;
+            drawCanvas.style.pointerEvents = 'auto';
+            
+            currentTool = 'pencil';
+            document.getElementById('tool-pencil').classList.add('active');
+            document.getElementById('tool-eraser').classList.remove('active');
+        };
+
+        document.getElementById('close-draw-btn').onclick = () => {
+            drawPanel.style.display = 'none';
+            isDrawingMode = false;
+            drawCanvas.style.pointerEvents = 'none';
+        };
+
+        document.getElementById('tool-pencil').onclick = function() {
+            currentTool = 'pencil';
+            this.classList.add('active');
+            document.getElementById('tool-eraser').classList.remove('active');
+        };
+        document.getElementById('tool-eraser').onclick = function() {
+            currentTool = 'eraser';
+            this.classList.add('active');
+            document.getElementById('tool-pencil').classList.remove('active');
+        };
+        
+        document.getElementById('draw-clear').onclick = () => {
+            ctxDraw.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            sendGameAction({ type: 'clear_canvas' });
+        };
+
+        function drawLine(x0, y0, x1, y1, tool, size, color, emit) {
+            ctxDraw.beginPath();
+            ctxDraw.moveTo(x0, y0);
+            ctxDraw.lineTo(x1, y1);
+            ctxDraw.lineCap = 'round';
+            ctxDraw.lineWidth = size;
+            ctxDraw.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+            if (tool === 'eraser') ctxDraw.globalCompositeOperation = 'destination-out';
+            else {
+                ctxDraw.globalCompositeOperation = 'source-over';
+                ctxDraw.shadowBlur = 10;
+                ctxDraw.shadowColor = color;
+            }
+            ctxDraw.stroke();
+            ctxDraw.closePath();
+            ctxDraw.shadowBlur = 0;
+
+            if (emit) {
+                sendGameAction({
+                    type: 'draw_line',
+                    x0: x0 / drawCanvas.width, y0: y0 / drawCanvas.height,
+                    x1: x1 / drawCanvas.width, y1: y1 / drawCanvas.height,
+                    tool, size, color
+                });
+            }
+        }
+
+        function getMousePos(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        drawCanvas.addEventListener('mousedown', (e) => {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getMousePos(e);
+            lastX = pos.x; lastY = pos.y;
+        });
+        drawCanvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing || !isDrawingMode) return;
+            const pos = getMousePos(e);
+            const size = document.getElementById('draw-size').value;
+            const color = document.getElementById('draw-color').value;
+            drawLine(lastX, lastY, pos.x, pos.y, currentTool, size, color, true);
+            lastX = pos.x; lastY = pos.y;
+        });
+        drawCanvas.addEventListener('mouseup', () => isDrawing = false);
+        drawCanvas.addEventListener('mouseout', () => isDrawing = false);
+        
+        drawCanvas.addEventListener('touchstart', (e) => {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getMousePos(e);
+            lastX = pos.x; lastY = pos.y;
+        }, {passive: false});
+        drawCanvas.addEventListener('touchmove', (e) => {
+            if (!isDrawing || !isDrawingMode) return;
+            e.preventDefault();
+            const pos = getMousePos(e);
+            const size = document.getElementById('draw-size').value;
+            const color = document.getElementById('draw-color').value;
+            drawLine(lastX, lastY, pos.x, pos.y, currentTool, size, color, true);
+            lastX = pos.x; lastY = pos.y;
+        }, {passive: false});
+        drawCanvas.addEventListener('touchend', () => isDrawing = false);
+
+        const header = document.getElementById('draw-panel-header');
+        let isDraggingPanel = false, panOffsetX, panOffsetY;
+        
+        header.onmousedown = (e) => { 
+            isDraggingPanel = true; 
+            panOffsetX = e.clientX - drawPanel.offsetLeft; 
+            panOffsetY = e.clientY - drawPanel.offsetTop; 
+        };
+        
+        document.onmousemove = (e) => { 
+            if(isDraggingPanel) { 
+                let newLeft = e.clientX - panOffsetX;
+                let newTop = e.clientY - panOffsetY;
+                
+                const maxLeft = window.innerWidth - drawPanel.offsetWidth;
+                const maxTop = window.innerHeight - drawPanel.offsetHeight;
+                
+                newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                newTop = Math.max(0, Math.min(newTop, maxTop));
+                
+                drawPanel.style.left = newLeft + 'px'; 
+                drawPanel.style.top = newTop + 'px'; 
+                drawPanel.style.right = 'auto'; 
+            }
+        };
+        document.onmouseup = () => isDraggingPanel = false;
+
+        // Синхронізація дій
+        db.ref('game_action').on('value', snap => {
+            const data = snap.val();
+            if (!data || data.senderId === tabId) return; 
+
+            if (data.type === 'draw_line') {
+                const w = drawCanvas.width, h = drawCanvas.height;
+                drawLine(data.x0 * w, data.y0 * h, data.x1 * w, data.y1 * h, data.tool, data.size, data.color, false);
+            } else if (data.type === 'clear_canvas') {
+                ctxDraw.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            } else if (data.type === 'play_game') {
+                document.getElementById('valA').value = data.valA;
+                document.getElementById('valB').value = data.valB;
+                startGameLocal();
+            } else if (data.type === 'split_apples') {
+                splitApplesLocal();
+            } else if (data.type === 'fly_apples') {
+                flyApplesLocal();
+            }
+        });
+
+        // ==========================================
+        // 5. МАСШТАБУВАННЯ (ЛУПА)
+        // ==========================================
+        const ws = document.getElementById('workspace');
+        document.getElementById('btn-zoom-in').onclick = () => { currentScale += 0.1; ws.style.transform = `scale(${currentScale})`; };
+        document.getElementById('btn-zoom-out').onclick = () => { currentScale = Math.max(0.3, currentScale - 0.1); ws.style.transform = `scale(${currentScale})`; };
+
+        // ==========================================
+        // 6. ІГРОВА ЛОГІКА
+        // ==========================================
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playTone(freq, type, duration, vol=0.1) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playSound(type) {
+            initAudio();
+            if (type === 'split') {
+                playTone(800, 'square', 0.1, 0.1);
+                setTimeout(() => playTone(1200, 'square', 0.1, 0.1), 100);
+            } else if (type === 'fly') {
+                if(!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(2000, audioCtx.currentTime + 0.6);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.6);
+            } else if (type === 'success') {
+                playTone(523.25, 'triangle', 0.2, 0.1);
+                setTimeout(() => playTone(659.25, 'triangle', 0.2, 0.1), 100);
+                setTimeout(() => playTone(783.99, 'triangle', 0.2, 0.15), 200);
+                setTimeout(() => playTone(1046.50, 'triangle', 0.6, 0.2), 350);
+            } else if (type === 'pop') {
+                playTone(600 + Math.random()*300, 'sine', 0.1, 0.05);
+            }
+        }
+
+        // Плетений осінній кошик (замість ящика)
+        const svgCrate = `
+            <svg viewBox="0 0 220 120" width="100%" height="100%">
+                <defs>
+                    <linearGradient id="wickerDark" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#8B4513"/>
+                        <stop offset="100%" stop-color="#5C2E0B"/>
+                    </linearGradient>
+                    <linearGradient id="wickerLight" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stop-color="#A0522D"/>
+                        <stop offset="50%" stop-color="#CD853F"/>
+                        <stop offset="100%" stop-color="#8B4513"/>
+                    </linearGradient>
+                    <filter id="basketShadow">
+                        <feDropShadow dx="0" dy="8" stdDeviation="5" flood-color="#000" flood-opacity="0.5"/>
+                    </filter>
+                </defs>
+                <!-- Внутрішня тінь (куди падають листочки) -->
+                <ellipse cx="110" cy="25" rx="100" ry="20" fill="#2e1705"/>
+                
+                <!-- Основа кошика -->
+                <path d="M 10 25 Q 10 110 50 115 L 170 115 Q 210 110 210 25 Z" fill="url(#wickerDark)" filter="url(#basketShadow)"/>
+                
+                <!-- Плетіння (горизонтальні лінії) -->
+                <path d="M 11 35 Q 110 50 209 35" fill="none" stroke="url(#wickerLight)" stroke-width="4" opacity="0.8"/>
+                <path d="M 15 55 Q 110 70 205 55" fill="none" stroke="url(#wickerLight)" stroke-width="4" opacity="0.8"/>
+                <path d="M 22 75 Q 110 90 198 75" fill="none" stroke="url(#wickerLight)" stroke-width="4" opacity="0.8"/>
+                <path d="M 33 95 Q 110 105 187 95" fill="none" stroke="url(#wickerLight)" stroke-width="4" opacity="0.8"/>
+                
+                <!-- Плетіння (вертикальні лінії) -->
+                <g stroke="#6b340e" stroke-width="6" stroke-linecap="round" opacity="0.9">
+                    <line x1="30" y1="28" x2="45" y2="110"/>
+                    <line x1="60" y1="28" x2="70" y2="114"/>
+                    <line x1="90" y1="28" x2="95" y2="115"/>
+                    <line x1="120" y1="28" x2="120" y2="115"/>
+                    <line x1="150" y1="28" x2="145" y2="115"/>
+                    <line x1="180" y1="28" x2="170" y2="114"/>
+                </g>
+
+                <!-- Обідок кошика -->
+                <ellipse cx="110" cy="25" rx="100" ry="20" fill="none" stroke="url(#wickerLight)" stroke-width="8"/>
+                <ellipse cx="110" cy="25" rx="98" ry="18" fill="none" stroke="#6b340e" stroke-width="2"/>
+            </svg>
+        `;
+
+        // Кленовий листок, що світиться (замість прикраси)
+        const svgApple = `
+            <svg viewBox="0 0 100 100" width="100%" height="100%">
+                <defs>
+                    <radialGradient id="leafGlow" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="#ffdd00"/>
+                        <stop offset="40%" stop-color="#ff7b00"/>
+                        <stop offset="100%" stop-color="#b32400"/>
+                    </radialGradient>
+                    <filter id="leafShadow">
+                        <feDropShadow dx="0" dy="3" stdDeviation="2" flood-color="#000" flood-opacity="0.4"/>
+                    </filter>
+                </defs>
+                <!-- Хвостик -->
+                <path d="M 50 80 Q 55 95 45 100" fill="none" stroke="#5c2e0b" stroke-width="4" stroke-linecap="round"/>
+                
+                <!-- Деталізований кленовий листок -->
+                <path d="M 50 5 
+                         L 56 25 L 75 15 L 68 35 L 95 45 L 75 55 L 85 75 L 60 65 L 50 85 L 40 65 L 15 75 L 25 55 L 5 45 L 32 35 L 25 15 L 44 25 Z" 
+                      fill="url(#leafGlow)" filter="url(#leafShadow)" stroke="#ffcc00" stroke-width="1.5" stroke-linejoin="round"/>
+                      
+                <!-- Прожилки -->
+                <g stroke="#ffe066" stroke-width="2" stroke-linecap="round" opacity="0.6">
+                    <line x1="50" y1="80" x2="50" y2="25"/>
+                    <line x1="50" y1="70" x2="25" y2="40"/>
+                    <line x1="50" y1="70" x2="75" y2="40"/>
+                    <line x1="50" y1="50" x2="15" y2="45"/>
+                    <line x1="50" y1="50" x2="85" y2="45"/>
+                </g>
+            </svg>
+        `;
+
+        // Золота іскра магії осені (замість сніжинки)
+        const svgStar = `
+            <svg viewBox="0 0 24 24" width="100%" height="100%">
+                <g fill="#ffdd00" filter="drop-shadow(0 0 5px #ff7b00)">
+                    <path d="M 12 0 Q 14 10 24 12 Q 14 14 12 24 Q 10 14 0 12 Q 10 10 12 0 Z"/>
+                </g>
+            </svg>
+        `;
+
+        let gameState = 0;
+        let valA, valB, neededToTen;
+        let rightApples = [];
+        let emptySlotCoords = []; 
+        let partialCrateEl = null;
+        let rightStartX = 500; 
+        let partialCrateX = 0, partialCrateY = 0;
+
+        const clickZone = document.getElementById('interactive-zone');
+        const indicator = document.getElementById('indicator');
+
+        function createCrate(x, y) {
+            const el = document.createElement('div');
+            el.className = 'crate';
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            el.innerHTML = svgCrate;
+            ws.appendChild(el);
+            return el;
+        }
+
+        function createApple(x, y, delay = 0) {
+            const el = document.createElement('div');
+            el.className = 'apple';
+            el.style.left = x + 'px';
+            el.style.top = (y - 100) + 'px';
+            el.style.opacity = '0';
+            el.innerHTML = svgApple;
+            ws.appendChild(el);
+            setTimeout(() => { el.style.top = y + 'px'; el.style.opacity = '1'; playSound('pop'); }, delay);
+            return el;
+        }
+
+        function spawnParticles(cx, cy) {
+            for(let i=0; i<20; i++) {
+                let star = document.createElement('div');
+                star.className = 'particle';
+                star.innerHTML = svgStar;
+                star.style.left = cx + 'px';
+                star.style.top = cy + 'px';
+                ws.appendChild(star);
+                setTimeout(() => {
+                    let angle = Math.random() * Math.PI * 2;
+                    let dist = 80 + Math.random() * 100;
+                    star.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px) scale(${Math.random()*1.5}) rotate(${Math.random()*360}deg)`;
+                    star.style.opacity = '0';
+                }, 10);
+                setTimeout(() => star.remove(), 1200);
+            }
+        }
+
+        document.getElementById('btn-play').addEventListener('click', () => {
+            valA = parseInt(document.getElementById('valA').value);
+            valB = parseInt(document.getElementById('valB').value);
+            if (isNaN(valA) || isNaN(valB) || valA < 1 || valB < 1) return;
+            
+            sendGameAction({ type: 'play_game', valA, valB });
+            startGameLocal();
+        });
+
+        function startGameLocal() {
+            initAudio();
+            valA = parseInt(document.getElementById('valA').value);
+            valB = parseInt(document.getElementById('valB').value);
+            
+            ws.innerHTML = '';
+            ws.appendChild(clickZone);
+            ws.appendChild(indicator);
+            rightApples = [];
+            emptySlotCoords = [];
+            partialCrateEl = null;
+
+            // Скидаємо емоцію персонажа
+            document.getElementById('robot-char').classList.remove('happy');
+
+            let tensA = Math.floor(valA / 10);
+            let onesA = valA % 10;
+            neededToTen = onesA > 0 ? 10 - onesA : 0;
+            if (neededToTen === 0) neededToTen = 10; 
+
+            let currentCrateX = 20;
+            let currentCrateY = 20;
+            let delayCounter = 0;
+
+            const CRATE_WIDTH = 220, CRATE_HEIGHT = 120;
+
+            for (let i = 0; i < tensA; i++) {
+                createCrate(currentCrateX, currentCrateY);
+                for(let r=0; r<2; r++) {
+                    for(let c=0; c<5; c++) {
+                        let ax = currentCrateX + 10 + c*40; 
+                        let ay = currentCrateY + 15 + r*50;
+                        createApple(ax, ay, delayCounter);
+                        delayCounter += 30;
+                    }
+                }
+                currentCrateY += CRATE_HEIGHT + 20;
+                if (currentCrateY > 400) { 
+                    currentCrateY = 20;
+                    currentCrateX += CRATE_WIDTH + 20;
+                }
+            }
+
+            partialCrateX = currentCrateX;
+            partialCrateY = currentCrateY;
+            partialCrateEl = createCrate(currentCrateX, currentCrateY);
+            
+            let slotIndex = 0;
+            for(let r=0; r<2; r++) {
+                for(let c=0; c<5; c++) {
+                    let ax = currentCrateX + 10 + c*40; 
+                    let ay = currentCrateY + 15 + r*50;
+                    if (slotIndex < onesA) {
+                        createApple(ax, ay, delayCounter);
+                    } else {
+                        emptySlotCoords.push({x: ax, y: ay});
+                    }
+                    slotIndex++;
+                    delayCounter += 20;
+                }
+            }
+
+            rightStartX = currentCrateX + CRATE_WIDTH + 80;
+
+            for(let i = 0; i < valB; i++) {
+                let col = i % 4;
+                let row = Math.floor(i / 4);
+                let ax = rightStartX + col * 55;
+                let ay = 100 + row * 55;
+                
+                let app = createApple(ax, ay, delayCounter);
+                rightApples.push(app);
+                delayCounter += 40;
+            }
+
+            gameState = 1;
+            
+            setTimeout(() => {
+                clickZone.style.display = 'block';
+                clickZone.style.left = (rightStartX - 50) + 'px';
+                clickZone.style.top = '50px';
+                clickZone.style.width = '350px';
+                clickZone.style.height = '350px';
+                
+                indicator.style.display = 'block';
+                indicator.style.left = (rightStartX + 100) + 'px';
+                indicator.style.top = '40px';
+            }, delayCounter + 200);
+        }
+
+        clickZone.addEventListener('click', () => {
+            if (gameState === 1) {
+                sendGameAction({ type: 'split_apples' });
+                splitApplesLocal();
+            } else if (gameState === 2) {
+                sendGameAction({ type: 'fly_apples' });
+                flyApplesLocal();
+            }
+        });
+
+        function splitApplesLocal() {
+            initAudio();
+            let amountToFly = Math.min(valB, neededToTen);
+            
+            if (gameState === 1) {
+                playSound('split');
+                
+                let flyStartX = partialCrateX + 220 + 50;
+                let flyStartY = partialCrateY;
+                
+                let remStartX = flyStartX;
+                let remStartY = flyStartY + 140; 
+                
+                if (remStartY > 500) {
+                    remStartY = flyStartY;
+                    remStartX = flyStartX + 160;
+                }
+
+                for(let i=0; i < valB; i++) {
+                    let app = rightApples[i];
+                    if (i < amountToFly) {
+                        let col = i % 3;
+                        let row = Math.floor(i / 3);
+                        app.style.left = (flyStartX + col * 45) + 'px';
+                        app.style.top = (flyStartY + row * 45) + 'px';
+                    } else {
+                        let idx = i - amountToFly;
+                        let col = idx % 3;
+                        let row = Math.floor(idx / 3);
+                        app.style.left = (remStartX + col * 45) + 'px';
+                        app.style.top = (remStartY + row * 45) + 'px';
+                    }
+                }
+                
+                gameState = 2; 
+                
+                clickZone.style.display = 'block';
+                clickZone.style.left = (flyStartX - 50) + 'px';
+                clickZone.style.top = (flyStartY - 50) + 'px';
+                clickZone.style.width = '300px';
+                clickZone.style.height = '300px';
+                
+                indicator.style.display = 'block';
+                indicator.style.left = (flyStartX + 15) + 'px';
+                indicator.style.top = (flyStartY - 60) + 'px';
+            }
+        }
+
+        function flyApplesLocal() {
+            if (gameState !== 2) return;
+            
+            let amountToFly = Math.min(valB, neededToTen);
+            playSound('fly');
+            clickZone.style.display = 'none';
+            indicator.style.display = 'none';
+            
+            for(let i=0; i < amountToFly; i++) {
+                let app = rightApples[i];
+                let target = emptySlotCoords[i];
+                setTimeout(() => {
+                    app.style.left = target.x + 'px';
+                    app.style.top = target.y + 'px';
+                }, i * 150);
+            }
+
+            let totalFlyTime = (amountToFly - 1) * 150 + 1200;
+            setTimeout(() => {
+                if (amountToFly === neededToTen) {
+                    playSound('success');
+                    partialCrateEl.classList.add('glow');
+                    let rect = partialCrateEl.getBoundingClientRect();
+                    let wsRect = ws.getBoundingClientRect();
+                    let cx = (rect.left - wsRect.left) + 110; 
+                    let cy = (rect.top - wsRect.top) + 60; 
+                    spawnParticles(cx, cy);
+                    
+                    // Реакція Персонажа: радість
+                    const robot = document.getElementById('robot-char');
+                    robot.classList.add('happy');
+                }
+            }, totalFlyTime);
+
+            gameState = 3;
+        }
+    </script>
+</body>
+</html>
