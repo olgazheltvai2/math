@@ -65,12 +65,11 @@
             100% { transform: translate(50px, -50px) scale(1.2); opacity: 0; }
         }
 
-        /* Інтерфейс керування зверху */
+        /* Інтерфейс керування зверху - ПЕРЕМІЩЕНО ПРАВІШЕ */
         #controls {
             position: absolute;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
+            top: 20px;
+            right: 10%; /* Ставимо панель правіше, щоб уникнути накладання */
             display: flex;
             align-items: center;
             gap: 15px;
@@ -135,7 +134,7 @@
             transform: scale(0.95);
         }
 
-        /* Робоча область - збільшена, щоб не накладалося на controls */
+        /* Робоча область */
         #workspace-wrapper {
             position: absolute;
             top: 55%;
@@ -422,7 +421,7 @@
         .draw-clear { width: 100%; padding: 5px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; }
 
         @media (max-width: 768px) {
-            #controls { transform: translateX(-50%) scale(0.7); top: 5px; }
+            #controls { right: 5%; top: 10px; transform: scale(0.7); transform-origin: top right; }
             #workspace { transform: scale(0.6); transform-origin: top center; }
             .nav-btn { width: 40px; height: 40px; bottom: 10px; }
             #btn-prev { left: 10px; }
@@ -472,9 +471,9 @@
     <div id="fireflies-container"></div>
 
     <div id="controls">
-        <input type="number" id="valA" value="67" min="1" max="89">
+        <input type="number" id="valA" value="86" min="1" max="89">
         <span class="math-sign">+</span>
-        <input type="number" id="valB" value="4" min="1" max="19">
+        <input type="number" id="valB" value="9" min="1" max="19">
         <button id="btn-play">
             <svg viewBox="0 0 24 24" width="35" height="35">
                 <path d="M8 5v14l11-7z" fill="#ffffff" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
@@ -587,12 +586,12 @@
             document.getElementById('block-overlay').style.visibility = snap.val() ? 'visible' : 'hidden';
         });
 
-        // Виправлення безкінечного циклу оновлення
+        // Захист від зациклення оновлення
         let isInitialRefreshLoad = true;
         db.ref('force_refresh').on('value', snap => {
             if (isInitialRefreshLoad) {
                 isInitialRefreshLoad = false;
-                return; // Ігноруємо перше зчитування при завантаженні сторінки
+                return;
             }
             if (snap.val() === true) {
                 window.location.reload();
@@ -628,7 +627,6 @@
             }
         }
 
-        // Збереження та завантаження індивідуального фону гри за CONFIG.gameId
         const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
         if (savedBg) applyTheme(savedBg);
 
@@ -646,14 +644,13 @@
             }
         });
 
-        // Строго послідовне завантаження фонів із зупинкою на 404
         async function loadBackgrounds() {
             let i = 1;
             while(true) {
                 const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
                 try {
                     const response = await fetch(url, { method: 'HEAD' });
-                    if (!response.ok) break; // Зупинка перевірки на першій помилці 404
+                    if (!response.ok) break;
 
                     const card = document.createElement('div');
                     card.className = 'theme-card';
@@ -693,7 +690,6 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Автоматична активація режиму малювання при відкритті панелі
         toggleDrawBtn.onclick = () => {
             drawPanel.style.display = 'block';
             isDrawingMode = true;
@@ -704,7 +700,6 @@
             document.getElementById('tool-eraser').classList.remove('active');
         };
 
-        // Вимкнення малювання при закритті
         document.getElementById('close-draw-btn').onclick = () => {
             drawPanel.style.display = 'none';
             isDrawingMode = false;
@@ -740,7 +735,6 @@
             ctxDraw.closePath();
 
             if (emit) {
-                // Відправляємо відносні координати для правильного масштабування
                 sendGameAction({
                     type: 'draw_line',
                     x0: x0 / drawCanvas.width, y0: y0 / drawCanvas.height,
@@ -791,17 +785,16 @@
         }, {passive: false});
         drawCanvas.addEventListener('touchend', () => isDrawing = false);
 
-        // Перетягування панелі малювання
         const header = document.getElementById('draw-panel-header');
         let isDraggingPanel = false, panOffsetX, panOffsetY;
         header.onmousedown = (e) => { isDraggingPanel = true; panOffsetX = e.clientX - drawPanel.offsetLeft; panOffsetY = e.clientY - drawPanel.offsetTop; };
         document.onmousemove = (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.clientX - panOffsetX) + 'px'; drawPanel.style.top = (e.clientY - panOffsetY) + 'px'; drawPanel.style.right = 'auto'; }};
         document.onmouseup = () => isDraggingPanel = false;
 
-        // Синхронізація дій
+        // Синхронізація дій через Firebase
         db.ref('game_action').on('value', snap => {
             const data = snap.val();
-            if (!data || data.senderId === tabId) return; // Ігноруємо власні дії
+            if (!data || data.senderId === tabId) return; 
 
             if (data.type === 'draw_line') {
                 const w = drawCanvas.width, h = drawCanvas.height;
@@ -814,6 +807,8 @@
                 startGameLocal();
             } else if (data.type === 'split_apples') {
                 splitApplesLocal();
+            } else if (data.type === 'fly_apples') {
+                flyApplesLocal(Math.min(valB, neededToTen));
             }
         });
 
@@ -1057,10 +1052,14 @@
             }, delayCounter + 200);
         }
 
+        // Обробка кліків: два етапи (поділ, потім політ)
         clickZone.addEventListener('click', () => {
             if (gameState === 1) {
                 sendGameAction({ type: 'split_apples' });
                 splitApplesLocal();
+            } else if (gameState === 2) {
+                sendGameAction({ type: 'fly_apples' });
+                flyApplesLocal(Math.min(valB, neededToTen));
             }
         });
 
@@ -1089,15 +1088,19 @@
                     }
                 }
                 
-                gameState = 2;
+                gameState = 2; // Переходимо до етапу 2 (очікування кліку на політ)
+                
+                // Залишаємо зону кліку активною та пересуваємо індикатор
+                clickZone.style.display = 'block';
+                indicator.style.display = 'block';
                 indicator.style.left = (rightStartX - 20) + 'px';
                 indicator.style.top = '50px';
-                
-                setTimeout(() => flyApplesLocal(amountToFly), 1500);
             }
         }
 
         function flyApplesLocal(amountToFly) {
+            if (gameState !== 2) return;
+            
             playSound('fly');
             clickZone.style.display = 'none';
             indicator.style.display = 'none';
