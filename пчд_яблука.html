@@ -14,7 +14,7 @@
         * {
             box-sizing: border-box;
             user-select: none;
-            font-family: Arial, sans-serif; /* Шрифт за умовами - Arial */
+            font-family: Arial, sans-serif;
         }
         body {
             margin: 0;
@@ -69,7 +69,7 @@
         #controls {
             position: absolute;
             top: 20px;
-            right: 10%; /* Ставимо панель правіше, щоб уникнути накладання */
+            right: 10%;
             display: flex;
             align-items: center;
             gap: 15px;
@@ -145,7 +145,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            pointer-events: none; /* Пропускає кліки на фон */
+            pointer-events: none;
         }
 
         #workspace {
@@ -184,10 +184,6 @@
 
         #interactive-zone {
             position: absolute;
-            right: 0px;
-            top: 0px;
-            width: 600px;
-            height: 600px;
             cursor: pointer;
             z-index: 50;
             display: none;
@@ -242,7 +238,7 @@
         #btn-zoom-in { bottom: 150px; }
         #btn-zoom-out { bottom: 90px; }
         
-        /* Кнопки навігації (назад, далі) */
+        /* Кнопки навігації */
         .nav-btn {
             position: absolute;
             bottom: 30px;
@@ -471,9 +467,9 @@
     <div id="fireflies-container"></div>
 
     <div id="controls">
-        <input type="number" id="valA" value="86" min="1" max="89">
+        <input type="number" id="valA" value="18" min="1" max="89">
         <span class="math-sign">+</span>
-        <input type="number" id="valB" value="9" min="1" max="19">
+        <input type="number" id="valB" value="8" min="1" max="19">
         <button id="btn-play">
             <svg viewBox="0 0 24 24" width="35" height="35">
                 <path d="M8 5v14l11-7z" fill="#ffffff" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
@@ -586,7 +582,6 @@
             document.getElementById('block-overlay').style.visibility = snap.val() ? 'visible' : 'hidden';
         });
 
-        // Захист від зациклення оновлення
         let isInitialRefreshLoad = true;
         db.ref('force_refresh').on('value', snap => {
             if (isInitialRefreshLoad) {
@@ -604,7 +599,7 @@
                     window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
                 }
             });
-        }, 1000); // Імунітет 1 секунда
+        }, 1000);
 
         // ==========================================
         // 3. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
@@ -791,7 +786,7 @@
         document.onmousemove = (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.clientX - panOffsetX) + 'px'; drawPanel.style.top = (e.clientY - panOffsetY) + 'px'; drawPanel.style.right = 'auto'; }};
         document.onmouseup = () => isDraggingPanel = false;
 
-        // Синхронізація дій через Firebase
+        // Синхронізація дій
         db.ref('game_action').on('value', snap => {
             const data = snap.val();
             if (!data || data.senderId === tabId) return; 
@@ -808,7 +803,7 @@
             } else if (data.type === 'split_apples') {
                 splitApplesLocal();
             } else if (data.type === 'fly_apples') {
-                flyApplesLocal(Math.min(valB, neededToTen));
+                flyApplesLocal();
             }
         });
 
@@ -1046,20 +1041,23 @@
                 clickZone.style.display = 'block';
                 clickZone.style.left = (rightStartX - 50) + 'px';
                 clickZone.style.top = '50px';
+                clickZone.style.width = '350px';
+                clickZone.style.height = '350px';
+                
                 indicator.style.display = 'block';
                 indicator.style.left = (rightStartX + 100) + 'px';
                 indicator.style.top = '40px';
             }, delayCounter + 200);
         }
 
-        // Обробка кліків: два етапи (поділ, потім політ)
+        // Обробка двох етапів кліку
         clickZone.addEventListener('click', () => {
             if (gameState === 1) {
                 sendGameAction({ type: 'split_apples' });
                 splitApplesLocal();
             } else if (gameState === 2) {
                 sendGameAction({ type: 'fly_apples' });
-                flyApplesLocal(Math.min(valB, neededToTen));
+                flyApplesLocal();
             }
         });
 
@@ -1069,38 +1067,56 @@
             
             if (gameState === 1) {
                 playSound('split');
-                let remStartX = partialCrateX + 220 + 30;
-                let remStartY = partialCrateY;
+                
+                // Базова позиція для групи, що полетить (біля неповної коробки)
+                let flyStartX = partialCrateX + 220 + 50;
+                let flyStartY = partialCrateY;
+                
+                // Позиція для залишку (чітко відділена від першої групи на 140 пікселів вниз)
+                let remStartX = flyStartX;
+                let remStartY = flyStartY + 140; 
+                
+                // Якщо коробка дуже низько, зсуваємо залишок правіше замість вниз
+                if (remStartY > 500) {
+                    remStartY = flyStartY;
+                    remStartX = flyStartX + 160;
+                }
 
                 for(let i=0; i < valB; i++) {
                     let app = rightApples[i];
                     if (i < amountToFly) {
                         let col = i % 3;
                         let row = Math.floor(i / 3);
-                        app.style.left = (rightStartX - 50 + col * 45) + 'px';
-                        app.style.top = (120 + row * 45) + 'px';
+                        app.style.left = (flyStartX + col * 45) + 'px';
+                        app.style.top = (flyStartY + row * 45) + 'px';
                     } else {
                         let idx = i - amountToFly;
-                        let col = idx % 4;
-                        let row = Math.floor(idx / 4);
-                        app.style.left = (remStartX + col * 50) + 'px';
-                        app.style.top = (remStartY + row * 50) + 'px';
+                        let col = idx % 3;
+                        let row = Math.floor(idx / 3);
+                        app.style.left = (remStartX + col * 45) + 'px';
+                        app.style.top = (remStartY + row * 45) + 'px';
                     }
                 }
                 
-                gameState = 2; // Переходимо до етапу 2 (очікування кліку на політ)
+                gameState = 2; // Переходимо до етапу очікування польоту
                 
-                // Залишаємо зону кліку активною та пересуваємо індикатор
+                // Пересуваємо зону кліку та індикатор на нове місце (над першою групою)
                 clickZone.style.display = 'block';
+                clickZone.style.left = (flyStartX - 50) + 'px';
+                clickZone.style.top = (flyStartY - 50) + 'px';
+                clickZone.style.width = '300px';
+                clickZone.style.height = '300px';
+                
                 indicator.style.display = 'block';
-                indicator.style.left = (rightStartX - 20) + 'px';
-                indicator.style.top = '50px';
+                indicator.style.left = (flyStartX + 15) + 'px';
+                indicator.style.top = (flyStartY - 60) + 'px';
             }
         }
 
-        function flyApplesLocal(amountToFly) {
+        function flyApplesLocal() {
             if (gameState !== 2) return;
             
+            let amountToFly = Math.min(valB, neededToTen);
             playSound('fly');
             clickZone.style.display = 'none';
             indicator.style.display = 'none';
