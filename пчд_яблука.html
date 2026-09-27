@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Складання через десяток</title>
+    
+    <!-- Підключення Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
+    
+    <style>
+        /* Основне скидання та налаштування повноекранного режиму */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            font-family: Arial, sans-serif; /* Шрифт за умовами - Arial */
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #0b1a2e;
+            touch-action: none;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-size: cover;
+            transition: background-image 0.5s ease;
+        }
+
+        /* Живий сюжетний SVG фон (сховається, якщо обрано динамічний фон) */
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: -2;
+        }
+
+        @keyframes sway {
+            0% { transform: rotate(-1deg); }
+            100% { transform: rotate(2deg); }
+        }
+        .tree-crown {
+            transform-origin: bottom center;
+            animation: sway 4s infinite alternate ease-in-out;
+        }
+
+        .firefly {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #cdff5c;
+            border-radius: 50%;
+            box-shadow: 0 0 10px 4px #a1ff00;
+            opacity: 0;
+            z-index: -1;
+            animation: float 6s infinite ease-in-out;
+        }
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(0.8); opacity: 0; }
+            30% { opacity: 1; }
+            70% { opacity: 1; }
+            100% { transform: translate(50px, -50px) scale(1.2); opacity: 0; }
+        }
+
+        /* Інтерфейс керування зверху */
+        #controls {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(13, 33, 61, 0.75);
+            padding: 15px 30px;
+            border-radius: 20px;
+            border: 3px solid #ffaa00;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5), inset 0 0 15px rgba(255, 170, 0, 0.3);
+            z-index: 100;
+            backdrop-filter: blur(5px);
+        }
+
+        input[type="number"] {
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #ffdb4d;
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 2.5rem;
+            font-weight: bold;
+            width: 100px;
+            height: 70px;
+            text-align: center;
+            outline: none;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+            transition: all 0.3s;
+        }
+        input[type="number"]:focus {
+            border-color: #ffffff;
+            box-shadow: 0 0 15px #ffdb4d, inset 0 0 10px rgba(0,0,0,0.8);
+        }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+
+        .math-sign {
+            color: #ffdb4d;
+            font-size: 3rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px #ffaa00;
+        }
+
+        #btn-play {
+            background: linear-gradient(135deg, #ff8c00, #ff0040);
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            width: 70px;
+            height: 70px;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(255,0,0,0.5);
+            transition: all 0.2s;
+        }
+        #btn-play:hover {
+            transform: scale(1.1);
+            box-shadow: 0 5px 25px rgba(255, 100, 0, 0.8);
+        }
+        #btn-play:active {
+            transform: scale(0.95);
+        }
+
+        /* Робоча область - збільшена, щоб не накладалося на controls */
+        #workspace-wrapper {
+            position: absolute;
+            top: 55%;
+            left: 50%;
+            width: 100%;
+            height: 100%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none; /* Пропускає кліки на фон */
+        }
+
+        #workspace {
+            position: relative;
+            width: 1400px;
+            height: 700px;
+            z-index: 10;
+            pointer-events: auto;
+            transform-origin: center center;
+            transition: transform 0.3s ease;
+        }
+
+        .crate {
+            position: absolute;
+            width: 220px;
+            height: 120px;
+            border-radius: 15px;
+            transition: all 0.5s;
+        }
+        .crate.glow {
+            animation: crateGlow 1s infinite alternate;
+        }
+        @keyframes crateGlow {
+            0% { filter: drop-shadow(0 0 10px #ffea00); transform: scale(1); }
+            100% { filter: drop-shadow(0 0 30px #ffaa00); transform: scale(1.03); }
+        }
+
+        .apple {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            transition: all 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        #interactive-zone {
+            position: absolute;
+            right: 0px;
+            top: 0px;
+            width: 600px;
+            height: 600px;
+            cursor: pointer;
+            z-index: 50;
+            display: none;
+            border-radius: 20px;
+        }
+        #interactive-zone:hover ~ #indicator {
+            filter: drop-shadow(0 0 15px #00ff00);
+        }
+
+        #indicator {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            pointer-events: none;
+            z-index: 60;
+            display: none;
+            animation: bounce 1s infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        .particle {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            pointer-events: none;
+            z-index: 100;
+            transition: all 1s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        /* Кнопки Лупи */
+        .zoom-btn {
+            position: absolute;
+            left: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(4px);
+        }
+        #btn-zoom-in { bottom: 150px; }
+        #btn-zoom-out { bottom: 90px; }
+        
+        /* Кнопки навігації (назад, далі) */
+        .nav-btn {
+            position: absolute;
+            bottom: 30px;
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            transition: all 0.3s;
+        }
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: #ffffff;
+            transform: scale(1.1);
+        }
+        #btn-prev { left: 100px; }
+        #btn-next { right: 100px; }
+
+        /* Екран-заглушка */
+        #block-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.9);
+            color: red;
+            font-size: 50px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+            visibility: hidden;
+        }
+
+        /* --- Theme Manager CSS --- */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #34495e;
+            color: white;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 100000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #theme-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 15px;
+            z-index: 100001;
+            display: none;
+            width: 80%;
+            max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        #theme-modal-close {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            cursor: pointer;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-top: 10px;
+        }
+        .theme-card {
+            position: relative;
+            width: 100%;
+            height: 80px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            overflow: hidden;
+            background-color: #ccc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-size: cover;
+            background-position: center;
+        }
+        .theme-card:hover { border-color: #3498db; }
+        .theme-card span {
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            pointer-events: none;
+        }
+
+        /* --- Global Draw Tool CSS --- */
+        #global-draw-canvas {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 90000;
+            pointer-events: none;
+        }
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: #8e44ad;
+            color: white;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 100000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #draw-panel-global {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            border: 2px solid #8e44ad;
+            border-radius: 10px;
+            padding: 10px;
+            display: none;
+            z-index: 100001;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+            width: 180px;
+            cursor: default;
+        }
+        .draw-panel-header {
+            width: 100%;
+            height: 20px;
+            background: #ccc;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            cursor: grab;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding-right: 5px;
+        }
+        .draw-panel-header:active { cursor: grabbing; }
+        .close-draw-btn { cursor: pointer; font-weight: bold; color: #e74c3c; font-size: 16px; }
+        .draw-btn-group { display: flex; gap: 5px; margin-bottom: 10px; }
+        .draw-btn {
+            flex: 1; padding: 5px; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; background: #f9f9f9; font-size: 14px;
+        }
+        .draw-btn.active { background: #8e44ad; color: white; border-color: #8e44ad; }
+        .draw-slider { width: 100%; margin-bottom: 10px; }
+        .draw-color { width: 100%; height: 30px; border: none; cursor: pointer; margin-bottom: 10px; }
+        .draw-clear { width: 100%; padding: 5px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer; }
+
+        @media (max-width: 768px) {
+            #controls { transform: translateX(-50%) scale(0.7); top: 5px; }
+            #workspace { transform: scale(0.6); transform-origin: top center; }
+            .nav-btn { width: 40px; height: 40px; bottom: 10px; }
+            #btn-prev { left: 10px; }
+            #btn-next { right: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SVG Фон -->
+    <svg id="bg-canvas" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+        <defs>
+            <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#120c38"/>
+                <stop offset="40%" stop-color="#241b54"/>
+                <stop offset="100%" stop-color="#4d2d66"/>
+            </linearGradient>
+            <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ffea75"/>
+                <stop offset="50%" stop-color="#ffaa00"/>
+                <stop offset="100%" stop-color="rgba(255, 170, 0, 0)"/>
+            </radialGradient>
+            <pattern id="grassPattern" width="100" height="100" patternUnits="userSpaceOnUse">
+                <path d="M 10 100 Q 20 50 30 100 M 60 100 Q 70 40 80 100" stroke="#1f421e" stroke-width="4" fill="none" opacity="0.3"/>
+            </pattern>
+        </defs>
+        <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+        <circle cx="80%" cy="30%" r="300" fill="url(#sunGrad)" opacity="0.4" filter="blur(20px)"/>
+        <path d="M0 700 Q 400 500 960 650 T 1920 600 L 1920 1080 L 0 1080 Z" fill="#2b1a3d"/>
+        <path d="M0 800 Q 500 700 1200 850 T 1920 750 L 1920 1080 L 0 1080 Z" fill="#1b2e25"/>
+        <g class="tree-crown" style="transform-origin: 300px 900px;">
+            <path d="M280 1000 L320 1000 L310 600 L290 600 Z" fill="#1a110a"/>
+            <circle cx="300" cy="550" r="180" fill="#a83c16" opacity="0.9"/>
+            <circle cx="220" cy="620" r="120" fill="#cc5500" opacity="0.8"/>
+            <circle cx="380" cy="620" r="130" fill="#8b2500" opacity="0.9"/>
+        </g>
+        <g class="tree-crown" style="transform-origin: 1600px 900px; animation-delay: -2s;">
+            <path d="M1580 1000 L1620 1000 L1610 500 L1590 500 Z" fill="#1a110a"/>
+            <circle cx="1600" cy="450" r="200" fill="#cc8400" opacity="0.9"/>
+            <circle cx="1500" cy="520" r="140" fill="#ffaa00" opacity="0.8"/>
+            <circle cx="1700" cy="520" r="150" fill="#a85b00" opacity="0.9"/>
+        </g>
+        <path d="M0 850 Q 960 800 1920 850 L 1920 1080 L 0 1080 Z" fill="#0c1711"/>
+        <rect x="0" y="850" width="1920" height="230" fill="url(#grassPattern)"/>
+    </svg>
+
+    <div id="fireflies-container"></div>
+
+    <div id="controls">
+        <input type="number" id="valA" value="67" min="1" max="89">
+        <span class="math-sign">+</span>
+        <input type="number" id="valB" value="4" min="1" max="19">
+        <button id="btn-play">
+            <svg viewBox="0 0 24 24" width="35" height="35">
+                <path d="M8 5v14l11-7z" fill="#ffffff" filter="drop-shadow(0 2px 2px rgba(0,0,0,0.5))"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Лупа для масштабування -->
+    <button id="btn-zoom-in" class="zoom-btn">🔍+</button>
+    <button id="btn-zoom-out" class="zoom-btn">🔍-</button>
+
+    <div id="workspace-wrapper">
+        <div id="workspace">
+            <div id="interactive-zone"></div>
+            <div id="indicator">
+                <svg viewBox="0 0 24 24" width="100%" height="100%">
+                    <path d="M12 2l-6 6h4v12h4V8h4L12 2z" fill="#cdff5c" filter="drop-shadow(0 0 5px #72ff00)" transform="rotate(180 12 12)"/>
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <button id="btn-prev" class="nav-btn">
+        <svg viewBox="0 0 24 24" width="30" height="30"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" fill="#fff"/></svg>
+    </button>
+    <button id="btn-next" class="nav-btn">
+        <svg viewBox="0 0 24 24" width="30" height="30"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="#fff"/></svg>
+    </button>
+
+    <!-- Theme Manager UI -->
+    <button id="theme-btn">⚙️</button>
+    <div id="theme-modal">
+        <div id="theme-modal-close">✕</div>
+        <h3 style="margin-top:0; text-align:center;">Оберіть фон</h3>
+        <div id="theme-gallery">
+            <div class="theme-card" onclick="selectTheme('none')" style="background: #34495e;">
+                <span>Без фону</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Draw Tool -->
+    <canvas id="global-draw-canvas"></canvas>
+    <button id="toggle-draw-btn-global">✏️</button>
+    <div id="draw-panel-global">
+        <div class="draw-panel-header" id="draw-panel-header">
+            <div class="close-draw-btn" id="close-draw-btn">✕</div>
+        </div>
+        <div class="draw-btn-group">
+            <button class="draw-btn active" id="tool-pencil">✏️ Олівець</button>
+            <button class="draw-btn" id="tool-eraser">🧽 Гумка</button>
+        </div>
+        <input type="range" class="draw-slider" id="draw-size" min="1" max="50" value="5">
+        <input type="color" class="draw-color" id="draw-color" value="#ff0000">
+        <button class="draw-clear" id="draw-clear">🗑️ Очистити</button>
+    </div>
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <script>
+        // ==========================================
+        // 1. КОНФІГУРАЦІЯ ТА ІДЕНТИФІКАЦІЯ
+        // ==========================================
+        const CONFIG = { gameId: 'add_over_ten_v1' };
+        
+        let myName = new URLSearchParams(window.location.search).get('user');
+        if (myName) {
+            sessionStorage.setItem('userName', myName);
+        } else {
+            myName = sessionStorage.getItem('userName');
+            if (!myName) {
+                myName = 'Гість_' + Math.floor(Math.random() * 1000);
+                sessionStorage.setItem('userName', myName);
+            }
+        }
+        
+        const tabId = Math.random().toString(36).substr(2, 9);
+        let currentScale = 1;
+
+        // Firebase Init
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        function sendGameAction(actionData) {
+            db.ref('game_action').set({
+                senderId: tabId,
+                timestamp: Date.now(),
+                ...actionData
+            });
+        }
+
+        // ==========================================
+        // 2. РАДАР, БЛОКУВАННЯ ТА ЛОБІ
+        // ==========================================
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                userRef.set(true);
+                userRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.visibility = snap.val() ? 'visible' : 'hidden';
+        });
+
+        // Виправлення безкінечного циклу оновлення
+        let isInitialRefreshLoad = true;
+        db.ref('force_refresh').on('value', snap => {
+            if (isInitialRefreshLoad) {
+                isInitialRefreshLoad = false;
+                return; // Ігноруємо перше зчитування при завантаженні сторінки
+            }
+            if (snap.val() === true) {
+                window.location.reload();
+            }
+        });
+
+        setTimeout(() => {
+            db.ref('current_activity').on('value', snap => {
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }, 1000); // Імунітет 1 секунда
+
+        // ==========================================
+        // 3. СИСТЕМА ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
+        // ==========================================
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const bgCanvas = document.getElementById('bg-canvas');
+
+        themeBtn.onclick = () => themeModal.style.display = 'block';
+        document.getElementById('theme-modal-close').onclick = () => themeModal.style.display = 'none';
+
+        function applyTheme(url) {
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+                bgCanvas.style.display = 'block';
+            } else {
+                document.body.style.backgroundImage = `url(${url})`;
+                bgCanvas.style.display = 'none';
+            }
+        }
+
+        // Збереження та завантаження індивідуального фону гри за CONFIG.gameId
+        const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedBg) applyTheme(savedBg);
+
+        window.selectTheme = function(url) {
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            applyTheme(url);
+            db.ref('game_theme').set(url);
+        };
+
+        db.ref('game_theme').on('value', snap => {
+            const url = snap.val();
+            if (url) {
+                localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+                applyTheme(url);
+            }
+        });
+
+        // Строго послідовне завантаження фонів із зупинкою на 404
+        async function loadBackgrounds() {
+            let i = 1;
+            while(true) {
+                const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    if (!response.ok) break; // Зупинка перевірки на першій помилці 404
+
+                    const card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.style.backgroundImage = `url(${url})`;
+                    card.onclick = () => selectTheme(url);
+                    
+                    const span = document.createElement('span');
+                    span.innerText = `Фон ${i}`;
+                    card.appendChild(span);
+                    
+                    themeGallery.appendChild(card);
+                    i++;
+                } catch (e) {
+                    break;
+                }
+            }
+        }
+        loadBackgrounds();
+
+        // ==========================================
+        // 4. ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ
+        // ==========================================
+        const drawCanvas = document.getElementById('global-draw-canvas');
+        const ctxDraw = drawCanvas.getContext('2d');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        const drawPanel = document.getElementById('draw-panel-global');
+        
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let currentTool = 'pencil';
+        let lastX = 0, lastY = 0;
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Автоматична активація режиму малювання при відкритті панелі
+        toggleDrawBtn.onclick = () => {
+            drawPanel.style.display = 'block';
+            isDrawingMode = true;
+            drawCanvas.style.pointerEvents = 'auto';
+            
+            currentTool = 'pencil';
+            document.getElementById('tool-pencil').classList.add('active');
+            document.getElementById('tool-eraser').classList.remove('active');
+        };
+
+        // Вимкнення малювання при закритті
+        document.getElementById('close-draw-btn').onclick = () => {
+            drawPanel.style.display = 'none';
+            isDrawingMode = false;
+            drawCanvas.style.pointerEvents = 'none';
+        };
+
+        document.getElementById('tool-pencil').onclick = function() {
+            currentTool = 'pencil';
+            this.classList.add('active');
+            document.getElementById('tool-eraser').classList.remove('active');
+        };
+        document.getElementById('tool-eraser').onclick = function() {
+            currentTool = 'eraser';
+            this.classList.add('active');
+            document.getElementById('tool-pencil').classList.remove('active');
+        };
+        
+        document.getElementById('draw-clear').onclick = () => {
+            ctxDraw.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            sendGameAction({ type: 'clear_canvas' });
+        };
+
+        function drawLine(x0, y0, x1, y1, tool, size, color, emit) {
+            ctxDraw.beginPath();
+            ctxDraw.moveTo(x0, y0);
+            ctxDraw.lineTo(x1, y1);
+            ctxDraw.lineCap = 'round';
+            ctxDraw.lineWidth = size;
+            ctxDraw.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+            if (tool === 'eraser') ctxDraw.globalCompositeOperation = 'destination-out';
+            else ctxDraw.globalCompositeOperation = 'source-over';
+            ctxDraw.stroke();
+            ctxDraw.closePath();
+
+            if (emit) {
+                // Відправляємо відносні координати для правильного масштабування
+                sendGameAction({
+                    type: 'draw_line',
+                    x0: x0 / drawCanvas.width, y0: y0 / drawCanvas.height,
+                    x1: x1 / drawCanvas.width, y1: y1 / drawCanvas.height,
+                    tool, size, color
+                });
+            }
+        }
+
+        function getMousePos(e) {
+            const rect = drawCanvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        drawCanvas.addEventListener('mousedown', (e) => {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getMousePos(e);
+            lastX = pos.x; lastY = pos.y;
+        });
+        drawCanvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing || !isDrawingMode) return;
+            const pos = getMousePos(e);
+            const size = document.getElementById('draw-size').value;
+            const color = document.getElementById('draw-color').value;
+            drawLine(lastX, lastY, pos.x, pos.y, currentTool, size, color, true);
+            lastX = pos.x; lastY = pos.y;
+        });
+        drawCanvas.addEventListener('mouseup', () => isDrawing = false);
+        drawCanvas.addEventListener('mouseout', () => isDrawing = false);
+        
+        drawCanvas.addEventListener('touchstart', (e) => {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            const pos = getMousePos(e);
+            lastX = pos.x; lastY = pos.y;
+        }, {passive: false});
+        drawCanvas.addEventListener('touchmove', (e) => {
+            if (!isDrawing || !isDrawingMode) return;
+            e.preventDefault();
+            const pos = getMousePos(e);
+            const size = document.getElementById('draw-size').value;
+            const color = document.getElementById('draw-color').value;
+            drawLine(lastX, lastY, pos.x, pos.y, currentTool, size, color, true);
+            lastX = pos.x; lastY = pos.y;
+        }, {passive: false});
+        drawCanvas.addEventListener('touchend', () => isDrawing = false);
+
+        // Перетягування панелі малювання
+        const header = document.getElementById('draw-panel-header');
+        let isDraggingPanel = false, panOffsetX, panOffsetY;
+        header.onmousedown = (e) => { isDraggingPanel = true; panOffsetX = e.clientX - drawPanel.offsetLeft; panOffsetY = e.clientY - drawPanel.offsetTop; };
+        document.onmousemove = (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.clientX - panOffsetX) + 'px'; drawPanel.style.top = (e.clientY - panOffsetY) + 'px'; drawPanel.style.right = 'auto'; }};
+        document.onmouseup = () => isDraggingPanel = false;
+
+        // Синхронізація дій
+        db.ref('game_action').on('value', snap => {
+            const data = snap.val();
+            if (!data || data.senderId === tabId) return; // Ігноруємо власні дії
+
+            if (data.type === 'draw_line') {
+                const w = drawCanvas.width, h = drawCanvas.height;
+                drawLine(data.x0 * w, data.y0 * h, data.x1 * w, data.y1 * h, data.tool, data.size, data.color, false);
+            } else if (data.type === 'clear_canvas') {
+                ctxDraw.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            } else if (data.type === 'play_game') {
+                document.getElementById('valA').value = data.valA;
+                document.getElementById('valB').value = data.valB;
+                startGameLocal();
+            } else if (data.type === 'split_apples') {
+                splitApplesLocal();
+            }
+        });
+
+        // ==========================================
+        // 5. МАСШТАБУВАННЯ (ЛУПА)
+        // ==========================================
+        const ws = document.getElementById('workspace');
+        document.getElementById('btn-zoom-in').onclick = () => { currentScale += 0.1; ws.style.transform = `scale(${currentScale})`; };
+        document.getElementById('btn-zoom-out').onclick = () => { currentScale = Math.max(0.3, currentScale - 0.1); ws.style.transform = `scale(${currentScale})`; };
+
+        // ==========================================
+        // 6. ІГРОВА ЛОГІКА
+        // ==========================================
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playTone(freq, type, duration, vol=0.1) {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function playSound(type) {
+            initAudio();
+            if (type === 'split') {
+                playTone(600, 'sine', 0.1, 0.15);
+                setTimeout(() => playTone(800, 'sine', 0.15, 0.15), 100);
+            } else if (type === 'fly') {
+                if(!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1500, audioCtx.currentTime + 0.6);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.6);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.6);
+            } else if (type === 'success') {
+                playTone(523.25, 'sine', 0.3, 0.1);
+                setTimeout(() => playTone(659.25, 'sine', 0.3, 0.1), 100);
+                setTimeout(() => playTone(783.99, 'sine', 0.4, 0.15), 200);
+                setTimeout(() => playTone(1046.50, 'sine', 0.8, 0.2), 350);
+            } else if (type === 'pop') {
+                playTone(400 + Math.random()*200, 'sine', 0.1, 0.1);
+            }
+        }
+
+        const svgCrate = `
+            <svg viewBox="0 0 220 120" width="100%" height="100%">
+                <defs>
+                    <linearGradient id="woodGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#8c4b22"/><stop offset="100%" stop-color="#54280e"/>
+                    </linearGradient>
+                </defs>
+                <rect x="5" y="5" width="210" height="110" rx="15" fill="url(#woodGrad)" stroke="#301505" stroke-width="6"/>
+                <line x1="5" y1="40" x2="215" y2="40" stroke="#401e0a" stroke-width="3"/>
+                <line x1="5" y1="80" x2="215" y2="80" stroke="#401e0a" stroke-width="3"/>
+                ${(() => {
+                    let holes = '';
+                    for(let r=0; r<2; r++) {
+                        for(let c=0; c<5; c++) {
+                            holes += `<ellipse cx="${30 + c*40}" cy="${35 + r*50}" rx="16" ry="12" fill="#210e04" opacity="0.8"/>`;
+                        }
+                    }
+                    return holes;
+                })()}
+            </svg>
+        `;
+
+        const svgApple = `
+            <svg viewBox="0 0 100 100" width="100%" height="100%">
+                <defs>
+                    <radialGradient id="gradRed" cx="35%" cy="30%" r="65%">
+                        <stop offset="0%" stop-color="#ff7b7b"/><stop offset="20%" stop-color="#ff1a1a"/><stop offset="100%" stop-color="#990000"/>
+                    </radialGradient>
+                </defs>
+                <path d="M 50 88 C 85 95, 95 65, 85 40 C 75 15, 60 20, 50 30 C 40 20, 25 15, 15 40 C 5 65, 15 95, 50 88 Z" fill="url(#gradRed)"/>
+                <path d="M 50 30 Q 55 10 65 5" fill="none" stroke="#3d1e00" stroke-width="5" stroke-linecap="round"/>
+                <path d="M 60 20 Q 85 5 95 25 Q 70 40 60 20 Z" fill="#52c71a" stroke="#256b02" stroke-width="2"/>
+                <path d="M 28 45 Q 38 25 55 32" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity="0.4"/>
+            </svg>
+        `;
+
+        const svgStar = `<svg viewBox="0 0 24 24" width="100%" height="100%"><path d="M12 1l3.2 7.5 8.1 1-6 5.5 1.6 7.9-7-4.2-7 4.2 1.6-7.9-6-5.5 8.1-1z" fill="#ffe600"/></svg>`;
+
+        let gameState = 0;
+        let valA, valB, neededToTen;
+        let rightApples = [];
+        let emptySlotCoords = []; 
+        let partialCrateEl = null;
+        let rightStartX = 500; 
+        let partialCrateX = 0, partialCrateY = 0;
+
+        const clickZone = document.getElementById('interactive-zone');
+        const indicator = document.getElementById('indicator');
+
+        function createCrate(x, y) {
+            const el = document.createElement('div');
+            el.className = 'crate';
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            el.innerHTML = svgCrate;
+            ws.appendChild(el);
+            return el;
+        }
+
+        function createApple(x, y, delay = 0) {
+            const el = document.createElement('div');
+            el.className = 'apple';
+            el.style.left = x + 'px';
+            el.style.top = (y - 100) + 'px';
+            el.style.opacity = '0';
+            el.innerHTML = svgApple;
+            ws.appendChild(el);
+            setTimeout(() => { el.style.top = y + 'px'; el.style.opacity = '1'; playSound('pop'); }, delay);
+            return el;
+        }
+
+        function spawnParticles(cx, cy) {
+            for(let i=0; i<15; i++) {
+                let star = document.createElement('div');
+                star.className = 'particle';
+                star.innerHTML = svgStar;
+                star.style.left = cx + 'px';
+                star.style.top = cy + 'px';
+                ws.appendChild(star);
+                setTimeout(() => {
+                    let angle = Math.random() * Math.PI * 2;
+                    let dist = 60 + Math.random() * 80;
+                    star.style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px) scale(${Math.random()*1.5}) rotate(${Math.random()*360}deg)`;
+                    star.style.opacity = '0';
+                }, 10);
+                setTimeout(() => star.remove(), 1200);
+            }
+        }
+
+        document.getElementById('btn-play').addEventListener('click', () => {
+            valA = parseInt(document.getElementById('valA').value);
+            valB = parseInt(document.getElementById('valB').value);
+            if (isNaN(valA) || isNaN(valB) || valA < 1 || valB < 1) return;
+            
+            sendGameAction({ type: 'play_game', valA, valB });
+            startGameLocal();
+        });
+
+        function startGameLocal() {
+            initAudio();
+            valA = parseInt(document.getElementById('valA').value);
+            valB = parseInt(document.getElementById('valB').value);
+            
+            ws.innerHTML = '';
+            ws.appendChild(clickZone);
+            ws.appendChild(indicator);
+            rightApples = [];
+            emptySlotCoords = [];
+            partialCrateEl = null;
+
+            let tensA = Math.floor(valA / 10);
+            let onesA = valA % 10;
+            neededToTen = onesA > 0 ? 10 - onesA : 0;
+            if (neededToTen === 0) neededToTen = 10; 
+
+            let currentCrateX = 20;
+            let currentCrateY = 20;
+            let delayCounter = 0;
+
+            const CRATE_WIDTH = 220, CRATE_HEIGHT = 120;
+
+            for (let i = 0; i < tensA; i++) {
+                createCrate(currentCrateX, currentCrateY);
+                for(let r=0; r<2; r++) {
+                    for(let c=0; c<5; c++) {
+                        let ax = currentCrateX + 10 + c*40; 
+                        let ay = currentCrateY + 15 + r*50;
+                        createApple(ax, ay, delayCounter);
+                        delayCounter += 30;
+                    }
+                }
+                currentCrateY += CRATE_HEIGHT + 20;
+                if (currentCrateY > 400) { 
+                    currentCrateY = 20;
+                    currentCrateX += CRATE_WIDTH + 20;
+                }
+            }
+
+            partialCrateX = currentCrateX;
+            partialCrateY = currentCrateY;
+            partialCrateEl = createCrate(currentCrateX, currentCrateY);
+            
+            let slotIndex = 0;
+            for(let r=0; r<2; r++) {
+                for(let c=0; c<5; c++) {
+                    let ax = currentCrateX + 10 + c*40; 
+                    let ay = currentCrateY + 15 + r*50;
+                    if (slotIndex < onesA) {
+                        createApple(ax, ay, delayCounter);
+                    } else {
+                        emptySlotCoords.push({x: ax, y: ay});
+                    }
+                    slotIndex++;
+                    delayCounter += 20;
+                }
+            }
+
+            rightStartX = currentCrateX + CRATE_WIDTH + 80;
+
+            for(let i = 0; i < valB; i++) {
+                let col = i % 4;
+                let row = Math.floor(i / 4);
+                let ax = rightStartX + col * 55;
+                let ay = 100 + row * 55;
+                
+                let app = createApple(ax, ay, delayCounter);
+                rightApples.push(app);
+                delayCounter += 40;
+            }
+
+            gameState = 1;
+            
+            setTimeout(() => {
+                clickZone.style.display = 'block';
+                clickZone.style.left = (rightStartX - 50) + 'px';
+                clickZone.style.top = '50px';
+                indicator.style.display = 'block';
+                indicator.style.left = (rightStartX + 100) + 'px';
+                indicator.style.top = '40px';
+            }, delayCounter + 200);
+        }
+
+        clickZone.addEventListener('click', () => {
+            if (gameState === 1) {
+                sendGameAction({ type: 'split_apples' });
+                splitApplesLocal();
+            }
+        });
+
+        function splitApplesLocal() {
+            initAudio();
+            let amountToFly = Math.min(valB, neededToTen);
+            
+            if (gameState === 1) {
+                playSound('split');
+                let remStartX = partialCrateX + 220 + 30;
+                let remStartY = partialCrateY;
+
+                for(let i=0; i < valB; i++) {
+                    let app = rightApples[i];
+                    if (i < amountToFly) {
+                        let col = i % 3;
+                        let row = Math.floor(i / 3);
+                        app.style.left = (rightStartX - 50 + col * 45) + 'px';
+                        app.style.top = (120 + row * 45) + 'px';
+                    } else {
+                        let idx = i - amountToFly;
+                        let col = idx % 4;
+                        let row = Math.floor(idx / 4);
+                        app.style.left = (remStartX + col * 50) + 'px';
+                        app.style.top = (remStartY + row * 50) + 'px';
+                    }
+                }
+                
+                gameState = 2;
+                indicator.style.left = (rightStartX - 20) + 'px';
+                indicator.style.top = '50px';
+                
+                setTimeout(() => flyApplesLocal(amountToFly), 1500);
+            }
+        }
+
+        function flyApplesLocal(amountToFly) {
+            playSound('fly');
+            clickZone.style.display = 'none';
+            indicator.style.display = 'none';
+            
+            for(let i=0; i < amountToFly; i++) {
+                let app = rightApples[i];
+                let target = emptySlotCoords[i];
+                setTimeout(() => {
+                    app.style.left = target.x + 'px';
+                    app.style.top = target.y + 'px';
+                }, i * 150);
+            }
+
+            let totalFlyTime = (amountToFly - 1) * 150 + 1200;
+            setTimeout(() => {
+                if (amountToFly === neededToTen) {
+                    playSound('success');
+                    partialCrateEl.classList.add('glow');
+                    let rect = partialCrateEl.getBoundingClientRect();
+                    let wsRect = ws.getBoundingClientRect();
+                    let cx = (rect.left - wsRect.left) + 110; 
+                    let cy = (rect.top - wsRect.top) + 60; 
+                    spawnParticles(cx, cy);
+                }
+            }, totalFlyTime);
+
+            gameState = 3;
+        }
+
+        const ffContainer = document.getElementById('fireflies-container');
+        for(let i=0; i<30; i++) {
+            let ff = document.createElement('div');
+            ff.className = 'firefly';
+            ff.style.left = Math.random() * 100 + 'vw';
+            ff.style.top = Math.random() * 100 + 'vh';
+            ff.style.animationDelay = Math.random() * 6 + 's';
+            ff.style.animationDuration = (5 + Math.random() * 4) + 's';
+            ffContainer.appendChild(ff);
+        }
+
+        document.getElementById('btn-next').addEventListener('click', () => {
+            sendGameAction({ type: 'nav_next' });
+        });
+        document.getElementById('btn-prev').addEventListener('click', () => {
+            sendGameAction({ type: 'nav_prev' });
+        });
+
+    </script>
+</body>
+</html>
