@@ -111,7 +111,7 @@
             color: #f0ca8c;
         }
 
-        /* --- СЮЖЕТНИЙ ФОН (Оригінальний) --- */
+        /* --- СЮЖЕТНИЙ ФОН --- */
         #background-layer {
             position: fixed;
             top: 0;
@@ -493,10 +493,10 @@
                     <path d="M 50 65 Q 40 60 45 75 Q 60 80 50 65 Z" fill="#32CD32"/>
                 </svg>
                 <div id="objects-container"></div>
-                <div id="operator-display" class="math-text">+</div>
-                <div id="num2-display" class="math-text">3</div>
+                <div id="operator-display" class="math-text">?</div>
+                <div id="num2-display" class="math-text">?</div>
                 <div class="math-text">=</div>
-                <input type="text" id="answer-input" autocomplete="off" maxlength="2">
+                <input type="text" id="answer-input" autocomplete="off" maxlength="2" disabled>
             </div>
 
             <!-- Зона з кущами та персонажами -->
@@ -667,7 +667,6 @@
 
                 isRemoteAction = true;
                 if (action.type === 'update_game') {
-                    // Використовуємо переданий зліпок стану замість локальної генерації
                     updateGame(action.data.n1, action.data.op, action.data.n2, action.data.state, false);
                     teacherInput.value = `${action.data.n1}${action.data.op}${action.data.n2}`;
                 } else if (action.type === 'bush_click') {
@@ -934,7 +933,7 @@
 
         let currentCorrectAnswer = 0;
         let correctAnswerIndex = 0;
-        let levelActive = true;
+        let levelActive = false; // Вимкнено на старті
         let pupilElements = [];
 
         const standardEars = `
@@ -1057,7 +1056,18 @@
             toggleSecretBtn.innerText = teacherInput.classList.contains('secret-text') ? '👁️' : '🙈';
         };
 
-        // Функція тепер приймає "зліпок" стану, щоб усі бачили однаковий макет
+        // Функція для запуску пустого екрана при завантаженні (чекає на вчителя)
+        function initEmptyState() {
+            levelActive = false;
+            bushesZone.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'character-wrapper';
+                wrapper.innerHTML = getBushSVG(); 
+                bushesZone.appendChild(wrapper);
+            }
+        }
+
         function updateGame(num1, op, num2, syncedState = null, shouldBroadcast = true) {
             levelActive = true;
             answerInput.value = '';
@@ -1074,7 +1084,6 @@
                 state = syncedState;
                 correctAnswerIndex = state.correctAnswerIndex;
             } else {
-                // Генерація стану для трансляції
                 const colors = ['#ff4d4d', '#4d79ff', '#32CD32', '#ffb84d', '#b366ff'];
                 const color = colors[Math.floor(Math.random() * colors.length)];
                 
@@ -1088,9 +1097,14 @@
                         answers.push(wrong);
                     }
                 }
-                answers.sort(() => Math.random() - 0.5);
-                let correctIdx = answers.indexOf(currentCorrectAnswer);
                 
+                // Надійний метод тасування варіантів відповідей (Fisher-Yates)
+                for (let i = answers.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [answers[i], answers[j]] = [answers[j], answers[i]];
+                }
+                
+                let correctIdx = answers.indexOf(currentCorrectAnswer);
                 let mTypes = [(Math.random() > 0.5 ? 1 : 2), (Math.random() > 0.5 ? 1 : 2), (Math.random() > 0.5 ? 1 : 2)];
 
                 state = { color, delays, answers, correctAnswerIndex: correctIdx, monsterTypes: mTypes };
@@ -1153,25 +1167,8 @@
             }
         });
 
-        // Вимикаємо броадкаст при першому завантаженні
-        function autoGenerateLevel(shouldBroadcast = true) {
-            const isAddition = Math.random() > 0.5;
-            let n1, n2, op;
-            if (isAddition) {
-                n1 = Math.floor(Math.random() * 5) + 1;
-                n2 = Math.floor(Math.random() * 5) + 1;
-                op = '+';
-            } else {
-                n1 = Math.floor(Math.random() * 5) + 5;
-                n2 = Math.floor(Math.random() * (n1 - 1)) + 1;
-                op = '-';
-            }
-            teacherInput.value = `${n1}${op}${n2}`;
-            updateGame(n1, op, n2, null, shouldBroadcast);
-        }
-
         function handleWin() {
-            levelActive = false;
+            levelActive = false; // Вимикаємо гру, чекаємо наступного вводу вчителя
             playSound('win');
             answerInput.value = currentCorrectAnswer;
             answerInput.style.background = 'radial-gradient(circle, #f0fff0 0%, #90ee90 100%)';
@@ -1181,8 +1178,6 @@
             const correctWrapper = wrappers[correctAnswerIndex];
             correctWrapper.querySelector('.bush-svg').classList.add('hidden-bush');
             correctWrapper.querySelector('.character-svg').classList.add('jump-joy');
-
-            setTimeout(() => autoGenerateLevel(true), 3500);
         }
 
         function processBushClick(index, wrapperElement) {
@@ -1230,7 +1225,8 @@
             });
         });
 
-        window.onload = () => autoGenerateLevel(false);
+        // Запуск пустого стану при першому завантаженні замість генерації прикладу
+        window.onload = initEmptyState;
     </script>
 </body>
 </html>
