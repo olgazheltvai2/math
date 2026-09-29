@@ -864,6 +864,7 @@
         
         let currentAnswer = 0;
         let candyCount = 0;
+        let isRemoteAction = false; // Флаг для запобігання зациклення синхронізації
 
         function getRandomInt(digits) {
             if (digits === 1) return Math.floor(Math.random() * 9) + 1;
@@ -891,21 +892,24 @@
             }
         }
 
-        function generateProblem() {
+        function generateProblem(forceN1 = null, forceN2 = null, forceOp = null, forceDigits = null) {
             playSound('pop');
             answerInputsContainer.innerHTML = ''; 
             
-            const op = selectOp.value;
-            const digits = parseInt(selectDigits.value);
+            const op = forceOp !== null ? forceOp : selectOp.value;
+            const digits = forceDigits !== null ? forceDigits : parseInt(selectDigits.value);
             
-            let n1 = getRandomInt(digits);
-            let n2 = getRandomInt(digits);
+            let n1 = forceN1 !== null ? forceN1 : getRandomInt(digits);
+            let n2 = forceN2 !== null ? forceN2 : getRandomInt(digits);
 
-            if (op === '-') {
+            if (op === '-' && forceN1 === null) {
                 if (n1 < n2) { let temp = n1; n1 = n2; n2 = temp; }
-                currentAnswer = n1 - n2;
-            } else {
-                currentAnswer = n1 + n2;
+            }
+            
+            currentAnswer = (op === '-') ? (n1 - n2) : (n1 + n2);
+
+            if (!isRemoteAction) {
+                sendAction({ type: 'sync_problem', n1: n1, n2: n2, op: op, digits: digits });
             }
 
             renderNumberToBoxes(n1, rowNum1, true, op);
@@ -928,11 +932,15 @@
                     this.value = this.value.replace(/[^0-9]/g, ''); 
                     this.classList.remove('error');
                     
+                    if (!isRemoteAction) {
+                        sendAction({ type: 'sync_input', index: i, value: this.value });
+                    }
+                    
                     if (this.value !== '') {
                         let prevIdx = parseInt(this.dataset.idx) - 1;
                         let prev = answerInputsContainer.querySelector(`[data-idx="${prevIdx}"]`);
                         if (prev) {
-                            prev.focus();
+                            if (!isRemoteAction) prev.focus();
                         } else {
                             checkAnswer();
                         }
@@ -943,7 +951,7 @@
                     if (e.key === 'Backspace' && this.value === '') {
                         let nextIdx = parseInt(this.dataset.idx) + 1;
                         let next = answerInputsContainer.querySelector(`[data-idx="${nextIdx}"]`);
-                        if (next) next.focus();
+                        if (next && !isRemoteAction) next.focus();
                     } else if (e.key === 'Enter') {
                         checkAnswer();
                     }
@@ -954,7 +962,7 @@
             
             setTimeout(() => {
                 const lastInp = answerInputsContainer.querySelector(`[data-idx="${ansStr.length - 1}"]`);
-                if(lastInp) lastInp.focus();
+                if(lastInp && !isRemoteAction) lastInp.focus();
             }, 100);
         }
 
@@ -991,7 +999,19 @@
             
             if (userAnsStr.length < currentAnswer.toString().length) return;
             
-            if (parseInt(userAnsStr) === currentAnswer) {
+            const isCorrect = (parseInt(userAnsStr) === currentAnswer);
+
+            if (!isRemoteAction) {
+                sendAction({ type: 'sync_check', isCorrect: isCorrect });
+            }
+            processCheckLocally(isCorrect, inputs);
+        }
+
+        function processCheckLocally(isCorrect, inputs = null) {
+            if (!inputs) {
+                inputs = Array.from(answerInputsContainer.querySelectorAll('.digit-input'));
+            }
+            if (isCorrect) {
                 playSound('success');
                 // Щасливий рот
                 ghostMouth.setAttribute('d', 'M 85 100 Q 100 130 115 100 Z');
@@ -1001,7 +1021,10 @@
                 dropCandy();
                 
                 inputs.forEach(i => i.disabled = true);
-                setTimeout(() => { generateProblem(); }, 3000); 
+                
+                if (!isRemoteAction) {
+                    setTimeout(() => { generateProblem(); }, 3000); 
+                }
             } else {
                 playSound('error');
                 inputs.forEach(i => {
@@ -1014,11 +1037,12 @@
             }
         }
 
-        selectOp.addEventListener('change', generateProblem);
-        selectDigits.addEventListener('change', generateProblem);
+        selectOp.addEventListener('change', () => { if(!isRemoteAction) generateProblem(); });
+        selectDigits.addEventListener('change', () => { if(!isRemoteAction) generateProblem(); });
 
-        document.getElementById('btn-next').addEventListener('click', generateProblem);
+        document.getElementById('btn-next').addEventListener('click', () => { if(!isRemoteAction) generateProblem(); });
         document.getElementById('btn-back').addEventListener('click', () => {
+            if (isRemoteAction) return;
             const currentDigits = parseInt(selectDigits.value);
             if (currentDigits > 1) { selectDigits.value = currentDigits - 1; }
             generateProblem();
@@ -1237,6 +1261,27 @@
             }
             if (data.type === 'clear_canvas') {
                 drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            }
+            if (data.type === 'sync_problem') {
+                isRemoteAction = true;
+                selectOp.value = data.op;
+                selectDigits.value = data.digits;
+                generateProblem(data.n1, data.n2, data.op, data.digits);
+                isRemoteAction = false;
+            }
+            if (data.type === 'sync_input') {
+                isRemoteAction = true;
+                let inp = answerInputsContainer.querySelector(`[data-idx="${data.index}"]`);
+                if (inp) {
+                    inp.value = data.value;
+                    inp.classList.remove('error');
+                }
+                isRemoteAction = false;
+            }
+            if (data.type === 'sync_check') {
+                isRemoteAction = true;
+                processCheckLocally(data.isCorrect);
+                isRemoteAction = false;
             }
         });
 
