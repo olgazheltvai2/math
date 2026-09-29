@@ -756,10 +756,24 @@
             }
         });
 
+        // Глобальні змінні стану для повної синхронізації
+        let currentN1 = 0;
+        let currentN2 = 0;
+        let currentOp = '+';
+        let currentDigits = 7;
+        let currentInputs = {};
+
         function sendAction(actionData) {
             db.ref('game_action').set({
                 senderId: tabId,
                 timestamp: firebase.database.ServerValue.TIMESTAMP,
+                state: {
+                    n1: currentN1,
+                    n2: currentN2,
+                    op: currentOp,
+                    digits: currentDigits,
+                    inputs: currentInputs
+                },
                 ...actionData
             });
         }
@@ -848,10 +862,7 @@
             }
         }
 
-        function generateProblem() {
-            playSound('pop');
-            answerInputsContainer.innerHTML = ''; 
-            
+        function triggerGenerateProblem() {
             const op = selectOp.value;
             const digits = parseInt(selectDigits.value);
             
@@ -860,6 +871,26 @@
 
             if (op === '-') {
                 if (n1 < n2) { let temp = n1; n1 = n2; n2 = temp; }
+            }
+            
+            renderProblem(op, digits, n1, n2);
+            sendAction({ type: 'new_problem', op: op, digits: digits, n1: n1, n2: n2 });
+        }
+
+        function renderProblem(op, digits, n1, n2) {
+            currentOp = op;
+            currentDigits = digits;
+            currentN1 = n1;
+            currentN2 = n2;
+            currentInputs = {}; // Очищаємо збережені введення при генерації нового прикладу
+
+            playSound('pop');
+            answerInputsContainer.innerHTML = ''; 
+            
+            selectOp.value = op;
+            selectDigits.value = digits.toString();
+
+            if (op === '-') {
                 currentAnswer = n1 - n2;
             } else {
                 currentAnswer = n1 + n2;
@@ -885,13 +916,16 @@
                     this.value = this.value.replace(/[^0-9]/g, ''); 
                     this.classList.remove('error');
                     
+                    currentInputs[this.dataset.idx] = this.value;
+                    sendAction({ type: 'input_change', idx: this.dataset.idx, value: this.value });
+                    
                     if (this.value !== '') {
                         let prevIdx = parseInt(this.dataset.idx) - 1;
                         let prev = answerInputsContainer.querySelector(`[data-idx="${prevIdx}"]`);
                         if (prev) {
                             prev.focus();
                         } else {
-                            checkAnswer();
+                            triggerCheckAnswer();
                         }
                     }
                 });
@@ -902,7 +936,7 @@
                         let next = answerInputsContainer.querySelector(`[data-idx="${nextIdx}"]`);
                         if (next) next.focus();
                     } else if (e.key === 'Enter') {
-                        checkAnswer();
+                        triggerCheckAnswer();
                     }
                 });
                 
@@ -947,13 +981,22 @@
             }, 1000);
         }
 
-        function checkAnswer() {
+        function triggerCheckAnswer() {
             const inputs = Array.from(answerInputsContainer.querySelectorAll('.digit-input'));
             let userAnsStr = inputs.map(i => i.value).join('');
             
             if (userAnsStr.length < currentAnswer.toString().length) return;
             
-            if (parseInt(userAnsStr) === currentAnswer) {
+            let isCorrect = (parseInt(userAnsStr) === currentAnswer);
+            
+            processAnswerResult(isCorrect, true);
+            sendAction({ type: 'answer_result', isCorrect: isCorrect });
+        }
+
+        function processAnswerResult(isCorrect, isLocalInitiator) {
+            const inputs = Array.from(answerInputsContainer.querySelectorAll('.digit-input'));
+            
+            if (isCorrect) {
                 playSound('success');
                 ghostMouth.setAttribute('d', 'M85,110 Q100,135 115,110 Z');
                 ghostMouth.setAttribute('fill', '#ff3366');
@@ -962,7 +1005,10 @@
                 dropCandy();
                 
                 inputs.forEach(i => i.disabled = true);
-                setTimeout(() => { generateProblem(); }, 3000); 
+                
+                if (isLocalInitiator) {
+                    setTimeout(() => { triggerGenerateProblem(); }, 3000); 
+                }
             } else {
                 playSound('error');
                 inputs.forEach(i => {
@@ -974,14 +1020,14 @@
             }
         }
 
-        selectOp.addEventListener('change', generateProblem);
-        selectDigits.addEventListener('change', generateProblem);
+        selectOp.addEventListener('change', triggerGenerateProblem);
+        selectDigits.addEventListener('change', triggerGenerateProblem);
 
-        document.getElementById('btn-next').addEventListener('click', generateProblem);
+        document.getElementById('btn-next').addEventListener('click', triggerGenerateProblem);
         document.getElementById('btn-back').addEventListener('click', () => {
-            const currentDigits = parseInt(selectDigits.value);
-            if (currentDigits > 1) { selectDigits.value = currentDigits - 1; }
-            generateProblem();
+            const currentDigitsVal = parseInt(selectDigits.value);
+            if (currentDigitsVal > 1) { selectDigits.value = currentDigitsVal - 1; }
+            triggerGenerateProblem();
         });
 
         // --- Масштабування ---
@@ -1181,22 +1227,67 @@
         window.addEventListener('touchend', () => isDraggingPanel = false);
 
         // --- Firebase Синхронізація (Слухач дій) ---
+        let isGameInit = false;
+        
         db.ref('game_action').on('value', snap => {
             const data = snap.val();
-            if (!data) return;
+            
+            // Якщо ще немає ніякого стану (перший запуск)
+            if (!data) {
+                if (!isGameInit) {
+                    isGameInit = true;
+                    triggerGenerateProblem();
+                }
+                return;
+            }
+
+            // Якщо підключається пізніше (завантаження поточного стану гри)
+            if (!isGameInit && data.state) {
+                isGameInit = true;
+                renderProblem(data.state.op, data.state.digits, data.state.n1, data.state.n2);
+                
+                // Відновлення введених цифр
+                if (data.state.inputs) {
+                    for (let idx in data.state.inputs) {
+                        let inp = answerInputsContainer.querySelector(`[data-idx="${idx}"]`);
+                        if (inp) inp.value = data.state.inputs[idx];
+                    }
+                    currentInputs = data.state.inputs; // Синхронізуємо локальні значення
+                }
+            } else if (!isGameInit) {
+                isGameInit = true;
+            }
+
+            // Пропускаємо свої ж дії (щоб не було дублювання)
             if (data.senderId === tabId) return; 
             
+            // --- Синхронізація інструментів та фону ---
             if (data.type === 'change_theme') {
                 localStorage.setItem('mySavedBg_' + CONFIG.gameId, data.url);
                 applyTheme(data.url);
             }
-            if (data.type === 'draw_line') {
+            else if (data.type === 'draw_line') {
                 let x0 = data.x0 * drawCanvas.width; let y0 = data.y0 * drawCanvas.height;
                 let x1 = data.x1 * drawCanvas.width; let y1 = data.y1 * drawCanvas.height;
                 drawLine(x0, y0, x1, y1, data.color, data.size, data.tool, false);
             }
-            if (data.type === 'clear_canvas') {
+            else if (data.type === 'clear_canvas') {
                 drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            }
+            // --- Синхронізація математичної гри ---
+            else if (data.type === 'new_problem') {
+                renderProblem(data.op, data.digits, data.n1, data.n2);
+            }
+            else if (data.type === 'input_change') {
+                currentInputs[data.idx] = data.value; // Оновлюємо локальний стейт
+                const inp = answerInputsContainer.querySelector(`[data-idx="${data.idx}"]`);
+                if (inp) {
+                    inp.value = data.value;
+                    inp.classList.remove('error');
+                }
+            }
+            else if (data.type === 'answer_result') {
+                processAnswerResult(data.isCorrect, false);
             }
         });
 
@@ -1208,7 +1299,6 @@
             }
         }, { once: true });
 
-        generateProblem();
     </script>
 </body>
 </html>
