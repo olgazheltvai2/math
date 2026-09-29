@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Фракції Океану - КОД</title>
+<style>
+    :root {
+        --primary-bg: #010a15;
+        --ocean-top: #023e8a;
+        --ocean-bottom: #001219;
+        --accent-glow: #00b4d8;
+        --sand: #3e2723;
+        --sand-light: #4e342e;
+    }
+    body, html {
+        margin: 0; padding: 0; width: 100vw; height: 100vh;
+        overflow: hidden; background-color: var(--primary-bg);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        touch-action: none;
+        user-select: none;
+    }
+
+    #game-container {
+        position: relative; width: 100%; height: 100%;
+        display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    }
+
+    #background-layer {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+    }
+
+    #game-layer {
+        position: relative; z-index: 10; width: 100%; height: 100%;
+        display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    }
+
+    /* Дошка із завданням справа (стилізована під старовинну карту скарбів) */
+    #task-board {
+        position: absolute; top: 5vh; right: 5vw;
+        width: 300px; height: 180px;
+        filter: drop-shadow(0px 10px 15px rgba(0,0,0,0.8));
+        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        z-index: 100;
+    }
+    
+    #level-container {
+        position: relative; flex-grow: 1; width: 80%; max-width: 800px;
+        display: flex; justify-content: center; align-items: center;
+        margin-top: 15vh;
+        z-index: 200; 
+    }
+
+    #character-container {
+        position: absolute; bottom: 2vh; left: 5vw; width: 250px; height: 300px;
+        z-index: 20; transform-origin: bottom center;
+        transition: all 0.3s;
+        pointer-events: none;
+    }
+
+    /* Анімації Восьминога */
+    @keyframes breatheHead { 0%, 100% { transform: scaleY(1) translateY(0); } 50% { transform: scaleY(1.05) translateY(-5px); } }
+    @keyframes tentacleWave { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(8deg); } }
+    @keyframes tentacleWaveRev { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-8deg); } }
+    @keyframes jumpWin { 0%, 100% { transform: translateY(0) scale(1); } 30% { transform: translateY(-60px) scale(1.1) rotate(5deg); } 50% { transform: translateY(-80px) scale(1.15) rotate(-5deg); } 70% { transform: translateY(-60px) scale(1.1) rotate(5deg); } }
+    @keyframes sadLose { 0%, 100% { transform: scale(1) translateY(0); filter: brightness(1); } 50% { transform: scale(0.95) translateY(20px); filter: brightness(0.7); } }
+    @keyframes bubbleRise { 0% { transform: translateY(100vh) scale(0.5); opacity: 0; } 20% { opacity: 0.6; } 100% { transform: translateY(-10vh) scale(1.5); opacity: 0; } }
+    @keyframes sway { 0%, 100% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } }
+    
+    .char-idle #octo-head { animation: breatheHead 3s infinite ease-in-out; }
+    .char-idle .tentacle-1 { animation: tentacleWave 4s infinite ease-in-out; transform-origin: top center; }
+    .char-idle .tentacle-2 { animation: tentacleWaveRev 3.5s infinite ease-in-out; transform-origin: top center; }
+    .char-win { animation: jumpWin 1.2s ease-out; }
+    .char-lose { animation: sadLose 1.5s ease-in-out; }
+
+    /* Кнопки керування */
+    .nav-btn {
+        position: absolute; top: 5vh; z-index: 300;
+        width: 70px; height: 70px; cursor: pointer;
+        filter: drop-shadow(0 5px 5px rgba(0,0,0,0.8));
+        transition: transform 0.2s, filter 0.2s;
+    }
+    .nav-btn:hover { transform: scale(1.1); filter: drop-shadow(0 8px 15px var(--accent-glow)); }
+    .nav-btn:active { transform: scale(0.95); }
+    #btn-prev { left: 5vw; }
+    #btn-next { right: calc(300px + 10vw); }
+    #btn-check { position: absolute; right: 5vw; bottom: 5vh; z-index: 300; width: 90px; height: 90px; cursor: pointer; filter: drop-shadow(0 5px 5px rgba(0,0,0,0.8)); transition: transform 0.2s; }
+    #btn-check:hover { transform: scale(1.1); filter: drop-shadow(0 0 20px #00e5ff); }
+    #btn-check:active { transform: scale(0.95); }
+
+    .interactive-element { cursor: pointer; transition: all 0.3s; }
+    .draggable { cursor: grab; }
+    .draggable:active { cursor: grabbing; }
+    
+    .particle {
+        position: absolute; pointer-events: none; border-radius: 50%; opacity: 0; z-index: 999;
+    }
+    @keyframes flyOut {
+        0% { transform: translate(0, 0) scale(1); opacity: 1; }
+        100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+    }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+    <svg id="background-layer" preserveAspectRatio="xMidYMid slice"></svg>
+
+    <div id="game-layer">
+        <svg id="task-board" viewBox="0 0 300 180">
+            <defs>
+                <filter id="map-shadow"><feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000" flood-opacity="0.8"/></filter>
+                <linearGradient id="map-grad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#fff59d"/>
+                    <stop offset="100%" stop-color="#ffb74d"/>
+                </linearGradient>
+            </defs>
+            <!-- Сувій -->
+            <rect x="20" y="20" width="260" height="140" rx="5" fill="url(#map-grad)" filter="url(#map-shadow)"/>
+            <path d="M20,20 Q150,10 280,20 L280,160 Q150,170 20,160 Z" fill="url(#map-grad)"/>
+            <!-- Обгорілі краї (деталізація) -->
+            <path d="M20,20 Q30,40 20,60 Q25,80 20,100 Q15,120 20,160" fill="none" stroke="#5d4037" stroke-width="2"/>
+            <path d="M280,20 Q270,50 280,80 Q285,110 280,160" fill="none" stroke="#5d4037" stroke-width="2"/>
+            <!-- Дерев'яні тримачі -->
+            <rect x="10" y="5" width="280" height="15" rx="7" fill="#4e342e" stroke="#3e2723" stroke-width="2"/>
+            <rect x="10" y="160" width="280" height="15" rx="7" fill="#4e342e" stroke="#3e2723" stroke-width="2"/>
+            <!-- Елементи карти -->
+            <path d="M40,40 L60,60 M60,40 L40,60" stroke="#d32f2f" stroke-width="3" stroke-linecap="round"/>
+            <path d="M250,130 Q260,140 250,150" stroke="#795548" stroke-width="2" stroke-dasharray="2,2" fill="none"/>
+            
+            <text id="fraction-numerator" x="150" y="75" font-size="80" font-weight="900" fill="#3e2723" text-anchor="middle" font-family="Georgia, serif">0</text>
+            <line x1="100" y1="90" x2="200" y2="90" stroke="#3e2723" stroke-width="6" stroke-linecap="round"/>
+            <text id="fraction-denominator" x="150" y="155" font-size="80" font-weight="900" fill="#3e2723" text-anchor="middle" font-family="Georgia, serif">0</text>
+        </svg>
+        <div id="level-container"></div>
+    </div>
+
+    <!-- Новий персонаж: Восьминіг Окто -->
+    <div id="character-container" class="char-idle">
+        <svg viewBox="0 0 200 250" id="octopus-svg" style="width:100%; height:100%; overflow:visible;">
+            <defs>
+                <radialGradient id="octo-body" cx="50%" cy="40%" r="60%">
+                    <stop offset="0%" stop-color="#e040fb"/>
+                    <stop offset="80%" stop-color="#9c27b0"/>
+                    <stop offset="100%" stop-color="#6a1b9a"/>
+                </radialGradient>
+                <radialGradient id="sucker" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#f8bbd0"/>
+                    <stop offset="100%" stop-color="#c2185b"/>
+                </radialGradient>
+            </defs>
+            
+            <!-- Задні щупальця -->
+            <g class="tentacle-2" transform="translate(100, 160)">
+                <path d="M-40,0 C-80,40 -90,90 -50,110 C-10,130 0,90 -20,50 Z" fill="#6a1b9a"/>
+                <circle cx="-60" cy="70" r="6" fill="url(#sucker)"/><circle cx="-45" cy="95" r="4" fill="url(#sucker)"/>
+            </g>
+            <g class="tentacle-2" transform="translate(100, 160)">
+                <path d="M40,0 C80,40 90,90 50,110 C10,130 0,90 20,50 Z" fill="#6a1b9a"/>
+                <circle cx="60" cy="70" r="6" fill="url(#sucker)"/><circle cx="45" cy="95" r="4" fill="url(#sucker)"/>
+            </g>
+
+            <!-- Передні щупальця -->
+            <g class="tentacle-1" transform="translate(100, 150)">
+                <path d="M-20,0 C-50,60 -20,120 20,110 C60,100 20,60 0,30 Z" fill="url(#octo-body)"/>
+                <circle cx="-15" cy="50" r="7" fill="url(#sucker)"/><circle cx="-5" cy="80" r="5" fill="url(#sucker)"/>
+            </g>
+            <g class="tentacle-1" transform="translate(100, 150)">
+                <path d="M20,0 C50,60 20,120 -20,110 C-60,100 -20,60 0,30 Z" fill="url(#octo-body)"/>
+                <circle cx="15" cy="50" r="7" fill="url(#sucker)"/><circle cx="5" cy="80" r="5" fill="url(#sucker)"/>
+            </g>
+
+            <!-- Голова Восьминога -->
+            <g id="octo-head">
+                <path d="M40,150 C10,150 10,60 50,30 C80,10 120,10 150,30 C190,60 190,150 160,150 C140,170 60,170 40,150 Z" fill="url(#octo-body)"/>
+                <!-- Очі -->
+                <ellipse cx="75" cy="95" rx="18" ry="25" fill="#fff" transform="rotate(-10, 75, 95)"/>
+                <ellipse cx="125" cy="95" rx="18" ry="25" fill="#fff" transform="rotate(10, 125, 95)"/>
+                <circle cx="75" cy="98" r="10" fill="#000" id="pupil-l"/>
+                <circle cx="125" cy="98" r="10" fill="#000" id="pupil-r"/>
+                <circle cx="78" cy="94" r="3" fill="#fff" id="glint-l"/>
+                <circle cx="122" cy="94" r="3" fill="#fff" id="glint-r"/>
+                <!-- Щоки -->
+                <ellipse cx="50" cy="120" rx="12" ry="6" fill="#e91e63" opacity="0.6"/>
+                <ellipse cx="150" cy="120" rx="12" ry="6" fill="#e91e63" opacity="0.6"/>
+                <!-- Ротик -->
+                <path id="octo-mouth" d="M90,130 Q100,140 110,130" stroke="#4a148c" stroke-width="4" stroke-linecap="round" fill="none"/>
+            </g>
+        </svg>
+    </div>
+
+    <!-- Кнопки-мушлі -->
+    <svg id="btn-prev" class="nav-btn" viewBox="0 0 100 100">
+        <path d="M90,50 C90,80 70,90 50,90 C30,90 10,80 10,50 C10,20 30,10 50,10 C70,10 90,20 90,50 Z" fill="#00838f" stroke="#00acc1" stroke-width="3"/>
+        <path d="M50,10 C40,30 40,70 50,90 M50,10 C60,30 60,70 50,90" fill="none" stroke="#00acc1" stroke-width="2"/>
+        <path d="M60,30 L35,50 L60,70" stroke="#e0f7fa" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <svg id="btn-next" class="nav-btn" viewBox="0 0 100 100">
+        <path d="M90,50 C90,80 70,90 50,90 C30,90 10,80 10,50 C10,20 30,10 50,10 C70,10 90,20 90,50 Z" fill="#00838f" stroke="#00acc1" stroke-width="3"/>
+        <path d="M50,10 C40,30 40,70 50,90 M50,10 C60,30 60,70 50,90" fill="none" stroke="#00acc1" stroke-width="2"/>
+        <path d="M40,30 L65,50 L40,70" stroke="#e0f7fa" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <!-- Кнопка перевірки: Перлина -->
+    <svg id="btn-check" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="45" fill="#fce4ec" stroke="#f48fb1" stroke-width="4"/>
+        <circle cx="40" cy="40" r="15" fill="#fff" filter="blur(2px)"/>
+        <path d="M30,50 L45,65 L70,35" stroke="#c2185b" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+
+</div>
+
+<script>
+const AudioEngine = (function() {
+    let ctx = null;
+    function init() { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); }
+    function playTone(freq, type, duration, vol=0.1) { if (!ctx) return; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = type; osc.frequency.setValueAtTime(freq, ctx.currentTime); gain.gain.setValueAtTime(vol, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration); osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + duration); }
+    return {
+        init: init,
+        win: () => { if(!ctx) return; const t = ctx.currentTime; [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sine'; osc.frequency.value = freq; gain.gain.setValueAtTime(0.1, t + i * 0.1); gain.gain.exponentialRampToValueAtTime(0.01, t + i * 0.1 + 0.3); osc.connect(gain); gain.connect(ctx.destination); osc.start(t + i * 0.1); osc.stop(t + i * 0.1 + 0.3); }); },
+        lose: () => { if(!ctx) return; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'triangle'; osc.frequency.setValueAtTime(300, ctx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.5); gain.gain.setValueAtTime(0.2, ctx.currentTime); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5); osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.5); },
+        click: () => playTone(800, 'sine', 0.1, 0.05), pop: () => playTone(400, 'square', 0.1, 0.05),
+        splash: () => { if(!ctx) return; const bufferSize = ctx.sampleRate * 0.2; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1; const noise = ctx.createBufferSource(); noise.buffer = buffer; const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 1000; const gain = ctx.createGain(); gain.gain.setValueAtTime(0.2, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2); noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination); noise.start(); },
+        drag: () => { if (Math.random() > 0.8) playTone(600, 'triangle', 0.05, 0.01); } 
+    };
+})();
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+function createSVG(tag, attrs) { const el = document.createElementNS(SVG_NS, tag); for (let k in attrs) el.setAttribute(k, attrs[k]); return el; }
+
+function generateBackground() {
+    const bg = document.getElementById('background-layer');
+    const defs = createSVG('defs', {});
+    const skyGrad = createSVG('linearGradient', {id: 'ocean', x1: '0', y1: '0', x2: '0', y2: '1'});
+    skyGrad.appendChild(createSVG('stop', {offset: '0%', 'stop-color': getComputedStyle(document.documentElement).getPropertyValue('--ocean-top')}));
+    skyGrad.appendChild(createSVG('stop', {offset: '100%', 'stop-color': getComputedStyle(document.documentElement).getPropertyValue('--ocean-bottom')}));
+    defs.appendChild(skyGrad); bg.appendChild(defs);
+    
+    // Вода
+    bg.appendChild(createSVG('rect', {width: '100%', height: '100%', fill: 'url(#ocean)'}));
+    
+    // Світлові промені зверху
+    for(let i=0; i<5; i++) {
+        bg.appendChild(createSVG('polygon', {points: `${20+i*20}%,0 ${30+i*20}%,0 ${15+i*25}%,100% ${5+i*25}%,100%`, fill: '#ffffff', opacity: '0.03'}));
+    }
+
+    // Дно (пісок та скелі)
+    bg.appendChild(createSVG('path', {d: 'M0,800 Q300,700 600,850 T1920,750 L1920,1080 L0,1080 Z', fill: '#1b3a4b'}));
+    bg.appendChild(createSVG('path', {d: 'M0,900 Q400,800 800,950 T1920,850 L1920,1080 L0,1080 Z', fill: '#065a60'}));
+    
+    // Детальні водорості (анімовані через CSS)
+    for(let i=0; i<12; i++) {
+        const x = Math.random() * 100, scale = 0.5 + Math.random() * 1.5;
+        const g = createSVG('g', {transform: `translate(${x}vw, ${95 - scale*10}vh) scale(${scale})`, style: `animation: sway ${3 + Math.random()*2}s infinite ease-in-out; transform-origin: bottom center;`});
+        g.appendChild(createSVG('path', {d: 'M0,0 Q-20,-50 10,-100 T-10,-200', fill: 'none', stroke: (i%2===0)?'#2d6a4f':'#1b4332', 'stroke-width': '8', 'stroke-linecap': 'round'}));
+        g.appendChild(createSVG('path', {d: 'M0,0 Q20,-30 -5,-80 T10,-160', fill: 'none', stroke: (i%2===0)?'#40916c':'#2d6a4f', 'stroke-width': '5', 'stroke-linecap': 'round'}));
+        bg.appendChild(g);
+    }
+    
+    // Анімовані бульбашки
+    for(let i=0; i<15; i++) {
+        const x = Math.random() * 100;
+        const delay = Math.random() * 5;
+        const dur = 4 + Math.random() * 4;
+        const bubble = createSVG('circle', {cx: `${x}vw`, cy: '0', r: Math.random()*8+2, fill: 'rgba(255,255,255,0.3)', stroke: 'rgba(255,255,255,0.6)', 'stroke-width': '1', style: `animation: bubbleRise ${dur}s ${delay}s infinite linear;`});
+        bg.appendChild(bubble);
+    }
+}
+
+function createConfetti() {
+    const container = document.getElementById('game-container');
+    for(let i=0; i<30; i++) {
+        const p = document.createElement('div'); p.className = 'particle';
+        p.style.backgroundColor = ['#00e5ff', '#b2ebf2', '#ff4081', '#7c4dff'][Math.floor(Math.random()*4)];
+        p.style.width = Math.random() * 10 + 5 + 'px'; p.style.height = p.style.width;
+        p.style.left = '50%'; p.style.top = '50%';
+        p.style.setProperty('--tx', (Math.random() * 400 - 200) + 'px'); p.style.setProperty('--ty', (Math.random() * -400 - 50) + 'px');
+        p.style.animation = 'flyOut 1s cubic-bezier(0.1, 0.8, 0.3, 1) forwards';
+        container.appendChild(p); setTimeout(() => p.remove(), 1000);
+    }
+}
+
+let currentLevelIndex = 0; let gameState = {};
+
+const levels = [
+    {
+        // 1: Диск Атлантиди (замість пирога)
+        targetNum: 4, targetDen: 6,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 400 400', width: '100%', height: '100%', overflow: 'visible'});
+            const mainGroup = createSVG('g', {transform: 'translate(0, -50)'});
+
+            const cx = 200, cy = 200, r = 150;
+            gameState.selected = new Set();
+            
+            // Основа стародавнього диску
+            mainGroup.appendChild(createSVG('circle', {cx, cy, r: r+25, fill: '#263238'}));
+            mainGroup.appendChild(createSVG('circle', {cx, cy, r: r+15, fill: '#37474f', stroke: '#00acc1', 'stroke-width': '3'}));
+            mainGroup.appendChild(createSVG('circle', {cx, cy, r: 40, fill: '#006064', stroke: '#00acc1', 'stroke-width': '5'}));
+
+            for(let i=0; i<6; i++) {
+                const startAngle = (i * 60) * Math.PI / 180; const endAngle = ((i+1) * 60) * Math.PI / 180;
+                const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
+                const x2 = cx + r * Math.cos(endAngle), y2 = cy + r * Math.sin(endAngle);
+                
+                // Внутрішній виріз (щоб не перекривати центр)
+                const innerR = 45;
+                const ix1 = cx + innerR * Math.cos(startAngle), iy1 = cy + innerR * Math.sin(startAngle);
+                const ix2 = cx + innerR * Math.cos(endAngle), iy2 = cy + innerR * Math.sin(endAngle);
+
+                const pathData = `M ${ix1} ${iy1} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} L ${ix2} ${iy2} A ${innerR} ${innerR} 0 0 0 ${ix1} ${iy1} Z`;
+                
+                const slice = createSVG('path', {d: pathData, fill: '#004d40', stroke: '#00897b', 'stroke-width': '4', class: 'interactive-element'});
+                
+                // Декоративні руни на кожному секторі
+                const midAngle = (i * 60 + 30) * Math.PI / 180;
+                const rx = cx + 100 * Math.cos(midAngle), ry = cy + 100 * Math.sin(midAngle);
+                const rune = createSVG('circle', {cx: rx, cy: ry, r: 10, fill: '#00acc1', opacity: '0.3', style: 'pointer-events:none;'});
+
+                slice.onclick = () => {
+                    AudioEngine.click();
+                    if(gameState.selected.has(i)) { 
+                        gameState.selected.delete(i); 
+                        slice.setAttribute('fill', '#004d40'); 
+                        slice.setAttribute('filter', '');
+                        rune.setAttribute('fill', '#00acc1');
+                        rune.setAttribute('opacity', '0.3');
+                    } else { 
+                        gameState.selected.add(i); 
+                        slice.setAttribute('fill', '#00b4d8'); 
+                        slice.setAttribute('filter', 'drop-shadow(0 0 15px #00e5ff)');
+                        rune.setAttribute('fill', '#fff');
+                        rune.setAttribute('opacity', '1');
+                    }
+                };
+                mainGroup.appendChild(slice);
+                mainGroup.appendChild(rune);
+            }
+            svg.appendChild(mainGroup); container.appendChild(svg);
+        },
+        check: () => gameState.selected.size === 4
+    },
+    {
+        // 2: Крабик на коралах (замість жука на ліані)
+        targetNum: 3, targetDen: 5,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 600 200', width: '100%', height: '100%', overflow: 'visible'});
+            const y = 100;
+
+            const parts = 5, startX = 50, endX = 550, step = (endX - startX) / parts; gameState.currentPos = 0;
+            
+            // Коралова доріжка
+            svg.appendChild(createSVG('path', {d: `M${startX},${y} Q300,${y+30} ${endX},${y}`, stroke: '#d84315', 'stroke-width': '20', fill: 'none', 'stroke-linecap': 'round'}));
+            svg.appendChild(createSVG('path', {d: `M${startX},${y} Q300,${y+30} ${endX},${y}`, stroke: '#ff7043', 'stroke-width': '10', fill: 'none', 'stroke-dasharray': '5, 15', 'stroke-linecap': 'round'}));
+            
+            // Вузли (анемони)
+            for(let i=0; i<=parts; i++) { 
+                const cx = startX + i*step;
+                const cy = y + (i==2||i==3 ? 7 : 0) + (i==1||i==4 ? 4 : 0);
+                svg.appendChild(createSVG('circle', {cx: cx, cy: cy, r: '12', fill: '#f48fb1'})); 
+                svg.appendChild(createSVG('circle', {cx: cx, cy: cy, r: '6', fill: '#ad1457'})); 
+            }
+            
+            // Крабик
+            const bug = createSVG('g', {transform: `translate(${startX}, ${y})`, class: 'draggable'});
+            bug.appendChild(createSVG('ellipse', {cx: 0, cy: -15, rx: 25, ry: 18, fill: '#ff5722'})); 
+            // Очі краба
+            bug.appendChild(createSVG('circle', {cx: -10, cy: -35, r: 5, fill: '#fff'})); bug.appendChild(createSVG('circle', {cx: -10, cy: -35, r: 2, fill: '#000'}));
+            bug.appendChild(createSVG('circle', {cx: 10, cy: -35, r: 5, fill: '#fff'})); bug.appendChild(createSVG('circle', {cx: 10, cy: -35, r: 2, fill: '#000'}));
+            // Клешні
+            bug.appendChild(createSVG('path', {d: 'M-20,-15 C-40,-30 -30,-50 -15,-40 Z', fill: '#d84315'}));
+            bug.appendChild(createSVG('path', {d: 'M20,-15 C40,-30 30,-50 15,-40 Z', fill: '#d84315'}));
+            // Ніжки
+            bug.appendChild(createSVG('path', {d: 'M-15,0 L-25,10 M-5,2 L-10,12 M15,0 L25,10 M5,2 L10,12', stroke: '#ff5722', 'stroke-width': '4', fill: 'none', 'stroke-linecap': 'round'}));
+            
+            svg.appendChild(bug);
+
+            let activeBug = false;
+            bug.addEventListener('mousedown', (e) => { activeBug = true; AudioEngine.pop(); });
+            bug.addEventListener('touchstart', (e) => { activeBug = true; AudioEngine.pop(); e.preventDefault(); });
+            const moveHandler = (e) => {
+                if(!activeBug) return; AudioEngine.drag();
+                const pt = svg.createSVGPoint(); pt.x = e.clientX || (e.touches && e.touches[0].clientX); pt.y = e.clientY || (e.touches && e.touches[0].clientY);
+                const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+                bug.setAttribute('transform', `translate(${Math.max(startX, Math.min(loc.x, endX))}, ${y})`);
+            };
+            const upHandler = () => {
+                if(!activeBug) return; activeBug = false;
+                const match = bug.getAttribute('transform').match(/translate\(([^,]+)/);
+                if(match) {
+                    let closestIdx = Math.round((parseFloat(match[1]) - startX) / step); gameState.currentPos = closestIdx;
+                    bug.setAttribute('transform', `translate(${startX + closestIdx * step}, ${y})`); AudioEngine.click();
+                }
+            };
+            svg.addEventListener('mousemove', moveHandler); svg.addEventListener('touchmove', moveHandler);
+            window.addEventListener('mouseup', upHandler); window.addEventListener('touchend', upHandler);
+            
+            gameState.cleanup = () => { window.removeEventListener('mouseup', upHandler); window.removeEventListener('touchend', upHandler); };
+            container.appendChild(svg);
+        },
+        check: () => gameState.currentPos === 3
+    },
+    {
+        // 3: Перлини у скриню (замість світлячків у банку)
+        targetNum: 5, targetDen: 8,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 600 400', width: '100%', height: '100%', overflow: 'visible'});
+            gameState.inJar = new Set();
+            
+            const jarGroup = createSVG('g', {id: 'chest-group', transform: 'translate(0, -50)'}); 
+
+            const dropZone = { xMin: 200, xMax: 400, yMin: 20, yMax: 350 };
+            
+            // Малюємо скриню
+            // Задня стінка скрині
+            jarGroup.appendChild(createSVG('path', {d: 'M230,200 L370,200 L370,320 L230,320 Z', fill: '#3e2723'}));
+            // Кришка відкрита (ззаду)
+            jarGroup.appendChild(createSVG('path', {d: 'M230,200 L210,120 Q300,100 390,120 L370,200 Z', fill: '#5d4037', stroke: '#ffb300', 'stroke-width': '4'}));
+            
+            // Золоте сяйво всередині
+            const jarGlow = createSVG('ellipse', {cx: 300, cy: 260, rx: 60, ry: 30, fill: '#ffecb3', opacity: '0', filter: 'blur(15px)', style: 'pointer-events: none;'});
+            jarGroup.appendChild(jarGlow);
+
+            // Передня стінка скрині (буде малюватися поверх перлин, щоб вони були "всередині", тому додамо її в кінці через інший механізм, або розташуємо перлини перед нею, але візуально)
+            // Щоб спростити: перлини кидаються в зону, а передня стінка скрині додається пізніше у DOM.
+            const chestFront = createSVG('g', {style: 'pointer-events: none;'});
+            chestFront.appendChild(createSVG('path', {d: 'M220,230 L380,230 L370,330 L230,330 Z', fill: '#4e342e', stroke: '#ffb300', 'stroke-width': '5', 'stroke-linejoin': 'round'}));
+            chestFront.appendChild(createSVG('path', {d: 'M220,230 L380,230 L380,250 L220,250 Z', fill: '#ffb300'}));
+            // Замок
+            chestFront.appendChild(createSVG('circle', {cx: 300, cy: 260, r: 15, fill: '#ffca28'}));
+            chestFront.appendChild(createSVG('circle', {cx: 300, cy: 260, r: 5, fill: '#3e2723'}));
+            chestFront.appendChild(createSVG('rect', {x: 297, y: 260, width: 6, height: 10, fill: '#3e2723'}));
+
+            svg.appendChild(jarGroup);
+            
+            let activeBug = null;
+            let bugs = [];
+
+            for(let i=0; i<8; i++) {
+                const startX = 80 + (i%2)*440; 
+                const startY = 50 + (i)*30; 
+                
+                const bug = createSVG('g', {transform: `translate(${startX}, ${startY})`, class: 'draggable', 'data-idx': i});
+                // Невидима зона для кліку
+                bug.appendChild(createSVG('circle', {cx:0, cy:0, r:25, fill: 'transparent'})); 
+                // Перлина
+                bug.appendChild(createSVG('circle', {cx:0, cy:0, r:15, fill: '#e0f7fa'}));
+                bug.appendChild(createSVG('circle', {cx:-5, cy:-5, r:5, fill: '#ffffff', filter: 'blur(1px)'}));
+                // Сяйво
+                bug.appendChild(createSVG('circle', {cx:0, cy:0, r:18, fill: 'none', stroke: '#84ffff', 'stroke-width': '2', filter: 'drop-shadow(0 0 5px #00e5ff)'}));
+                
+                svg.appendChild(bug);
+                bugs.push({el: bug, startX, startY});
+
+                const startDrag = (e) => {
+                    activeBug = bug; AudioEngine.pop();
+                    svg.appendChild(activeBug); 
+                    svg.appendChild(chestFrontGroup); // Скриня спереду завжди зверху
+                    jarGlow.setAttribute('opacity', '0.6');
+                    e.preventDefault();
+                };
+                bug.addEventListener('pointerdown', startDrag);
+            }
+
+            // Група для передньої частини скрині, додана останньою, щоб перекривати перлини
+            const chestFrontGroup = createSVG('g', {transform: 'translate(0, -50)', style: 'pointer-events: none;'});
+            chestFrontGroup.appendChild(chestFront);
+            svg.appendChild(chestFrontGroup);
+
+            const dragMove = (e) => {
+                if(!activeBug) return;
+                AudioEngine.drag();
+                const pt = svg.createSVGPoint(); 
+                pt.x = e.clientX; pt.y = e.clientY;
+                const loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+                activeBug.setAttribute('transform', `translate(${loc.x}, ${loc.y})`);
+            };
+            
+            const dragEnd = (e) => {
+                if(!activeBug) return;
+                jarGlow.setAttribute('opacity', '0');
+                const trans = activeBug.getAttribute('transform');
+                const match = trans.match(/translate\(([^,]+),\s*([^)]+)\)/);
+                
+                if(match) {
+                    const bx = parseFloat(match[1]), by = parseFloat(match[2]);
+                    const idx = parseInt(activeBug.getAttribute('data-idx'));
+                    
+                    if(bx > dropZone.xMin && bx < dropZone.xMax && by > dropZone.yMin && by < dropZone.yMax) {
+                        gameState.inJar.add(idx); 
+                        AudioEngine.splash();
+                        const snapX = 260 + (idx % 3) * 40;
+                        const snapY = 180 + (Math.floor(idx/3) * 20);
+                        activeBug.setAttribute('transform', `translate(${snapX}, ${snapY})`);
+                    } else {
+                        gameState.inJar.delete(idx);
+                        activeBug.setAttribute('transform', `translate(${bugs[idx].startX}, ${bugs[idx].startY})`);
+                        AudioEngine.click();
+                    }
+                }
+                activeBug = null;
+            };
+
+            window.addEventListener('pointermove', dragMove); window.addEventListener('pointerup', dragEnd); window.addEventListener('pointercancel', dragEnd);
+            gameState.cleanup = () => { window.removeEventListener('pointermove', dragMove); window.removeEventListener('pointerup', dragEnd); window.removeEventListener('pointercancel', dragEnd); };
+
+            container.appendChild(svg);
+        },
+        check: () => gameState.inJar.size === 5
+    },
+    {
+        // 4: Дошки затонулого корабля (замість паркану)
+        targetNum: 2, targetDen: 7,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 700 300', width: '100%', height: '100%', overflow: 'visible'});
+            const mainGroup = createSVG('g', {transform: 'translate(0, 50)'});
+
+            gameState.painted = new Set();
+            const defs = svg.appendChild(createSVG('defs', {}));
+            
+            // Текстура старої деревини
+            const oldWood = defs.appendChild(createSVG('pattern', {id: 'old-wood', patternUnits: 'userSpaceOnUse', width: '30', height: '100'}));
+            oldWood.appendChild(createSVG('rect', {width: '30', height: '100', fill: '#3e2723'}));
+            oldWood.appendChild(createSVG('path', {d: 'M0,10 Q15,20 30,10 M0,50 Q15,40 30,50 M0,90 Q15,100 30,90', stroke: '#1b0000', 'stroke-width': '2', fill: 'none'}));
+            oldWood.appendChild(createSVG('circle', {cx: '15', cy: '30', r: '4', fill: '#1b4332'})); // водорості на дошках
+
+            // Текстура відновленої (магічної) деревини
+            const magicWood = defs.appendChild(createSVG('pattern', {id: 'magic-wood', patternUnits: 'userSpaceOnUse', width: '30', height: '100'}));
+            magicWood.appendChild(createSVG('rect', {width: '30', height: '100', fill: '#ffc107'}));
+            magicWood.appendChild(createSVG('path', {d: 'M0,10 Q15,20 30,10 M0,50 Q15,40 30,50 M0,90 Q15,100 30,90', stroke: '#ff8f00', 'stroke-width': '2', fill: 'none'}));
+            
+            // Каркас корабля
+            mainGroup.appendChild(createSVG('path', {d: 'M30,220 L670,220 C670,300 30,300 30,220 Z', fill: '#212121'})); 
+            mainGroup.appendChild(createSVG('rect', {x: 40, y: 180, width: 620, height: 20, fill: '#1b0000'}));
+            
+            for(let i=0; i<7; i++) {
+                // Дошки мають нерівні зламані краї
+                const d = `M${70 + i*80},60 L${70 + i*80 + 40},40 L${70 + i*80 + 50},200 L${70 + i*80 - 10},190 Z`;
+                const plank = createSVG('path', { d: d, fill: 'url(#old-wood)', stroke: '#1b0000', 'stroke-width': '3', class: 'interactive-element', filter: 'drop-shadow(2px 5px 3px rgba(0,0,0,0.5))' });
+                plank.onclick = () => { 
+                    AudioEngine.splash(); 
+                    if(gameState.painted.has(i)) { 
+                        gameState.painted.delete(i); 
+                        plank.setAttribute('fill', 'url(#old-wood)'); 
+                        plank.setAttribute('filter', 'drop-shadow(2px 5px 3px rgba(0,0,0,0.5))');
+                    } else { 
+                        gameState.painted.add(i); 
+                        plank.setAttribute('fill', 'url(#magic-wood)'); 
+                        plank.setAttribute('filter', 'drop-shadow(0px 0px 15px #ffc107)');
+                    } 
+                };
+                mainGroup.appendChild(plank);
+            }
+            svg.appendChild(mainGroup); container.appendChild(svg);
+        },
+        check: () => gameState.painted.size === 2
+    },
+    {
+        // 5: Балон підводника (замість чарівної колби)
+        targetNum: 3, targetDen: 4,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 300 400', width: '100%', height: '100%', overflow: 'visible'});
+            const mainGroup = createSVG('g', {transform: 'translate(0, -60)'}); 
+            
+            gameState.level = 0; const parts = 4, flaskW = 100, flaskH = 200, startX = 100, startY = 130;
+            
+            // Корпус балона
+            mainGroup.appendChild(createSVG('rect', {x: startX, y: startY, width: flaskW, height: flaskH, fill: '#263238', rx: 20, stroke: '#546e7a', 'stroke-width': '8'}));
+            
+            // Вентиль зверху
+            mainGroup.appendChild(createSVG('rect', {x: startX+35, y: startY-20, width: 30, height: 20, fill: '#ffb300'}));
+            mainGroup.appendChild(createSVG('circle', {cx: startX+50, cy: startY-30, r: 15, fill: '#d32f2f', stroke: '#b71c1c', 'stroke-width': '3'}));
+
+            // Рівень повітря/енергії
+            const water = createSVG('rect', {x: startX+4, y: startY + flaskH - 4, width: flaskW-8, height: 0, fill: '#00e5ff', rx: 15});
+            mainGroup.appendChild(water);
+            
+            // Позначки
+            for(let i=1; i<parts; i++) { 
+                mainGroup.appendChild(createSVG('line', {x1: startX, y1: startY + i*(flaskH/parts), x2: startX+30, y2: startY + i*(flaskH/parts), stroke: '#fff', 'stroke-width': '4'})); 
+            }
+            
+            // Інтерактивна бульбашка для наповнення
+            const drop = createSVG('g', {class: 'interactive-element', transform: 'translate(150, 60)'});
+            drop.appendChild(createSVG('circle', {cx: 0, cy: 0, r: 25, fill: 'rgba(0, 229, 255, 0.4)', stroke: '#00e5ff', 'stroke-width': '3'}));
+            drop.appendChild(createSVG('circle', {cx: -8, cy: -8, r: 6, fill: '#ffffff'}));
+            
+            drop.onclick = () => { 
+                gameState.level = (gameState.level + 1) % (parts + 1); 
+                AudioEngine.splash(); 
+                const currentH = ((flaskH-8) / parts) * gameState.level; 
+                water.setAttribute('y', startY + flaskH - 4 - currentH); 
+                water.setAttribute('height', currentH); 
+                water.style.transition = 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)'; 
+                
+                // Анімація вентиля
+                const valve = mainGroup.querySelector('circle[fill="#d32f2f"]');
+                valve.setAttribute('transform', `rotate(${gameState.level * 90}, ${startX+50}, ${startY-30})`);
+                valve.style.transition = 'transform 0.3s';
+            };
+            mainGroup.appendChild(drop);
+            svg.appendChild(mainGroup); container.appendChild(svg);
+        },
+        check: () => gameState.level === 3
+    },
+    {
+        // 6: Підводні терези з якорем (замість звичайних терезів)
+        targetNum: 3, targetDen: 6,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 600 400', width: '100%', height: '100%', overflow: 'visible'});
+            const mainGroup = createSVG('g', {transform: 'translate(0, -20)'});
+
+            gameState.rightWeight = 0;
+            
+            // Камінь-основа
+            mainGroup.appendChild(createSVG('path', {d: 'M250,400 Q300,300 350,400 Z', fill: '#455a64', stroke: '#263238', 'stroke-width': '4'})); 
+            
+            // Вісь
+            mainGroup.appendChild(createSVG('circle', {cx: 300, cy: 300, r: 15, fill: '#ffb300'}));
+
+            // Балка терезів
+            const beam = createSVG('g', {transform: 'rotate(15, 300, 300)', style: 'transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'});
+            beam.appendChild(createSVG('rect', {x: 100, y: 290, width: 400, height: 20, rx: 10, fill: '#795548', stroke: '#3e2723', 'stroke-width': '4'})); 
+            
+            // Ліва чаша з важким якорем
+            beam.appendChild(createSVG('line', {x1: 150, y1: 310, x2: 150, y2: 380, stroke: '#b0bec5', 'stroke-width': '3', 'stroke-dasharray': '5,5'}));
+            beam.appendChild(createSVG('path', {d: 'M110,380 L190,380 C190,400 110,400 110,380 Z', fill: '#263238'}));
+            // Якір
+            const anchor = createSVG('g', {transform: 'translate(150, 360) scale(0.6)'});
+            anchor.appendChild(createSVG('circle', {cx: 0, cy: -40, r: 10, fill: 'none', stroke: '#546e7a', 'stroke-width': '5'}));
+            anchor.appendChild(createSVG('line', {x1: 0, y1: -30, x2: 0, y2: 30, stroke: '#546e7a', 'stroke-width': '6'}));
+            anchor.appendChild(createSVG('line', {x1: -20, y1: -10, x2: 20, y2: -10, stroke: '#546e7a', 'stroke-width': '5'}));
+            anchor.appendChild(createSVG('path', {d: 'M-40,10 C-40,50 40,50 40,10', fill: 'none', stroke: '#546e7a', 'stroke-width': '8'}));
+            anchor.appendChild(createSVG('polygon', {points: '-40,10 -50,20 -30,20', fill: '#546e7a'}));
+            anchor.appendChild(createSVG('polygon', {points: '40,10 50,20 30,20', fill: '#546e7a'}));
+            beam.appendChild(anchor);
+
+            // Права чаша (порожня, для мушель)
+            beam.appendChild(createSVG('line', {x1: 450, y1: 310, x2: 450, y2: 380, stroke: '#b0bec5', 'stroke-width': '3', 'stroke-dasharray': '5,5'}));
+            beam.appendChild(createSVG('path', {d: 'M410,380 L490,380 C490,400 410,400 410,380 Z', fill: '#263238'}));
+            
+            const weightsGroup = createSVG('g', {}); beam.appendChild(weightsGroup); mainGroup.appendChild(beam);
+            
+            // Інтерактивні мушлі на піску
+            for(let i=0; i<6; i++) { 
+                const rock = createSVG('path', {d: 'M0,15 C10,-5 20,-5 30,15 Z', fill: '#ffca28', stroke: '#ff8f00', 'stroke-width': '2', class: 'interactive-element'});
+                rock.setAttribute('transform', `translate(${50 + i*45}, 400)`);
+                
+                rock.onclick = () => { 
+                    if(rock.getAttribute('opacity') === '0') return; 
+                    AudioEngine.click(); 
+                    rock.setAttribute('opacity', '0'); 
+                    gameState.rightWeight++; 
+                    
+                    // Додаємо мушлю на чашу
+                    const addedRock = createSVG('path', {d: 'M0,15 C10,-5 20,-5 30,15 Z', fill: '#ffca28', stroke: '#ff8f00', 'stroke-width': '2'});
+                    // Трохи розкидаємо їх по чаші
+                    const offsetX = (gameState.rightWeight-1)*15 - 20;
+                    addedRock.setAttribute('transform', `translate(${435 + offsetX}, 365) scale(0.8)`);
+                    weightsGroup.appendChild(addedRock); 
+                    
+                    // Обертання балки
+                    beam.setAttribute('transform', `rotate(${15 - (gameState.rightWeight * 5)}, 300, 300)`); 
+                }; 
+                mainGroup.appendChild(rock); 
+            }
+            svg.appendChild(mainGroup); container.appendChild(svg);
+        },
+        check: () => gameState.rightWeight === 3
+    },
+    {
+        // 7: Панцир морської черепахи (замість стільників)
+        targetNum: 7, targetDen: 10,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 500 400', width: '100%', height: '100%', overflow: 'visible'});
+            const mainGroup = createSVG('g', {transform: 'translate(40, -10)'});
+
+            // Силует черепахи (лапи, голова)
+            mainGroup.appendChild(createSVG('ellipse', {cx: 210, cy: 30, rx: 30, ry: 40, fill: '#33691e'})); // Голова
+            mainGroup.appendChild(createSVG('path', {d: 'M100,100 C50,80 20,120 70,160 Z', fill: '#33691e'})); // Ліва лапа
+            mainGroup.appendChild(createSVG('path', {d: 'M320,100 C370,80 400,120 350,160 Z', fill: '#33691e'})); // Права лапа
+            mainGroup.appendChild(createSVG('path', {d: 'M120,300 C80,340 90,380 140,330 Z', fill: '#33691e'})); // Ліва задня
+            mainGroup.appendChild(createSVG('path', {d: 'M300,300 C340,340 330,380 280,330 Z', fill: '#33691e'})); // Права задня
+            
+            // Основа панцира
+            mainGroup.appendChild(createSVG('ellipse', {cx: 210, cy: 200, rx: 140, ry: 160, fill: '#1b5e20', stroke: '#8bc34a', 'stroke-width': '10'}));
+
+            gameState.honey = new Set();
+            const r = 35; let count = 0;
+            for(let row=0; row<3; row++) {
+                for(let col=0; col<4; col++) {
+                    if(count >= 10) break;
+                    // Центрування гексагонів по панциру
+                    const cx = 110 + col * r * Math.sqrt(3) + (row%2)*r*Math.sqrt(3)/2, cy = 110 + row * r * 1.5;
+                    let pts = []; for(let i=0; i<6; i++) { const a = (i * 60 - 30) * Math.PI / 180; pts.push(`${cx + (r-2) * Math.cos(a)},${cy + (r-2) * Math.sin(a)}`); }
+                    
+                    const hex = createSVG('polygon', {points: pts.join(' '), fill: '#558b2f', stroke: '#8bc34a', 'stroke-width': '4', class: 'interactive-element'});
+                    const idx = count; 
+                    hex.onclick = () => { 
+                        AudioEngine.pop(); 
+                        if(gameState.honey.has(idx)) { 
+                            gameState.honey.delete(idx); 
+                            hex.setAttribute('fill', '#558b2f'); 
+                            hex.setAttribute('filter', '');
+                        } else { 
+                            gameState.honey.add(idx); 
+                            hex.setAttribute('fill', '#64dd17'); 
+                            hex.setAttribute('filter', 'drop-shadow(0 0 10px #76ff03)');
+                        } 
+                    };
+                    mainGroup.appendChild(hex); count++;
+                }
+            }
+            svg.appendChild(mainGroup); container.appendChild(svg);
+        },
+        check: () => gameState.honey.size === 7
+    },
+    {
+        // 8: Світловий міст над западиною (замість дерев'яного містка)
+        targetNum: 4, targetDen: 5,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 600 300', width: '100%', height: '100%', overflow: 'visible'});
+            const mainGroup = createSVG('g', {transform: 'translate(0, 0)'});
+
+            gameState.bridge = new Set();
+            const total = 5;
+            
+            const defs = svg.appendChild(createSVG('defs', {}));
+            const abyssGrad = defs.appendChild(createSVG('linearGradient', {id: 'abyss-grad', x1: '0', y1: '0', x2: '0', y2: '1'}));
+            abyssGrad.appendChild(createSVG('stop', {offset: '0%', 'stop-color': '#011222'})); 
+            abyssGrad.appendChild(createSVG('stop', {offset: '100%', 'stop-color': '#000000'}));
+            
+            // Западина посеред скель
+            mainGroup.appendChild(createSVG('path', {d: 'M150,0 Q250,150 100,300 L500,300 Q600,150 450,0 Z', fill: 'url(#abyss-grad)'}));
+            mainGroup.appendChild(createSVG('path', {d: 'M0,0 L150,0 Q250,150 100,300 L0,300 Z', fill: '#263238', stroke: '#1c313a', 'stroke-width': '2'}));
+            mainGroup.appendChild(createSVG('path', {d: 'M450,0 L600,0 L600,300 L500,300 Q600,150 450,0 Z', fill: '#263238', stroke: '#1c313a', 'stroke-width': '2'}));
+
+            // Кристалічні генератори на краях
+            mainGroup.appendChild(createSVG('polygon', {points: '120,120 150,100 170,140', fill: '#00e5ff'}));
+            mainGroup.appendChild(createSVG('polygon', {points: '480,120 450,100 430,140', fill: '#00e5ff'}));
+
+            const startX = 180, w = 240/total, h = 40, y = 110; 
+
+            for(let i=0; i<total; i++) {
+                // Слоти для світлового мосту
+                const slot = createSVG('rect', { x: startX + i*(w+10), y: y, width: w, height: h, rx: 5, fill: 'rgba(0, 229, 255, 0.1)', stroke: '#00b4d8', 'stroke-dasharray': '4,4', class: 'interactive-element' });
+                slot.onclick = () => { 
+                    AudioEngine.click(); 
+                    if(gameState.bridge.has(i)) { 
+                        gameState.bridge.delete(i); 
+                        slot.setAttribute('fill', 'rgba(0, 229, 255, 0.1)'); 
+                        slot.setAttribute('stroke-dasharray', '4,4');
+                        slot.setAttribute('filter', '');
+                    } else { 
+                        gameState.bridge.add(i); 
+                        slot.setAttribute('fill', '#00e5ff'); 
+                        slot.setAttribute('stroke-dasharray', '');
+                        slot.setAttribute('filter', 'drop-shadow(0 0 10px #00e5ff)');
+                    } 
+                };
+                mainGroup.appendChild(slot);
+            }
+            svg.appendChild(mainGroup); container.appendChild(svg);
+        },
+        check: () => gameState.bridge.size === 4
+    },
+    {
+        // 9: Морські анемони (замість квітів)
+        targetNum: 2, targetDen: 3,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 600 300', width: '100%', height: '100%', overflow: 'visible'});
+            gameState.selectedFlower = -1;
+            const configs = [ {p: 4, filled: 1}, {p: 4, filled: 2}, {p: 4, filled: 3} ].sort(() => Math.random() - 0.5);
+            
+            configs.forEach((cfg, idx) => {
+                const g = createSVG('g', {transform: `translate(${150 + idx*150}, 200)`, class: 'interactive-element'});
+
+                // База анемони (камінь)
+                g.appendChild(createSVG('path', {d: 'M-30,40 Q0,20 30,40 L40,80 L-40,80 Z', fill: '#455a64'}));
+                
+                // Тіло анемони
+                g.appendChild(createSVG('path', {d: 'M-20,40 Q0,0 20,40 Z', fill: '#e91e63'}));
+                
+                // Щупальця
+                for(let i=0; i<cfg.p; i++) { 
+                    const a = (i * 180/(cfg.p-1) + 180) * Math.PI/180; 
+                    const length = 50;
+                    const tx = length * Math.cos(a);
+                    const ty = length * Math.sin(a);
+                    const isFilled = i < cfg.filled;
+                    
+                    g.appendChild(createSVG('path', {d: `M0,30 Q${tx/2},${ty} ${tx},${ty}`, stroke: isFilled ? '#00e5ff' : '#f48fb1', 'stroke-width': '8', 'stroke-linecap': 'round', fill: 'none'}));
+                    if(isFilled) {
+                        g.appendChild(createSVG('circle', {cx: tx, cy: ty, r: 6, fill: '#fff', filter: 'drop-shadow(0 0 5px #00e5ff)'}));
+                    }
+                }
+                
+                const halo = createSVG('circle', {cx: 0, cy: 0, r: 80, fill: 'none', stroke: '#00e5ff', 'stroke-width': '4', opacity: '0', 'stroke-dasharray': '10, 5'}); 
+                g.appendChild(halo);
+                
+                g.onclick = () => { 
+                    AudioEngine.pop(); 
+                    gameState.selectedFlower = cfg.filled === 2 ? true : false; 
+                    svg.querySelectorAll('circle[r="80"]').forEach(c => c.setAttribute('opacity', '0')); 
+                    halo.setAttribute('opacity', '1'); 
+                };
+                svg.appendChild(g);
+            });
+            container.appendChild(svg);
+        },
+        check: () => gameState.selectedFlower === true
+    },
+    {
+        // 10: Сонар / Радар підводного човна (замість павутини роси)
+        targetNum: 7, targetDen: 8,
+        init: (container) => {
+            const svg = createSVG('svg', {viewBox: '0 0 400 400', width: '100%', height: '100%', overflow: 'visible'});
+            const mainGroup = createSVG('g', {transform: 'translate(0, -50)'}); 
+
+            gameState.dew = new Set();
+            const cx = 200, cy = 200, maxR = 150;
+            
+            // Екран радара
+            mainGroup.appendChild(createSVG('circle', {cx, cy, r: maxR, fill: '#001a1a', stroke: '#004d40', 'stroke-width': '10'}));
+            
+            // Концентричні кола
+            for(let i=1; i<=4; i++) { 
+                mainGroup.appendChild(createSVG('circle', {cx, cy, r: (maxR/4)*i, fill: 'none', stroke: 'rgba(0, 229, 255, 0.3)', 'stroke-width': '2'})); 
+            }
+            
+            // Осі радара
+            for(let i=0; i<8; i++) { 
+                const a = (i * 360/8) * Math.PI/180; 
+                mainGroup.appendChild(createSVG('line', {x1: cx, y1: cy, x2: cx + maxR * Math.cos(a), y2: cy + maxR * Math.sin(a), stroke: 'rgba(0, 229, 255, 0.3)', 'stroke-width': '2'})); 
+            }
+            
+            // Інтерактивні сектори
+            for(let i=0; i<8; i++) {
+                const a1 = (i * 360/8) * Math.PI/180, a2 = ((i+1) * 360/8) * Math.PI/180;
+                const sector = createSVG('polygon', {points: `${cx},${cy} ${cx + maxR*Math.cos(a1)},${cy + maxR*Math.sin(a1)} ${cx + maxR*Math.cos(a2)},${cy + maxR*Math.sin(a2)}`, fill: 'rgba(0, 229, 255, 0)', class: 'interactive-element'});
+                
+                const revealGroup = createSVG('g', {opacity: 0, style: 'transition: opacity 0.3s'});
+                const rDew = maxR * 0.7, aMid = (a1 + a2) / 2;
+                
+                // "Знайдена" рибка або об'єкт на радарі (зелена точка і пінг)
+                revealGroup.appendChild(createSVG('path', {d: 'M0,0 L-10,-5 L-10,5 Z', fill: '#00e676', transform: `translate(${cx + rDew*Math.cos(aMid)}, ${cy + rDew*Math.sin(aMid)}) rotate(${aMid * 180/Math.PI})`}));
+                revealGroup.appendChild(createSVG('circle', {cx: cx + rDew*Math.cos(aMid), cy: cy + rDew*Math.sin(aMid), r: 4, fill: '#b2ff59'}));
+                revealGroup.appendChild(createSVG('circle', {cx: cx + rDew*Math.cos(aMid), cy: cy + rDew*Math.sin(aMid), r: 15, fill: 'none', stroke: '#69f0ae', 'stroke-width': '1', opacity: '0.6'}));
+
+                sector.onclick = () => { 
+                    AudioEngine.splash(); 
+                    if(gameState.dew.has(i)) { 
+                        gameState.dew.delete(i); 
+                        revealGroup.setAttribute('opacity', '0'); 
+                        sector.setAttribute('fill', 'rgba(0, 229, 255, 0)');
+                    } else { 
+                        gameState.dew.add(i); 
+                        revealGroup.setAttribute('opacity', '1'); 
+                        sector.setAttribute('fill', 'rgba(0, 229, 255, 0.15)'); // Легка підсвітка сектора
+                    } 
+                };
+                mainGroup.appendChild(revealGroup); mainGroup.appendChild(sector);
+            }
+            // Лінія сканування (декоративна)
+            mainGroup.appendChild(createSVG('path', {d: `M${cx},${cy} L${cx},${cy-maxR} A${maxR},${maxR} 0 0 1 ${cx+maxR},${cy} Z`, fill: 'url(#scan-grad)', opacity: '0.2', style: 'animation: scan 4s infinite linear; transform-origin: center;'}));
+            
+            const defs = svg.querySelector('defs') || svg.insertBefore(createSVG('defs', {}), svg.firstChild);
+            const scanGrad = createSVG('linearGradient', {id: 'scan-grad'});
+            scanGrad.appendChild(createSVG('stop', {offset: '0%', 'stop-color': '#00e5ff', 'stop-opacity': '0'}));
+            scanGrad.appendChild(createSVG('stop', {offset: '100%', 'stop-color': '#00e5ff', 'stop-opacity': '1'}));
+            defs.appendChild(scanGrad);
+            
+            const style = document.createElement('style');
+            style.innerHTML = `@keyframes scan { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;
+            svg.appendChild(style);
+
+            svg.appendChild(mainGroup); container.appendChild(svg);
+        },
+        check: () => gameState.dew.size === 7
+    }
+];
+
+function loadLevel(index) {
+    if(gameState.cleanup) { gameState.cleanup(); gameState.cleanup = null; }
+    if (index < 0) index = levels.length - 1; if (index >= levels.length) index = 0;
+    currentLevelIndex = index; const lvl = levels[currentLevelIndex];
+    document.getElementById('fraction-numerator').textContent = lvl.targetNum;
+    document.getElementById('fraction-denominator').textContent = lvl.targetDen;
+    const board = document.getElementById('task-board');
+    board.style.transform = 'translateY(-200px)'; setTimeout(() => board.style.transform = 'translateY(0)', 100);
+    const container = document.getElementById('level-container'); container.innerHTML = ''; lvl.init(container); setCharacterEmotion('idle');
+}
+
+function setCharacterEmotion(state) {
+    const charContainer = document.getElementById('character-container');
+    const pupilL = document.getElementById('pupil-l');
+    const pupilR = document.getElementById('pupil-r');
+    const glintL = document.getElementById('glint-l');
+    const glintR = document.getElementById('glint-r');
+    const mouth = document.getElementById('octo-mouth');
+    
+    charContainer.className = '';
+    pupilL.setAttribute('cy', '98'); pupilR.setAttribute('cy', '98');
+    pupilL.setAttribute('r', '10'); pupilR.setAttribute('r', '10'); 
+    
+    if (state === 'win') { 
+        charContainer.classList.add('char-win'); 
+        mouth.setAttribute('d', 'M85,125 Q100,150 115,125 Q100,140 85,125 Z'); // Відкрита усмішка
+        mouth.setAttribute('fill', '#d81b60');
+        setTimeout(() => setCharacterEmotion('idle'), 2000); 
+    }
+    else if (state === 'lose') { 
+        charContainer.classList.add('char-lose'); 
+        pupilL.setAttribute('cy', '102'); pupilR.setAttribute('cy', '102'); // Очі опущені вниз
+        pupilL.setAttribute('r', '6'); pupilR.setAttribute('r', '6');
+        mouth.setAttribute('d', 'M90,135 Q100,120 110,135'); // Сумна посмішка
+        mouth.setAttribute('fill', 'none');
+        setTimeout(() => setCharacterEmotion('idle'), 1500); 
+    }
+    else { 
+        charContainer.classList.add('char-idle'); 
+        mouth.setAttribute('d', 'M90,130 Q100,140 110,130'); // Звичайна посмішка
+        mouth.setAttribute('fill', 'none');
+    }
+}
+
+document.getElementById('btn-next').onclick = () => { AudioEngine.init(); AudioEngine.click(); loadLevel(currentLevelIndex + 1); };
+document.getElementById('btn-prev').onclick = () => { AudioEngine.init(); AudioEngine.click(); loadLevel(currentLevelIndex - 1); };
+document.getElementById('btn-check').onclick = () => { AudioEngine.init(); if (levels[currentLevelIndex].check()) { AudioEngine.win(); setCharacterEmotion('win'); createConfetti(); setTimeout(() => loadLevel(currentLevelIndex + 1), 2500); } else { AudioEngine.lose(); setCharacterEmotion('lose'); } };
+
+window.onload = () => { generateBackground(); loadLevel(0); document.body.addEventListener('click', AudioEngine.init, {once: true}); };
+
+</script>
+</body>
+</html>
