@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fraction Game</title>
+    
+    <!-- Firebase (compat) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: transparent;
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        /* Встановлюємо пропорції 16:9 для ігрового поля */
+        #game-container {
+            width: 1280px;
+            height: 720px;
+            max-width: 100vw;
+            max-height: 56.25vw;
+            position: relative;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            border-radius: 20px;
+            background: transparent;
+            overflow: hidden;
+            transition: transform 0.2s ease;
+            transform-origin: center center;
+        }
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .clickable {
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .clickable:hover {
+            filter: brightness(1.2);
+        }
+
+        /* Адаптивність мобільні/планшети */
+        @media (max-width: 768px) {
+            #toggle-draw-btn-global {
+                bottom: 20px !important;
+                right: 20px !important;
+            }
+            #theme-btn {
+                bottom: 80px !important;
+                right: 20px !important;
+            }
+            #zoom-controls {
+                bottom: 10px !important;
+                left: 10px !important;
+            }
+        }
+
+        /* Секретні поля вводу (на майбутнє, якщо додадуться) */
+        .secret-input {
+            color: transparent;
+            text-shadow: 0 0 0 transparent;
+        }
+        .secret-input.visible {
+            color: inherit;
+            text-shadow: none;
+        }
+
+        /* Стилі для Theme Manager */
+        .theme-thumb {
+            width: 100%;
+            height: 80px;
+            background-size: cover;
+            background-position: center;
+            border-radius: 5px;
+            cursor: pointer;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            border: 2px solid #ccc;
+            transition: 0.2s;
+        }
+        .theme-thumb:hover {
+            border-color: #8e44ad;
+            transform: scale(1.05);
+        }
+        .theme-thumb span {
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            width: 100%;
+            text-align: center;
+            font-size: 12px;
+            padding: 2px 0;
+            border-bottom-left-radius: 3px;
+            border-bottom-right-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <!-- UI: Лупа (масштабування) -->
+    <div id="zoom-controls" style="position:fixed; bottom:20px; left:20px; z-index:90001; display:flex; gap:10px;">
+        <button onclick="changeZoom(0.1)" style="font-size:20px; padding:10px; border-radius:50%; background:#fff; border:2px solid #ccc; cursor:pointer;">🔍+</button>
+        <button onclick="changeZoom(-0.1)" style="font-size:20px; padding:10px; border-radius:50%; background:#fff; border:2px solid #ccc; cursor:pointer;">🔍-</button>
+    </div>
+
+    <!-- UI: Теми -->
+    <button id="theme-btn" onclick="document.getElementById('theme-modal').style.display='block'" style="position:fixed; bottom:20px; right:170px; z-index:90001; font-size:24px; padding:10px 15px; border-radius:50%; background:#ffc107; border:none; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.3);">⚙️</button>
+    <div id="theme-modal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:90%; max-width:600px; max-height:60vh; background:#fff; z-index:90002; overflow-y:auto; padding:20px; border-radius:10px; box-shadow:0 0 20px rgba(0,0,0,0.5);">
+       <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+           <h3 style="margin:0;">Вибір фону</h3>
+           <button onclick="document.getElementById('theme-modal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer;">✕</button>
+       </div>
+       <div id="theme-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(100px, 1fr)); gap:10px;"></div>
+    </div>
+
+    <!-- UI: Малювання -->
+    <button id="toggle-draw-btn-global" style="position:fixed; bottom:20px; right:20px; z-index:90001; background:#8e44ad; color:#fff; border:none; padding:10px 15px; border-radius:30px; font-size:16px; font-weight:bold; cursor:pointer; box-shadow:0 4px 6px rgba(0,0,0,0.3);">✏️ Малювати</button>
+
+    <div id="draw-panel-global" style="display:none; position:fixed; top:20px; left:20px; z-index:90002; background:#fff; border-radius:10px; box-shadow:0 4px 15px rgba(0,0,0,0.4); width:250px; padding:10px;">
+       <div id="draw-handle" style="width:100%; height:20px; background:#ccc; border-radius:5px; margin-bottom:10px; cursor:grab;"></div>
+       <button id="close-draw" style="position:absolute; top:5px; right:10px; border:none; background:none; font-size:16px; cursor:pointer;">✕</button>
+       <div style="display:flex; gap:10px; margin-bottom:10px;">
+           <button id="tool-pencil" style="flex:1; padding:5px; background:#ddd; border:1px solid #aaa; border-radius:3px; cursor:pointer;">✏️ Олівець</button>
+           <button id="tool-eraser" style="flex:1; padding:5px; background:#fff; border:1px solid #aaa; border-radius:3px; cursor:pointer;">🧽 Гумка</button>
+       </div>
+       <input type="range" id="draw-size" min="1" max="50" value="5" style="width:100%; margin-bottom:10px;">
+       <div id="color-palette" style="display:flex; gap:5px; margin-bottom:10px; flex-wrap:wrap; justify-content:space-between;">
+           <!-- Кольори генеруються в JS -->
+       </div>
+       <button id="tool-clear" style="width:100%; padding:5px; background:#ff4d4d; color:#fff; border:none; border-radius:5px; cursor:pointer;">🗑️ Очистити</button>
+    </div>
+
+    <!-- Полотно для малювання -->
+    <canvas id="draw-canvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:90000; pointer-events:none;"></canvas>
+
+    <!-- Екран-заглушка -->
+    <div id="block-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:999999; background:rgba(0,0,0,0.9); color:red; font-size:5vw; font-weight:bold; justify-content:center; align-items:center; text-align:center;">
+        Зачекай!<br>Зараз не твій урок.
+    </div>
+
+    <script>
+        /* ГЛОБАЛЬНА КОНФІГУРАЦІЯ */
+        const CONFIG = { gameId: 'fraction_game_01' };
+        
+        // Ідентифікація користувача
+        let userParam = new URLSearchParams(window.location.search).get('user');
+        if (userParam) {
+            sessionStorage.setItem('userName', userParam);
+        } else if (!sessionStorage.getItem('userName')) {
+            sessionStorage.setItem('userName', 'Гість_' + Math.floor(Math.random() * 1000));
+        }
+        const myName = sessionStorage.getItem('userName');
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const senderId = myName + '_' + tabId;
+
+        // Firebase ініціалізація
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        let db = null;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+        } catch (e) {
+            console.warn("Firebase не ініціалізовано. Гра працює локально.");
+        }
+
+        let isRemoteAction = false;
+        let immunity = true;
+        setTimeout(() => immunity = false, 1000); // 1 секунда імунітету для лобі
+
+        /* МЕХАНІКА ВІДПРАВКИ ТА ПРИЙОМУ ДІЙ (SYNC) */
+        function sendAction(type, data) {
+            if(!db) return;
+            db.ref('game_action').set({
+                senderId: senderId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data || {}
+            });
+        }
+
+        if (db) {
+            // Радар
+            const connectedRef = db.ref('.info/connected');
+            const myPresenceRef = db.ref(`online_users/${myName}/${tabId}`);
+            connectedRef.on('value', snap => {
+                if (snap.val() === true) {
+                    myPresenceRef.onDisconnect().remove();
+                    myPresenceRef.set(true);
+                }
+            });
+            window.addEventListener('beforeunload', () => myPresenceRef.remove());
+
+            // Блокування
+            db.ref(`blocked_users/${myName}`).on('value', snap => {
+                document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+            });
+
+            // Оновлення сторінки
+            db.ref('force_refresh').on('value', snap => {
+                if (snap.val() && !immunity) window.location.reload();
+            });
+
+            // Лобі
+            db.ref('current_activity').on('value', snap => {
+                if (immunity) return;
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+
+            // Синхронізація фону
+            db.ref('game_theme').on('value', snap => {
+                const val = snap.val();
+                if(val && !isRemoteAction) applyThemeLocally(val);
+            });
+
+            // Синхронізація ігрових дій
+            db.ref('game_action').on('value', snap => {
+                const val = snap.val();
+                if(!val || val.senderId === senderId) return; // Ігноруємо свої дії
+                
+                isRemoteAction = true;
+                if (val.type === 'start_level') {
+                    generateSpecificLevel(val.data.fraction, val.data.options);
+                } else if (val.type === 'slice_click') {
+                    const slice = document.querySelector(`[data-circle-idx="${val.data.circleIdx}"][data-slice-idx="${val.data.sliceIdx}"]`);
+                    if(slice) processSliceClick(slice);
+                } else if (val.type === 'go_back') {
+                    processGoBack();
+                } else if (val.type === 'draw_line') {
+                    drawLine(val.data.x0, val.data.y0, val.data.x1, val.data.y1, val.data.color, val.data.size, val.data.mode, false);
+                } else if (val.type === 'clear_canvas') {
+                    clearCanvas(false);
+                }
+                setTimeout(() => isRemoteAction = false, 50);
+            });
+        }
+
+        /* THEME MANAGER */
+        function setTheme(url) {
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            applyThemeLocally(url);
+            if (db) db.ref('game_theme').set(url);
+        }
+
+        function applyThemeLocally(url) {
+            document.body.style.backgroundImage = (url === 'none') ? 'none' : `url(${url})`;
+        }
+
+        async function checkAndLoadBackgrounds() {
+            const grid = document.getElementById('theme-grid');
+            grid.innerHTML = '';
+            
+            // "Без фону"
+            const noBg = document.createElement('div');
+            noBg.className = 'theme-thumb';
+            noBg.style.background = '#333';
+            noBg.innerHTML = '<span>Без фону</span>';
+            noBg.onclick = () => setTheme('none');
+            grid.appendChild(noBg);
+
+            for (let i = 1; i <= 1000; i++) {
+                const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                const exists = await new Promise(resolve => {
+                    const img = new Image();
+                    img.onload = () => resolve(true);
+                    img.onerror = () => resolve(false);
+                    img.src = url;
+                });
+                
+                if (!exists) break; // Помилка 404 - зупиняємо
+                
+                const thumb = document.createElement('div');
+                thumb.className = 'theme-thumb';
+                thumb.style.backgroundImage = `url(${url})`;
+                thumb.innerHTML = `<span>Фон ${i}</span>`;
+                thumb.onclick = () => setTheme(url);
+                grid.appendChild(thumb);
+            }
+        }
+        
+        // Застосування збереженого фону при старті
+        const savedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+        if (savedTheme) applyThemeLocally(savedTheme);
+        checkAndLoadBackgrounds();
+
+
+        /* МАЛЮВАННЯ */
+        const canvas = document.getElementById('draw-canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false, lastX = 0, lastY = 0;
+        let drawMode = 'pencil', drawColor = '#ff0000', drawSize = 5;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        document.getElementById('toggle-draw-btn-global').onclick = () => {
+            const panel = document.getElementById('draw-panel-global');
+            if (panel.style.display === 'none' || panel.style.display === '') {
+                panel.style.display = 'block';
+                canvas.style.pointerEvents = 'auto'; // Вмикаємо малювання
+                drawMode = 'pencil';
+                updateToolUI();
+            }
+        };
+
+        document.getElementById('close-draw').onclick = () => {
+            document.getElementById('draw-panel-global').style.display = 'none';
+            canvas.style.pointerEvents = 'none'; // Вимикаємо малювання
+        };
+
+        // Палітра кольорів
+        const colors = ['#000000','#ffffff','#ff0000','#00ff00','#0000ff','#ffff00','#ff00ff','#00ffff'];
+        const palette = document.getElementById('color-palette');
+        colors.forEach(c => {
+            const btn = document.createElement('button');
+            btn.style.width = '25px'; btn.style.height = '25px';
+            btn.style.background = c; btn.style.border = '1px solid #000';
+            btn.style.borderRadius = '50%'; btn.style.cursor = 'pointer';
+            btn.onclick = () => { drawColor = c; drawMode = 'pencil'; updateToolUI(); };
+            palette.appendChild(btn);
+        });
+
+        document.getElementById('tool-pencil').onclick = () => { drawMode = 'pencil'; updateToolUI(); };
+        document.getElementById('tool-eraser').onclick = () => { drawMode = 'eraser'; updateToolUI(); };
+        document.getElementById('draw-size').oninput = (e) => { drawSize = e.target.value; };
+        document.getElementById('tool-clear').onclick = () => clearCanvas(true);
+
+        function updateToolUI() {
+            document.getElementById('tool-pencil').style.background = drawMode === 'pencil' ? '#ddd' : '#fff';
+            document.getElementById('tool-eraser').style.background = drawMode === 'eraser' ? '#ddd' : '#fff';
+        }
+
+        function clearCanvas(emit) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (emit && db) sendAction('clear_canvas');
+        }
+
+        function getCanvasNormalizedCoords(e) {
+            const rect = document.getElementById('game-container').getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: (clientX - rect.left) / rect.width,
+                y: (clientY - rect.top) / rect.height
+            };
+        }
+
+        function drawLine(x0, y0, x1, y1, color, size, mode, emit) {
+            const rect = document.getElementById('game-container').getBoundingClientRect();
+            const absX0 = rect.left + x0 * rect.width;
+            const absY0 = rect.top + y0 * rect.height;
+            const absX1 = rect.left + x1 * rect.width;
+            const absY1 = rect.top + y1 * rect.height;
+
+            ctx.beginPath();
+            ctx.moveTo(absX0, absY0);
+            ctx.lineTo(absX1, absY1);
+            ctx.lineWidth = size;
+            ctx.lineCap = 'round';
+            if (mode === 'eraser') {
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.strokeStyle = 'rgba(0,0,0,1)';
+            } else {
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.strokeStyle = color;
+            }
+            ctx.stroke();
+
+            if (emit && db) sendAction('draw_line', { x0, y0, x1, y1, color, size, mode });
+        }
+
+        function startDrawing(e) {
+            if(canvas.style.pointerEvents === 'none') return;
+            isDrawing = true;
+            const coords = getCanvasNormalizedCoords(e);
+            lastX = coords.x; lastY = coords.y;
+        }
+        function drawMove(e) {
+            if (!isDrawing) return;
+            e.preventDefault();
+            const coords = getCanvasNormalizedCoords(e);
+            drawLine(lastX, lastY, coords.x, coords.y, drawColor, drawSize, drawMode, true);
+            lastX = coords.x; lastY = coords.y;
+        }
+        function stopDrawing() { isDrawing = false; }
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', drawMove);
+        canvas.addEventListener('mouseup', stopDrawing);
+        canvas.addEventListener('mouseout', stopDrawing);
+        canvas.addEventListener('touchstart', startDrawing, {passive: false});
+        canvas.addEventListener('touchmove', drawMove, {passive: false});
+        canvas.addEventListener('touchend', stopDrawing);
+
+        // Драг панелі малювання
+        const drawPanel = document.getElementById('draw-panel-global');
+        const drawHandle = document.getElementById('draw-handle');
+        let isDraggingPanel = false, dragOffsetX, dragOffsetY;
+        drawHandle.onmousedown = (e) => {
+            isDraggingPanel = true;
+            dragOffsetX = e.clientX - drawPanel.offsetLeft;
+            dragOffsetY = e.clientY - drawPanel.offsetTop;
+        };
+        window.onmousemove = (e) => {
+            if (!isDraggingPanel) return;
+            drawPanel.style.left = (e.clientX - dragOffsetX) + 'px';
+            drawPanel.style.top = (e.clientY - dragOffsetY) + 'px';
+        };
+        window.onmouseup = () => isDraggingPanel = false;
+        drawHandle.addEventListener('touchstart', (e) => {
+            isDraggingPanel = true;
+            dragOffsetX = e.touches[0].clientX - drawPanel.offsetLeft;
+            dragOffsetY = e.touches[0].clientY - drawPanel.offsetTop;
+        }, {passive:true});
+        window.addEventListener('touchmove', (e) => {
+            if (!isDraggingPanel) return;
+            drawPanel.style.left = (e.touches[0].clientX - dragOffsetX) + 'px';
+            drawPanel.style.top = (e.touches[0].clientY - dragOffsetY) + 'px';
+        }, {passive:true});
+        window.addEventListener('touchend', () => isDraggingPanel = false);
+
+        /* МАСШТАБУВАННЯ (ЛУПА) */
+        let globalZoom = 1;
+        function changeZoom(delta) {
+            globalZoom += delta;
+            if (globalZoom < 0.4) globalZoom = 0.4;
+            if (globalZoom > 3.0) globalZoom = 3.0;
+            document.getElementById('game-container').style.transform = `scale(${globalZoom})`;
+        }
+
+
+        /* =======================================================
+           ЛОГІКА САМОЇ ГРИ (Без змін функціоналу, без Хамелеона)
+           ======================================================= */
+        const GAME_WIDTH = 1280;
+        const GAME_HEIGHT = 720;
+        const container = document.getElementById('game-container');
+        const svgNS = "http://www.w3.org/2000/svg";
+        
+        let svg, defs, gameLayer, uiLayer, bgLayer;
+        let history = [];
+        let currentFraction = null;
+        let currentOptions = null;
+        let selectedSlices = [];
+
+        // Web Audio API
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(freq, type, duration, vol = 0.1) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        const sounds = {
+            click: () => playTone(600, 'sine', 0.1, 0.2),
+            wrong: () => {
+                playTone(150, 'sawtooth', 0.3, 0.2);
+                setTimeout(() => playTone(100, 'square', 0.4, 0.2), 100);
+            },
+            success: () => {
+                playTone(400, 'sine', 0.15, 0.2);
+                setTimeout(() => playTone(500, 'sine', 0.15, 0.2), 100);
+                setTimeout(() => playTone(600, 'sine', 0.15, 0.2), 200);
+                setTimeout(() => playTone(800, 'sine', 0.4, 0.3), 300);
+                setTimeout(() => playTone(1200, 'triangle', 0.6, 0.2), 400);
+            }
+        };
+
+        function initGame() {
+            svg = document.createElementNS(svgNS, "svg");
+            svg.setAttribute("viewBox", `0 0 ${GAME_WIDTH} ${GAME_HEIGHT}`);
+            container.appendChild(svg);
+
+            defs = document.createElementNS(svgNS, "defs");
+            svg.appendChild(defs);
+
+            bgLayer = document.createElementNS(svgNS, "g");
+            svg.appendChild(bgLayer);
+
+            gameLayer = document.createElementNS(svgNS, "g");
+            svg.appendChild(gameLayer);
+
+            uiLayer = document.createElementNS(svgNS, "g");
+            svg.appendChild(uiLayer);
+
+            createPatternsAndGradients();
+            drawJungleBackground(); // Фонові декорації без суцільного залиття
+            drawNavigation();
+            
+            generateNewLevel();
+        }
+
+        function createPatternsAndGradients() {
+            const fruitPattern = document.createElementNS(svgNS, "pattern");
+            fruitPattern.id = "fruit-pattern";
+            fruitPattern.setAttribute("width", "20");
+            fruitPattern.setAttribute("height", "20");
+            fruitPattern.setAttribute("patternUnits", "userSpaceOnUse");
+            fruitPattern.innerHTML = `
+                <rect width="20" height="20" fill="#ff5722"/>
+                <circle cx="10" cy="10" r="4" fill="#ff9800"/>
+                <circle cx="5" cy="5" r="2" fill="#fff" opacity="0.5"/>
+            `;
+            defs.appendChild(fruitPattern);
+
+            const peelPattern = document.createElementNS(svgNS, "pattern");
+            peelPattern.id = "peel-pattern";
+            peelPattern.setAttribute("width", "15");
+            peelPattern.setAttribute("height", "15");
+            peelPattern.setAttribute("patternUnits", "userSpaceOnUse");
+            peelPattern.innerHTML = `
+                <rect width="15" height="15" fill="#aed581"/>
+                <path d="M 0 7.5 C 5 0, 10 15, 15 7.5" stroke="#8bc34a" fill="none" stroke-width="2"/>
+            `;
+            defs.appendChild(peelPattern);
+
+            const woodPattern = document.createElementNS(svgNS, "pattern");
+            woodPattern.id = "wood-pattern";
+            woodPattern.setAttribute("width", "40");
+            woodPattern.setAttribute("height", "20");
+            woodPattern.setAttribute("patternUnits", "userSpaceOnUse");
+            woodPattern.innerHTML = `
+                <rect width="40" height="20" fill="#795548"/>
+                <path d="M 0 5 Q 20 10 40 5 M 0 15 Q 20 10 40 15" stroke="#5d4037" fill="none" stroke-width="2"/>
+            `;
+            defs.appendChild(woodPattern);
+        }
+
+        function drawJungleBackground() {
+            // Складні ліани
+            for (let i = 0; i < 7; i++) {
+                const vine = document.createElementNS(svgNS, "path");
+                const startX = 100 + i * 200;
+                vine.setAttribute("d", `M ${startX} -50 Q ${startX-50} 200 ${startX+30} 400 T ${startX-20} ${GAME_HEIGHT+50}`);
+                vine.setAttribute("stroke", "#2e7d32");
+                vine.setAttribute("stroke-width", "15");
+                vine.setAttribute("fill", "none");
+                bgLayer.appendChild(vine);
+
+                // Листя на ліанах
+                for (let j = 0; j < 5; j++) {
+                    const leaf = document.createElementNS(svgNS, "path");
+                    const ly = 100 + j * 120 + (i % 2) * 50;
+                    leaf.setAttribute("d", "M 0 0 C 30 -20, 60 0, 80 30 C 50 40, 20 30, 0 0");
+                    leaf.setAttribute("fill", "#4caf50");
+                    leaf.setAttribute("transform", `translate(${startX}, ${ly}) rotate(${i%2===0 ? 20 : 160}) scale(0.8)`);
+                    
+                    const anim = document.createElementNS(svgNS, "animateTransform");
+                    anim.setAttribute("attributeName", "transform");
+                    anim.setAttribute("type", "rotate");
+                    anim.setAttribute("values", `${i%2===0 ? 20 : 160}; ${i%2===0 ? 30 : 150}; ${i%2===0 ? 20 : 160}`);
+                    anim.setAttribute("dur", `${3 + i}s`);
+                    anim.setAttribute("repeatCount", "indefinite");
+                    leaf.appendChild(anim);
+                    bgLayer.appendChild(leaf);
+                }
+            }
+
+            // Живі світлячки
+            for (let i = 0; i < 20; i++) {
+                const firefly = document.createElementNS(svgNS, "circle");
+                firefly.setAttribute("r", Math.random() * 3 + 1);
+                firefly.setAttribute("fill", "#cddc39");
+                firefly.setAttribute("filter", "drop-shadow(0 0 5px #cddc39)");
+                
+                const animX = document.createElementNS(svgNS, "animate");
+                animX.setAttribute("attributeName", "cx");
+                animX.setAttribute("values", `${Math.random()*GAME_WIDTH}; ${Math.random()*GAME_WIDTH}; ${Math.random()*GAME_WIDTH}`);
+                animX.setAttribute("dur", `${10 + Math.random()*10}s`);
+                animX.setAttribute("repeatCount", "indefinite");
+                
+                const animY = document.createElementNS(svgNS, "animate");
+                animY.setAttribute("attributeName", "cy");
+                animY.setAttribute("values", `${Math.random()*GAME_HEIGHT}; ${Math.random()*GAME_HEIGHT}; ${Math.random()*GAME_HEIGHT}`);
+                animY.setAttribute("dur", `${10 + Math.random()*10}s`);
+                animY.setAttribute("repeatCount", "indefinite");
+
+                firefly.appendChild(animX);
+                firefly.appendChild(animY);
+                bgLayer.appendChild(firefly);
+            }
+        }
+
+        function drawNavigation() {
+            // Кнопка НАЗАД
+            const backBtn = document.createElementNS(svgNS, "g");
+            backBtn.setAttribute("transform", "translate(50, 50)");
+            backBtn.setAttribute("class", "clickable");
+            backBtn.onclick = () => {
+                sounds.click();
+                if (db && !isRemoteAction) sendAction('go_back');
+                processGoBack();
+            };
+
+            const backCircle = document.createElementNS(svgNS, "circle");
+            backCircle.setAttribute("cx", "30"); backCircle.setAttribute("cy", "30"); backCircle.setAttribute("r", "30");
+            backCircle.setAttribute("fill", "#ff4081");
+            backCircle.setAttribute("stroke", "#c51162");
+            backCircle.setAttribute("stroke-width", "4");
+            
+            const backArrow = document.createElementNS(svgNS, "path");
+            backArrow.setAttribute("d", "M 40 15 L 20 30 L 40 45");
+            backArrow.setAttribute("fill", "none");
+            backArrow.setAttribute("stroke", "#fff");
+            backArrow.setAttribute("stroke-width", "6");
+            backArrow.setAttribute("stroke-linecap", "round");
+
+            backBtn.appendChild(backCircle);
+            backBtn.appendChild(backArrow);
+            uiLayer.appendChild(backBtn);
+
+            // Кнопка ДАЛІ
+            const nextBtn = document.createElementNS(svgNS, "g");
+            nextBtn.setAttribute("transform", `translate(${GAME_WIDTH - 110}, 50)`);
+            nextBtn.setAttribute("class", "clickable");
+            nextBtn.onclick = () => {
+                sounds.click();
+                generateNewLevel();
+            };
+
+            const nextCircle = document.createElementNS(svgNS, "circle");
+            nextCircle.setAttribute("cx", "30"); nextCircle.setAttribute("cy", "30"); nextCircle.setAttribute("r", "30");
+            nextCircle.setAttribute("fill", "#00e676");
+            nextCircle.setAttribute("stroke", "#00b0ff");
+            nextCircle.setAttribute("stroke-width", "4");
+            
+            const nextArrow = document.createElementNS(svgNS, "path");
+            nextArrow.setAttribute("d", "M 20 15 L 40 30 L 20 45");
+            nextArrow.setAttribute("fill", "none");
+            nextArrow.setAttribute("stroke", "#fff");
+            nextArrow.setAttribute("stroke-width", "6");
+            nextArrow.setAttribute("stroke-linecap", "round");
+
+            nextBtn.appendChild(nextCircle);
+            nextBtn.appendChild(nextArrow);
+            uiLayer.appendChild(nextBtn);
+        }
+
+        function processGoBack() {
+            if (history.length > 1) {
+                history.pop();
+                const prev = history.pop();
+                generateSpecificLevel(prev.fraction, prev.options);
+            }
+        }
+
+        function generateNewLevel() {
+            if (isRemoteAction) return;
+            const denominators = [2, 3, 4, 5, 6, 8, 10];
+            const denom = denominators[Math.floor(Math.random() * denominators.length)];
+            const num = Math.floor(Math.random() * (denom - 1)) + 1;
+
+            const fraction = { num, denom };
+            let options = [denom];
+            while (options.length < 3) {
+                let r = denominators[Math.floor(Math.random() * denominators.length)];
+                if (!options.includes(r)) options.push(r);
+            }
+            options.sort(() => Math.random() - 0.5);
+
+            if (db) sendAction('start_level', { fraction, options });
+            generateSpecificLevel(fraction, options);
+        }
+
+        function generateSpecificLevel(fraction, options) {
+            currentFraction = fraction;
+            currentOptions = options;
+            selectedSlices = [];
+            history.push({ fraction, options });
+            renderLevel();
+        }
+
+        function renderLevel() {
+            gameLayer.innerHTML = '';
+
+            const board = document.createElementNS(svgNS, "g");
+            board.setAttribute("transform", `translate(${GAME_WIDTH/2}, 150)`);
+            
+            const boardRect = document.createElementNS(svgNS, "path");
+            boardRect.setAttribute("d", "M -100 -60 L 100 -60 L 120 60 L -120 60 Z");
+            boardRect.setAttribute("fill", "url(#wood-pattern)");
+            boardRect.setAttribute("stroke", "#3e2723");
+            boardRect.setAttribute("stroke-width", "6");
+            board.appendChild(boardRect);
+
+            const numText = document.createElementNS(svgNS, "text");
+            numText.setAttribute("x", "0"); numText.setAttribute("y", "-10");
+            numText.setAttribute("text-anchor", "middle");
+            numText.setAttribute("font-size", "45");
+            numText.setAttribute("font-weight", "bold");
+            numText.setAttribute("fill", "#fff");
+            numText.textContent = currentFraction.num;
+            board.appendChild(numText);
+
+            const line = document.createElementNS(svgNS, "line");
+            line.setAttribute("x1", "-30"); line.setAttribute("y1", "5"); line.setAttribute("x2", "30"); line.setAttribute("y2", "5");
+            line.setAttribute("stroke", "#fff"); line.setAttribute("stroke-width", "5");
+            board.appendChild(line);
+
+            const denomText = document.createElementNS(svgNS, "text");
+            denomText.setAttribute("x", "0"); denomText.setAttribute("y", "45");
+            denomText.setAttribute("text-anchor", "middle");
+            denomText.setAttribute("font-size", "45");
+            denomText.setAttribute("font-weight", "bold");
+            denomText.setAttribute("fill", "#fff");
+            denomText.textContent = currentFraction.denom;
+            board.appendChild(denomText);
+
+            gameLayer.appendChild(board);
+
+            const boardAnim = document.createElementNS(svgNS, "animateTransform");
+            boardAnim.setAttribute("attributeName", "transform");
+            boardAnim.setAttribute("type", "scale");
+            boardAnim.setAttribute("values", "0; 1.1; 1");
+            boardAnim.setAttribute("dur", "0.5s");
+            boardAnim.setAttribute("additive", "sum");
+            board.appendChild(boardAnim);
+
+            const startX = GAME_WIDTH / 2 - 350;
+            const spacing = 350;
+            const radius = 120;
+
+            currentOptions.forEach((partsCount, index) => {
+                const circleGroup = document.createElementNS(svgNS, "g");
+                const cx = startX + index * spacing;
+                const cy = 450;
+                circleGroup.setAttribute("transform", `translate(${cx}, ${cy})`);
+                
+                const shadow = document.createElementNS(svgNS, "circle");
+                shadow.setAttribute("r", radius + 5);
+                shadow.setAttribute("fill", "rgba(0,0,0,0.4)");
+                shadow.setAttribute("transform", "translate(10, 10)");
+                circleGroup.appendChild(shadow);
+
+                const angleStep = (Math.PI * 2) / partsCount;
+                
+                for (let i = 0; i < partsCount; i++) {
+                    const startAngle = i * angleStep - Math.PI / 2;
+                    const endAngle = (i + 1) * angleStep - Math.PI / 2;
+                    
+                    const slice = document.createElementNS(svgNS, "path");
+                    const x1 = Math.cos(startAngle) * radius;
+                    const y1 = Math.sin(startAngle) * radius;
+                    const x2 = Math.cos(endAngle) * radius;
+                    const y2 = Math.sin(endAngle) * radius;
+                    
+                    const largeArcFlag = angleStep > Math.PI ? 1 : 0;
+                    const d = `M 0 0 L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+                    
+                    slice.setAttribute("d", d);
+                    slice.setAttribute("fill", "url(#peel-pattern)");
+                    slice.setAttribute("stroke", "#33691e");
+                    slice.setAttribute("stroke-width", "4");
+                    slice.setAttribute("class", "clickable");
+                    slice.dataset.circleIdx = index;
+                    slice.dataset.sliceIdx = i;
+                    slice.dataset.partsCount = partsCount;
+                    slice.dataset.filled = "false";
+
+                    slice.onclick = (e) => handleSliceClickEvent(e.target);
+                    circleGroup.appendChild(slice);
+                }
+
+                const circleAnim = document.createElementNS(svgNS, "animateTransform");
+                circleAnim.setAttribute("attributeName", "transform");
+                circleAnim.setAttribute("type", "scale");
+                circleAnim.setAttribute("values", "0; 1.2; 1");
+                circleAnim.setAttribute("dur", `${0.4 + index*0.2}s`);
+                circleAnim.setAttribute("additive", "sum");
+                circleGroup.appendChild(circleAnim);
+
+                gameLayer.appendChild(circleGroup);
+            });
+        }
+
+        function handleSliceClickEvent(slice) {
+            if (!slice.classList.contains('clickable')) return;
+            
+            const circleIdx = slice.dataset.circleIdx;
+            const sliceIdx = slice.dataset.sliceIdx;
+            
+            if (db && !isRemoteAction) {
+                sendAction('slice_click', { circleIdx, sliceIdx });
+            }
+            
+            processSliceClick(slice);
+        }
+
+        function processSliceClick(slice) {
+            const partsCount = parseInt(slice.dataset.partsCount);
+            
+            if (partsCount !== currentFraction.denom) {
+                sounds.wrong();
+                
+                const shake = document.createElementNS(svgNS, "animateTransform");
+                shake.setAttribute("attributeName", "transform");
+                shake.setAttribute("type", "translate");
+                shake.setAttribute("values", "5,0; -5,0; 5,0; -5,0; 0,0");
+                shake.setAttribute("dur", "0.3s");
+                slice.appendChild(shake);
+                return;
+            }
+
+            sounds.click();
+            let isFilled = slice.dataset.filled === "true";
+            
+            if (isFilled) {
+                slice.dataset.filled = "false";
+                slice.setAttribute("fill", "url(#peel-pattern)");
+                selectedSlices = selectedSlices.filter(s => s !== slice);
+            } else {
+                if (selectedSlices.length >= currentFraction.num) {
+                    sounds.wrong();
+                    return; 
+                }
+
+                slice.dataset.filled = "true";
+                slice.setAttribute("fill", "url(#fruit-pattern)");
+                selectedSlices.push(slice);
+            }
+
+            if (selectedSlices.length === currentFraction.num) {
+                setTimeout(triggerWin, 300);
+            }
+        }
+
+        function triggerWin() {
+            sounds.success();
+            
+            selectedSlices.forEach((slice, idx) => {
+                const jump = document.createElementNS(svgNS, "animateTransform");
+                jump.setAttribute("attributeName", "transform");
+                jump.setAttribute("type", "scale");
+                jump.setAttribute("values", "1; 1.2; 1");
+                jump.setAttribute("dur", "0.5s");
+                jump.setAttribute("begin", `${idx * 0.1}s`);
+                slice.appendChild(jump);
+            });
+
+            const allSlices = gameLayer.querySelectorAll('.clickable');
+            allSlices.forEach(s => s.classList.remove('clickable'));
+
+            setTimeout(generateNewLevel, 2500);
+        }
+
+        window.onload = initGame;
+    </script>
+</body>
+</html>
