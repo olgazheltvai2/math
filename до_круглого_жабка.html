@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Game</title>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <style>
+        /* Скидання стилів та налаштування повноекранного режиму */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #041f3a;
+            background-size: cover;
+            background-position: center;
+            font-family: Arial, sans-serif;
+            user-select: none;
+        }
+
+        /* Основний контейнер гри */
+        #game-board {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.2s;
+        }
+
+        /* SVG шар для фону, персонажа та анімацій */
+        #svg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Шар для світлячків (цілей) */
+        #targets-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        /* Стилізація світлячків - Збільшено розмір */
+        .firefly {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            pointer-events: auto;
+            cursor: pointer;
+            transform-origin: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            filter: drop-shadow(0 0 15px rgba(173, 255, 47, 0.8));
+            transition: filter 0.3s ease;
+        }
+
+        .firefly:hover {
+            filter: drop-shadow(0 0 25px rgba(255, 255, 255, 1));
+            transform: scale(1.1);
+        }
+
+        .firefly-text {
+            position: absolute;
+            font-size: 60px; /* Великий текст на світлячках */
+            font-weight: 900;
+            color: #1a4a20;
+            text-shadow: 0 0 8px rgba(255, 255, 255, 1);
+            z-index: 10;
+        }
+
+        @keyframes flutter {
+            0%, 100% { transform: rotate(-30deg); }
+            50% { transform: rotate(30deg); }
+        }
+        .wing {
+            transform-origin: bottom center;
+            animation: flutter 0.05s infinite alternate;
+        }
+        .wing-right {
+            transform-origin: bottom center;
+            animation: flutter 0.05s infinite alternate-reverse;
+        }
+
+        /* Кнопки навігації */
+        .nav-btn {
+            position: absolute;
+            top: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            backdrop-filter: blur(5px);
+            cursor: pointer;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s;
+        }
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+        #btn-back { left: 20px; }
+        #btn-next { right: 20px; }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02, 0.97); }
+        }
+        #frog-body-group {
+            animation: breathe 3s infinite ease-in-out;
+            transform-origin: 500px 700px;
+        }
+
+        .pad-text {
+            font-size: 85px; /* Збільшено розмір тексту на лілеях */
+            font-weight: 900;
+            fill: #ffffff;
+            text-anchor: middle;
+            filter: drop-shadow(3px 5px 5px rgba(0,0,0,0.7));
+        }
+
+        /* UI Theme Manager */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #34495e;
+            color: white;
+            font-size: 24px;
+            border: 2px solid #fff;
+            cursor: pointer;
+            z-index: 100000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 600px;
+            background: rgba(25, 25, 35, 0.95);
+            border: 2px solid #fff;
+            border-radius: 15px;
+            z-index: 100001;
+            padding: 20px;
+            color: white;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        .theme-card {
+            position: relative;
+            height: 80px;
+            border-radius: 8px;
+            cursor: pointer;
+            overflow: hidden;
+            border: 2px solid transparent;
+            background-size: cover;
+            background-position: center;
+            background-color: #555;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .theme-card:hover, .theme-card.active {
+            border-color: #f1c40f;
+        }
+        .theme-card-title {
+            background: rgba(0,0,0,0.6);
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            pointer-events: none;
+        }
+        #close-theme {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        /* Block Overlay */
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 999999;
+            justify-content: center;
+            align-items: center;
+            color: red;
+            font-size: 4vw;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        /* Global Draw Tool */
+        #draw-canvas-global {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 90000;
+            pointer-events: none;
+        }
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px;
+            right: 20px;
+            background: #8e44ad;
+            color: white;
+            border: 2px solid #fff;
+            border-radius: 25px;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #draw-panel-global {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(40, 40, 50, 0.95);
+            border: 2px solid #fff;
+            border-radius: 10px;
+            z-index: 100001;
+            padding: 10px;
+            color: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            flex-direction: column;
+            gap: 10px;
+        }
+        #draw-panel-header {
+            cursor: grab;
+            background: #555;
+            height: 20px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .draw-tool-row { display: flex; gap: 10px; align-items: center; }
+        .draw-btn {
+            background: #444; color: white; border: 1px solid #777; padding: 5px 10px;
+            border-radius: 5px; cursor: pointer; font-size: 14px;
+        }
+        .draw-btn.active { background: #8e44ad; border-color: #fff; }
+        #close-draw-panel { align-self: flex-end; cursor: pointer; color: #ff4c4c; font-weight: bold; }
+
+        /* Zoom Tools */
+        #zoom-tools {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 10px;
+        }
+        .zoom-btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            color: white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 18px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            #toggle-draw-btn-global { bottom: 90px; right: 10px; padding: 8px 15px; }
+            #theme-btn { bottom: 20px; right: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-board">
+    <!-- Zoom Tools -->
+    <div id="zoom-tools">
+        <button class="zoom-btn" onclick="adjustZoom(0.1)">🔍+</button>
+        <button class="zoom-btn" onclick="adjustZoom(-0.1)">🔍-</button>
+    </div>
+
+    <!-- Кнопки навігації -->
+    <div id="btn-back" class="nav-btn">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+    </div>
+    <div id="btn-next" class="nav-btn">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </div>
+
+    <!-- Основний SVG шар для малювання -->
+    <svg id="svg-layer" preserveAspectRatio="xMidYMid slice" viewBox="0 0 1920 1080">
+        <defs>
+            <radialGradient id="water-glow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#195a75" stop-opacity="0.6"/>
+                <stop offset="100%" stop-color="#041f3a" stop-opacity="0"/>
+            </radialGradient>
+            
+            <linearGradient id="pad-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#4caf50" />
+                <stop offset="100%" stop-color="#1b5e20" />
+            </linearGradient>
+
+            <linearGradient id="frog-skin" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#8bc34a" />
+                <stop offset="100%" stop-color="#33691e" />
+            </linearGradient>
+
+            <radialGradient id="eye-grad" cx="30%" cy="30%" r="70%">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="100%" stop-color="#e0e0e0" />
+            </radialGradient>
+
+            <pattern id="water-pattern" width="200" height="100" patternUnits="userSpaceOnUse">
+                <path d="M 0 50 Q 50 10 100 50 T 200 50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="2"/>
+                <path d="M 0 80 Q 50 40 100 80 T 200 80" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="3"/>
+            </pattern>
+        </defs>
+
+        <!-- Фон -->
+        <rect width="100%" height="100%" fill="url(#water-pattern)"/>
+        <circle cx="960" cy="540" r="800" fill="url(#water-glow)" />
+
+        <!-- Лілея поточна -->
+        <g id="start-pad" transform="translate(500, 800)">
+            <path d="M 0 -120 C 150 -120 220 -20 220 50 C 220 120 100 150 0 150 C -100 150 -220 120 -220 50 C -220 -20 -150 -120 0 -120 Z" fill="url(#pad-grad)" stroke="#2e7d32" stroke-width="5"/>
+            <path d="M 0 0 L 220 50 M 0 0 L 180 -50 M 0 0 L -220 50 M 0 0 L -180 -50 M 0 0 L 0 -120" stroke="#81c784" stroke-width="3" opacity="0.4"/>
+            <text id="current-num-text" x="0" y="130" class="pad-text">36</text>
+        </g>
+
+        <!-- Лілея цільова -->
+        <g id="target-pad" transform="translate(1420, 600)">
+            <path d="M 0 -150 C 180 -150 260 -30 260 60 C 260 150 120 190 0 190 C -120 190 -260 150 -260 60 C -260 -30 -180 -150 0 -150 Z" fill="url(#pad-grad)" stroke="#2e7d32" stroke-width="5"/>
+            <path d="M 0 0 L 260 60 M 0 0 L -260 60 M 0 0 L 0 -150" stroke="#81c784" stroke-width="3" opacity="0.4"/>
+            <g transform="translate(-150, -80) scale(0.7)">
+                <path d="M 0 0 C 30 -50 80 -10 0 50 C -80 -10 -30 -50 0 0" fill="#f48fb1"/>
+                <path d="M 0 0 C 50 30 10 80 -50 0 C -10 -80 -50 -30 0 0" fill="#f06292" transform="rotate(60)"/>
+                <path d="M 0 0 C 50 30 10 80 -50 0 C -10 -80 -50 -30 0 0" fill="#e91e63" transform="rotate(120)"/>
+                <circle cx="0" cy="0" r="15" fill="#ffeb3b"/>
+            </g>
+            <text id="target-num-text" x="0" y="110" class="pad-text" style="font-size: 110px;">40</text>
+        </g>
+
+        <!-- Лінія язика -->
+        <line id="frog-tongue" x1="500" y1="720" x2="500" y2="720" stroke="#e91e63" stroke-width="15" stroke-linecap="round" style="display: none;" />
+
+        <!-- Персонаж Жабка -->
+        <g id="frog-character" transform="translate(500, 720)">
+            <g id="frog-body-group">
+                <path d="M -80 0 C -150 -50 -180 50 -100 80 Z" fill="url(#frog-skin)" stroke="#1b5e20" stroke-width="3"/>
+                <path d="M 80 0 C 150 -50 180 50 100 80 Z" fill="url(#frog-skin)" stroke="#1b5e20" stroke-width="3"/>
+                <ellipse cx="0" cy="20" rx="90" ry="70" fill="url(#frog-skin)" stroke="#1b5e20" stroke-width="3"/>
+                <ellipse cx="0" cy="40" rx="60" ry="40" fill="#cddc39" opacity="0.8"/>
+                <circle cx="-50" cy="0" r="10" fill="#33691e" opacity="0.4"/>
+                <circle cx="40" cy="20" r="15" fill="#33691e" opacity="0.4"/>
+                <circle cx="60" cy="-10" r="8" fill="#33691e" opacity="0.4"/>
+                <path d="M -40 50 Q -60 100 -80 100 M -80 100 L -90 110 M -80 100 L -70 115" stroke="url(#frog-skin)" stroke-width="12" stroke-linecap="round" fill="none"/>
+                <path d="M 40 50 Q 60 100 80 100 M 80 100 L 90 110 M 80 100 L 70 115" stroke="url(#frog-skin)" stroke-width="12" stroke-linecap="round" fill="none"/>
+                <ellipse cx="0" cy="-30" rx="80" ry="50" fill="url(#frog-skin)" />
+                <g id="eye-left" transform="translate(-40, -70)">
+                    <ellipse cx="0" cy="0" rx="25" ry="30" fill="url(#eye-grad)" stroke="#1b5e20" stroke-width="2"/>
+                    <circle id="pupil-left" cx="0" cy="5" r="10" fill="#000"/>
+                    <circle cx="-5" cy="-5" r="4" fill="#fff"/>
+                </g>
+                <g id="eye-right" transform="translate(40, -70)">
+                    <ellipse cx="0" cy="0" rx="25" ry="30" fill="url(#eye-grad)" stroke="#1b5e20" stroke-width="2"/>
+                    <circle id="pupil-right" cx="0" cy="5" r="10" fill="#000"/>
+                    <circle cx="-5" cy="-5" r="4" fill="#fff"/>
+                </g>
+                <path id="frog-mouth" d="M -30 -10 Q 0 10 30 -10" fill="none" stroke="#1b5e20" stroke-width="4" stroke-linecap="round"/>
+                <circle cx="-50" cy="-15" r="12" fill="#ff8a80" opacity="0.5"/>
+                <circle cx="50" cy="-15" r="12" fill="#ff8a80" opacity="0.5"/>
+            </g>
+        </g>
+    </svg>
+
+    <div id="targets-layer"></div>
+</div>
+
+<!-- Блок-заглушка -->
+<div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+<!-- Theme Manager UI -->
+<button id="theme-btn">⚙️</button>
+<div id="theme-modal">
+    <button id="close-theme">✕</button>
+    <h3 style="margin-top: 0; text-align: center;">Вибір фону</h3>
+    <div id="theme-gallery">
+        <div class="theme-card" data-bg="none" style="background-color: #2c3e50;">
+            <span class="theme-card-title">Без фону</span>
+        </div>
+        <!-- Динамічні фони будуть завантажені сюди -->
+    </div>
+</div>
+
+<!-- Глобальний інструмент малювання -->
+<canvas id="draw-canvas-global"></canvas>
+<button id="toggle-draw-btn-global">✏️ Малювати</button>
+<div id="draw-panel-global">
+    <div id="draw-panel-header"></div>
+    <div id="close-draw-panel">✕ Закрити</div>
+    <div class="draw-tool-row">
+        <button id="btn-draw-pencil" class="draw-btn active">✏️ Олівець</button>
+        <button id="btn-draw-eraser" class="draw-btn">🧽 Гумка</button>
+    </div>
+    <div class="draw-tool-row">
+        <label>Товщина: <input type="range" id="draw-width" min="1" max="50" value="5"></label>
+    </div>
+    <div class="draw-tool-row">
+        <input type="color" id="draw-color" value="#ff0000">
+        <button id="btn-draw-clear" class="draw-btn" style="background:#d32f2f;">🗑️ Очистити</button>
+    </div>
+</div>
+
+<script>
+    // --- ГЛОБАЛЬНА КОНФІГУРАЦІЯ ТА FIREBASE ---
+    const CONFIG = { gameId: 'math_frog_game_v1' };
+    
+    // Ідентифікація користувача
+    let myName = sessionStorage.getItem('myName');
+    if (!myName) {
+        const urlParams = new URLSearchParams(window.location.search);
+        myName = urlParams.get('user');
+        if (!myName) myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        sessionStorage.setItem('myName', myName);
+    }
+
+    // Ініціалізація Firebase
+    const firebaseConfig = { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/" };
+    let db = null;
+    let isRemoteAction = false;
+    const tabId = Math.random().toString(36).substring(2, 15);
+
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+    } catch(e) {
+        console.warn("Firebase не підключено. Гра працюватиме локально.");
+    }
+
+    // --- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Радар, Блокування, Лобі) ---
+    if (db) {
+        // Радар
+        const presenceRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val()) {
+                presenceRef.onDisconnect().remove();
+                presenceRef.set(true);
+            }
+        });
+        window.addEventListener('beforeunload', () => presenceRef.remove());
+
+        // Блокування
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // Перезавантаження - ЗАХИСТ ВІД БЕЗКІНЕЧНОГО ОНОВЛЕННЯ
+        let isFirstRefreshRead = true;
+        db.ref('force_refresh').on('value', snap => {
+            if (isFirstRefreshRead) {
+                isFirstRefreshRead = false;
+                return; // Ігноруємо початковий стан при завантаженні
+            }
+            if (snap.val()) window.location.reload();
+        });
+
+        // Лобі (з імунітетом 1 сек)
+        setTimeout(() => {
+            db.ref('current_activity').on('value', snap => {
+                if (snap.val() === 'lobby') {
+                    window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+                }
+            });
+        }, 1000);
+    }
+
+    // --- ФУНКЦІЯ СИНХРОНІЗАЦІЇ ДІЙ ---
+    function sendGameAction(type, data) {
+        if(isRemoteAction || !db) return;
+        db.ref('game_action').set({
+            senderId: myName + '_' + tabId,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: type,
+            data: data
+        });
+    }
+
+    // --- СИСТЕМА ДИНАМІЧНИХ ФОНІВ ---
+    const themeModal = document.getElementById('theme-modal');
+    const themeGallery = document.getElementById('theme-gallery');
+    
+    document.getElementById('theme-btn').onclick = () => themeModal.style.display = 'block';
+    document.getElementById('close-theme').onclick = () => themeModal.style.display = 'none';
+
+    function applyBackground(url) {
+        document.body.style.backgroundImage = url === 'none' ? 'none' : `url(${url})`;
+        localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+        if(!isRemoteAction && db) {
+            db.ref('game_theme').set({ url: url, senderId: myName + '_' + tabId });
+        }
+    }
+
+    // Завантаження збереженого фону гри
+    const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+    if(savedBg) applyBackground(savedBg);
+
+    // Слухач фонів з Firebase
+    if (db) {
+        db.ref('game_theme').on('value', snap => {
+            const val = snap.val();
+            if(val && val.senderId !== myName + '_' + tabId) {
+                isRemoteAction = true;
+                applyBackground(val.url);
+                isRemoteAction = false;
+            }
+        });
+    }
+
+    // Асинхронне послідовне завантаження фонів
+    async function loadThemes() {
+        const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
+        for(let i=1; i<=1000; i++) {
+            const url = `${baseUrl}background_${i}.webp`;
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                if(!response.ok) break; 
+                
+                const card = document.createElement('div');
+                card.className = 'theme-card';
+                card.style.backgroundImage = `url(${url})`;
+                card.innerHTML = `<span class="theme-card-title">Фон ${i}</span>`;
+                card.onclick = () => { applyBackground(url); themeModal.style.display = 'none'; };
+                themeGallery.appendChild(card);
+            } catch(e) {
+                break;
+            }
+        }
+    }
+    loadThemes();
+    
+    themeGallery.querySelector('[data-bg="none"]').onclick = () => {
+        applyBackground('none'); themeModal.style.display = 'none';
+    };
+
+
+    // --- ЛУПА (ZOOM) ---
+    let currentZoom = 1;
+    function adjustZoom(amount) {
+        currentZoom = Math.max(0.5, Math.min(2, currentZoom + amount));
+        document.getElementById('game-board').style.transform = `scale(${currentZoom})`;
+        document.getElementById('game-board').style.transformOrigin = 'center center';
+    }
+
+
+    // --- ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ ---
+    const drawCanvas = document.getElementById('draw-canvas-global');
+    const ctxDraw = drawCanvas.getContext('2d');
+    const drawPanel = document.getElementById('draw-panel-global');
+    const btnToggleDraw = document.getElementById('toggle-draw-btn-global');
+    let isDrawingMode = false, isDrawing = false;
+    let lastX = 0, lastY = 0;
+    let currentTool = 'pencil';
+
+    function resizeCanvas() {
+        drawCanvas.width = window.innerWidth;
+        drawCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    btnToggleDraw.onclick = () => {
+        drawPanel.style.display = 'flex';
+        enableDrawing(true);
+    };
+    document.getElementById('close-draw-panel').onclick = () => {
+        drawPanel.style.display = 'none';
+        enableDrawing(false);
+    };
+
+    document.getElementById('btn-draw-pencil').onclick = function() { currentTool = 'pencil'; updateDrawToolUI(this); };
+    document.getElementById('btn-draw-eraser').onclick = function() { currentTool = 'eraser'; updateDrawToolUI(this); };
+    document.getElementById('btn-draw-clear').onclick = () => { clearDrawCanvas(); sendGameAction('clear_canvas', {}); };
+
+    function updateDrawToolUI(activeBtn) {
+        document.querySelectorAll('.draw-btn').forEach(btn => btn.classList.remove('active'));
+        activeBtn.classList.add('active');
+    }
+
+    function enableDrawing(enable) {
+        isDrawingMode = enable;
+        drawCanvas.style.pointerEvents = enable ? 'auto' : 'none';
+    }
+
+    // Drag panel
+    let isDraggingPanel = false, panelOffset = {x:0,y:0};
+    const panelHeader = document.getElementById('draw-panel-header');
+    panelHeader.onmousedown = (e) => { isDraggingPanel = true; panelOffset.x = e.clientX - drawPanel.offsetLeft; panelOffset.y = e.clientY - drawPanel.offsetTop; };
+    window.addEventListener('mouseup', () => isDraggingPanel = false);
+    window.addEventListener('mousemove', (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.clientX - panelOffset.x) + 'px'; drawPanel.style.top = (e.clientY - panelOffset.y) + 'px'; }});
+    // Touch drag
+    panelHeader.addEventListener('touchstart', (e) => { isDraggingPanel = true; panelOffset.x = e.touches[0].clientX - drawPanel.offsetLeft; panelOffset.y = e.touches[0].clientY - drawPanel.offsetTop; });
+    window.addEventListener('touchend', () => isDraggingPanel = false);
+    window.addEventListener('touchmove', (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.touches[0].clientX - panelOffset.x) + 'px'; drawPanel.style.top = (e.touches[0].clientY - panelOffset.y) + 'px'; }});
+
+    function getMousePos(evt) {
+        const rect = drawCanvas.getBoundingClientRect();
+        return {
+            x: (evt.clientX || evt.touches?.[0].clientX) - rect.left,
+            y: (evt.clientY || evt.touches?.[0].clientY) - rect.top
+        };
+    }
+
+    function startDraw(e) {
+        if(!isDrawingMode) return;
+        isDrawing = true;
+        const pos = getMousePos(e);
+        lastX = pos.x; lastY = pos.y;
+    }
+    
+    function draw(e) {
+        if(!isDrawing || !isDrawingMode) return;
+        e.preventDefault();
+        const pos = getMousePos(e);
+        const color = currentTool === 'eraser' ? null : document.getElementById('draw-color').value;
+        const width = document.getElementById('draw-width').value;
+        
+        drawLine(lastX, lastY, pos.x, pos.y, color, width);
+        
+        sendGameAction('draw_line', {
+            x0: lastX / drawCanvas.width, y0: lastY / drawCanvas.height,
+            x1: pos.x / drawCanvas.width, y1: pos.y / drawCanvas.height,
+            color: color, width: width
+        });
+        
+        lastX = pos.x; lastY = pos.y;
+    }
+
+    function stopDraw() { isDrawing = false; }
+
+    drawCanvas.addEventListener('mousedown', startDraw);
+    drawCanvas.addEventListener('mousemove', draw);
+    drawCanvas.addEventListener('mouseup', stopDraw);
+    drawCanvas.addEventListener('mouseout', stopDraw);
+    
+    drawCanvas.addEventListener('touchstart', startDraw, {passive: false});
+    drawCanvas.addEventListener('touchmove', draw, {passive: false});
+    drawCanvas.addEventListener('touchend', stopDraw);
+
+    function drawLine(x0, y0, x1, y1, color, width) {
+        ctxDraw.beginPath();
+        ctxDraw.moveTo(x0, y0);
+        ctxDraw.lineTo(x1, y1);
+        ctxDraw.lineWidth = width;
+        ctxDraw.lineCap = 'round';
+        if(color === null) {
+            ctxDraw.globalCompositeOperation = 'destination-out';
+            ctxDraw.strokeStyle = 'rgba(0,0,0,1)';
+        } else {
+            ctxDraw.globalCompositeOperation = 'source-over';
+            ctxDraw.strokeStyle = color;
+        }
+        ctxDraw.stroke();
+    }
+
+    function clearDrawCanvas() {
+        ctxDraw.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    }
+
+
+    // --- АУДІО СИСТЕМА ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq, type, duration, vol=0.1) {
+        if(audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    const soundEffects = {
+        shoot: () => { playTone(400, 'sine', 0.1, 0.2); setTimeout(() => playTone(300, 'triangle', 0.1, 0.2), 50); },
+        win: () => { playTone(523.25, 'sine', 0.1, 0.1); setTimeout(() => playTone(659.25, 'sine', 0.1, 0.1), 100); setTimeout(() => playTone(783.99, 'sine', 0.2, 0.1), 200); setTimeout(() => playTone(1046.50, 'sine', 0.4, 0.1), 300); },
+        lose: () => { playTone(200, 'sawtooth', 0.3, 0.1); setTimeout(() => playTone(150, 'sawtooth', 0.4, 0.1), 150); },
+        jump: () => { playTone(150, 'sine', 0.3, 0.2); setTimeout(() => playTone(300, 'sine', 0.3, 0.2), 100); }
+    };
+
+
+    // --- ЛОГІКА ГРИ З ПОВНОЮ СИНХРОНІЗАЦІЄЮ ---
+    const state = {
+        baseNum: 0,
+        correctAdd: 0,
+        targetNum: 0,
+        fireflies: [],
+        isAnimating: false,
+        history: [],
+        startTimestamp: Date.now()
+    };
+
+    const DOM = {
+        currentText: document.getElementById('current-num-text'),
+        targetText: document.getElementById('target-num-text'),
+        targetsLayer: document.getElementById('targets-layer'),
+        frogMouth: document.getElementById('frog-mouth'),
+        pupilL: document.getElementById('pupil-left'),
+        pupilR: document.getElementById('pupil-right'),
+        tongue: document.getElementById('frog-tongue'),
+        frogCharacter: document.getElementById('frog-character'),
+        btnNext: document.getElementById('btn-next'),
+        btnBack: document.getElementById('btn-back')
+    };
+
+    const MOUTH_POS = { x: 500, y: 690 }; 
+
+    function generateLevel(forceBase = null) {
+        if(state.isAnimating) return;
+        
+        let base = forceBase;
+        if(base === null) {
+            do { base = Math.floor(Math.random() * 79) + 11; } while (base % 10 === 0);
+        }
+        
+        let correct = 10 - (base % 10);
+        let options = new Set([correct]);
+        while(options.size < 5) { options.add(Math.floor(Math.random() * 9) + 1); }
+        options = Array.from(options).sort(() => Math.random() - 0.5);
+
+        const config = {
+            baseNum: base,
+            startTimestamp: Date.now(),
+            fireflyConfigs: options.map((num, index) => ({
+                number: num,
+                cx: 960 + (Math.random() * 800 - 400),
+                cy: 350 + (Math.random() * 300 - 150),
+                rx: 200 + Math.random() * 150, // Більший радіус польоту
+                ry: 150 + Math.random() * 150,
+                speed: (0.0003 + Math.random() * 0.0003), // Оптимізована повільна швидкість
+                angleOffset: (Math.PI * 2 / options.length) * index
+            }))
+        };
+
+        sendGameAction('generate_level', config);
+        renderLevel(config);
+    }
+
+    function renderLevel(config) {
+        DOM.targetsLayer.innerHTML = '';
+        state.fireflies = [];
+        state.baseNum = config.baseNum;
+        state.correctAdd = 10 - (config.baseNum % 10);
+        state.targetNum = state.baseNum + state.correctAdd;
+        state.startTimestamp = config.startTimestamp || Date.now();
+
+        DOM.currentText.textContent = state.baseNum;
+        DOM.targetText.textContent = state.targetNum;
+
+        config.fireflyConfigs.forEach(ffConf => {
+            createFirefly(ffConf);
+        });
+        resetFrog();
+    }
+
+    function createFirefly(conf) {
+        const el = document.createElement('div');
+        el.className = 'firefly';
+        el.innerHTML = `
+            <svg width="100%" height="100%" viewBox="0 0 100 100">
+                <defs>
+                    <radialGradient id="glow-${conf.number}" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="#ccff00"/>
+                        <stop offset="100%" stop-color="#ccff00" stop-opacity="0"/>
+                    </radialGradient>
+                </defs>
+                <circle cx="50" cy="50" r="45" fill="url(#glow-${conf.number})"/>
+                <ellipse cx="50" cy="55" rx="15" ry="25" fill="#333"/>
+                <ellipse cx="50" cy="65" rx="12" ry="15" fill="#ccff00"/>
+                <path class="wing" d="M 50 40 C 20 10 10 30 45 45 Z" fill="rgba(255,255,255,0.7)"/>
+                <path class="wing-right" d="M 50 40 C 80 10 90 30 55 45 Z" fill="rgba(255,255,255,0.7)"/>
+            </svg>
+            <div class="firefly-text">${conf.number}</div>
+        `;
+
+        const fireflyObj = { el, number: conf.number, conf, caught: false };
+        state.fireflies.push(fireflyObj);
+        DOM.targetsLayer.appendChild(el);
+
+        el.addEventListener('mousedown', (e) => {
+            if(!state.isAnimating) {
+                sendGameAction('shoot', { number: conf.number });
+                processCatch(fireflyObj);
+            }
+        });
+        el.addEventListener('touchstart', (e) => {
+            if(!state.isAnimating) {
+                e.preventDefault();
+                sendGameAction('shoot', { number: conf.number });
+                processCatch(fireflyObj);
+            }
+        }, {passive: false});
+    }
+
+    if (db) {
+        db.ref('game_action').on('value', snap => {
+            const val = snap.val();
+            if (val && val.senderId !== myName + '_' + tabId) {
+                isRemoteAction = true;
+                if (val.type === 'generate_level') {
+                    renderLevel(val.data);
+                } else if (val.type === 'shoot') {
+                    let ff = state.fireflies.find(f => f.number === val.data.number);
+                    if(ff && !state.isAnimating) processCatch(ff);
+                } else if (val.type === 'draw_line') {
+                    drawLine(val.data.x0 * drawCanvas.width, val.data.y0 * drawCanvas.height, 
+                             val.data.x1 * drawCanvas.width, val.data.y1 * drawCanvas.height, 
+                             val.data.color, val.data.width);
+                } else if (val.type === 'clear_canvas') {
+                    clearDrawCanvas();
+                }
+                isRemoteAction = false;
+            }
+        });
+    }
+
+    let mouseX = window.innerWidth / 2;
+    let mouseY = window.innerHeight / 2;
+    window.addEventListener('mousemove', (e) => { mouseX = e.clientX; mouseY = e.clientY; });
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        let timeElapsed = Date.now() - state.startTimestamp;
+        const rect = DOM.targetsLayer.getBoundingClientRect();
+
+        state.fireflies.forEach(ff => {
+            if(ff.caught) return;
+            
+            let angle = ff.conf.angleOffset + timeElapsed * ff.conf.speed;
+            let xLogical = ff.conf.cx + Math.sin(angle) * ff.conf.rx;
+            let yLogical = ff.conf.cy + Math.cos(angle * 1.5) * ff.conf.ry;
+            
+            let screenX = (xLogical / 1920) * rect.width;
+            let screenY = (yLogical / 1080) * rect.height;
+            
+            ff.currentScreenX = screenX;
+            ff.currentScreenY = screenY;
+            ff.currentSvgX = xLogical;
+            ff.currentSvgY = yLogical;
+            
+            // Центруємо HTML елемент (ширина/висота тепер 120px)
+            ff.el.style.transform = `translate(${screenX - 60}px, ${screenY - 60}px)`;
+        });
+
+        if(!state.isAnimating) {
+            updatePupils(mouseX, mouseY);
+        }
+    }
+    
+    function updatePupils(tx, ty) {
+        const svgRect = document.getElementById('svg-layer').getBoundingClientRect();
+        const scaleX = 1920 / svgRect.width;
+        const scaleY = 1080 / svgRect.height;
+        const svgMouseX = tx * scaleX;
+        const svgMouseY = ty * scaleY;
+        const leftEyeX = 500 - 40, rightEyeX = 500 + 40, eyeY = 720 - 70;
+
+        function calcPupilOffset(ex, ey, mx, my, maxRadius) {
+            let dx = mx - ex, dy = my - ey;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist === 0) return {x:0, y:0};
+            let angle = Math.atan2(dy, dx);
+            let radius = Math.min(dist * 0.02, maxRadius);
+            return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+        }
+
+        let oL = calcPupilOffset(leftEyeX, eyeY, svgMouseX, svgMouseY, 15);
+        let oR = calcPupilOffset(rightEyeX, eyeY, svgMouseX, svgMouseY, 15);
+
+        DOM.pupilL.setAttribute('cx', oL.x);
+        DOM.pupilL.setAttribute('cy', oL.y + 5);
+        DOM.pupilR.setAttribute('cx', oR.x);
+        DOM.pupilR.setAttribute('cy', oR.y + 5);
+    }
+
+    function processCatch(firefly) {
+        state.isAnimating = true;
+        firefly.caught = true;
+        soundEffects.shoot();
+
+        DOM.frogMouth.setAttribute('d', 'M -20 -10 Q 0 20 20 -10 Z');
+        DOM.frogMouth.setAttribute('fill', '#880e4f');
+
+        const targetSvgX = firefly.currentSvgX;
+        const targetSvgY = firefly.currentSvgY;
+
+        DOM.tongue.style.display = 'block';
+        DOM.tongue.setAttribute('x1', MOUTH_POS.x);
+        DOM.tongue.setAttribute('y1', MOUTH_POS.y);
+        
+        let progress = 0;
+        const shootInterval = setInterval(() => {
+            progress += 0.2;
+            if(progress >= 1) {
+                progress = 1;
+                clearInterval(shootInterval);
+                retractTongue();
+            }
+            let currX = MOUTH_POS.x + (targetSvgX - MOUTH_POS.x) * progress;
+            let currY = MOUTH_POS.y + (targetSvgY - MOUTH_POS.y) * progress;
+            DOM.tongue.setAttribute('x2', currX);
+            DOM.tongue.setAttribute('y2', currY);
+            updatePupils(firefly.currentScreenX, firefly.currentScreenY);
+        }, 16);
+
+        function retractTongue() {
+            const svgRect = document.getElementById('svg-layer').getBoundingClientRect();
+            
+            let retProgress = 0;
+            const retInterval = setInterval(() => {
+                retProgress += 0.1;
+                if(retProgress >= 1) {
+                    retProgress = 1;
+                    clearInterval(retInterval);
+                    DOM.tongue.style.display = 'none';
+                    firefly.el.style.display = 'none';
+                    checkAnswer(firefly.number);
+                }
+                
+                let currSvgX = targetSvgX - (targetSvgX - MOUTH_POS.x) * retProgress;
+                let currSvgY = targetSvgY - (targetSvgY - MOUTH_POS.y) * retProgress;
+                
+                DOM.tongue.setAttribute('x2', currSvgX);
+                DOM.tongue.setAttribute('y2', currSvgY);
+                
+                let sX = (currSvgX / 1920) * svgRect.width;
+                let sY = (currSvgY / 1080) * svgRect.height;
+                firefly.el.style.transform = `translate(${sX - 60}px, ${sY - 60}px) scale(${1 - retProgress*0.5})`;
+                
+            }, 16);
+        }
+    }
+
+    function checkAnswer(selectedNumber) {
+        if(selectedNumber === state.correctAdd) {
+            soundEffects.win();
+            DOM.frogMouth.setAttribute('d', 'M -40 -10 Q 0 40 40 -10');
+            DOM.frogMouth.setAttribute('fill', 'none');
+            
+            setTimeout(() => {
+                soundEffects.jump();
+                jumpToNextPad();
+            }, 500);
+        } else {
+            soundEffects.lose();
+            DOM.frogMouth.setAttribute('d', 'M -30 10 Q 0 -15 30 10');
+            DOM.frogMouth.setAttribute('fill', 'none');
+            
+            setTimeout(() => {
+                let ff = state.fireflies.find(f => f.number === selectedNumber);
+                ff.el.style.display = 'flex';
+                ff.caught = false;
+                resetFrog();
+                state.isAnimating = false;
+            }, 1000);
+        }
+    }
+
+    function jumpToNextPad() {
+        const frog = DOM.frogCharacter;
+        frog.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)';
+        frog.style.transform = `translate(1420px, 520px) scale(1.2)`;
+        
+        setTimeout(() => {
+            frog.style.transform = `translate(1420px, 540px) scale(1)`; 
+            
+            setTimeout(() => {
+                state.history.push(state.baseNum);
+                resetPositionsAndNextLevel();
+            }, 800);
+        }, 300);
+    }
+
+    function resetPositionsAndNextLevel() {
+        const frog = DOM.frogCharacter;
+        frog.style.transition = 'none';
+        frog.style.transform = `translate(500px, 720px)`;
+        
+        state.baseNum = state.targetNum;
+        if(!isRemoteAction) generateLevel(state.baseNum);
+        state.isAnimating = false;
+    }
+
+    function resetFrog() {
+        DOM.frogMouth.setAttribute('d', 'M -30 -10 Q 0 10 30 -10');
+        DOM.frogMouth.setAttribute('fill', 'none');
+    }
+
+    DOM.btnNext.addEventListener('click', () => {
+        if(state.isAnimating) return;
+        soundEffects.jump();
+        state.history.push(state.baseNum);
+        generateLevel(); 
+    });
+
+    DOM.btnBack.addEventListener('click', () => {
+        if(state.isAnimating || state.history.length === 0) return;
+        soundEffects.jump();
+        let prevBase = state.history.pop();
+        generateLevel(prevBase);
+    });
+
+    // Запуск
+    generateLevel();
+    requestAnimationFrame(animate);
+
+</script>
+</body>
+</html>
