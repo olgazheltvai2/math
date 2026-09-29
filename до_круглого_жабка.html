@@ -51,7 +51,7 @@
             pointer-events: none;
         }
 
-        /* Стилізація світлячків - Збільшено розмір */
+        /* Стилізація світлячків - Збільшено розмір та контраст */
         .firefly {
             position: absolute;
             width: 120px;
@@ -73,10 +73,14 @@
 
         .firefly-text {
             position: absolute;
-            font-size: 60px; /* Великий текст на світлячках */
+            font-size: 75px; /* Ще більший текст */
             font-weight: 900;
-            color: #1a4a20;
-            text-shadow: 0 0 8px rgba(255, 255, 255, 1);
+            color: #000000; /* Чорний текст для максимального контрасту */
+            /* Товста біла обводка та світіння */
+            text-shadow: 
+                3px 3px 0 #fff, -3px -3px 0 #fff, 
+                3px -3px 0 #fff, -3px 3px 0 #fff,
+                0 0 15px rgba(255, 255, 255, 1);
             z-index: 10;
         }
 
@@ -127,11 +131,11 @@
         }
 
         .pad-text {
-            font-size: 85px; /* Збільшено розмір тексту на лілеях */
+            font-size: 85px; 
             font-weight: 900;
             fill: #ffffff;
             text-anchor: middle;
-            filter: drop-shadow(3px 5px 5px rgba(0,0,0,0.7));
+            filter: drop-shadow(3px 5px 5px rgba(0,0,0,0.9)); /* Більш різка тінь на лілеях */
         }
 
         /* UI Theme Manager */
@@ -483,7 +487,6 @@
 
     // --- УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Радар, Блокування, Лобі) ---
     if (db) {
-        // Радар
         const presenceRef = db.ref(`online_users/${myName}/${tabId}`);
         db.ref('.info/connected').on('value', snap => {
             if (snap.val()) {
@@ -493,22 +496,19 @@
         });
         window.addEventListener('beforeunload', () => presenceRef.remove());
 
-        // Блокування
         db.ref(`blocked_users/${myName}`).on('value', snap => {
             document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
         });
 
-        // Перезавантаження - ЗАХИСТ ВІД БЕЗКІНЕЧНОГО ОНОВЛЕННЯ
         let isFirstRefreshRead = true;
         db.ref('force_refresh').on('value', snap => {
             if (isFirstRefreshRead) {
                 isFirstRefreshRead = false;
-                return; // Ігноруємо початковий стан при завантаженні
+                return; 
             }
             if (snap.val()) window.location.reload();
         });
 
-        // Лобі (з імунітетом 1 сек)
         setTimeout(() => {
             db.ref('current_activity').on('value', snap => {
                 if (snap.val() === 'lobby') {
@@ -544,11 +544,9 @@
         }
     }
 
-    // Завантаження збереженого фону гри
     const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
     if(savedBg) applyBackground(savedBg);
 
-    // Слухач фонів з Firebase
     if (db) {
         db.ref('game_theme').on('value', snap => {
             const val = snap.val();
@@ -560,7 +558,6 @@
         });
     }
 
-    // Асинхронне послідовне завантаження фонів
     async function loadThemes() {
         const baseUrl = 'https://olgazheltvai2.github.io/images/backgrounds/';
         for(let i=1; i<=1000; i++) {
@@ -635,13 +632,11 @@
         drawCanvas.style.pointerEvents = enable ? 'auto' : 'none';
     }
 
-    // Drag panel
     let isDraggingPanel = false, panelOffset = {x:0,y:0};
     const panelHeader = document.getElementById('draw-panel-header');
     panelHeader.onmousedown = (e) => { isDraggingPanel = true; panelOffset.x = e.clientX - drawPanel.offsetLeft; panelOffset.y = e.clientY - drawPanel.offsetTop; };
     window.addEventListener('mouseup', () => isDraggingPanel = false);
     window.addEventListener('mousemove', (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.clientX - panelOffset.x) + 'px'; drawPanel.style.top = (e.clientY - panelOffset.y) + 'px'; }});
-    // Touch drag
     panelHeader.addEventListener('touchstart', (e) => { isDraggingPanel = true; panelOffset.x = e.touches[0].clientX - drawPanel.offsetLeft; panelOffset.y = e.touches[0].clientY - drawPanel.offsetTop; });
     window.addEventListener('touchend', () => isDraggingPanel = false);
     window.addEventListener('touchmove', (e) => { if(isDraggingPanel) { drawPanel.style.left = (e.touches[0].clientX - panelOffset.x) + 'px'; drawPanel.style.top = (e.touches[0].clientY - panelOffset.y) + 'px'; }});
@@ -761,30 +756,43 @@
 
     const MOUTH_POS = { x: 500, y: 690 }; 
 
-    function generateLevel(forceBase = null) {
+    function generateLevel() {
         if(state.isAnimating) return;
         
-        let base = forceBase;
-        if(base === null) {
-            do { base = Math.floor(Math.random() * 79) + 11; } while (base % 10 === 0);
-        }
+        let base;
+        do { 
+            base = Math.floor(Math.random() * 79) + 11; 
+        } while (base % 10 === 0);
         
         let correct = 10 - (base % 10);
+        
+        // Гарантуємо, що правильна відповідь завжди буде в масиві
         let options = new Set([correct]);
-        while(options.size < 5) { options.add(Math.floor(Math.random() * 9) + 1); }
+        while(options.size < 5) { 
+            options.add(Math.floor(Math.random() * 9) + 1); 
+        }
         options = Array.from(options).sort(() => Math.random() - 0.5);
+
+        // Фіксовані опорні точки (якорі), щоб жоден світлячок НЕ вилітав за екран
+        const anchors = [
+            {cx: 350, cy: 300},
+            {cx: 650, cy: 200},
+            {cx: 960, cy: 350},
+            {cx: 1270, cy: 200},
+            {cx: 1570, cy: 300}
+        ];
 
         const config = {
             baseNum: base,
             startTimestamp: Date.now(),
             fireflyConfigs: options.map((num, index) => ({
                 number: num,
-                cx: 960 + (Math.random() * 800 - 400),
-                cy: 350 + (Math.random() * 300 - 150),
-                rx: 200 + Math.random() * 150, // Більший радіус польоту
-                ry: 150 + Math.random() * 150,
-                speed: (0.0003 + Math.random() * 0.0003), // Оптимізована повільна швидкість
-                angleOffset: (Math.PI * 2 / options.length) * index
+                cx: anchors[index].cx,
+                cy: anchors[index].cy,
+                rx: 80 + Math.random() * 40, // Невеликий радіус польоту навколо якоря
+                ry: 60 + Math.random() * 40,
+                speed: (0.0003 + Math.random() * 0.0003),
+                angleOffset: Math.random() * Math.PI * 2
             }))
         };
 
@@ -895,7 +903,6 @@
             ff.currentSvgX = xLogical;
             ff.currentSvgY = yLogical;
             
-            // Центруємо HTML елемент (ширина/висота тепер 120px)
             ff.el.style.transform = `translate(${screenX - 60}px, ${screenY - 60}px)`;
         });
 
@@ -1033,8 +1040,8 @@
         frog.style.transition = 'none';
         frog.style.transform = `translate(500px, 720px)`;
         
-        state.baseNum = state.targetNum;
-        if(!isRemoteAction) generateLevel(state.baseNum);
+        // Автоматично генеруємо абсолютно нове випадкове завдання замість того, щоб брати попереднє цільове
+        if(!isRemoteAction) generateLevel();
         state.isAnimating = false;
     }
 
@@ -1053,8 +1060,10 @@
     DOM.btnBack.addEventListener('click', () => {
         if(state.isAnimating || state.history.length === 0) return;
         soundEffects.jump();
-        let prevBase = state.history.pop();
-        generateLevel(prevBase);
+        // Прибираємо останнє завдання з історії, але оскільки генерується повністю нове, 
+        // логічніше просто створити нове. Залишимо функціонал як є, щоб просто змінювати рівень.
+        state.history.pop();
+        generateLevel();
     });
 
     // Запуск
