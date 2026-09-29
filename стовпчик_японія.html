@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Samurai Math Dojo</title>
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        /* Основні налаштування та скидання */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(180deg, #3a0000 0%, #111111 100%);
+            font-family: Arial, sans-serif;
+            color: #fff;
+            transition: background-image 0.5s ease;
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* Сюжетний анімований фон (за замовчуванням) */
+        .background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .sun {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, #ff4500 0%, #cc0000 60%, transparent 70%);
+            border-radius: 50%;
+            box-shadow: 0 0 80px 30px rgba(255, 69, 0, 0.4);
+            animation: pulseSun 4s infinite alternate;
+        }
+
+        @keyframes pulseSun {
+            from { box-shadow: 0 0 60px 20px rgba(255, 69, 0, 0.4); }
+            to { box-shadow: 0 0 90px 40px rgba(255, 69, 0, 0.7); }
+        }
+
+        /* Ігровий інтерфейс */
+        .game-ui {
+            position: relative;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100%;
+            justify-content: center;
+            transform-origin: center center;
+            transition: transform 0.3s ease;
+        }
+
+        /* Налаштування вгорі */
+        .settings-panel {
+            position: absolute;
+            top: 20px;
+            display: flex;
+            gap: 20px;
+            background: rgba(20, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 40px;
+            border: 3px solid #ffaa00;
+            box-shadow: 0 0 20px #ff3300;
+        }
+
+        .setting-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        select {
+            appearance: none;
+            background: rgba(40, 10, 10, 0.8);
+            color: #ffd700;
+            border: 2px solid #ffd700;
+            border-radius: 15px;
+            padding: 10px 20px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            outline: none;
+            text-align: center;
+            box-shadow: 0 0 10px #cc7700 inset;
+        }
+        
+        select:focus {
+            box-shadow: 0 0 20px #ffd700 inset, 0 0 10px #ffd700;
+        }
+
+        /* Дошка з прикладом */
+        .math-board {
+            position: relative;
+            width: 600px; 
+            height: 450px;
+            margin-top: 50px;
+            filter: drop-shadow(0 15px 15px rgba(0,0,0,0.9));
+        }
+
+        .board-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .problem-container {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 85%;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            font-size: 55px;
+            color: #ffebb3;
+            text-shadow: 2px 2px 0px #000, 4px 4px 0px #4a0000;
+            letter-spacing: 2px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 5px;
+            width: 100%;
+            position: relative;
+            margin-bottom: 5px;
+        }
+
+        .operator {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            color: #ff3333;
+            font-size: 60px;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        .digit-box {
+            display: inline-block;
+            width: 45px;
+            text-align: center;
+        }
+
+        .divider {
+            width: 100%;
+            height: 6px;
+            background-color: #ff3333;
+            margin: 10px 0;
+            border-radius: 3px;
+            box-shadow: 0 0 10px #ff3333;
+        }
+
+        .answer-container {
+            display: flex;
+            justify-content: flex-end;
+            gap: 5px;
+            width: 100%;
+            margin-top: 5px;
+        }
+
+        .digit-input {
+            width: 45px;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 3px dashed #ffd700;
+            border-radius: 10px;
+            color: #ffd700;
+            font-size: 40px;
+            font-family: inherit;
+            text-align: center;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .digit-input:focus {
+            background: rgba(60, 20, 0, 0.8);
+            border: 3px solid #ffd700;
+            box-shadow: 0 0 15px #ffd700;
+        }
+
+        .digit-input.error {
+            border-color: #ff0000;
+            color: #ff0000;
+            box-shadow: 0 0 20px #ff0000;
+            animation: shake 0.4s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+        }
+
+        /* Персонаж (Дракон) */
+        .character {
+            position: absolute;
+            bottom: 10%;
+            left: 10%;
+            width: 250px;
+            height: 300px;
+            cursor: pointer;
+            z-index: 20;
+            transition: transform 0.3s;
+        }
+
+        .char-body {
+            animation: float 3s ease-in-out infinite;
+            transform-origin: center;
+        }
+
+        .char-eyes {
+            animation: lookAround 6s infinite ease-in-out;
+        }
+
+        .char-fly {
+            animation: flyAround 3s ease-in-out forwards;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        @keyframes lookAround {
+            0%, 20%, 80%, 100% { transform: translateX(0); }
+            30%, 50% { transform: translateX(-5px); }
+            60%, 70% { transform: translateX(5px); }
+        }
+
+        @keyframes flyAround {
+            0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+            20% { transform: translate(300px, -200px) scale(1.1) rotate(15deg); }
+            40% { transform: translate(100px, -350px) scale(0.9) rotate(-10deg); }
+            60% { transform: translate(-100px, -200px) scale(1.2) rotate(20deg); }
+            80% { transform: translate(-50px, -100px) scale(0.95) rotate(-5deg); }
+            100% { transform: translate(0, 0) scale(1) rotate(0deg); }
+        }
+
+        /* Скриня для сюрікенів */
+        .bucket-container {
+            position: absolute;
+            bottom: 5%;
+            right: 15%;
+            width: 200px;
+            height: 200px;
+            z-index: 15;
+        }
+
+        .candy {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            z-index: 12; /* Щоб падали за передню стінку скрині */
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        .candy.drop {
+            animation: shurikenDrop 1s forwards cubic-bezier(0.25, 1, 0.5, 1);
+        }
+
+        @keyframes shurikenDrop {
+            0% { top: -400px; left: 50%; opacity: 1; transform: rotate(0deg) scale(0.5); }
+            50% { top: -100px; left: 50%; opacity: 1; transform: rotate(540deg) scale(1.2); }
+            100% { top: 80px; left: 50%; opacity: 1; transform: rotate(1080deg) scale(1); }
+        }
+
+        /* Навігаційні кнопки */
+        .nav-buttons {
+            position: absolute;
+            bottom: 30px;
+            display: flex;
+            gap: 40px;
+            z-index: 20;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #b30000, #ff3333);
+            border: 2px solid #ffcc00;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 10px 0 #660000, 0 15px 20px rgba(0,0,0,0.8);
+            transition: all 0.1s;
+        }
+
+        .btn:active {
+            transform: translateY(10px);
+            box-shadow: 0 0px 0 #660000, 0 5px 10px rgba(0,0,0,0.8);
+        }
+
+        .btn svg {
+            width: 40px;
+            height: 40px;
+            fill: #ffcc00;
+        }
+
+        /* --- Theme Manager UI --- */
+        #theme-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            background: #2a0000;
+            color: #ffd700;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 30px;
+            cursor: pointer;
+            z-index: 99000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+            border: 2px solid #ffd700;
+            transition: 0.2s;
+        }
+        #theme-btn:hover { background: #4a0000; transform: scale(1.1); }
+        
+        #theme-modal {
+            display: none;
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20, 10, 10, 0.95);
+            border: 2px solid #ffd700;
+            padding: 20px;
+            border-radius: 15px;
+            z-index: 99001;
+            width: 80%; max-width: 600px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.9);
+        }
+        #theme-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #ffd700;
+        }
+        #theme-modal-close {
+            cursor: pointer;
+            font-size: 24px;
+            color: #ff3333;
+        }
+        #theme-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 15px;
+            max-height: 60vh;
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        .theme-card {
+            position: relative;
+            width: 100%;
+            padding-bottom: 75%;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: 0.2s;
+            background-size: cover;
+            background-position: center;
+            background-color: #333;
+        }
+        .theme-card:hover { border-color: #ffd700; transform: scale(1.05); }
+        .theme-card span {
+            position: absolute;
+            bottom: 0; left: 0; width: 100%;
+            background: rgba(0,0,0,0.8);
+            color: #ffd700;
+            text-align: center;
+            padding: 5px 0;
+            font-size: 14px;
+        }
+
+        /* --- Global Draw Tool --- */
+        #global-draw-canvas {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 90000;
+        }
+        #toggle-draw-btn-global {
+            position: fixed;
+            bottom: 85px; right: 20px;
+            width: 60px; height: 60px;
+            background: #2a0000;
+            color: white;
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 30px;
+            cursor: pointer;
+            z-index: 99000;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+            border: 2px solid #ffd700;
+            transition: 0.2s;
+        }
+        #toggle-draw-btn-global:hover { background: #4a0000; transform: scale(1.1); }
+        
+        #draw-panel-global {
+            display: none;
+            position: fixed;
+            top: 20px; left: 20px;
+            background: rgba(30,10,10,0.95);
+            border: 2px solid #ffd700;
+            border-radius: 10px;
+            padding: 10px;
+            z-index: 99001;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.8);
+            user-select: none;
+        }
+        .draw-panel-header {
+            width: 100%; height: 20px;
+            background: #b30000;
+            border-radius: 5px 5px 0 0;
+            margin-bottom: 10px;
+            cursor: grab;
+            position: relative;
+        }
+        .draw-panel-close {
+            position: absolute; right: 5px; top: -2px;
+            color: white; cursor: pointer; font-weight: bold; font-size: 16px;
+        }
+        .draw-controls {
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .draw-btn {
+            background: #333; color: #ffd700; border: 1px solid #555;
+            padding: 8px; border-radius: 5px; cursor: pointer; text-align: center; font-size: 14px;
+        }
+        .draw-btn.active { background: #b30000; border-color: #ffd700; color: white; }
+        .draw-row { display: flex; gap: 5px; align-items: center; justify-content: space-between; color: #ffd700; }
+        #draw-color { width: 40px; height: 30px; padding: 0; border: none; cursor: pointer; }
+        #draw-size { width: 80px; }
+
+        /* --- Zoom / Magnifier Controls --- */
+        .zoom-controls {
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 99000;
+        }
+        .zoom-btn {
+            width: 50px; height: 50px;
+            background: rgba(100, 20, 20, 0.9);
+            color: #ffd700;
+            border-radius: 50%;
+            border: 2px solid #ffd700;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.8);
+        }
+
+        #block-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 100000;
+            color: red;
+            font-size: 5vw;
+            font-weight: bold;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        /* Адаптивність */
+        @media (max-width: 768px) {
+            .math-board { width: 450px; height: 350px; margin-top: 80px; }
+            .problem-container { top: 70px; font-size: 40px; }
+            .digit-input { width: 35px; height: 45px; font-size: 30px; }
+            .digit-box { width: 35px; } 
+            .operator { font-size: 45px; }
+            .character { width: 180px; height: 210px; bottom: 5%; left: 5%; }
+            .bucket-container { width: 120px; height: 120px; bottom: 2%; right: 5%; }
+            .nav-buttons { bottom: 10px; gap: 20px; }
+            .btn { width: 60px; height: 60px; }
+            .settings-panel { padding: 10px; font-size: 16px; top: 10px; flex-direction: column; gap: 5px; }
+            .sun { width: 200px; height: 200px; top: 25%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+    <!-- Японський сюжетний фон -->
+    <div class="background" id="default-bg">
+        <div class="sun"></div>
+        <svg width="100%" height="100%" preserveAspectRatio="none">
+            <!-- Силует гір -->
+            <path d="M0,1000 L150,600 Q250,500 350,600 L600,900 L800,550 Q900,450 1000,550 L1400,1000 Z" fill="#150505" opacity="0.8"/>
+            <path d="M150,600 Q250,500 350,600 L300,660 Q250,570 200,660 Z" fill="#4a0000" opacity="0.5"/>
+            <!-- Брама Торії -->
+            <g transform="translate(70%, 55%) scale(0.7)" fill="#0a0202">
+                <rect x="0" y="40" width="30" height="250" />
+                <rect x="250" y="40" width="30" height="250" />
+                <path d="M-30,20 L310,20 L310,50 L-30,50 Z" />
+                <path d="M-50,0 Q140,-30 330,0 L330,20 L-50,20 Z" />
+                <rect x="0" y="100" width="280" height="20" />
+                <rect x="125" y="50" width="30" height="50" />
+            </g>
+            <!-- Бамбук (силуети) -->
+            <path d="M50,1000 L60,400 L75,400 L65,1000 Z" fill="#000" />
+            <path d="M60,600 Q90,550 120,560" stroke="#000" stroke-width="3" fill="none" />
+            <path d="M63,450 Q30,420 10,440" stroke="#000" stroke-width="2" fill="none" />
+            <path d="M100,1000 L115,500 L130,500 L120,1000 Z" fill="#000" />
+        </svg>
+    </div>
+
+    <!-- Основний контейнер гри -->
+    <div class="game-ui" id="game-container">
+        
+        <!-- Налаштування генератора -->
+        <div class="settings-panel">
+            <div class="setting-group">
+                <select id="operation-select">
+                    <option value="+">➕</option>
+                    <option value="-">➖</option>
+                </select>
+            </div>
+            <div class="setting-group">
+                <select id="digits-select">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7" selected>7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Ігрова дошка (Стиль: темне бамбукове дерево) -->
+        <div class="math-board">
+            <svg class="board-svg" viewBox="0 0 600 450">
+                <defs>
+                    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#3e1a0a" />
+                        <stop offset="100%" stop-color="#1c0b03" />
+                    </linearGradient>
+                    <pattern id="bambooPattern" width="60" height="40" patternUnits="userSpaceOnUse">
+                        <line x1="0" y1="0" x2="0" y2="40" stroke="#110500" stroke-width="3" opacity="0.6"/>
+                        <line x1="0" y1="20" x2="60" y2="20" stroke="#250f05" stroke-width="1" opacity="0.4"/>
+                    </pattern>
+                </defs>
+                <!-- Мотузки -->
+                <line x1="70" y1="0" x2="70" y2="80" stroke="#8b0000" stroke-width="6" stroke-dasharray="10,4" />
+                <line x1="530" y1="0" x2="530" y2="80" stroke="#8b0000" stroke-width="6" stroke-dasharray="10,4" />
+                <!-- Дошка -->
+                <rect x="20" y="70" width="560" height="360" rx="10" fill="url(#wood)" stroke="#5c260f" stroke-width="5"/>
+                <rect x="20" y="70" width="560" height="360" rx="10" fill="url(#bambooPattern)" />
+                <!-- Цвяхи -->
+                <circle cx="40" cy="90" r="6" fill="#ffd700" stroke="#8b0000" stroke-width="2"/>
+                <circle cx="560" cy="90" r="6" fill="#ffd700" stroke="#8b0000" stroke-width="2"/>
+                <circle cx="40" cy="410" r="6" fill="#ffd700" stroke="#8b0000" stroke-width="2"/>
+                <circle cx="560" cy="410" r="6" fill="#ffd700" stroke="#8b0000" stroke-width="2"/>
+            </svg>
+
+            <div class="problem-container">
+                <div class="row" id="row-num1">
+                    <span class="operator" id="op-display">+</span>
+                </div>
+                <div class="row" id="row-num2"></div>
+                <div class="divider"></div>
+                <div class="answer-container" id="answer-inputs"></div>
+            </div>
+        </div>
+
+        <!-- Кнопки навігації -->
+        <div class="nav-buttons">
+            <button class="btn" id="btn-back">
+                <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+            </button>
+            <button class="btn" id="btn-next">
+                <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Живий персонаж (Дракон-самурай) -->
+    <div class="character" id="dragon-char">
+        <svg viewBox="0 0 200 250" class="char-body">
+            <!-- Катана на спині -->
+            <path d="M20,130 L180,220" stroke="#ccc" stroke-width="6" stroke-linecap="round" />
+            <path d="M35,130 L55,140" stroke="#FFD700" stroke-width="12" />
+            <path d="M20,115 L35,125" stroke="#8B0000" stroke-width="8" stroke-linecap="round" />
+            <!-- Тіло (Кімоно) -->
+            <path d="M100,240 C50,240 40,180 50,140 C60,100 70,70 100,70 C130,70 140,100 150,140 C160,180 150,240 100,240 Z" fill="#1a1a1a" stroke="#4a0000" stroke-width="4" />
+            <!-- Комір кімоно -->
+            <path d="M70,120 L100,160 L130,120" stroke="#FFD700" stroke-width="4" fill="none" />
+            <!-- Голова дракона -->
+            <path d="M60,120 C60,60 140,60 140,120 C140,160 120,170 100,170 C80,170 60,160 60,120 Z" fill="#B30000" />
+            <!-- Морда -->
+            <ellipse cx="100" cy="140" rx="35" ry="25" fill="#800000" />
+            <!-- Роги -->
+            <path d="M70,80 Q40,30 20,40 Q50,60 65,90 Z" fill="#FFD700" />
+            <path d="M130,80 Q160,30 180,40 Q150,60 135,90 Z" fill="#FFD700" />
+            <!-- Вуса -->
+            <path d="M65,140 Q25,150 10,190" stroke="#FFD700" stroke-width="3" fill="none" />
+            <path d="M135,140 Q175,150 190,190" stroke="#FFD700" stroke-width="3" fill="none" />
+            <!-- Пов'язка на лоб (Хачімакі) -->
+            <path d="M55,90 C80,95 120,95 145,90 C145,80 120,75 100,75 C80,75 55,80 55,90 Z" fill="#fff" />
+            <circle cx="100" cy="85" r="5" fill="#B30000" /> <!-- Сонце на пов'язці -->
+            
+            <g class="char-eyes" id="dragon-face">
+                <!-- Очі -->
+                <polygon points="70,105 90,115 70,120" fill="#FFD700" />
+                <polygon points="130,105 110,115 130,120" fill="#FFD700" />
+                <circle cx="85" cy="112" r="2" fill="#000" />
+                <circle cx="115" cy="112" r="2" fill="#000" />
+                <!-- Рот (Анімується через JS) -->
+                <path id="char-mouth" d="M85,150 Q100,160 115,150" stroke="#FFD700" stroke-width="3" fill="none" />
+            </g>
+        </svg>
+    </div>
+
+    <!-- Традиційна скриня для сюрікенів -->
+    <div class="bucket-container">
+        <svg viewBox="0 0 150 150" id="treasure-box" style="position: absolute; bottom: 0; z-index: 10;">
+            <!-- Основний корпус скрині -->
+            <rect x="25" y="70" width="100" height="70" fill="#4A2F1D" stroke="#2B1A10" stroke-width="4"/>
+            <!-- Металеві скоби -->
+            <rect x="25" y="80" width="100" height="10" fill="#1a1a1a" />
+            <rect x="25" y="120" width="100" height="10" fill="#1a1a1a" />
+            <!-- Заклепки -->
+            <circle cx="35" cy="85" r="2" fill="#888"/>
+            <circle cx="115" cy="85" r="2" fill="#888"/>
+            <circle cx="35" cy="125" r="2" fill="#888"/>
+            <circle cx="115" cy="125" r="2" fill="#888"/>
+            <!-- Відкрита кришка -->
+            <polygon points="25,70 125,70 110,35 40,35" fill="#6B4226" stroke="#2B1A10" stroke-width="4"/>
+            <!-- Замок -->
+            <circle cx="75" cy="70" r="10" fill="#FFD700" stroke="#B8860B" stroke-width="2"/>
+            <rect x="73" y="70" width="4" height="8" fill="#333" />
+        </svg>
+        <div id="candies-pile" style="position: absolute; bottom: 30px; left: 0; width: 100%; height: 60px; z-index: 11;"></div>
+    </div>
+
+    <!-- Zoom Controls -->
+    <div class="zoom-controls">
+        <button class="zoom-btn" onclick="adjustZoom(0.1)">🔍+</button>
+        <button class="zoom-btn" onclick="adjustZoom(-0.1)">🔍-</button>
+    </div>
+
+    <!-- Theme Manager UI -->
+    <div id="theme-btn">⚙️</div>
+    <div id="theme-modal">
+        <div id="theme-modal-header">
+            <span>Вибір фону</span>
+            <span id="theme-modal-close">✕</span>
+        </div>
+        <div id="theme-gallery"></div>
+    </div>
+
+    <!-- Global Drawing Canvas -->
+    <canvas id="global-draw-canvas"></canvas>
+    <div id="toggle-draw-btn-global">✏️</div>
+    <div id="draw-panel-global">
+        <div class="draw-panel-header">
+            <span class="draw-panel-close">✕</span>
+        </div>
+        <div class="draw-controls">
+            <div class="draw-row">
+                <button class="draw-btn active" id="draw-pencil-btn">✏️ Олівець</button>
+                <button class="draw-btn" id="draw-eraser-btn">🧽 Гумка</button>
+            </div>
+            <div class="draw-row">
+                <input type="color" id="draw-color" value="#FFD700">
+                <input type="range" id="draw-size" min="1" max="50" value="5">
+            </div>
+            <button class="draw-btn" id="draw-clear-btn">🗑️ Очистити</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Firebase Налаштування ---
+        const firebaseConfig = {
+            databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+            projectId: "lesson-13c44"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const CONFIG = {
+            gameId: 'math_column_ghost_v3' // Залишаємо той самий ID, щоб зберегти з'єднання з вашим радаром
+        };
+
+        // --- Ідентифікація та Радар ---
+        const urlParams = new URLSearchParams(window.location.search);
+        let myName = urlParams.get('user') || sessionStorage.getItem('userName');
+        if (!myName) {
+            myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        }
+        sessionStorage.setItem('userName', myName);
+
+        const tabId = Math.random().toString(36).substr(2, 9);
+        const userRef = db.ref(`online_users/${myName}/${tabId}`);
+        db.ref('.info/connected').on('value', snap => {
+            if (snap.val() === true) {
+                userRef.set(true);
+                userRef.onDisconnect().remove();
+            }
+        });
+        window.addEventListener('beforeunload', () => userRef.remove());
+
+        // Блокування
+        db.ref(`blocked_users/${myName}`).on('value', snap => {
+            document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+        });
+
+        // Захист від безкінечного оновлення
+        let isFirstRefreshCheck = true;
+        db.ref('force_refresh').on('value', snap => {
+            if (!isFirstRefreshCheck && snap.val() === true) {
+                window.location.reload();
+            }
+            isFirstRefreshCheck = false;
+        });
+
+        let isFirstLobbyCheck = true;
+        setTimeout(() => isFirstLobbyCheck = false, 1000);
+        db.ref('current_activity').on('value', snap => {
+            if (!isFirstLobbyCheck && snap.val() === 'lobby') {
+                window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+            }
+        });
+
+        // Глобальні змінні стану
+        let currentN1 = 0;
+        let currentN2 = 0;
+        let currentOp = '+';
+        let currentDigits = 7;
+        let currentInputs = {};
+
+        function sendAction(actionData) {
+            db.ref('game_action').set({
+                senderId: tabId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                state: {
+                    n1: currentN1,
+                    n2: currentN2,
+                    op: currentOp,
+                    digits: currentDigits,
+                    inputs: currentInputs
+                },
+                ...actionData
+            });
+        }
+
+        // --- Логіка гри (Математика) ---
+        let audioCtx;
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        function playSound(type) {
+            initAudio();
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            
+            if (type === 'success') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.3);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'pop') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(800, now + 0.1);
+                gain.gain.setValueAtTime(0.3, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            }
+        }
+
+        const rowNum1 = document.getElementById('row-num1');
+        const rowNum2 = document.getElementById('row-num2');
+        const elOp = document.getElementById('op-display');
+        const answerInputsContainer = document.getElementById('answer-inputs');
+        const selectOp = document.getElementById('operation-select');
+        const selectDigits = document.getElementById('digits-select');
+        const dragon = document.getElementById('dragon-char');
+        const charMouth = document.getElementById('char-mouth');
+        const candiesPile = document.getElementById('candies-pile');
+        
+        let currentAnswer = 0;
+        let candyCount = 0;
+
+        function getRandomInt(digits) {
+            if (digits === 1) return Math.floor(Math.random() * 9) + 1;
+            const min = Math.pow(10, digits - 1);
+            const max = Math.pow(10, digits) - 1;
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function renderNumberToBoxes(num, targetContainer, includeOperator = false, operatorSymbol = '') {
+            targetContainer.innerHTML = ''; 
+            
+            if (includeOperator) {
+                let opSpan = document.createElement('span');
+                opSpan.className = 'operator';
+                opSpan.innerText = operatorSymbol;
+                targetContainer.appendChild(opSpan);
+            }
+
+            const str = num.toString();
+            for (let i = 0; i < str.length; i++) {
+                let span = document.createElement('span');
+                span.className = 'digit-box';
+                span.innerText = str[i];
+                targetContainer.appendChild(span);
+            }
+        }
+
+        function triggerGenerateProblem() {
+            const op = selectOp.value;
+            const digits = parseInt(selectDigits.value);
+            
+            let n1 = getRandomInt(digits);
+            let n2 = getRandomInt(digits);
+
+            if (op === '-') {
+                if (n1 < n2) { let temp = n1; n1 = n2; n2 = temp; }
+            }
+            
+            renderProblem(op, digits, n1, n2);
+            sendAction({ type: 'new_problem', op: op, digits: digits, n1: n1, n2: n2 });
+        }
+
+        function renderProblem(op, digits, n1, n2) {
+            currentOp = op;
+            currentDigits = digits;
+            currentN1 = n1;
+            currentN2 = n2;
+            currentInputs = {}; 
+
+            playSound('pop');
+            answerInputsContainer.innerHTML = ''; 
+            
+            selectOp.value = op;
+            selectDigits.value = digits.toString();
+
+            if (op === '-') {
+                currentAnswer = n1 - n2;
+            } else {
+                currentAnswer = n1 + n2;
+            }
+
+            renderNumberToBoxes(n1, rowNum1, true, op);
+            renderNumberToBoxes(n2, rowNum2);
+            
+            // Скидаємо рот дракона в нормальний стан
+            charMouth.setAttribute('d', 'M85,150 Q100,160 115,150');
+            charMouth.setAttribute('fill', 'none');
+            dragon.classList.remove('char-fly');
+            
+            const ansStr = currentAnswer.toString();
+            for (let i = 0; i < ansStr.length; i++) {
+                let inp = document.createElement('input');
+                inp.type = 'text';
+                inp.maxLength = 1;
+                inp.className = 'digit-input';
+                inp.dataset.idx = i;
+                
+                inp.addEventListener('input', function() {
+                    this.value = this.value.replace(/[^0-9]/g, ''); 
+                    this.classList.remove('error');
+                    
+                    currentInputs[this.dataset.idx] = this.value;
+                    sendAction({ type: 'input_change', idx: this.dataset.idx, value: this.value });
+                    
+                    if (this.value !== '') {
+                        let prevIdx = parseInt(this.dataset.idx) - 1;
+                        let prev = answerInputsContainer.querySelector(`[data-idx="${prevIdx}"]`);
+                        if (prev) {
+                            prev.focus();
+                        } else {
+                            triggerCheckAnswer();
+                        }
+                    }
+                });
+
+                inp.addEventListener('keydown', function(e) {
+                    if (e.key === 'Backspace' && this.value === '') {
+                        let nextIdx = parseInt(this.dataset.idx) + 1;
+                        let next = answerInputsContainer.querySelector(`[data-idx="${nextIdx}"]`);
+                        if (next) next.focus();
+                    } else if (e.key === 'Enter') {
+                        triggerCheckAnswer();
+                    }
+                });
+                
+                answerInputsContainer.appendChild(inp);
+            }
+            
+            setTimeout(() => {
+                const lastInp = answerInputsContainer.querySelector(`[data-idx="${ansStr.length - 1}"]`);
+                if(lastInp) lastInp.focus();
+            }, 100);
+        }
+
+        // Кидаємо Сюрікен замість цукерки
+        function dropShuriken() {
+            const svgNS = "http://www.w3.org/2000/svg";
+            const candy = document.createElementNS(svgNS, "svg");
+            candy.setAttribute("viewBox", "0 0 100 100");
+            candy.classList.add("candy", "drop");
+            
+            candy.innerHTML = `
+                <g fill="#A9A9A9" stroke="#333" stroke-width="2">
+                    <path d="M50,10 L60,40 L90,50 L60,60 L50,90 L40,60 L10,50 L40,40 Z" />
+                    <circle cx="50" cy="50" r="10" fill="#222" />
+                </g>
+            `;
+            
+            document.querySelector('.bucket-container').appendChild(candy);
+            
+            setTimeout(() => {
+                candy.classList.remove("drop");
+                candy.style.position = 'absolute';
+                candy.style.width = '30px';
+                candy.style.height = '30px';
+                candy.style.bottom = Math.random() * 20 + 'px';
+                candy.style.left = 20 + (candyCount * 5 % 100) + 'px';
+                candy.style.transform = `rotate(${Math.random() * 360}deg)`;
+                candiesPile.appendChild(candy);
+                candyCount++;
+            }, 1000);
+        }
+
+        function triggerCheckAnswer() {
+            const inputs = Array.from(answerInputsContainer.querySelectorAll('.digit-input'));
+            let userAnsStr = inputs.map(i => i.value).join('');
+            
+            if (userAnsStr.length < currentAnswer.toString().length) return;
+            
+            let isCorrect = (parseInt(userAnsStr) === currentAnswer);
+            
+            processAnswerResult(isCorrect, true);
+            sendAction({ type: 'answer_result', isCorrect: isCorrect });
+        }
+
+        function processAnswerResult(isCorrect, isLocalInitiator) {
+            const inputs = Array.from(answerInputsContainer.querySelectorAll('.digit-input'));
+            
+            if (isCorrect) {
+                playSound('success');
+                // Дракон радіє
+                charMouth.setAttribute('d', 'M75,145 Q100,175 125,145 Z');
+                charMouth.setAttribute('fill', '#FFD700');
+                
+                dragon.classList.add('char-fly');
+                dropShuriken();
+                
+                inputs.forEach(i => i.disabled = true);
+                
+                if (isLocalInitiator) {
+                    setTimeout(() => { triggerGenerateProblem(); }, 3000); 
+                }
+            } else {
+                playSound('error');
+                inputs.forEach(i => {
+                    i.classList.add('error');
+                    setTimeout(() => i.classList.remove('error'), 400);
+                });
+                // Дракон сумує
+                charMouth.setAttribute('d', 'M80,160 Q100,140 120,160'); 
+                charMouth.setAttribute('fill', 'none');
+            }
+        }
+
+        selectOp.addEventListener('change', triggerGenerateProblem);
+        selectDigits.addEventListener('change', triggerGenerateProblem);
+
+        document.getElementById('btn-next').addEventListener('click', triggerGenerateProblem);
+        document.getElementById('btn-back').addEventListener('click', () => {
+            const currentDigitsVal = parseInt(selectDigits.value);
+            if (currentDigitsVal > 1) { selectDigits.value = currentDigitsVal - 1; }
+            triggerGenerateProblem();
+        });
+
+        // --- Масштабування ---
+        let currentZoom = 1;
+        function adjustZoom(step) {
+            currentZoom += step;
+            if (currentZoom < 0.5) currentZoom = 0.5;
+            if (currentZoom > 2) currentZoom = 2;
+            document.getElementById('game-container').style.transform = `scale(${currentZoom})`;
+        }
+
+        // --- Theme Manager ---
+        const themeBtn = document.getElementById('theme-btn');
+        const themeModal = document.getElementById('theme-modal');
+        const themeGallery = document.getElementById('theme-gallery');
+        const defaultBg = document.getElementById('default-bg');
+        
+        let currentThemeUrl = localStorage.getItem('mySavedBg_' + CONFIG.gameId) || null;
+
+        function applyTheme(url) {
+            if (url === 'none') {
+                document.body.style.backgroundImage = 'none';
+                defaultBg.style.opacity = '1';
+            } else {
+                document.body.style.backgroundImage = `url('${url}')`;
+                defaultBg.style.opacity = '0';
+            }
+        }
+
+        if (currentThemeUrl) applyTheme(currentThemeUrl);
+
+        themeBtn.onclick = () => { themeModal.style.display = 'block'; loadThemes(); };
+        document.getElementById('theme-modal-close').onclick = () => themeModal.style.display = 'none';
+
+        async function loadThemes() {
+            if (themeGallery.innerHTML !== '') return;
+            
+            let noBgCard = document.createElement('div');
+            noBgCard.className = 'theme-card';
+            noBgCard.style.backgroundColor = '#1a0b2e';
+            noBgCard.innerHTML = '<span>Без фону</span>';
+            noBgCard.onclick = () => selectTheme('none');
+            themeGallery.appendChild(noBgCard);
+
+            let i = 1;
+            while(true) {
+                let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+                try {
+                    let res = await fetch(url, { method: 'HEAD' });
+                    if (!res.ok) break; 
+                    
+                    let card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.style.backgroundImage = `url('${url}')`;
+                    card.innerHTML = `<span>Фон ${i}</span>`;
+                    card.onclick = () => selectTheme(url);
+                    themeGallery.appendChild(card);
+                    i++;
+                } catch(e) { break; }
+            }
+        }
+
+        function selectTheme(url) {
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+            applyTheme(url);
+            sendAction({ type: 'change_theme', url: url });
+            themeModal.style.display = 'none';
+        }
+
+        // --- Global Draw Tool ---
+        const drawCanvas = document.getElementById('global-draw-canvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        const drawPanel = document.getElementById('draw-panel-global');
+        const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+        
+        let isDrawingMode = false;
+        let isDrawing = false;
+        let lastX = 0; let lastY = 0;
+        let currentTool = 'pencil';
+
+        function resizeCanvas() {
+            drawCanvas.width = window.innerWidth;
+            drawCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        toggleDrawBtn.onclick = () => {
+            drawPanel.style.display = 'block';
+            isDrawingMode = true;
+            drawCanvas.style.pointerEvents = 'auto';
+            
+            currentTool = 'pencil';
+            document.getElementById('draw-pencil-btn').classList.add('active');
+            document.getElementById('draw-eraser-btn').classList.remove('active');
+        };
+
+        document.querySelector('.draw-panel-close').onclick = () => {
+            drawPanel.style.display = 'none';
+            isDrawingMode = false;
+            drawCanvas.style.pointerEvents = 'none';
+        };
+
+        document.getElementById('draw-pencil-btn').onclick = function() {
+            currentTool = 'pencil';
+            this.classList.add('active');
+            document.getElementById('draw-eraser-btn').classList.remove('active');
+        };
+        document.getElementById('draw-eraser-btn').onclick = function() {
+            currentTool = 'eraser';
+            this.classList.add('active');
+            document.getElementById('draw-pencil-btn').classList.remove('active');
+        };
+        document.getElementById('draw-clear-btn').onclick = () => {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            sendAction({ type: 'clear_canvas' });
+        };
+
+        function getPos(e) {
+            let rect = drawCanvas.getBoundingClientRect();
+            if (e.touches) {
+                return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+            }
+            return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        }
+
+        function drawLine(x0, y0, x1, y1, color, size, tool, emit = true) {
+            drawCtx.beginPath();
+            drawCtx.moveTo(x0, y0);
+            drawCtx.lineTo(x1, y1);
+            drawCtx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color;
+            drawCtx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
+            drawCtx.lineWidth = size;
+            drawCtx.lineCap = 'round';
+            drawCtx.stroke();
+            
+            if (emit) {
+                sendAction({
+                    type: 'draw_line',
+                    x0: x0 / drawCanvas.width, y0: y0 / drawCanvas.height,
+                    x1: x1 / drawCanvas.width, y1: y1 / drawCanvas.height,
+                    color, size, tool
+                });
+            }
+        }
+
+        function startDraw(e) {
+            if (!isDrawingMode) return;
+            isDrawing = true;
+            let pos = getPos(e);
+            lastX = pos.x; lastY = pos.y;
+        }
+        function drawing(e) {
+            if (!isDrawing) return;
+            let pos = getPos(e);
+            let color = document.getElementById('draw-color').value;
+            let size = document.getElementById('draw-size').value;
+            drawLine(lastX, lastY, pos.x, pos.y, color, size, currentTool);
+            lastX = pos.x; lastY = pos.y;
+            e.preventDefault();
+        }
+        function endDraw() { isDrawing = false; }
+
+        drawCanvas.addEventListener('mousedown', startDraw);
+        drawCanvas.addEventListener('mousemove', drawing);
+        window.addEventListener('mouseup', endDraw);
+        drawCanvas.addEventListener('touchstart', startDraw, {passive: false});
+        drawCanvas.addEventListener('touchmove', drawing, {passive: false});
+        window.addEventListener('touchend', endDraw);
+
+        let isDraggingPanel = false;
+        let pOffX = 0, pOffY = 0;
+        const panelHeader = document.querySelector('.draw-panel-header');
+        panelHeader.addEventListener('mousedown', (e) => {
+            isDraggingPanel = true;
+            pOffX = e.clientX - drawPanel.offsetLeft;
+            pOffY = e.clientY - drawPanel.offsetTop;
+        });
+        window.addEventListener('mousemove', (e) => {
+            if(isDraggingPanel) {
+                drawPanel.style.left = (e.clientX - pOffX) + 'px';
+                drawPanel.style.top = (e.clientY - pOffY) + 'px';
+            }
+        });
+        window.addEventListener('mouseup', () => isDraggingPanel = false);
+        panelHeader.addEventListener('touchstart', (e) => {
+            isDraggingPanel = true;
+            pOffX = e.touches[0].clientX - drawPanel.offsetLeft;
+            pOffY = e.touches[0].clientY - drawPanel.offsetTop;
+        }, {passive:true});
+        window.addEventListener('touchmove', (e) => {
+            if(isDraggingPanel) {
+                drawPanel.style.left = (e.touches[0].clientX - pOffX) + 'px';
+                drawPanel.style.top = (e.touches[0].clientY - pOffY) + 'px';
+            }
+        });
+        window.addEventListener('touchend', () => isDraggingPanel = false);
+
+        // --- Firebase Синхронізація (Слухач дій) ---
+        let isGameInit = false;
+        
+        db.ref('game_action').on('value', snap => {
+            const data = snap.val();
+            
+            if (!data) {
+                if (!isGameInit) {
+                    isGameInit = true;
+                    triggerGenerateProblem();
+                }
+                return;
+            }
+
+            if (!isGameInit && data.state) {
+                isGameInit = true;
+                renderProblem(data.state.op, data.state.digits, data.state.n1, data.state.n2);
+                
+                if (data.state.inputs) {
+                    for (let idx in data.state.inputs) {
+                        let inp = answerInputsContainer.querySelector(`[data-idx="${idx}"]`);
+                        if (inp) inp.value = data.state.inputs[idx];
+                    }
+                    currentInputs = data.state.inputs; 
+                }
+            } else if (!isGameInit) {
+                isGameInit = true;
+            }
+
+            if (data.senderId === tabId) return; 
+            
+            if (data.type === 'change_theme') {
+                localStorage.setItem('mySavedBg_' + CONFIG.gameId, data.url);
+                applyTheme(data.url);
+            }
+            else if (data.type === 'draw_line') {
+                let x0 = data.x0 * drawCanvas.width; let y0 = data.y0 * drawCanvas.height;
+                let x1 = data.x1 * drawCanvas.width; let y1 = data.y1 * drawCanvas.height;
+                drawLine(x0, y0, x1, y1, data.color, data.size, data.tool, false);
+            }
+            else if (data.type === 'clear_canvas') {
+                drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            }
+            else if (data.type === 'new_problem') {
+                renderProblem(data.op, data.digits, data.n1, data.n2);
+            }
+            else if (data.type === 'input_change') {
+                currentInputs[data.idx] = data.value; 
+                const inp = answerInputsContainer.querySelector(`[data-idx="${data.idx}"]`);
+                if (inp) {
+                    inp.value = data.value;
+                    inp.classList.remove('error');
+                }
+            }
+            else if (data.type === 'answer_result') {
+                processAnswerResult(data.isCorrect, false);
+            }
+        });
+
+        let initialized = false;
+        document.body.addEventListener('click', () => {
+            if (!initialized) {
+                initAudio();
+                initialized = true;
+            }
+        }, { once: true });
+
+    </script>
+</body>
+</html>
