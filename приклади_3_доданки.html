@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>Математичний Ескіз (Синхронізований)</title>
+    <title>Математичний Ескіз (Повна Синхронізація)</title>
     <!-- Firebase Compat -->
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
@@ -84,7 +84,7 @@
         .circle-btn:active { transform: scale(0.95); }
         
         #btnBack { left: 20px; }
-        #btnNext { right: 20px; left: auto; } /* Кнопка Далі перенесена направо */
+        #btnNext { right: 20px; left: auto; }
 
         .interactive-btn { cursor: pointer; }
         .interactive-btn:hover .btn-visual {
@@ -205,6 +205,7 @@
     <button class="zoom-btn" onclick="zoomGame(-0.1)">🔍-</button>
 </div>
 
+<!-- Theme Manager UI -->
 <button id="theme-btn">⚙️</button>
 <div id="theme-overlay"></div>
 <div id="theme-modal">
@@ -227,7 +228,7 @@
     </div>
     <input type="range" id="draw-size" min="1" max="50" value="5">
     <input type="color" id="draw-color" value="#ff0000">
-    <button id="draw-clear">🗑️️ Очистити</button>
+    <button id="draw-clear">🗑 Очистити</button>
 </div>
 
 <div id="gameContainer">
@@ -279,7 +280,7 @@
 <script>
 // --- КОНФІГУРАЦІЯ ПРОЄКТУ ---
 const CONFIG = {
-    gameId: "math_sketch_v6", // Унікальний ID гри
+    gameId: "math_sketch_v7_final", // Унікальний ID гри
     projectId: "lesson-13c44"
 };
 
@@ -353,7 +354,6 @@ let levelHistory = [];
 let isAnimating = false;
 
 if (firebaseEnabled) {
-    // Читаємо глобальний стан для цієї гри, щоб у всіх були однакові приклади
     db.ref(`game_states/${CONFIG.gameId}`).on('value', (snap) => {
         const state = snap.val();
         if (state && !isAnimating) {
@@ -363,8 +363,9 @@ if (firebaseEnabled) {
             activeSignSlot = state.activeSignSlot || 0;
             
             document.getElementById('btnToggleMode').innerText = gameMode === 'answer' ? 'Режим: Відповідь' : 'Режим: Розстав знаки';
+            
             renderBoard(currentProblem);
-            renderAnswers(generateOptions(currentProblem));
+            renderAnswers(gameMode === 'answer' ? currentProblem.options : ['+', '-']);
         }
     });
 }
@@ -459,6 +460,7 @@ function checkImageSequence(url) {
     });
 }
 
+// Асинхронне фонове завантаження, щоб не блокувати гру
 async function loadBackgrounds() {
     for(let i=1; i<=1000; i++) {
         let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
@@ -467,10 +469,12 @@ async function loadBackgrounds() {
             let card = document.createElement('div'); card.className = 'theme-card';
             card.style.backgroundImage = `url(${url})`; card.onclick = () => selectTheme(url);
             card.innerHTML = `<span>Фон ${i}</span>`; themeGrid.appendChild(card);
-        } else break; 
+        } else {
+            break; // Негайний вихід при 404
+        }
     }
 }
-loadBackgrounds();
+setTimeout(loadBackgrounds, 100);
 
 // --- ІНСТРУМЕНТ МАЛЮВАННЯ (ГЛОБАЛЬНИЙ) ---
 const drawCanvas = document.getElementById('draw-canvas-global');
@@ -501,11 +505,11 @@ drawCanvas.onmousedown = drawCanvas.ontouchstart = (e) => { if(!isDrawingMode) r
 drawCanvas.onmousemove = drawCanvas.ontouchmove = (e) => {
     if(!isDrawing || !isDrawingMode) return; e.preventDefault(); let pos = getDrawPos(e);
     drawLine(lastX, lastY, pos.x, pos.y, document.getElementById('draw-color').value, document.getElementById('draw-size').value, currentTool);
-    if (firebaseEnabled) db.ref('game_action').set({ senderId: myTabId, timestamp: Date.now(), type: 'draw_line', data: { x0: lastX/window.innerWidth, y0: lastY/window.innerHeight, x1: pos.x/window.innerWidth, y1: pos.y/window.innerHeight, color: document.getElementById('draw-color').value, size: document.getElementById('draw-size').value, tool: currentTool } });
+    if (firebaseEnabled) db.ref('game_action').set({ senderId: myTabId, timestamp: Date.now(), type: 'draw_line', data: { x0: lastX/drawCanvas.width, y0: lastY/drawCanvas.height, x1: pos.x/drawCanvas.width, y1: pos.y/drawCanvas.height, color: document.getElementById('draw-color').value, size: document.getElementById('draw-size').value, tool: currentTool } });
     lastX = pos.x; lastY = pos.y;
 };
 function drawLine(x0, y0, x1, y1, color, size, tool) { drawCtx.beginPath(); drawCtx.moveTo(x0, y0); drawCtx.lineTo(x1, y1); drawCtx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color; drawCtx.lineWidth = size; drawCtx.lineCap = 'round'; drawCtx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over'; drawCtx.stroke(); drawCtx.closePath(); }
-if (firebaseEnabled) { db.ref('game_action').on('value', snap => { let action = snap.val(); if (action && action.senderId !== myTabId) { if (action.type === 'draw_line') { let d = action.data; drawLine(d.x0*window.innerWidth, d.y0*window.innerHeight, d.x1*window.innerWidth, d.y1*window.innerHeight, d.color, d.size, d.tool); } else if (action.type === 'clear_canvas') { drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); } } }); }
+if (firebaseEnabled) { db.ref('game_action').on('value', snap => { let action = snap.val(); if (action && action.senderId !== myTabId) { if (action.type === 'draw_line') { let d = action.data; drawLine(d.x0*drawCanvas.width, d.y0*drawCanvas.height, d.x1*drawCanvas.width, d.y1*drawCanvas.height, d.color, d.size, d.tool); } else if (action.type === 'clear_canvas') { drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); } } }); }
 
 let currentZoom = 1;
 function zoomGame(step) { currentZoom += step; if(currentZoom < 0.3) currentZoom = 0.3; if(currentZoom > 2) currentZoom = 2; document.getElementById('gameContainer').style.transform = `scale(${currentZoom})`; }
@@ -542,12 +546,22 @@ document.getElementById('applyCustomProblem').addEventListener('click', () => {
     const parsed = parseCustomProblem(str);
     if (parsed) {
         document.getElementById('customProblemPanel').style.display = 'none';
-        document.getElementById('customProblemInput').value = ''; // очищаємо
+        document.getElementById('customProblemInput').value = ''; 
         startLevel(parsed, false);
     } else {
         alert("Помилка! Введіть приклад у форматі 5+3 або 10-2+1");
     }
 });
+
+// ГЕНЕРАТОР ОПЦІЙ (відповідей) - працює один раз при створенні прикладу, тому на всіх пристроях вони ідентичні
+function getOptionsArray(result) {
+    let options = new Set([result]);
+    while (options.size < 4) {
+        let wrong = result + Math.floor(Math.random() * 5) - 2;
+        if (wrong >= 0 && wrong <= 15 && wrong !== result) options.add(wrong);
+    }
+    return Array.from(options).sort(() => Math.random() - 0.5);
+}
 
 function parseCustomProblem(str) {
     str = str.replace(/\s+/g, '');
@@ -567,7 +581,19 @@ function parseCustomProblem(str) {
         if (isNaN(c) || !['+', '-'].includes(op2)) return null;
         result = op2 === '+' ? result + c : result - c;
     }
-    return { a, op1, b, op2, c, result };
+    return { a, op1, b, op2, c, result, options: getOptionsArray(result) };
+}
+
+function generateMathProblem() {
+    let a, b, c, op1, op2, result;
+    let isValid = false;
+    while (!isValid) {
+        a = Math.floor(Math.random() * 11); b = Math.floor(Math.random() * 11); c = Math.floor(Math.random() * 11);
+        op1 = Math.random() > 0.5 ? 1 : -1; op2 = Math.random() > 0.5 ? 1 : -1;
+        let step1 = a + (op1 * b); result = step1 + (op2 * c);
+        if (step1 >= 0 && step1 <= 10 && result >= 0 && result <= 10) isValid = true;
+    }
+    return { a: a, op1: op1 === 1 ? '+' : '-', b: b, op2: op2 === 1 ? '+' : '-', c: c, result: result, options: getOptionsArray(result) };
 }
 
 const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -616,23 +642,11 @@ const svgTemplates = {
     `
 };
 
-function generateMathProblem() {
-    let a, b, c, op1, op2, result;
-    let isValid = false;
-    while (!isValid) {
-        a = Math.floor(Math.random() * 11); b = Math.floor(Math.random() * 11); c = Math.floor(Math.random() * 11);
-        op1 = Math.random() > 0.5 ? 1 : -1; op2 = Math.random() > 0.5 ? 1 : -1;
-        let step1 = a + (op1 * b); result = step1 + (op2 * c);
-        if (step1 >= 0 && step1 <= 10 && result >= 0 && result <= 10) isValid = true;
-    }
-    return { a: a, op1: op1 === 1 ? '+' : '-', b: b, op2: op2 === 1 ? '+' : '-', c: c, result: result };
-}
-
 window.setActiveSlot = function(index) {
     if (gameMode !== 'signs') return;
     activeSignSlot = index;
     renderBoard(currentProblem);
-    updateGameStateRemote(); // Синхронізуємо клік на віконце
+    updateGameStateRemote(); 
 };
 
 function renderBoard(problem) {
@@ -645,7 +659,6 @@ function renderBoard(problem) {
     let textSVG = "";
     let hasOp2 = problem.op2 !== null;
     
-    // Динамічне центрування в залежності від кількості операндів
     let offsets;
     if (hasOp2) {
         offsets = { a: -300, op1: -200, b: -100, op2: 0, c: 100, eq: 200, res: 300 };
@@ -713,19 +726,6 @@ function renderBoard(problem) {
     boardLayer.innerHTML = html;
 }
 
-function generateOptions(problem) {
-    if (gameMode === 'answer') {
-        let options = new Set([problem.result]);
-        while (options.size < 4) {
-            let wrong = problem.result + Math.floor(Math.random() * 5) - 2;
-            if (wrong >= 0 && wrong <= 15 && wrong !== problem.result) options.add(wrong);
-        }
-        return Array.from(options).sort(() => Math.random() - 0.5);
-    } else {
-        return ['+', '-'];
-    }
-}
-
 function renderAnswers(options) {
     const layer = document.getElementById('answersLayer');
     layer.innerHTML = '';
@@ -761,7 +761,6 @@ function renderAnswers(options) {
     });
 
     if (gameMode === 'signs') {
-        // Кнопка "ПЕРЕВІРИТИ" для режиму знаків
         const px = startX + options.length * gap;
         const gCheck = document.createElementNS("http://www.w3.org/2000/svg", "g");
         gCheck.setAttribute("class", "interactive-btn");
@@ -806,7 +805,6 @@ function checkAnswer(selected, elementGroup, isRemote = false) {
         if (selected === currentProblem.result) triggerWin(elementGroup, isRemote);
         else triggerFail(elementGroup);
     } else {
-        // У режимі знаків просто заповнюємо активний слот і перемикаємось
         signSlots[activeSignSlot] = selected;
         let hasOp2 = currentProblem.op2 !== null;
         
@@ -815,7 +813,7 @@ function checkAnswer(selected, elementGroup, isRemote = false) {
         else if (!hasOp2) activeSignSlot = 0;
 
         renderBoard(currentProblem);
-        if (!isRemote) updateGameStateRemote(); // Синхронізуємо зміну знаків усім
+        if (!isRemote) updateGameStateRemote(); 
     }
 }
 
@@ -833,7 +831,7 @@ function checkSigns(btnElement, isRemote = false) {
     if (isCorrect) triggerWin(btnElement || document.body, isRemote);
     else {
         triggerFail(btnElement || document.body);
-        if (!isRemote) sendGameAction('trigger_fail', {}); // Блимаємо червоним усім
+        if (!isRemote) sendGameAction('trigger_fail', {}); 
     }
 }
 
@@ -870,9 +868,8 @@ function startLevel(problem = null, isRemote = false) {
     activeSignSlot = 0;
     
     renderBoard(currentProblem);
-    renderAnswers(generateOptions(currentProblem));
+    renderAnswers(gameMode === 'answer' ? currentProblem.options : ['+', '-']);
     
-    // Синхронізуємо новий стан
     if (!isRemote) updateGameStateRemote();
 }
 
@@ -894,11 +891,13 @@ document.getElementById('btnBack').addEventListener('click', () => {
 window.onload = () => {
     document.getElementById('bgLayer').innerHTML = svgTemplates.background();
     
-    // Запускаємо тільки якщо ми не підключені до Firebase (щоб не перезаписати чужий приклад)
-    // Якщо firebaseEnabled == true, то перший рівень підтягнеться через db.on('value')
-    if (!firebaseEnabled) {
-        startLevel();
-    }
+    // Щоб не перезаписати приклад, який вже може бути на сервері у інших учнів,
+    // даємо Firebase долі секунди на зчитування. Якщо даних немає - генеруємо свій приклад.
+    setTimeout(() => {
+        if (!currentProblem.hasOwnProperty('result')) {
+            startLevel();
+        }
+    }, 500);
 };
 </script>
 </body>
