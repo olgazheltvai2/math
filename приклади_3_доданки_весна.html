@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Весняна Галявина (Математика)</title>
+    <!-- Firebase Compat -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --game-width: 1100px;
+            --game-height: 600px;
+            --spring-sky: #a0c4ff;
+            --spring-grass: #8bc34a;
+            --spring-grass-dark: #558b2f;
+            --wood-light: #d7ccc8;
+            --wood-dark: #795548;
+            --panel-bg: rgba(255, 255, 255, 0.85);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: var(--spring-sky);
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            overflow: hidden;
+            font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif !important;
+            transition: background-image 0.5s ease;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: var(--game-width);
+            height: var(--game-height);
+            background-color: transparent;
+            border-radius: 20px;
+            transform-origin: center center;
+            z-index: 10;
+            box-shadow: 0 10px 40px rgba(139, 195, 74, 0.3);
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        text {
+            font-family: 'Comic Sans MS', 'Chalkboard SE', sans-serif !important;
+            user-select: none;
+        }
+
+        .nav-btn {
+            background: var(--panel-bg);
+            border: 3px solid var(--wood-dark);
+            color: var(--wood-dark);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            z-index: 20;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            backdrop-filter: blur(8px);
+            border-radius: 15px;
+            box-shadow: 0 6px 0 var(--wood-dark), 0 10px 15px rgba(0,0,0,0.2);
+        }
+        
+        .side-btn {
+            padding: 12px 20px;
+            font-size: 16px;
+            width: 240px;
+            text-align: center;
+        }
+        .side-btn:hover { background-color: #ffeb3b; color: #3e2723; transform: translateY(-3px); box-shadow: 0 9px 0 var(--wood-dark), 0 15px 20px rgba(0,0,0,0.3); }
+        .side-btn:active { transform: translateY(6px); box-shadow: 0 0px 0 var(--wood-dark), 0 2px 5px rgba(0,0,0,0.3); }
+
+        .circle-btn {
+            position: absolute;
+            width: 65px; height: 65px; font-size: 30px; bottom: 20px;
+            border-radius: 50%;
+        }
+        .circle-btn:hover { transform: scale(1.1) rotate(15deg); background-color: #aed581; box-shadow: 0 8px 0 var(--wood-dark), 0 10px 15px rgba(0,0,0,0.3); }
+        .circle-btn:active { transform: translateY(6px); box-shadow: 0 0px 0 var(--wood-dark), 0 2px 5px rgba(0,0,0,0.3); }
+        
+        #btnBack { left: 20px; }
+        #btnNext { right: 20px; left: auto; }
+
+        .interactive-btn { cursor: pointer; }
+        .interactive-btn:hover .btn-visual {
+            transform: scale(1.1) translateY(-5px);
+            filter: drop-shadow(0 15px 15px rgba(0,0,0,0.3));
+        }
+        .btn-visual {
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), filter 0.3s;
+            transform-origin: center;
+            transform-box: fill-box;
+        }
+
+        @keyframes rustle {
+            0%, 100% { transform: translateX(0) rotate(0); filter: drop-shadow(0 0 15px red); }
+            20% { transform: translateX(-10px) rotate(-6deg); }
+            40% { transform: translateX(10px) rotate(6deg); }
+            60% { transform: translateX(-10px) rotate(-6deg); }
+            80% { transform: translateX(10px) rotate(6deg); }
+        }
+        .shake-animation .btn-visual { animation: rustle 0.5s ease-in-out; }
+
+        /* Theme Manager UI */
+        #theme-btn {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 55px; height: 55px; border-radius: 50%;
+            background: #ffeb3b; color: #ff6f00;
+            font-size: 26px; border: 3px solid #ff9800; cursor: pointer;
+            z-index: 99990; box-shadow: 0 5px 15px rgba(255, 152, 0, 0.4);
+            display: flex; justify-content: center; align-items: center;
+            transition: all 0.3s;
+        }
+        #theme-btn:hover { transform: rotate(90deg) scale(1.15); }
+        #theme-modal {
+            display: none; position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%; max-width: 600px; max-height: 60vh;
+            background: rgba(255, 255, 255, 0.95); border: 4px solid var(--spring-grass);
+            border-radius: 25px; padding: 25px; color: var(--wood-dark);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3); z-index: 99991;
+            overflow-y: auto; flex-direction: column;
+        }
+        .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 15px; margin-top: 15px; }
+        .theme-card {
+            position: relative; border-radius: 12px; overflow: hidden; cursor: pointer;
+            border: 3px solid transparent; transition: 0.3s; height: 80px;
+            background-color: var(--spring-sky); background-size: cover; background-position: center;
+        }
+        .theme-card:hover { border-color: #ff9800; transform: scale(1.05) translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        .theme-card span {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: rgba(255,255,255,0.85); color: var(--wood-dark); font-size: 14px; font-weight: bold;
+            text-align: center; padding: 6px 0;
+        }
+        #theme-modal-close {
+            position: absolute; top: 15px; right: 15px; background: none; border: none;
+            color: #f44336; font-size: 28px; cursor: pointer; transition: 0.2s; font-weight: bold;
+        }
+        #theme-modal-close:hover { transform: scale(1.3) rotate(90deg); }
+        #theme-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(139, 195, 74, 0.4); z-index: 99990; backdrop-filter: blur(5px);
+        }
+
+        #block-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(255, 255, 255, 0.95); z-index: 999999;
+            justify-content: center; align-items: center; color: #d32f2f;
+            font-size: 45px; font-weight: bold; text-align: center;
+        }
+
+        .zoom-controls { position: fixed; top: 20px; left: 20px; display: flex; gap: 10px; z-index: 1000; }
+        .zoom-btn {
+            width: 45px; height: 45px; font-size: 22px; border: 3px solid var(--wood-dark); border-radius: 50%;
+            background: var(--panel-bg); color: var(--wood-dark); box-shadow: 0 5px 0 var(--wood-dark); cursor: pointer;
+            transition: 0.2s; font-weight: bold;
+        }
+        .zoom-btn:hover { background: #ffeb3b; transform: translateY(-3px); box-shadow: 0 8px 0 var(--wood-dark); }
+        .zoom-btn:active { transform: translateY(5px); box-shadow: 0 0px 0 var(--wood-dark); }
+
+        #draw-canvas-global { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 90000; }
+        #toggle-draw-btn-global {
+            position: fixed; bottom: 85px; right: 20px; background-color: var(--panel-bg); color: var(--wood-dark);
+            border: 3px solid var(--wood-dark); border-radius: 20px; padding: 12px 18px; font-size: 16px; font-weight: bold; cursor: pointer;
+            z-index: 90001; box-shadow: 0 6px 0 var(--wood-dark); display: flex; align-items: center; gap: 8px;
+            transition: 0.3s;
+        }
+        #toggle-draw-btn-global:hover { background-color: #ffeb3b; transform: translateY(-3px); box-shadow: 0 9px 0 var(--wood-dark); }
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; right: 20px; background: rgba(255, 255, 255, 0.95);
+            border: 3px solid var(--spring-grass); border-radius: 15px; padding: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+            z-index: 90002; width: 170px; color: var(--wood-dark);
+        }
+        .draw-handle {
+            width: 100%; height: 20px; background: rgba(139, 195, 74, 0.3); border-radius: 8px; margin-bottom: 12px;
+            cursor: grab; display: flex; justify-content: flex-end; align-items: center; padding-right: 8px; box-sizing: border-box;
+        }
+        .draw-close { cursor: pointer; font-weight: bold; color: #f44336; font-size: 18px; }
+        .draw-btn-row { display: flex; gap: 8px; margin-bottom: 12px; }
+        .draw-tool-btn { flex: 1; padding: 10px 0; border: 2px solid var(--wood-dark); background: #f5f5f5; border-radius: 8px; cursor: pointer; transition: 0.2s; font-size: 18px;}
+        .draw-tool-btn.active { background: #aed581; box-shadow: inset 0 3px 5px rgba(0,0,0,0.2); }
+        #draw-color, #draw-size { width: 100%; margin-bottom: 12px; cursor: pointer; border-radius: 5px; }
+        #draw-clear { width: 100%; padding: 10px; background: #ffcdd2; color: #b71c1c; border: 2px solid #b71c1c; border-radius: 8px; cursor: pointer; transition: 0.2s; font-weight: bold;}
+        #draw-clear:hover { background: #e53935; color: white; }
+
+        @media (max-width: 1200px) { #gameContainer { transform: scale(0.9); } }
+        @media (max-width: 1000px) { #gameContainer { transform: scale(0.7); } }
+        @media (max-width: 800px) { #gameContainer { transform: scale(0.5); } }
+
+        .secret-input { color: transparent !important; }
+        .secret-input::selection { background: transparent !important; color: transparent !important; }
+        .secret-input:focus { outline: none; }
+    </style>
+</head>
+<body>
+
+<div id="block-overlay">ОЙ! ЗАЧЕКАЙТЕ<br>ДОЗВОЛУ ВЧИТЕЛЯ</div>
+
+<div class="zoom-controls">
+    <button class="zoom-btn" onclick="zoomGame(0.1)">🔍+</button>
+    <button class="zoom-btn" onclick="zoomGame(-0.1)">🔍-</button>
+</div>
+
+<button id="theme-btn">🌻</button>
+<div id="theme-overlay"></div>
+<div id="theme-modal">
+    <button id="theme-modal-close">✕</button>
+    <h3 style="margin:0 0 15px 0;">Фони (Весна)</h3>
+    <div class="theme-grid" id="theme-grid">
+        <div class="theme-card" onclick="selectTheme('none')" style="border-color: #ff9800;">
+            <span>Світла Галявина</span>
+        </div>
+    </div>
+</div>
+
+<canvas id="draw-canvas-global"></canvas>
+<button id="toggle-draw-btn-global">✨ Чарівний Пилок</button>
+<div id="draw-panel-global">
+    <div class="draw-handle" id="draw-handle"><span class="draw-close" id="draw-close">✕</span></div>
+    <div class="draw-btn-row">
+        <button class="draw-tool-btn active" id="tool-pencil">🪄</button>
+        <button class="draw-tool-btn" id="tool-eraser">🧽</button>
+    </div>
+    <input type="range" id="draw-size" min="1" max="50" value="8">
+    <input type="color" id="draw-color" value="#ffeb3b">
+    <button id="draw-clear">🗑 Стерти</button>
+</div>
+
+<div id="gameContainer">
+    <div style="position: absolute; right: 20px; top: 80px; display: flex; flex-direction: column; gap: 15px; z-index: 20;">
+        <button id="btnToggleMode" class="nav-btn side-btn">Завдання: Відповідь</button>
+        <button id="btnToggleCustom" class="nav-btn side-btn" style="border-color: #ff9800; color: #e65100;">✏️ Власний Приклад</button>
+    </div>
+    
+    <div id="customProblemPanel" style="display:none; position:absolute; top:145px; right:20px; background:rgba(255,255,255,0.95); padding:18px; border-radius:15px; border: 3px solid #ff9800; z-index:30; color: #e65100; box-shadow: 0 10px 30px rgba(255,152,0,0.3);">
+        <div style="margin-bottom: 12px; font-weight: bold; font-size: 15px;">Введіть вираз (напр. 5+3-2):</div>
+        <div style="display:flex; gap:8px;">
+            <input type="text" id="customProblemInput" class="secret-input" style="font-size:18px; width:110px; padding:8px; border: 2px solid #ff9800; background: #fff8e1; color: #3e2723; border-radius:8px; text-align: center; font-weight: bold;" autocomplete="off">
+            <button onclick="toggleSecret('customProblemInput')" style="cursor:pointer; font-size:18px; border-radius:8px; border:2px solid #ff9800; background:transparent; color:#ff9800; width:45px; transition: 0.2s;">👁️</button>
+            <button id="applyCustomProblem" style="cursor:pointer; font-size:18px; border-radius:8px; border:2px solid #ff9800; background:#ff9800; color:#fff; font-weight:bold; padding: 0 15px; transition: 0.2s;">OK</button>
+        </div>
+    </div>
+    
+    <svg id="mathGameCanvas" viewBox="0 0 1100 600">
+        <defs>
+            <!-- Весняні градієнти -->
+            <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#4fc3f7"/>
+                <stop offset="100%" stop-color="#e1f5fe"/>
+            </linearGradient>
+            
+            <linearGradient id="grassGrad1" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#9ccc65"/>
+                <stop offset="100%" stop-color="#689f38"/>
+            </linearGradient>
+
+            <linearGradient id="grassGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#8bc34a"/>
+                <stop offset="100%" stop-color="#558b2f"/>
+            </linearGradient>
+
+            <linearGradient id="woodGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#8d6e63"/>
+                <stop offset="50%" stop-color="#795548"/>
+                <stop offset="100%" stop-color="#5d4037"/>
+            </linearGradient>
+
+            <radialGradient id="sunGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#fff59d"/>
+                <stop offset="50%" stop-color="#ffeb3b"/>
+                <stop offset="100%" stop-color="#fbc02d"/>
+            </radialGradient>
+
+            <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="8" stdDeviation="5" flood-color="#000" flood-opacity="0.3"/>
+            </filter>
+            
+            <filter id="textShadow" x="-20%" y="-20%" width="150%" height="150%">
+                <feDropShadow dx="2" dy="4" stdDeviation="2" flood-color="#3e2723" flood-opacity="0.8"/>
+            </filter>
+
+            <!-- Текстура дерева (Wood grain) -->
+            <filter id="woodTexture">
+                <feTurbulence type="fractalNoise" baseFrequency="0.01 0.15" numOctaves="3" result="noise" />
+                <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.1 0" in="noise" result="coloredNoise" />
+                <feBlend in="SourceGraphic" in2="coloredNoise" mode="multiply" />
+            </filter>
+        </defs>
+
+        <g id="bgLayer"></g>
+        <g id="boardLayer"></g>
+        <g id="answersLayer"></g>
+        <g id="characterLayer"></g>
+        <g id="fxLayer"></g>
+    </svg>
+
+    <button id="btnBack" class="nav-btn circle-btn" aria-label="Попереднє завдання">◄</button>
+    <button id="btnNext" class="nav-btn circle-btn" aria-label="Наступне завдання">►</button>
+</div>
+
+<script>
+// --- КОНФІГУРАЦІЯ ПРОЄКТУ ---
+const CONFIG = {
+    gameId: "math_spring_v1", 
+    projectId: "lesson-13c44"
+};
+
+const firebaseConfig = { databaseURL: `https://${CONFIG.projectId}-default-rtdb.firebaseio.com/` };
+let db;
+let firebaseEnabled = false;
+
+try {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+    firebaseEnabled = true;
+    console.log("Зв'язок із Галявиною встановлено (Firebase)");
+} catch(e) {
+    console.log("Офлайн режим (Локальний)", e);
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+let myName = urlParams.get('user') || sessionStorage.getItem('userName');
+if (!myName) {
+    myName = "Учень_" + Math.floor(Math.random() * 1000);
+}
+sessionStorage.setItem('userName', myName);
+
+let myTabId = sessionStorage.getItem('tabId');
+if (!myTabId) {
+    myTabId = Date.now().toString() + '_' + Math.floor(Math.random()*10000);
+    sessionStorage.setItem('tabId', myTabId);
+}
+
+let isJustStarted = true;
+setTimeout(() => { isJustStarted = false; }, 1000);
+
+if (firebaseEnabled) {
+    const userRef = db.ref(`online_users/${myName}/${myTabId}`);
+    const connectedRef = db.ref('.info/connected');
+    
+    connectedRef.on('value', (snap) => {
+        if (snap.val() === true) {
+            userRef.set(true);
+            userRef.onDisconnect().remove();
+        }
+    });
+
+    window.addEventListener('beforeunload', () => { userRef.remove(); });
+
+    db.ref(`force_refresh/${myName}`).on('value', (snap) => {
+        if (snap.val()) {
+            window.location.reload();
+            db.ref(`force_refresh/${myName}`).remove();
+        }
+    });
+
+    db.ref(`blocked_users/${myName}`).on('value', (snap) => {
+        document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+    });
+
+    db.ref('current_activity').on('value', (snap) => {
+        if (isJustStarted) return;
+        if (snap.val() === 'lobby') {
+            window.location.href = `https://olgazheltvai2.github.io/rizne/lobby.html?user=${encodeURIComponent(myName)}`;
+        }
+    });
+}
+
+// 100% СИНХРОНІЗАЦІЯ СТАНУ ГРИ
+let currentProblem = {};
+let gameMode = 'answer';
+let signSlots = [null, null];
+let activeSignSlot = 0;
+let levelHistory = [];
+let isAnimating = false;
+
+if (firebaseEnabled) {
+    db.ref(`game_states/${CONFIG.gameId}`).on('value', (snap) => {
+        const state = snap.val();
+        if (state && !isAnimating) {
+            currentProblem = state.problem;
+            gameMode = state.mode;
+            signSlots = state.signSlots || [null, null];
+            activeSignSlot = state.activeSignSlot || 0;
+            
+            document.getElementById('btnToggleMode').innerText = gameMode === 'answer' ? 'Завдання: Відповідь' : 'Завдання: Знаки';
+            
+            renderBoard(currentProblem);
+            renderAnswers(gameMode === 'answer' ? currentProblem.options : ['+', '-']);
+        }
+    });
+}
+
+function updateGameStateRemote() {
+    if (firebaseEnabled) {
+        db.ref(`game_states/${CONFIG.gameId}`).set({
+            problem: currentProblem,
+            mode: gameMode,
+            signSlots: signSlots,
+            activeSignSlot: activeSignSlot
+        });
+    }
+}
+
+function sendGameAction(type, data) {
+    if (!firebaseEnabled) return;
+    db.ref(`game_action`).set({
+        senderId: myTabId, timestamp: firebase.database.ServerValue.TIMESTAMP, type: type, data: data
+    });
+}
+
+let lastProcessedAction = 0;
+if (firebaseEnabled) {
+    db.ref(`game_action`).on('value', (snap) => {
+        const action = snap.val();
+        if (!action) return;
+        const isRemoteAction = action.senderId !== myTabId;
+        if (isRemoteAction && action.timestamp > lastProcessedAction) {
+            lastProcessedAction = action.timestamp;
+            handleRemoteAction(action);
+        }
+    });
+}
+
+function handleRemoteAction(action) {
+    if (action.type === 'check_answer') {
+        const selectedOpt = action.data.selected;
+        const btnGroup = Array.from(document.querySelectorAll('.interactive-btn')).find(g => {
+            const t = g.querySelector('text');
+            return t && t.textContent.trim() === String(selectedOpt);
+        });
+        if(btnGroup) checkAnswer(selectedOpt, btnGroup, true);
+    } else if (action.type === 'check_signs') {
+        checkSigns(null, true);
+    } else if (action.type === 'trigger_fail') {
+        triggerFail(document.body);
+    }
+}
+
+// --- СИСТЕМА ДИНАМІЧНИХ ФОНІВ ---
+const themeBtn = document.getElementById('theme-btn');
+const themeModal = document.getElementById('theme-modal');
+const themeOverlay = document.getElementById('theme-overlay');
+const themeClose = document.getElementById('theme-modal-close');
+const themeGrid = document.getElementById('theme-grid');
+
+themeBtn.onclick = () => { themeModal.style.display = 'flex'; themeOverlay.style.display = 'block'; };
+themeClose.onclick = themeOverlay.onclick = () => { themeModal.style.display = 'none'; themeOverlay.style.display = 'none'; };
+
+function applyTheme(url) {
+    if (url === 'none') {
+        document.body.style.backgroundImage = 'none';
+        document.body.style.backgroundColor = 'var(--spring-sky)';
+    } else {
+        document.body.style.backgroundImage = `url(${url})`;
+        document.body.style.backgroundColor = 'transparent';
+    }
+}
+
+function selectTheme(url, isRemote = false) {
+    applyTheme(url);
+    localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+    themeModal.style.display = 'none'; themeOverlay.style.display = 'none';
+    if (firebaseEnabled && !isRemote) db.ref('game_theme').set(url);
+}
+
+const savedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+if (savedTheme) applyTheme(savedTheme);
+
+function checkImageSequence(url) {
+    return new Promise((resolve) => {
+        const img = new Image(); img.onload = () => resolve(true); img.onerror = () => resolve(false); img.src = url;
+    });
+}
+
+async function loadBackgrounds() {
+    for(let i=1; i<=1000; i++) {
+        let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+        let exists = await checkImageSequence(url);
+        if(exists) {
+            let card = document.createElement('div'); card.className = 'theme-card';
+            card.style.backgroundImage = `url(${url})`; card.onclick = () => selectTheme(url);
+            card.innerHTML = `<span>Картинка ${i}</span>`; themeGrid.appendChild(card);
+        } else {
+            break; 
+        }
+    }
+}
+setTimeout(loadBackgrounds, 100);
+
+// --- ІНСТРУМЕНТ МАЛЮВАННЯ (Чарівний Пилок) ---
+const drawCanvas = document.getElementById('draw-canvas-global');
+const drawCtx = drawCanvas.getContext('2d');
+const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+const drawPanel = document.getElementById('draw-panel-global');
+const drawClose = document.getElementById('draw-close');
+const drawHandle = document.getElementById('draw-handle');
+let isDrawingMode = false, isDrawing = false, currentTool = 'pencil', lastX = 0, lastY = 0;
+
+function resizeDrawCanvas() { drawCanvas.width = window.innerWidth; drawCanvas.height = window.innerHeight; }
+window.addEventListener('resize', resizeDrawCanvas); resizeDrawCanvas();
+
+toggleDrawBtn.onclick = () => { drawPanel.style.display = 'block'; isDrawingMode = true; drawCanvas.style.pointerEvents = 'auto'; };
+drawClose.onclick = () => { drawPanel.style.display = 'none'; isDrawingMode = false; drawCanvas.style.pointerEvents = 'none'; };
+document.getElementById('tool-pencil').onclick = function() { currentTool = 'pencil'; this.classList.add('active'); document.getElementById('tool-eraser').classList.remove('active'); };
+document.getElementById('tool-eraser').onclick = function() { currentTool = 'eraser'; this.classList.add('active'); document.getElementById('tool-pencil').classList.remove('active'); };
+document.getElementById('draw-clear').onclick = () => { drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); if(firebaseEnabled) db.ref('game_action').set({ senderId: myTabId, type: 'clear_canvas', timestamp: Date.now() }); };
+
+let isDraggingPanel = false, panX, panY;
+drawHandle.onmousedown = drawHandle.ontouchstart = (e) => { isDraggingPanel = true; let evt = e.touches ? e.touches[0] : e; panX = evt.clientX - drawPanel.offsetLeft; panY = evt.clientY - drawPanel.offsetTop; };
+window.onmouseup = window.ontouchend = () => { isDraggingPanel = false; isDrawing = false; };
+window.onmousemove = window.ontouchmove = (e) => { if (isDraggingPanel) { let evt = e.touches ? e.touches[0] : e; drawPanel.style.left = (evt.clientX - panX) + 'px'; drawPanel.style.top = (evt.clientY - panY) + 'px'; drawPanel.style.right = 'auto'; } };
+
+function getDrawPos(e) { let evt = e.touches ? e.touches[0] : e; return { x: evt.clientX, y: evt.clientY }; }
+
+drawCanvas.onmousedown = drawCanvas.ontouchstart = (e) => { if(!isDrawingMode) return; isDrawing = true; let pos = getDrawPos(e); lastX = pos.x; lastY = pos.y; };
+drawCanvas.onmousemove = drawCanvas.ontouchmove = (e) => {
+    if(!isDrawing || !isDrawingMode) return; e.preventDefault(); let pos = getDrawPos(e);
+    drawLine(lastX, lastY, pos.x, pos.y, document.getElementById('draw-color').value, document.getElementById('draw-size').value, currentTool);
+    if (firebaseEnabled) db.ref('game_action').set({ senderId: myTabId, timestamp: Date.now(), type: 'draw_line', data: { x0: lastX/drawCanvas.width, y0: lastY/drawCanvas.height, x1: pos.x/drawCanvas.width, y1: pos.y/drawCanvas.height, color: document.getElementById('draw-color').value, size: document.getElementById('draw-size').value, tool: currentTool } });
+    lastX = pos.x; lastY = pos.y;
+};
+function drawLine(x0, y0, x1, y1, color, size, tool) { 
+    drawCtx.beginPath(); drawCtx.moveTo(x0, y0); drawCtx.lineTo(x1, y1); 
+    drawCtx.strokeStyle = tool === 'eraser' ? 'rgba(0,0,0,1)' : color; 
+    drawCtx.lineWidth = size; drawCtx.lineCap = 'round'; 
+    drawCtx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over'; 
+    if(tool === 'pencil') { 
+        // Ефект пилку (яскраве світіння)
+        drawCtx.shadowBlur = 12; 
+        drawCtx.shadowColor = color; 
+    } else { drawCtx.shadowBlur = 0; }
+    drawCtx.stroke(); drawCtx.closePath(); 
+}
+if (firebaseEnabled) { db.ref('game_action').on('value', snap => { let action = snap.val(); if (action && action.senderId !== myTabId) { if (action.type === 'draw_line') { let d = action.data; drawLine(d.x0*drawCanvas.width, d.y0*drawCanvas.height, d.x1*drawCanvas.width, d.y1*drawCanvas.height, d.color, d.size, d.tool); } else if (action.type === 'clear_canvas') { drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height); } } }); }
+
+let currentZoom = 1;
+function zoomGame(step) { currentZoom += step; if(currentZoom < 0.3) currentZoom = 0.3; if(currentZoom > 2) currentZoom = 2; document.getElementById('gameContainer').style.transform = `scale(${currentZoom})`; }
+
+// --- ЛОГІКА ГРИ ТА КООРДИНАТИ ---
+const gameConfig = {
+    canvasId: "mathGameCanvas", 
+    width: 1100, height: 600, 
+    problemPosition: { x: 440, y: 200 }, // Змістив дошку трохи вліво
+    chalkboardSize: { width: 780, height: 320 }, 
+    inputButtonsStartPosition: { x: 190, y: 490 }, 
+    buttonSize: { width: 130, height: 130 } // Квадратні для квітів
+};
+
+document.getElementById('btnToggleMode').addEventListener('click', () => {
+    gameMode = gameMode === 'answer' ? 'signs' : 'answer';
+    startLevel(currentProblem, false); 
+});
+
+window.toggleSecret = function(id) {
+    const el = document.getElementById(id);
+    if (el.classList.contains('secret-input')) { el.classList.remove('secret-input'); } 
+    else { el.classList.add('secret-input'); }
+};
+
+document.getElementById('btnToggleCustom').addEventListener('click', () => {
+    const panel = document.getElementById('customProblemPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('applyCustomProblem').addEventListener('click', () => {
+    let str = document.getElementById('customProblemInput').value;
+    const parsed = parseCustomProblem(str);
+    if (parsed) {
+        document.getElementById('customProblemPanel').style.display = 'none';
+        document.getElementById('customProblemInput').value = ''; 
+        startLevel(parsed, false);
+    } else {
+        alert("Помилка! Введіть приклад у форматі 5+3 або 10-2+1");
+    }
+});
+
+function getOptionsArray(result) {
+    let options = new Set([result]);
+    while (options.size < 4) {
+        let wrong = result + Math.floor(Math.random() * 5) - 2;
+        if (wrong >= 0 && wrong <= 15 && wrong !== result) options.add(wrong);
+    }
+    return Array.from(options).sort(() => Math.random() - 0.5);
+}
+
+function parseCustomProblem(str) {
+    str = str.replace(/\s+/g, '');
+    let tokens = str.split(/([+-])/);
+    if (!tokens || tokens.length < 3) return null;
+    let a = parseInt(tokens[0]);
+    let op1 = tokens[1];
+    let b = parseInt(tokens[2]);
+    if (isNaN(a) || isNaN(b) || !['+', '-'].includes(op1)) return null;
+    
+    let result = op1 === '+' ? a + b : a - b;
+    let op2 = null, c = null;
+    
+    if (tokens.length >= 5) {
+        op2 = tokens[3]; 
+        c = parseInt(tokens[4]);
+        if (isNaN(c) || !['+', '-'].includes(op2)) return null;
+        result = op2 === '+' ? result + c : result - c;
+    }
+    return { a, op1, b, op2, c, result, options: getOptionsArray(result) };
+}
+
+function generateMathProblem() {
+    let a, b, c, op1, op2, result;
+    let isValid = false;
+    while (!isValid) {
+        a = Math.floor(Math.random() * 11); b = Math.floor(Math.random() * 11); c = Math.floor(Math.random() * 11);
+        op1 = Math.random() > 0.5 ? 1 : -1; op2 = Math.random() > 0.5 ? 1 : -1;
+        let step1 = a + (op1 * b); result = step1 + (op2 * c);
+        if (step1 >= 0 && step1 <= 10 && result >= 0 && result <= 10) isValid = true;
+    }
+    return { a: a, op1: op1 === 1 ? '+' : '-', b: b, op2: op2 === 1 ? '+' : '-', c: c, result: result, options: getOptionsArray(result) };
+}
+
+// Музичний синтезатор (веселі дзвіночки)
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+function playSynthSound(type) {
+    if(audioContext.state === 'suspended') audioContext.resume();
+    const osc = audioContext.createOscillator(); const gainNode = audioContext.createGain();
+    osc.connect(gainNode); gainNode.connect(audioContext.destination); const now = audioContext.currentTime;
+    if (type === 'correct') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+        osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+        gainNode.gain.setValueAtTime(0, now); gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05); 
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5); osc.start(now); osc.stop(now + 0.5);
+    } else if (type === 'incorrect') {
+        osc.type = 'triangle'; 
+        osc.frequency.setValueAtTime(300, now); osc.frequency.linearRampToValueAtTime(150, now + 0.3); 
+        gainNode.gain.setValueAtTime(0, now); gainNode.gain.linearRampToValueAtTime(0.3, now + 0.05); 
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3); osc.start(now); osc.stop(now + 0.3);
+    }
+}
+
+// ВЕСНЯНИЙ СЮЖЕТ ТА ПЕРСОНАЖ ЗАЙЧЕНЯ
+const svgTemplates = {
+    background: () => `
+        <rect width="1100" height="600" fill="url(#skyGrad)"/>
+        
+        <!-- Сонце з променями -->
+        <g transform="translate(150, 100)">
+            <g>
+                <animateTransform attributeName="transform" type="rotate" values="0; 360" dur="20s" repeatCount="indefinite"/>
+                <polygon points="0,-70 15,-30 60,-40 25,-10 60,20 15,10 0,60 -15,10 -60,20 -25,-10 -60,-40 -15,-30" fill="#fbc02d" opacity="0.6"/>
+            </g>
+            <circle cx="0" cy="0" r="45" fill="url(#sunGrad)" filter="url(#softShadow)"/>
+        </g>
+
+        <!-- Хмарки (Анімовані) -->
+        <g fill="#ffffff" opacity="0.8">
+            <g transform="translate(800, 80)">
+                <animateTransform attributeName="transform" type="translate" values="800,80; 1200,80; -200,80; 800,80" dur="60s" repeatCount="indefinite"/>
+                <path d="M 0,0 Q 20,-30 40,-10 Q 70,-40 100,-10 Q 130,0 100,20 L 0,20 Q -20,10 0,0" filter="url(#softShadow)"/>
+            </g>
+            <g transform="translate(300, 120) scale(0.7)">
+                <animateTransform attributeName="transform" type="translate" values="300,120; 1200,120; -200,120; 300,120" dur="45s" repeatCount="indefinite"/>
+                <path d="M 0,0 Q 20,-30 40,-10 Q 70,-40 100,-10 Q 130,0 100,20 L 0,20 Q -20,10 0,0"/>
+            </g>
+        </g>
+
+        <!-- Багатошарові зелені пагорби -->
+        <path d="M 0,350 Q 250,280 500,380 T 1100,300 L 1100,600 L 0,600 Z" fill="url(#grassGrad1)"/>
+        <path d="M 0,450 Q 300,350 700,450 T 1100,400 L 1100,600 L 0,600 Z" fill="url(#grassGrad2)"/>
+
+        <!-- Квіти, що "дихають" (розпускаються) на галявині -->
+        <g>
+            <!-- Квітка зліва -->
+            <g transform="translate(100, 500)">
+                <animateTransform attributeName="transform" type="scale" values="1; 1.1; 1" dur="4s" repeatCount="indefinite" additive="sum"/>
+                <path d="M 0,0 Q -15,-30 0,-60 Q 15,-30 0,0" fill="#ff4081"/>
+                <path d="M 0,0 Q -30,-15 -60,0 Q -30,15 0,0" fill="#ff4081" transform="rotate(45)"/>
+                <path d="M 0,0 Q 30,-15 60,0 Q 30,15 0,0" fill="#ff4081" transform="rotate(-45)"/>
+                <path d="M 0,0 Q -15,30 0,60 Q 15,30 0,0" fill="#ff4081" transform="rotate(90)"/>
+                <circle cx="0" cy="0" r="15" fill="#ffeb3b"/>
+                <path d="M 0,15 Q 10,40 0,80" fill="none" stroke="#558b2f" stroke-width="4"/> <!-- Стебло -->
+            </g>
+            
+            <!-- Квітка справа -->
+            <g transform="translate(1000, 480) scale(0.8)">
+                <animateTransform attributeName="transform" type="scale" values="0.8; 0.95; 0.8" dur="5s" repeatCount="indefinite" additive="sum"/>
+                <path d="M 0,0 Q -20,-40 0,-80 Q 20,-40 0,0" fill="#ba68c8"/>
+                <path d="M 0,0 Q -40,-20 -80,0 Q -40,20 0,0" fill="#ba68c8" transform="rotate(60)"/>
+                <path d="M 0,0 Q 40,-20 80,0 Q 40,20 0,0" fill="#ba68c8" transform="rotate(-60)"/>
+                <circle cx="0" cy="0" r="18" fill="#ffb300"/>
+                <path d="M 0,18 Q -10,50 10,100" fill="none" stroke="#558b2f" stroke-width="5"/>
+            </g>
+        </g>
+
+        <!-- ЖИВИЙ ПЕРСОНАЖ: Зайченя Вухань (Справа внизу) -->
+        <g id="bunnyCharacter" transform="translate(880, 230)">
+            <g id="bunnyJump"> <!-- Для анімації підстрибування -->
+                <!-- Ліве вушко (рухається) -->
+                <g id="bunnyEarL" transform="rotate(-15 40 40)">
+                    <animateTransform attributeName="transform" type="rotate" values="-15 40 40; 5 40 40; -15 40 40" dur="3s" repeatCount="indefinite"/>
+                    <path d="M 40,40 Q 10,-50 30,-90 Q 60,-50 40,40" fill="#fff"/>
+                    <path d="M 40,35 Q 20,-40 33,-80 Q 50,-40 40,35" fill="#f8bbd0"/>
+                </g>
+                
+                <!-- Праве вушко (рухається в протифазі) -->
+                <g id="bunnyEarR" transform="rotate(15 60 40)">
+                    <animateTransform attributeName="transform" type="rotate" values="15 60 40; -5 60 40; 15 60 40" dur="3.5s" repeatCount="indefinite"/>
+                    <path d="M 60,40 Q 90,-50 70,-90 Q 40,-50 60,40" fill="#fff"/>
+                    <path d="M 60,35 Q 80,-40 67,-80 Q 50,-40 60,35" fill="#f8bbd0"/>
+                </g>
+
+                <!-- Тіло (Дихає) -->
+                <g>
+                    <animateTransform attributeName="transform" type="scale" values="1 1; 1.02 0.98; 1 1" dur="2s" repeatCount="indefinite"/>
+                    <ellipse cx="50" cy="110" rx="55" ry="60" fill="#fff"/>
+                    <!-- Біла пухнаста грудка -->
+                    <ellipse cx="50" cy="90" rx="40" ry="30" fill="#f5f5f5"/>
+                </g>
+                
+                <!-- Задні лапки -->
+                <ellipse cx="10" cy="160" rx="25" ry="12" fill="#fff" transform="rotate(-15 10 160)"/>
+                <ellipse cx="90" cy="160" rx="25" ry="12" fill="#fff" transform="rotate(15 90 160)"/>
+                <!-- Рожеві п'яточки -->
+                <circle cx="0" cy="160" r="5" fill="#f8bbd0"/>
+                <circle cx="100" cy="160" r="5" fill="#f8bbd0"/>
+
+                <!-- Передні лапки -->
+                <ellipse cx="35" cy="130" rx="12" ry="20" fill="#fff" transform="rotate(20 35 130)"/>
+                <ellipse cx="65" cy="130" rx="12" ry="20" fill="#fff" transform="rotate(-20 65 130)"/>
+
+                <!-- Голова -->
+                <ellipse cx="50" cy="50" rx="50" ry="45" fill="#fff"/>
+                
+                <!-- Обличчя (Емоції) -->
+                <g id="bunnyFace">
+                    <!-- Очі -->
+                    <ellipse cx="30" cy="40" rx="6" ry="10" fill="#3e2723"/>
+                    <circle cx="30" cy="36" r="2.5" fill="#fff"/>
+                    <ellipse cx="70" cy="40" rx="6" ry="10" fill="#3e2723"/>
+                    <circle cx="70" cy="36" r="2.5" fill="#fff"/>
+                    
+                    <!-- Носик (смикається) -->
+                    <g>
+                        <animateTransform attributeName="transform" type="translate" values="0,0; 0,-2; 0,0; 0,-2; 0,0" dur="2s" repeatCount="indefinite"/>
+                        <polygon points="45,55 55,55 50,62" fill="#ff4081"/>
+                    </g>
+                    
+                    <!-- Ротик -->
+                    <path d="M 50,62 Q 40,70 35,65 M 50,62 Q 60,70 65,65" fill="none" stroke="#3e2723" stroke-width="2" stroke-linecap="round"/>
+                    
+                    <!-- Зубки -->
+                    <rect x="46" y="66" width="8" height="6" fill="#fff" stroke="#ccc" stroke-width="0.5"/>
+                    <line x1="50" y1="66" x2="50" y2="72" stroke="#ccc" stroke-width="0.5"/>
+
+                    <!-- Щічки -->
+                    <ellipse cx="20" cy="55" rx="8" ry="4" fill="#f8bbd0" opacity="0.8"/>
+                    <ellipse cx="80" cy="55" rx="8" ry="4" fill="#f8bbd0" opacity="0.8"/>
+                </g>
+            </g>
+        </g>
+    `
+};
+
+window.setActiveSlot = function(index) {
+    if (gameMode !== 'signs') return;
+    activeSignSlot = index;
+    renderBoard(currentProblem);
+    updateGameStateRemote(); 
+};
+
+function renderBoard(problem) {
+    const boardLayer = document.getElementById('boardLayer');
+    const cx = gameConfig.problemPosition.x;
+    const cy = gameConfig.problemPosition.y;
+    const w = gameConfig.chalkboardSize.width;
+    const h = gameConfig.chalkboardSize.height;
+    
+    let textSVG = "";
+    let hasOp2 = problem.op2 !== null;
+    
+    let offsets;
+    if (hasOp2) {
+        offsets = { a: -270, op1: -180, b: -90, op2: 0, c: 90, eq: 180, res: 270 };
+    } else {
+        offsets = { a: -180, op1: -60, b: 60, eq: 170, res: 270 };
+    }
+    
+    const textY = h/2 + 30; 
+    const s0 = signSlots[0] || ' ';
+    const s1 = signSlots[1] || ' ';
+    const txtColor = "#fff";
+
+    if (gameMode === 'answer') {
+        textSVG += `
+            <text x="${w/2 + offsets.a}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.a}</text>
+            <text x="${w/2 + offsets.op1}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.op1}</text>
+            <text x="${w/2 + offsets.b}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.b}</text>
+        `;
+        if (hasOp2) {
+            textSVG += `
+                <text x="${w/2 + offsets.op2}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.op2}</text>
+                <text x="${w/2 + offsets.c}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.c}</text>
+            `;
+        }
+        textSVG += `
+            <text x="${w/2 + offsets.eq}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">=</text>
+            <text x="${w/2 + offsets.res}" y="${textY}" font-size="105" font-weight="bold" fill="#ffeb3b" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">?</text>
+        `;
+    } else {
+        const highlight0 = activeSignSlot === 0 ? "fill='rgba(255, 235, 59, 0.4)' stroke='#ffeb3b'" : "fill='rgba(0,0,0,0.2)' stroke='rgba(255,255,255,0.4)'";
+        
+        textSVG += `
+            <text x="${w/2 + offsets.a}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.a}</text>
+            
+            <circle cx="${w/2 + offsets.op1}" cy="${textY - 30}" r="45" ${highlight0} stroke-width="4" cursor="pointer" onclick="setActiveSlot(0)" pointer-events="all"/>
+            <text x="${w/2 + offsets.op1}" y="${textY}" font-size="95" font-weight="bold" fill="#ffeb3b" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${s0}</text>
+            
+            <text x="${w/2 + offsets.b}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.b}</text>
+        `;
+        
+        if (hasOp2) {
+            const highlight1 = activeSignSlot === 1 ? "fill='rgba(255, 235, 59, 0.4)' stroke='#ffeb3b'" : "fill='rgba(0,0,0,0.2)' stroke='rgba(255,255,255,0.4)'";
+            textSVG += `
+                <circle cx="${w/2 + offsets.op2}" cy="${textY - 30}" r="45" ${highlight1} stroke-width="4" cursor="pointer" onclick="setActiveSlot(1)" pointer-events="all"/>
+                <text x="${w/2 + offsets.op2}" y="${textY}" font-size="95" font-weight="bold" fill="#ffeb3b" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${s1}</text>
+                <text x="${w/2 + offsets.c}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.c}</text>
+            `;
+        }
+        
+        textSVG += `
+            <text x="${w/2 + offsets.eq}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">=</text>
+            <text x="${w/2 + offsets.res}" y="${textY}" font-size="95" font-weight="bold" fill="${txtColor}" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">${problem.result}</text>
+        `;
+    }
+
+    // Дерев'яний щит, обвитий весняними лозами
+    let html = `
+        <g transform="translate(${cx - w/2}, ${cy - h/2})" filter="url(#softShadow)">
+            <!-- Лози кріплення -->
+            <path d="M 50,-80 L 50,0 M ${w-50},-80 L ${w-50},0" stroke="#33691e" stroke-width="12" fill="none"/>
+            <path d="M 50,-80 L 50,0 M ${w-50},-80 L ${w-50},0" stroke="#558b2f" stroke-width="6" fill="none"/>
+            
+            <!-- Основна дерев'яна дошка -->
+            <rect x="0" y="0" width="${w}" height="${h}" fill="url(#woodGrad)" rx="30" filter="url(#woodTexture)"/>
+            <rect x="0" y="0" width="${w}" height="${h}" fill="transparent" stroke="#4e342e" stroke-width="10" rx="30"/>
+            
+            <!-- Листочки плюща по кутах -->
+            <path d="M -10,30 Q 20,-10 60,10 Q 30,30 -10,30" fill="#8bc34a" stroke="#33691e" stroke-width="2"/>
+            <path d="M 20,60 Q 50,30 80,60 Q 40,80 20,60" fill="#8bc34a" stroke="#33691e" stroke-width="2"/>
+            <path d="M ${w+10},${h-30} Q ${w-20},${h+10} ${w-60},${h-10} Q ${w-30},${h-30} ${w+10},${h-30}" fill="#8bc34a" stroke="#33691e" stroke-width="2"/>
+
+            ${textSVG}
+        </g>
+    `;
+    boardLayer.innerHTML = html;
+}
+
+// Генерація квітки-кнопки
+function generateSunflowerSVG(w, h, opt) {
+    let petals = '';
+    for(let i=0; i<12; i++) {
+        let angle = i * 30;
+        petals += `<ellipse cx="${w/2}" cy="${h/2 - 35}" rx="15" ry="35" fill="#ffeb3b" stroke="#f57f17" stroke-width="2" transform="rotate(${angle} ${w/2} ${h/2})"/>`;
+    }
+    return `
+        <!-- Пелюстки -->
+        ${petals}
+        <!-- Серединка -->
+        <circle cx="${w/2}" cy="${h/2}" r="30" fill="#5d4037" stroke="#3e2723" stroke-width="3"/>
+        <!-- Текст на серединці -->
+        <text x="${w/2}" y="${h/2 + 15}" font-size="45" font-weight="bold" fill="#fff" text-anchor="middle" pointer-events="none">${opt}</text>
+    `;
+}
+
+function renderAnswers(options) {
+    const layer = document.getElementById('answersLayer');
+    layer.innerHTML = '';
+    const startX = gameMode === 'answer' ? gameConfig.inputButtonsStartPosition.x - 40 : gameConfig.inputButtonsStartPosition.x + 80;
+    const startY = gameConfig.inputButtonsStartPosition.y - 20; // Трохи вище для квітів
+    const gap = 160; 
+    
+    options.forEach((opt, index) => {
+        const x = startX + index * gap;
+        const y = startY;
+        const w = gameConfig.buttonSize.width;
+        const h = gameConfig.buttonSize.height;
+        
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        g.setAttribute("class", "interactive-btn");
+        g.setAttribute("transform", `translate(${x}, ${y})`);
+        
+        g.innerHTML = `
+            <g class="btn-visual">
+                ${generateSunflowerSVG(w, h, opt)}
+            </g>
+            <rect x="0" y="0" width="${w}" height="${h}" fill="transparent" pointer-events="all"/>
+        `;
+        
+        g.onclick = () => {
+            if (!isAnimating) {
+                checkAnswer(opt, g, false);
+                sendGameAction('check_answer', { selected: opt });
+            }
+        };
+        layer.appendChild(g);
+    });
+
+    if (gameMode === 'signs') {
+        const px = startX + options.length * gap + 20;
+        const gCheck = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        gCheck.setAttribute("class", "interactive-btn");
+        gCheck.setAttribute("transform", `translate(${px}, ${startY + 20})`);
+        gCheck.innerHTML = `
+            <g class="btn-visual">
+                <rect x="0" y="0" width="220" height="90" fill="#8bc34a" stroke="#33691e" stroke-width="5" rx="30" filter="url(#softShadow)"/>
+                <text x="110" y="55" font-size="28" font-weight="bold" fill="#ffffff" filter="url(#textShadow)" text-anchor="middle" pointer-events="none">ПЕРЕВІРИТИ</text>
+            </g>
+            <rect x="0" y="0" width="220" height="90" fill="transparent" pointer-events="all"/>
+        `;
+        gCheck.onclick = () => {
+            checkSigns(gCheck, false);
+            sendGameAction('check_signs', {});
+        };
+        layer.appendChild(gCheck);
+    }
+}
+
+function renderSuccessEffects() {
+    const layer = document.getElementById('fxLayer');
+    layer.innerHTML = '';
+    // Вибух рожевих та жовтих пелюсток
+    for(let i=0; i<35; i++) {
+        const x = Math.random() * 1100;
+        const y = Math.random() * 600;
+        const color = Math.random() > 0.5 ? '#ff4081' : '#ffeb3b';
+        const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        
+        g.innerHTML = `<path d="M 0,0 Q 10,-15 0,-30 Q -10,-15 0,0" fill="${color}" opacity="0.8"/>`;
+        g.setAttribute("transform", `translate(${x}, ${y}) scale(0)`);
+        layer.appendChild(g);
+        
+        setTimeout(() => {
+            g.style.transform = `translate(${x + (Math.random()*100-50)}px, ${y - Math.random()*250 - 50}px) scale(${Math.random()*1 + 0.5}) rotate(${Math.random()*360}deg)`;
+            g.style.opacity = '0';
+            g.style.transition = 'all 1.5s ease-out';
+        }, 50);
+    }
+    setTimeout(() => { layer.innerHTML = ''; }, 1600);
+}
+
+// ЕМОЦІЇ ЗАЙЧИКА
+window.restoreBunny = function() {
+    const face = document.getElementById('bunnyFace');
+    const jump = document.getElementById('bunnyJump');
+    const earL = document.getElementById('bunnyEarL');
+    const earR = document.getElementById('bunnyEarR');
+    
+    if(jump) { jump.style.transform = "translateY(0)"; jump.style.transition = "transform 0.5s"; }
+    // Повертаємо анімації вушкам
+    if(earL) earL.innerHTML = `<animateTransform attributeName="transform" type="rotate" values="-15 40 40; 5 40 40; -15 40 40" dur="3s" repeatCount="indefinite"/><path d="M 40,40 Q 10,-50 30,-90 Q 60,-50 40,40" fill="#fff"/><path d="M 40,35 Q 20,-40 33,-80 Q 50,-40 40,35" fill="#f8bbd0"/>`;
+    if(earR) earR.innerHTML = `<animateTransform attributeName="transform" type="rotate" values="15 60 40; -5 60 40; 15 60 40" dur="3.5s" repeatCount="indefinite"/><path d="M 60,40 Q 90,-50 70,-90 Q 40,-50 60,40" fill="#fff"/><path d="M 60,35 Q 80,-40 67,-80 Q 50,-40 60,35" fill="#f8bbd0"/>`;
+
+    if(face) {
+        face.innerHTML = `
+            <ellipse cx="30" cy="40" rx="6" ry="10" fill="#3e2723"/>
+            <circle cx="30" cy="36" r="2.5" fill="#fff"/>
+            <ellipse cx="70" cy="40" rx="6" ry="10" fill="#3e2723"/>
+            <circle cx="70" cy="36" r="2.5" fill="#fff"/>
+            <g>
+                <animateTransform attributeName="transform" type="translate" values="0,0; 0,-2; 0,0; 0,-2; 0,0" dur="2s" repeatCount="indefinite"/>
+                <polygon points="45,55 55,55 50,62" fill="#ff4081"/>
+            </g>
+            <path d="M 50,62 Q 40,70 35,65 M 50,62 Q 60,70 65,65" fill="none" stroke="#3e2723" stroke-width="2" stroke-linecap="round"/>
+            <rect x="46" y="66" width="8" height="6" fill="#fff" stroke="#ccc" stroke-width="0.5"/>
+            <line x1="50" y1="66" x2="50" y2="72" stroke="#ccc" stroke-width="0.5"/>
+            <ellipse cx="20" cy="55" rx="8" ry="4" fill="#f8bbd0" opacity="0.8"/>
+            <ellipse cx="80" cy="55" rx="8" ry="4" fill="#f8bbd0" opacity="0.8"/>
+        `;
+    }
+};
+
+function checkAnswer(selected, elementGroup, isRemote = false) {
+    if (isAnimating) return;
+    
+    if (gameMode === 'answer') {
+        if (selected === currentProblem.result) triggerWin(elementGroup, isRemote);
+        else triggerFail(elementGroup);
+    } else {
+        signSlots[activeSignSlot] = selected;
+        let hasOp2 = currentProblem.op2 !== null;
+        
+        if (activeSignSlot === 0 && hasOp2) activeSignSlot = 1;
+        else if (activeSignSlot === 1) activeSignSlot = 0;
+        else if (!hasOp2) activeSignSlot = 0;
+
+        renderBoard(currentProblem);
+        if (!isRemote) updateGameStateRemote(); 
+    }
+}
+
+function checkSigns(btnElement, isRemote = false) {
+    if (isAnimating) return;
+    let hasOp2 = currentProblem.op2 !== null;
+    let isCorrect = false;
+
+    if (!hasOp2) {
+        if (signSlots[0] === currentProblem.op1) isCorrect = true;
+    } else {
+        if (signSlots[0] === currentProblem.op1 && signSlots[1] === currentProblem.op2) isCorrect = true;
+    }
+    
+    if (isCorrect) triggerWin(btnElement || document.body, isRemote);
+    else {
+        triggerFail(btnElement || document.body);
+        if (!isRemote) sendGameAction('trigger_fail', {}); 
+    }
+}
+
+function triggerWin(elementGroup, isRemote) {
+    isAnimating = true;
+    playSynthSound('correct');
+    renderSuccessEffects();
+    
+    const face = document.getElementById('bunnyFace');
+    const jump = document.getElementById('bunnyJump');
+    const earL = document.getElementById('bunnyEarL');
+    const earR = document.getElementById('bunnyEarR');
+
+    // Зайчик радіє, вушка сторчма, стрибає вгору
+    if(jump) { jump.style.transform = "translateY(-40px)"; jump.style.transition = "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)"; }
+    if(earL) earL.innerHTML = `<path d="M 40,40 Q 10,-50 30,-90 Q 60,-50 40,40" fill="#fff"/><path d="M 40,35 Q 20,-40 33,-80 Q 50,-40 40,35" fill="#f8bbd0"/>`;
+    if(earR) earR.innerHTML = `<path d="M 60,40 Q 90,-50 70,-90 Q 40,-50 60,40" fill="#fff"/><path d="M 60,35 Q 80,-40 67,-80 Q 50,-40 60,35" fill="#f8bbd0"/>`;
+
+    if(face) {
+        face.innerHTML = `
+            <!-- Щасливі очі ^ ^ -->
+            <path d="M 23,40 Q 30,30 37,40" fill="none" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <path d="M 63,40 Q 70,30 77,40" fill="none" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <polygon points="45,55 55,55 50,62" fill="#ff4081"/> <!-- Носик -->
+            <!-- Відкрита посмішка -->
+            <path d="M 35,65 Q 50,85 65,65" fill="#ff4081" stroke="#3e2723" stroke-width="2"/>
+            <rect x="46" y="65" width="8" height="6" fill="#fff" stroke="#3e2723" stroke-width="1"/>
+            <line x1="50" y1="65" x2="50" y2="71" stroke="#3e2723" stroke-width="1"/>
+            <ellipse cx="20" cy="55" rx="10" ry="6" fill="#ff5252" opacity="0.9"/>
+            <ellipse cx="80" cy="55" rx="10" ry="6" fill="#ff5252" opacity="0.9"/>
+        `;
+        setTimeout(restoreBunny, 1500);
+    }
+
+    // Зміна кольору тексту на квітці
+    if (elementGroup && elementGroup.querySelector('text')) {
+        elementGroup.querySelector('text').setAttribute('fill', '#aed581');
+    }
+    setTimeout(() => {
+        if(!isRemote) {
+            let nextProb = generateMathProblem();
+            startLevel(nextProb, false);
+        }
+        isAnimating = false;
+    }, 1500);
+}
+
+function triggerFail(elementGroup) {
+    playSynthSound('incorrect');
+    
+    const face = document.getElementById('bunnyFace');
+    const earL = document.getElementById('bunnyEarL');
+    const earR = document.getElementById('bunnyEarR');
+    
+    // Зайчик сумує, вушка падають
+    if(earL) { earL.setAttribute('transform', 'rotate(-45 40 40)'); earL.innerHTML = `<path d="M 40,40 Q 10,-50 30,-90 Q 60,-50 40,40" fill="#fff"/><path d="M 40,35 Q 20,-40 33,-80 Q 50,-40 40,35" fill="#f8bbd0"/>`; }
+    if(earR) { earR.setAttribute('transform', 'rotate(45 60 40)'); earR.innerHTML = `<path d="M 60,40 Q 90,-50 70,-90 Q 40,-50 60,40" fill="#fff"/><path d="M 60,35 Q 80,-40 67,-80 Q 50,-40 60,35" fill="#f8bbd0"/>`; }
+
+    if(face) {
+        face.innerHTML = `
+            <!-- Замружені від сліз очі > < -->
+            <path d="M 23,35 L 37,45 M 23,45 L 37,35" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <path d="M 63,35 L 77,45 M 63,45 L 77,35" stroke="#3e2723" stroke-width="4" stroke-linecap="round"/>
+            <!-- Сльози -->
+            <path d="M 30,50 Q 33,60 30,65 Q 27,60 30,50" fill="#4fc3f7"/>
+            <path d="M 70,50 Q 73,60 70,65 Q 67,60 70,50" fill="#4fc3f7"/>
+            <polygon points="45,55 55,55 50,62" fill="#ff4081"/> <!-- Носик не рухається -->
+            <!-- Сумний ротик -->
+            <path d="M 40,70 Q 50,60 60,70" fill="none" stroke="#3e2723" stroke-width="2" stroke-linecap="round"/>
+        `;
+        setTimeout(() => {
+            restoreBunny();
+            if(earL) earL.setAttribute('transform', 'rotate(-15 40 40)');
+            if(earR) earR.setAttribute('transform', 'rotate(15 60 40)');
+        }, 1500);
+    }
+
+    if (elementGroup && elementGroup.classList) {
+        elementGroup.classList.add('shake-animation');
+        setTimeout(() => { elementGroup.classList.remove('shake-animation'); }, 500);
+    }
+}
+
+function startLevel(problem = null, isRemote = false) {
+    if (!problem) problem = generateMathProblem();
+    if (!isRemote && !levelHistory.includes(problem)) levelHistory.push(problem);
+    
+    currentProblem = problem;
+    signSlots = [null, null];
+    activeSignSlot = 0;
+    
+    renderBoard(currentProblem);
+    renderAnswers(gameMode === 'answer' ? currentProblem.options : ['+', '-']);
+    
+    if (!isRemote) updateGameStateRemote();
+}
+
+document.getElementById('btnNext').addEventListener('click', () => {
+    if (isAnimating) return;
+    let newProb = generateMathProblem();
+    startLevel(newProb, false);
+});
+
+document.getElementById('btnBack').addEventListener('click', () => {
+    if (isAnimating) return;
+    if (levelHistory.length > 1) {
+        levelHistory.pop();
+        let prevProb = levelHistory[levelHistory.length - 1];
+        startLevel(prevProb, false);
+    }
+});
+
+window.onload = () => {
+    document.getElementById('bgLayer').innerHTML = svgTemplates.background();
+    
+    setTimeout(() => {
+        if (!currentProblem.hasOwnProperty('result')) {
+            startLevel();
+        }
+    }, 500);
+};
+</script>
+</body>
+</html>
