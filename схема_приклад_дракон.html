@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Магічний Замок: Математика</title>
+    <style>
+        :root {
+            --window-dark: #1a202c;
+            --window-frame: #2d3748;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            background-color: #1a202c;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+        }
+
+        #zoom-wrapper {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform-origin: center center;
+            transition: transform 0.3s ease;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 56.25vw;
+            max-height: 100vh;
+            max-width: 177.78vh;
+            background: transparent;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+        }
+
+        #draw-canvas-global {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 90000;
+        }
+
+        /* ---------------- Складний SVG Фон (Ліс + Нічний Замок + Земля) ---------------- */
+        #bg-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 0; pointer-events: none;
+            background: #4facfe;
+        }
+        .cloud { animation: floatCloud linear infinite; }
+        @keyframes floatCloud { 0% { transform: translateX(110%); } 100% { transform: translateX(-20%); } }
+        .firefly { animation: blinkFirefly 3s infinite alternate ease-in-out; }
+        @keyframes blinkFirefly { 0% { opacity: 0.2; transform: translateY(0) scale(0.8); } 100% { opacity: 1; transform: translateY(-20px) scale(1.2); } }
+
+        /* ---------------- Зона Схеми ---------------- */
+        #scheme-container {
+            position: absolute; top: 3%; left: 20%; width: 60%; height: 25%;
+            background: rgba(26, 32, 44, 0.85); border-radius: 1vw; border: 0.2vw solid rgba(255, 215, 0, 0.5);
+            box-shadow: inset 0 0 2vw rgba(0,0,0,0.8), 0 1vw 2vw rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center; z-index: 10;
+        }
+        #scheme-svg { width: 100%; height: 100%; overflow: visible; }
+
+        /* ---------------- Ігрова зона (Вікна Замку) ---------------- */
+        #board {
+            position: absolute; top: 30%; left: 25%; width: 50%; height: 53%;
+            display: flex; flex-direction: column; justify-content: space-between; padding: 1%; z-index: 10;
+        }
+        .eq-row { display: flex; justify-content: center; align-items: center; gap: 2%; height: 22%; }
+        
+        .slot {
+            width: 14%; height: 100%; background: var(--window-dark); border: 0.3vw solid var(--window-frame);
+            border-radius: 4vw 4vw 0.5vw 0.5vw; display: flex; align-items: center; justify-content: center;
+            font-size: 3.5vw; font-weight: 900; color: transparent; position: relative;
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+            box-shadow: inset 0 1vw 2vw rgba(0,0,0,0.9), 0 0.5vw 1vw rgba(0,0,0,0.3); overflow: hidden; cursor: pointer;
+        }
+        
+        .slot::before { content: ''; position: absolute; width: 100%; height: 0.4vw; background: var(--window-frame); top: 55%; left: 0; z-index: 1; pointer-events: none; transition: opacity 0.3s;}
+        .slot::after { content: ''; position: absolute; width: 0.4vw; height: 100%; background: var(--window-frame); left: 50%; top: 0; transform: translateX(-50%); z-index: 1; pointer-events: none; transition: opacity 0.3s;}
+
+        .slot.filled {
+            background: #2d3748; border-color: #ffd700; color: #fff; text-shadow: 2px 2px 0px rgba(0,0,0,0.8);
+            box-shadow: 0 0 1.5vw rgba(255, 215, 0, 0.6), inset 0 0 1vw rgba(255, 140, 0, 0.4); transform: scale(1.02);
+        }
+        .slot.filled.num { background: linear-gradient(135deg, #e67e22, #d35400); }
+        .slot.filled.sign { background: linear-gradient(135deg, #27ae60, #2ecc71); border-color: #a8ff78;}
+        .slot.filled::before, .slot.filled::after { opacity: 0.1; z-index: 0; }
+
+        .slot.drag-over { transform: scale(1.15); border-color: #fff; box-shadow: 0 0 2vw rgba(255,255,255,0.9); }
+        .slot.error { animation: shake 0.4s; border-color: #ff4757; background: #8b0000; }
+        
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px) rotate(-3deg); } 50% { transform: translateX(5px) rotate(3deg); } 75% { transform: translateX(-5px) rotate(-3deg); } }
+
+        /* ---------------- Палітра Рун ---------------- */
+        #palette {
+            position: absolute; bottom: 2%; left: 20%; width: 60%; height: 12%;
+            display: flex; justify-content: center; align-items: center; gap: 3%;
+            background: rgba(45, 55, 72, 0.85); border-radius: 2vw; padding: 1%;
+            box-shadow: 0 1vw 2vw rgba(0,0,0,0.8); border: 0.2vw solid #718096; z-index: 100;
+        }
+
+        .draggable {
+            height: 90%; aspect-ratio: 1; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 3.5vw; font-weight: 900; color: #fff; text-shadow: 0.2vw 0.2vw 0.4vw rgba(0,0,0,0.6);
+            cursor: grab; box-shadow: 0 0.5vw 0 rgba(0,0,0,0.5), 0 1vw 1.5vw rgba(0,0,0,0.5);
+            transition: transform 0.1s, box-shadow 0.2s, border-color 0.2s; position: relative; z-index: 105;
+        }
+        .draggable.num { background: linear-gradient(135deg, #f39c12, #d35400); border: 0.3vw solid #f1c40f; }
+        .draggable.sign { background: linear-gradient(135deg, #2ecc71, #27ae60); border: 0.3vw solid #a8ff78; }
+        .draggable:active { transform: translateY(0.5vw) scale(0.95); box-shadow: 0 0 0 rgba(0,0,0,0.5); cursor: grabbing; }
+        
+        .draggable.selected {
+            transform: scale(1.1); border-color: #fff; box-shadow: 0 0 2vw #fff, 0 1vw 1.5vw rgba(0,0,0,0.5); z-index: 110;
+        }
+
+        /* ---------------- Фіолетовий Дракончик ---------------- */
+        #character {
+            position: absolute; bottom: 15%;
+            left: 5%; width: 16vw; height: 16vw;
+            pointer-events: none; z-index: 150; filter: drop-shadow(1vw 1.5vw 1vw rgba(0,0,0,0.5));
+        }
+        .dragon-head { animation: breatheHead 3s infinite ease-in-out; transform-origin: center 70%; }
+        .dragon-body { animation: breatheBody 3s infinite ease-in-out; transform-origin: center bottom; }
+        .dragon-tail { animation: wagTail 4s infinite ease-in-out; transform-origin: left center; }
+        .dragon-ear { animation: twitchEar 6s infinite ease-in-out; }
+
+        @keyframes breatheHead { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-2%) rotate(1deg); } }
+        @keyframes breatheBody { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.02); } }
+        @keyframes wagTail { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-10deg); } }
+        @keyframes twitchEar { 0%, 90%, 100% { transform: rotate(0deg); } 95% { transform: rotate(10deg); } }
+        .happy-jump { animation: jumpAnim 0.6s cubic-bezier(0.28, 0.84, 0.42, 1) infinite !important; }
+        @keyframes jumpAnim { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-25%); } }
+
+        /* ---------------- Клон при Touch-перетягуванні ---------------- */
+        .drag-clone {
+            position: fixed; pointer-events: none !important; z-index: 99999;
+            width: 7vw; height: 7vw; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 3.8vw; font-weight: 900; color: #fff; text-shadow: 0.2vw 0.2vw 0.4vw rgba(0,0,0,0.6);
+            box-shadow: 0 1.5vw 3vw rgba(0,0,0,0.8); transform: translate(-50%, -50%) scale(1.1); margin: 0 !important;
+        }
+        .drag-clone.num { background: linear-gradient(135deg, #f39c12, #d35400); border: 0.4vw solid #fff; }
+        .drag-clone.sign { background: linear-gradient(135deg, #2ecc71, #27ae60); border: 0.4vw solid #fff; }
+        
+        .confetti { position: absolute; z-index: 200; pointer-events: none; border-radius: 50%; box-shadow: 0 0 1vw #ffd700; }
+        @keyframes fall { 0% { transform: translateY(-10vh) scale(0); opacity: 1; } 50% { transform: translateY(50vh) scale(1.5); opacity: 1; } 100% { transform: translateY(110vh) scale(0); opacity: 0; } }
+
+        /* ---------------- Панель вчителя ---------------- */
+        #teacher-drawer { position: absolute; top: 5%; left: -25%; width: 25%; height: auto; background: rgba(45, 55, 72, 0.95); backdrop-filter: blur(10px); border-radius: 0 1vw 1vw 0; border: 0.2vw solid #a0aec0; border-left: none; padding: 2%; display: flex; flex-direction: column; gap: 1vw; transition: left 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 300; }
+        #teacher-drawer.open { left: 0; }
+        #teacher-toggle { position: absolute; top: 50%; right: -3vw; transform: translateY(-50%); width: 3vw; height: 3.5vw; background: #9f7aea; border-radius: 0 1vw 1vw 0; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0.3vw 0 1vw rgba(0,0,0,0.4); }
+        #teacher-toggle svg { width: 1.5vw; height: 1.5vw; fill: white; }
+        
+        /* Секретні поля */
+        .input-wrapper { position: relative; width: 100%; display: flex; align-items: center; }
+        .t-input { width: 100%; padding: 0.8vw; border-radius: 0.5vw; border: 0.15vw solid #9f7aea; background: #edf2f7; font-size: 1.2vw; font-weight: bold; text-align: center; outline: none; }
+        .secret-text { color: transparent; text-shadow: 0 0 0 transparent; }
+        .secret-text:focus { outline: none; }
+        .visible-text { color: #2d3748 !important; }
+        .eye-toggle { position: absolute; right: 10px; cursor: pointer; font-size: 1.2vw; z-index: 10; }
+
+        #apply-btn { background: #9f7aea; color: white; border: none; padding: 0.8vw; border-radius: 0.5vw; font-size: 1.2vw; cursor: pointer; font-weight: bold; box-shadow: 0 0.3vw 0 #6b46c1; width: 100%;}
+        #apply-btn:active { transform: translateY(0.3vw); box-shadow: 0 0 0 #6b46c1; }
+
+        /* ---------------- УНІВЕРСАЛЬНІ МОДУЛІ (БЛОКУВАННЯ, ТЕМИ, ОЛІВЕЦЬ, ЗУМ) ---------------- */
+        #block-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.85); z-index: 999999; flex-direction: column;
+            align-items: center; justify-content: center; backdrop-filter: blur(5px);
+        }
+        #block-overlay h1 { color: #ff4757; font-size: 5vw; text-shadow: 0 0 20px rgba(255, 71, 87, 0.8); text-align: center; font-family: Arial, sans-serif; }
+
+        #toggle-draw-btn-global, #theme-settings-btn {
+            position: fixed; right: 20px;
+            padding: 15px 20px; border-radius: 30px;
+            color: white; font-size: 18px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5); z-index: 99999; border: 2px solid rgba(255,255,255,0.2);
+            font-family: Arial, sans-serif; transition: transform 0.2s;
+        }
+        #theme-settings-btn { bottom: 20px; background: #2980b9; }
+        #toggle-draw-btn-global { bottom: 85px; background: #8e44ad; }
+        #toggle-draw-btn-global:active, #theme-settings-btn:active { transform: scale(0.95); }
+
+        #zoom-controls { position: fixed; left: 20px; top: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 99999; }
+        .zoom-btn { background: #34495e; color: white; border: 2px solid #fff; border-radius: 50%; width: 50px; height: 50px; font-size: 24px; font-weight: bold; cursor: pointer; box-shadow: 0 5px 15px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;}
+        .zoom-btn:active { transform: scale(0.9); }
+
+        #draw-panel-global {
+            display: none; position: fixed; top: 20px; right: 20px; width: 280px;
+            background: rgba(30, 40, 50, 0.95); backdrop-filter: blur(10px);
+            border-radius: 15px; border: 2px solid #8e44ad; box-shadow: 0 15px 30px rgba(0,0,0,0.8);
+            z-index: 99999; flex-direction: column; padding: 15px;
+        }
+        #draw-panel-handle { width: 100%; height: 20px; background: #8e44ad; border-radius: 10px 10px 0 0; cursor: move; margin-bottom: 15px; position: relative; }
+        .close-panel-btn { position: absolute; right: 5px; top: -5px; color: white; font-size: 20px; cursor: pointer; font-weight: bold; }
+        .draw-btn-row { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .draw-tool-btn { flex: 1; padding: 10px; margin: 0 5px; background: #2c3e50; border: 2px solid transparent; color: white; border-radius: 10px; cursor: pointer; font-family: Arial, sans-serif; font-weight: bold;}
+        .draw-tool-btn.active { border-color: #a8ff78; background: #27ae60; }
+        .draw-control-row { margin-bottom: 10px; color: white; font-family: Arial, sans-serif; font-size: 14px;}
+        input[type="range"] { width: 100%; margin-top: 5px; }
+        #clear-canvas-btn { background: #ff4757; border: none; padding: 10px; color: white; border-radius: 10px; cursor: pointer; font-weight: bold; font-family: Arial, sans-serif; margin-top: 10px; }
+
+        #theme-modal {
+            display: none; position: fixed; top:0; left:0; width:100vw; height:100vh;
+            background: rgba(0,0,0,0.8); z-index: 100000; align-items: center; justify-content: center;
+        }
+        .theme-modal-content {
+            background: #2d3748; width: 80%; max-width: 800px; border-radius: 20px; padding: 20px;
+            border: 3px solid #3498db; position: relative;
+        }
+        .close-theme-btn { position: absolute; top: 10px; right: 20px; font-size: 30px; color: white; cursor: pointer; font-weight: bold;}
+        .theme-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; max-height: 60vh; overflow-y: auto; padding: 10px; }
+        .theme-card {
+            height: 100px; background-size: cover; background-position: center; border-radius: 10px;
+            cursor: pointer; position: relative; border: 3px solid transparent; transition: 0.2s;
+            display: flex; align-items: center; justify-content: center; background-color: #1a202c;
+        }
+        .theme-card:hover { border-color: #3498db; transform: scale(1.05); }
+        .theme-card span { background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 5px; font-weight: bold; font-size: 14px; font-family: Arial, sans-serif; text-align: center; pointer-events: none;}
+
+        @media (max-width: 768px) {
+            #scheme-container { width: 80%; left: 10%; top: 2%; height: 20%; }
+            #board { width: 70%; left: 15%; top: 25%; height: 50%; }
+            #palette { width: 90%; left: 5%; bottom: 2%; }
+            #teacher-drawer { width: 40%; left: -40%; }
+            .slot { width: 16%; }
+        }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<!-- Екран-заглушка -->
+<div id="block-overlay"><h1>Зачекай!<br>Зараз не твій урок.</h1></div>
+
+<!-- Зум-контролери -->
+<div id="zoom-controls">
+    <button class="zoom-btn" onclick="adjustZoom(0.1)">🔍+</button>
+    <button class="zoom-btn" onclick="adjustZoom(-0.1)">🔍-</button>
+</div>
+
+<!-- Обгортка для зуму -->
+<div id="zoom-wrapper">
+    <div id="game-container">
+        <!-- Сюжетний SVG Фон: Нічне небо, Замок, Дерева та деталізована ЗЕМЛЯ (Піднята) -->
+        <svg id="bg-canvas" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#0a1930"/>
+                    <stop offset="100%" stop-color="#145d82"/>
+                </linearGradient>
+                <linearGradient id="castleWall" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="#1a202c"/>
+                    <stop offset="50%" stop-color="#2d3748"/>
+                    <stop offset="100%" stop-color="#1a202c"/>
+                </linearGradient>
+                <linearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#1b263b"/>
+                    <stop offset="100%" stop-color="#0d1b2a"/>
+                </linearGradient>
+            </defs>
+            
+            <!-- Небо -->
+            <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+            <circle cx="1600" cy="200" r="100" fill="#FFE57F" filter="drop-shadow(0 0 40px #FFE57F)"/>
+            
+            <!-- Замок -->
+            <path d="M 400 300 L 1520 300 L 1520 1080 L 400 1080 Z" fill="url(#castleWall)"/>
+            <path d="M 380 300 L 420 300 L 420 260 L 460 260 L 460 300 L 500 300 L 500 260 L 540 260 L 540 300 L 1380 300 L 1380 260 L 1420 260 L 1420 300 L 1460 300 L 1460 260 L 1500 260 L 1500 300 L 1540 300 L 1540 1080 L 380 1080 Z" fill="#1a202c"/>
+            <path d="M400 420 L1520 420 M400 540 L1520 540 M400 660 L1520 660 M400 780 L1520 780 M400 900 L1520 900 M400 1020 L1520 1020" stroke="#0f141e" stroke-width="5" opacity="0.8"/>
+            <path d="M550 420 L550 540 M850 420 L850 540 M1150 420 L1150 540 M1450 420 L1450 540 M400 540 L400 660 M700 540 L700 660 M1000 540 L1000 660 M1300 540 L1300 660 M550 660 L550 780 M850 660 L850 780 M1150 660 L1150 780 M1450 660 L1450 780" stroke="#0f141e" stroke-width="5" opacity="0.8"/>
+
+            <!-- Стовбури Дерев -->
+            <path d="M -50 1080 L 150 1080 Q 200 600 50 100 Z" fill="#5D4037"/>
+            <path d="M 1970 1080 L 1770 1080 Q 1720 600 1870 100 Z" fill="#5D4037"/>
+            <path d="M 120 700 L 300 500 L 250 480 Z" fill="#4E342E"/>
+            <path d="M 1800 700 L 1620 500 L 1670 480 Z" fill="#4E342E"/>
+
+            <!-- Крони Дерев -->
+            <circle cx="50" cy="250" r="150" fill="#2E7D32"/> <circle cx="200" cy="150" r="130" fill="#388E3C"/> <circle cx="-50" cy="100" r="160" fill="#1B5E20"/>
+            <circle cx="1870" cy="250" r="150" fill="#2E7D32"/> <circle cx="1720" cy="150" r="130" fill="#388E3C"/> <circle cx="1970" cy="100" r="160" fill="#1B5E20"/>
+            
+            <!-- ================= ПІДНЯТА ЗЕМЛЯ ТА ПАГОРБИ ================= -->
+            <!-- Задній пагорб -->
+            <path d="M 0 850 Q 500 750 1000 880 T 1920 850 L 1920 1080 L 0 1080 Z" fill="#0a121a"/>
+            <!-- Передній пагорб (основа) -->
+            <path d="M 0 900 Q 300 800 700 920 T 1500 880 T 1920 950 L 1920 1080 L 0 1080 Z" fill="url(#groundGrad)"/>
+            
+            <!-- Лівий виступ (Спеціальне місце для Дракончика) -->
+            <path d="M 0 1080 L 0 760 Q 250 760 450 1080 Z" fill="#2d3748"/>
+            <!-- Деталі трави/каміння на виступі -->
+            <path d="M 50 790 L 40 760 L 60 785 Z" fill="#4a5568"/>
+            <path d="M 150 800 L 145 770 L 165 790 Z" fill="#4a5568"/>
+            <path d="M 280 860 L 270 830 L 295 850 Z" fill="#4a5568"/>
+            
+            <!-- Магічні гриби, що світяться -->
+            <g transform="translate(400, 900)">
+                <path d="M 10 30 Q 15 10 20 30 Z" fill="#a0aec0"/>
+                <path d="M 0 15 Q 15 -5 30 15 Q 15 20 0 15 Z" fill="#a8ff78" filter="drop-shadow(0 0 8px #a8ff78)"/>
+                <circle cx="10" cy="10" r="2" fill="#fff"/>
+                <circle cx="20" cy="12" r="1.5" fill="#fff"/>
+            </g>
+            <g transform="translate(300, 850) scale(0.7)">
+                <path d="M 10 30 Q 15 10 20 30 Z" fill="#a0aec0"/>
+                <path d="M 0 15 Q 15 -5 30 15 Q 15 20 0 15 Z" fill="#78ffd6" filter="drop-shadow(0 0 8px #78ffd6)"/>
+            </g>
+            <g transform="translate(1700, 920) scale(1.2)">
+                <path d="M 10 30 Q 15 10 20 30 Z" fill="#a0aec0"/>
+                <path d="M 0 15 Q 15 -5 30 15 Q 15 20 0 15 Z" fill="#ff9ff3" filter="drop-shadow(0 0 10px #ff9ff3)"/>
+            </g>
+            <!-- ========================================================= -->
+
+            <circle class="firefly" cx="250" cy="650" r="4" fill="#a8ff78" filter="drop-shadow(0 0 10px #a8ff78)"/>
+            <circle class="firefly" cx="1650" cy="700" r="5" fill="#a8ff78" filter="drop-shadow(0 0 12px #a8ff78)" style="animation-delay: -1s;"/>
+        </svg>
+
+        <div id="teacher-drawer">
+            <div id="teacher-toggle"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></div>
+            <div class="input-wrapper">
+                <input type="number" id="inp-total" class="t-input secret-text" placeholder="Сума (напр. 8)">
+                <span class="eye-toggle" onclick="toggleSecret(this, 'inp-total')">👁️</span>
+            </div>
+            <div class="input-wrapper">
+                <input type="number" id="inp-part1" class="t-input secret-text" placeholder="Частина 1 (напр. 3)">
+                <span class="eye-toggle" onclick="toggleSecret(this, 'inp-part1')">👁️</span>
+            </div>
+            <button id="apply-btn">Магія!</button>
+        </div>
+
+        <div id="scheme-container"><svg id="scheme-svg"></svg></div>
+        <div id="board"></div>
+        <div id="palette"></div>
+
+        <!-- Дракончик -->
+        <div id="character">
+            <svg viewBox="0 0 400 400" width="100%" height="100%">
+                <!-- Хвіст -->
+                <path class="dragon-tail" d="M 200 280 Q 340 350 360 220" fill="none" stroke="#9b59b6" stroke-width="25" stroke-linecap="round"/>
+                <path class="dragon-tail" d="M 360 220 L 375 195 L 345 195 Z" fill="#9b59b6"/>
+                <!-- Тіло -->
+                <g class="dragon-body">
+                    <ellipse cx="150" cy="310" rx="25" ry="20" fill="#8e44ad"/> <ellipse cx="250" cy="310" rx="25" ry="20" fill="#8e44ad"/>
+                    <ellipse cx="200" cy="250" rx="70" ry="80" fill="#9b59b6"/> <ellipse cx="200" cy="265" rx="45" ry="60" fill="#ff9ff3"/>
+                    <path d="M 140 230 Q 110 260 120 290" fill="none" stroke="#9b59b6" stroke-width="20" stroke-linecap="round"/>
+                    <path d="M 260 230 Q 290 260 280 290" fill="none" stroke="#9b59b6" stroke-width="20" stroke-linecap="round"/>
+                </g>
+                <!-- Голова -->
+                <g class="dragon-head">
+                    <g class="dragon-ear" style="transform-origin: 120px 120px;">
+                        <path d="M 130 130 Q 60 50 40 80 Q 90 150 120 170" fill="#8e44ad"/> <path d="M 125 135 Q 70 70 55 90 Q 90 150 115 165" fill="#ff9ff3"/>
+                    </g>
+                    <g class="dragon-ear" style="transform-origin: 280px 120px;">
+                        <path d="M 270 130 Q 340 50 360 80 Q 310 150 280 170" fill="#8e44ad"/> <path d="M 275 135 Q 330 70 345 90 Q 310 150 285 165" fill="#ff9ff3"/>
+                    </g>
+                    <ellipse cx="200" cy="160" rx="90" ry="75" fill="#9b59b6"/> <ellipse cx="200" cy="190" rx="45" ry="35" fill="#ff9ff3"/>
+                    <circle cx="185" cy="185" r="4" fill="#8e44ad"/> <circle cx="215" cy="185" r="4" fill="#8e44ad"/>
+                    <path d="M 185 205 Q 200 220 215 205" fill="none" stroke="#8e44ad" stroke-width="4" stroke-linecap="round"/>
+                    
+                    <!-- Очі, що слідкують -->
+                    <circle cx="155" cy="140" r="22" fill="#fff" class="eye-bg"/>
+                    <g class="pupil"> <circle cx="160" cy="140" r="14" fill="#2c3e50"/> <circle cx="165" cy="135" r="4" fill="#fff"/> </g>
+                    <circle cx="245" cy="140" r="22" fill="#fff" class="eye-bg"/>
+                    <g class="pupil"> <circle cx="240" cy="140" r="14" fill="#2c3e50"/> <circle cx="235" cy="135" r="4" fill="#fff"/> </g>
+                    <ellipse cx="135" cy="180" rx="12" ry="8" fill="#ff4757" opacity="0.3"/> <ellipse cx="265" cy="180" rx="12" ry="8" fill="#ff4757" opacity="0.3"/>
+                </g>
+            </svg>
+        </div>
+        
+        <!-- Глобальне полотно для малювання -->
+        <canvas id="draw-canvas-global" width="1920" height="1080"></canvas>
+    </div>
+</div>
+
+<!-- Теми (Theme Manager) -->
+<div id="theme-settings-btn" onclick="document.getElementById('theme-modal').style.display='flex'">⚙️</div>
+<div id="theme-modal">
+    <div class="theme-modal-content">
+        <div class="close-theme-btn" onclick="document.getElementById('theme-modal').style.display='none'">✕</div>
+        <h2 style="color:white; margin-bottom: 20px; font-family: Arial, sans-serif;">Обери фон</h2>
+        <div class="theme-gallery" id="theme-gallery"></div>
+    </div>
+</div>
+
+<!-- Панель малювання -->
+<div id="toggle-draw-btn-global" onclick="toggleDrawPanel()">✏️ Малювати</div>
+<div id="draw-panel-global">
+    <div id="draw-panel-handle">
+        <div class="close-panel-btn" onclick="toggleDrawPanel()">✕</div>
+    </div>
+    <div class="draw-btn-row">
+        <button class="draw-tool-btn active" id="btn-pencil" onclick="setDrawMode('pencil')">✏️ Олівець</button>
+        <button class="draw-tool-btn" id="btn-eraser" onclick="setDrawMode('eraser')">🧽 Гумка</button>
+    </div>
+    <div class="draw-control-row">
+        Товщина: <input type="range" id="draw-size" min="1" max="50" value="5">
+    </div>
+    <div class="draw-control-row">
+        Колір: <input type="color" id="draw-color" value="#ff4757" style="width:100%; height:30px; border:none; cursor:pointer;">
+    </div>
+    <button id="clear-canvas-btn" onclick="clearDrawCanvas(true)">🗑️ Очистити</button>
+</div>
+
+<script>
+    // ==========================================
+    // НАЛАШТУВАННЯ ТА FIREBASE (СИНХРОНІЗАЦІЯ)
+    // ==========================================
+    const CONFIG = { gameId: 'magic_math' };
+    const firebaseConfig = { databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/", projectId: "lesson-13c44" };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    
+    let mySessionId = Math.random().toString(36).substring(2, 10);
+    
+    // БЛОК КОНТРОЛЮ, РАДАРУ ТА ІДЕНТИФІКАЦІЇ
+    let myName = new URLSearchParams(window.location.search).get('user');
+    if (myName) sessionStorage.setItem('userName', myName);
+    else myName = sessionStorage.getItem('userName');
+    
+    if (!myName) {
+        myName = 'Гість_' + Math.floor(Math.random() * 1000);
+        sessionStorage.setItem('userName', myName);
+    }
+    
+    const tabId = Math.random().toString(36).substring(2,15);
+    let lobbyImmunity = true; setTimeout(() => lobbyImmunity = false, 1000);
+    
+    db.ref('.info/connected').on('value', snap => {
+        if (snap.val() === true) {
+            const userRef = db.ref(`online_users/${myName}/${tabId}`);
+            userRef.set(true);
+            userRef.onDisconnect().remove();
+        }
+    });
+    window.addEventListener('beforeunload', () => db.ref(`online_users/${myName}/${tabId}`).remove());
+    
+    db.ref(`blocked_users/${myName}`).on('value', snap => {
+        document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+    });
+    
+    db.ref('force_refresh').on('value', snap => {
+        if (snap.exists() && snap.val() !== null && !lobbyImmunity) window.location.reload();
+    });
+    
+    db.ref('current_activity').on('value', snap => {
+        if (snap.exists() && snap.val() === 'lobby' && !lobbyImmunity) {
+            window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+        }
+    });
+
+    // Механізм передачі дій (Game Actions)
+    function emitAction(type, data) {
+        if(typeof db !== 'undefined') {
+            db.ref('game_action').set({
+                senderId: mySessionId,
+                timestamp: firebase.database.ServerValue.TIMESTAMP,
+                type: type,
+                data: data
+            });
+        }
+        processGameAction({ type, data }, false); // Локальне виконання
+    }
+
+    db.ref('game_action').on('value', snap => {
+        if (!snap.exists()) return;
+        const action = snap.val();
+        if (action.senderId === mySessionId) return; // Уникнення зациклення
+        processGameAction(action, true);
+    });
+
+    function processGameAction(action, isRemote) {
+        const { type, data } = action;
+        if (type === 'fill_slot') {
+            const slot = document.querySelector(`.slot[data-r="${data.r}"][data-c="${data.c}"]`);
+            if (slot) {
+                slot.classList.add('filled', data.t);
+                slot.textContent = data.val;
+                slot.dataset.val = data.val;
+                slot.dataset.type = data.t;
+                if(!isRemote) playSound('snap');
+                checkWin();
+            }
+        } else if (type === 'clear_slot') {
+            const slot = document.querySelector(`.slot[data-r="${data.r}"][data-c="${data.c}"]`);
+            if (slot && slot.classList.contains('filled')) {
+                slot.className = 'slot'; slot.textContent = '';
+                delete slot.dataset.val; delete slot.dataset.type;
+                if(!isRemote) playSound('pop');
+                checkWin();
+            }
+        } else if (type === 'init_level') {
+            if (isRemote) {
+                document.getElementById('inp-total').value = data.t;
+                document.getElementById('inp-part1').value = data.p1;
+            }
+            initLevelLocal(data.t, data.p1);
+        } else if (type === 'draw_line' && isRemote) {
+            remoteDrawLine(data.x0, data.y0, data.x1, data.y1, data.color, data.width, data.mode);
+        } else if (type === 'clear_canvas' && isRemote) {
+            clearDrawCanvas(false);
+        } else if (type === 'drag_move' && isRemote) {
+            let rClone = document.getElementById('remote-drag-clone');
+            if(!rClone) {
+                rClone = document.createElement('div');
+                rClone.id = 'remote-drag-clone';
+                rClone.className = `drag-clone remote-clone`;
+                document.body.appendChild(rClone);
+            }
+            rClone.className = `drag-clone remote-clone ${data.t}`;
+            rClone.textContent = data.val;
+            rClone.style.display = 'flex';
+            rClone.style.left = data.x + 'vw';
+            rClone.style.top = data.y + 'vh';
+        } else if (type === 'drag_end' && isRemote) {
+            const rClone = document.getElementById('remote-drag-clone');
+            if(rClone) rClone.style.display = 'none';
+        }
+    }
+
+    // ==========================================
+    // СИНХРОНІЗАЦІЯ ПЕРЕТЯГУВАННЯ (РАДАР)
+    // ==========================================
+    let lastDragEmit = 0;
+    function emitDragMove(cx, cy, val, t) {
+        const now = Date.now();
+        if(now - lastDragEmit < 40) return; // Тротлінг ~25fps
+        lastDragEmit = now;
+        const xVW = (cx / window.innerWidth) * 100;
+        const yVH = (cy / window.innerHeight) * 100;
+        emitAction('drag_move', { x: xVW, y: yVH, val, t });
+    }
+    function emitDragEnd() {
+        emitAction('drag_end', {});
+    }
+
+    // ==========================================
+    // THEME MANAGER (СТРОГО ПОСЛІДОВНЕ ЗАВАНТАЖЕННЯ)
+    // ==========================================
+    async function loadThemes() {
+        const gallery = document.getElementById('theme-gallery');
+        const noTheme = document.createElement('div');
+        noTheme.className = 'theme-card';
+        noTheme.innerHTML = '<span>Без фону</span>';
+        noTheme.onclick = () => selectTheme('none');
+        gallery.appendChild(noTheme);
+
+        for (let i = 1; i <= 1000; i++) {
+            const url = `https://olgazheltvai2.github.io/images/backgrounds/background_${i}.webp`;
+            try {
+                const res = await fetch(url, {method: 'HEAD'});
+                if (!res.ok) break; // СТРОГА ЗУПИНКА ПРИ 404
+                const card = document.createElement('div');
+                card.className = 'theme-card';
+                card.style.backgroundImage = `url(${url})`;
+                card.innerHTML = `<span>Фон ${i}</span>`;
+                card.onclick = () => selectTheme(url);
+                gallery.appendChild(card);
+            } catch (e) { break; }
+        }
+    }
+    
+    function selectTheme(url) {
+        localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+        applyTheme(url);
+        db.ref('game_theme').set(url);
+        document.getElementById('theme-modal').style.display = 'none';
+    }
+
+    function applyTheme(url) {
+        if (url === 'none') {
+            document.body.style.backgroundImage = 'none';
+            document.getElementById('bg-canvas').style.display = 'block';
+        } else {
+            document.body.style.backgroundImage = `url(${url})`;
+            document.body.style.backgroundSize = 'cover';
+            document.body.style.backgroundPosition = 'center';
+            document.getElementById('bg-canvas').style.display = 'none';
+        }
+    }
+
+    const savedBg = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+    if (savedBg) applyTheme(savedBg);
+    
+    db.ref('game_theme').on('value', snap => {
+        if (snap.exists()) applyTheme(snap.val());
+    });
+    
+    loadThemes(); // Завантажуємо галерею
+
+    // ==========================================
+    // ЛУПА ТА ЗУМ
+    // ==========================================
+    let globalZoom = 1;
+    function adjustZoom(delta) {
+        globalZoom += delta;
+        if (globalZoom < 0.5) globalZoom = 0.5;
+        if (globalZoom > 3) globalZoom = 3;
+        document.getElementById('zoom-wrapper').style.transform = `scale(${globalZoom})`;
+    }
+
+    // ==========================================
+    // ГЛОБАЛЬНИЙ ОЛІВЕЦЬ ТА МАЛЮВАННЯ
+    // ==========================================
+    const canvas = document.getElementById('draw-canvas-global');
+    const dCtx = canvas.getContext('2d');
+    let isDrawingPanelOpen = false;
+    let isDrawing = false;
+    let drawMode = 'pencil';
+    let lastX = 0, lastY = 0;
+
+    function toggleDrawPanel() {
+        const panel = document.getElementById('draw-panel-global');
+        isDrawingPanelOpen = !isDrawingPanelOpen;
+        panel.style.display = isDrawingPanelOpen ? 'flex' : 'none';
+        canvas.style.pointerEvents = isDrawingPanelOpen ? 'auto' : 'none';
+        if(isDrawingPanelOpen) setDrawMode('pencil'); // Олівець активується одразу
+    }
+
+    function setDrawMode(mode) {
+        drawMode = mode;
+        document.getElementById('btn-pencil').classList.toggle('active', mode === 'pencil');
+        document.getElementById('btn-eraser').classList.toggle('active', mode === 'eraser');
+    }
+
+    function getCanvasCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        // Враховуємо зум та масштабування
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        let clientX = e.clientX, clientY = e.clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        }
+        return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+    }
+
+    function startDraw(e) {
+        if (!isDrawingPanelOpen) return;
+        e.preventDefault(); isDrawing = true;
+        const pos = getCanvasCoords(e);
+        lastX = pos.x; lastY = pos.y;
+    }
+
+    function drawProcess(e) {
+        if (!isDrawing || !isDrawingPanelOpen) return;
+        e.preventDefault();
+        const pos = getCanvasCoords(e);
+        const color = document.getElementById('draw-color').value;
+        const width = document.getElementById('draw-size').value;
+        
+        remoteDrawLine(lastX, lastY, pos.x, pos.y, color, width, drawMode);
+        emitAction('draw_line', { x0: lastX, y0: lastY, x1: pos.x, y1: pos.y, color, width, mode: drawMode });
+        
+        lastX = pos.x; lastY = pos.y;
+    }
+
+    function endDraw() { isDrawing = false; }
+
+    function remoteDrawLine(x0, y0, x1, y1, color, width, mode) {
+        dCtx.beginPath();
+        dCtx.moveTo(x0, y0);
+        dCtx.lineTo(x1, y1);
+        dCtx.lineCap = 'round';
+        dCtx.lineWidth = width;
+        if (mode === 'eraser') {
+            dCtx.globalCompositeOperation = 'destination-out';
+            dCtx.strokeStyle = 'rgba(0,0,0,1)';
+        } else {
+            dCtx.globalCompositeOperation = 'source-over';
+            dCtx.strokeStyle = color;
+        }
+        dCtx.stroke();
+    }
+
+    function clearDrawCanvas(emit = false) {
+        dCtx.clearRect(0, 0, canvas.width, canvas.height);
+        if (emit) emitAction('clear_canvas', {});
+    }
+
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', drawProcess);
+    window.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('touchstart', startDraw, {passive: false});
+    canvas.addEventListener('touchmove', drawProcess, {passive: false});
+    window.addEventListener('touchend', endDraw);
+
+    // Драг панелі вчителя
+    const dPanel = document.getElementById('draw-panel-global');
+    const dHandle = document.getElementById('draw-panel-handle');
+    let isDraggingPanel = false; let pStartX, pStartY, pInitX, pInitY;
+
+    dHandle.addEventListener('mousedown', e => {
+        isDraggingPanel = true; pStartX = e.clientX; pStartY = e.clientY;
+        const rect = dPanel.getBoundingClientRect(); pInitX = rect.left; pInitY = rect.top;
+    });
+    window.addEventListener('mousemove', e => {
+        if (!isDraggingPanel) return;
+        dPanel.style.left = (pInitX + e.clientX - pStartX) + 'px';
+        dPanel.style.top = (pInitY + e.clientY - pStartY) + 'px';
+        dPanel.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => isDraggingPanel = false);
+    
+    // Сенсорний драг панелі
+    dHandle.addEventListener('touchstart', e => {
+        isDraggingPanel = true; pStartX = e.touches[0].clientX; pStartY = e.touches[0].clientY;
+        const rect = dPanel.getBoundingClientRect(); pInitX = rect.left; pInitY = rect.top;
+    }, {passive: false});
+    window.addEventListener('touchmove', e => {
+        if (!isDraggingPanel) return; e.preventDefault();
+        dPanel.style.left = (pInitX + e.touches[0].clientX - pStartX) + 'px';
+        dPanel.style.top = (pInitY + e.touches[0].clientY - pStartY) + 'px';
+        dPanel.style.right = 'auto';
+    }, {passive: false});
+    window.addEventListener('touchend', () => isDraggingPanel = false);
+
+    // ==========================================
+    // ЛОГІКА САМОЇ ГРИ
+    // ==========================================
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const ctx = new AudioContext();
+
+    function playSound(type) {
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination); const now = ctx.currentTime;
+        if (type === 'pop') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(900, now); osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+            gain.setValueAtTime(0.4, now); gain.exponentialRampToValueAtTime(0.01, now + 0.1); osc.start(now); osc.stop(now + 0.1);
+        } else if (type === 'snap') { 
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(1200, now + 0.15);
+            gain.setValueAtTime(0.3, now); gain.exponentialRampToValueAtTime(0.01, now + 0.15); osc.start(now); osc.stop(now + 0.15);
+        } else if (type === 'error') {
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now); osc.frequency.linearRampToValueAtTime(100, now + 0.3);
+            gain.setValueAtTime(0.3, now); gain.linearRampToValueAtTime(0.01, now + 0.3); osc.start(now); osc.stop(now + 0.3);
+        } else if (type === 'win') { 
+            osc.type = 'square'; [523.25, 659.25, 783.99, 1046.50, 1318.51].forEach((freq, i) => { osc.frequency.setValueAtTime(freq, now + i * 0.12); });
+            gain.setValueAtTime(0.3, now); gain.linearRampToValueAtTime(0, now + 0.8); osc.start(now); osc.stop(now + 0.8);
+        }
+    }
+
+    let currentLevel = { total: 8, p1: 3, p2: 5 };
+    let isWin = false;
+    let selectedItem = null;
+
+    // Панель вчителя та секретні поля
+    const drawer = document.getElementById('teacher-drawer');
+    document.getElementById('teacher-toggle').addEventListener('click', () => drawer.classList.toggle('open'));
+    document.getElementById('apply-btn').addEventListener('click', () => {
+        const t = parseInt(document.getElementById('inp-total').value);
+        const p1 = parseInt(document.getElementById('inp-part1').value);
+        if (t > 1 && p1 > 0 && p1 < t) { 
+            emitAction('init_level', { t: t, p1: p1 });
+            drawer.classList.remove('open'); 
+        }
+    });
+
+    function toggleSecret(btn, inputId) {
+        const inp = document.getElementById(inputId);
+        inp.classList.toggle('secret-text');
+        inp.classList.toggle('visible-text');
+    }
+
+    function initLevelLocal(customTotal, customP1) {
+        isWin = false; 
+        selectedItem = null;
+        document.getElementById('character').classList.remove('happy-jump');
+        if (customTotal && customP1) { currentLevel.total = customTotal; currentLevel.p1 = customP1; currentLevel.p2 = customTotal - customP1; }
+        drawScheme(); buildBoard(); buildPalette();
+    }
+
+    function drawScheme() {
+        const svg = document.getElementById('scheme-svg');
+        const W = 1000, H = 250; svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = '';
+        const margin = 80; const lineLen = W - 2 * margin; const N = currentLevel.total;
+        const step = lineLen / N; const A = currentLevel.p1; const midX = margin + A * step;
+        const createEl = (tag, attrs) => { const el = document.createElementNS('http://www.w3.org/2000/svg', tag); for(let k in attrs) el.setAttribute(k, attrs[k]); return el; };
+
+        svg.appendChild(createEl('line', { x1: margin, y1: H/2, x2: W-margin, y2: H/2, stroke: '#1e90ff', 'stroke-width': 10, 'stroke-linecap': 'round' }));
+        svg.appendChild(createEl('line', { x1: margin, y1: H/2, x2: midX, y2: H/2, stroke: '#ff4757', 'stroke-width': 10, 'stroke-linecap': 'round' }));
+
+        for(let i=0; i<=N; i++) {
+            let x = margin + i * step; let isMainNode = (i===0 || i===A || i===N);
+            svg.appendChild(createEl('circle', {cx: x, cy: H/2, r: isMainNode ? 12 : 5, fill: '#fff'}));
+        }
+        const addGiantText = (val, x, y, arcPath) => {
+            svg.appendChild(createEl('path', { d: arcPath, fill: 'none', stroke: '#f1c40f', 'stroke-width': 5, 'stroke-dasharray': '8,8' }));
+            let txt = createEl('text', {x: x, y: y, fill: '#fff', 'font-size': '70', 'font-family': 'Arial', 'text-anchor': 'middle', 'font-weight': '900'}); txt.textContent = val; svg.appendChild(txt);
+        };
+        addGiantText(N, W/2, H/2 - 60, `M ${margin} ${H/2 - 25} Q ${W/2} ${H/2 - 90} ${W-margin} ${H/2 - 25}`);
+        addGiantText(A, margin + (A*step)/2, H/2 + 100, `M ${margin} ${H/2 + 25} Q ${margin + (A*step)/2} ${H/2 + 70} ${midX} ${H/2 + 25}`);
+        addGiantText(currentLevel.p2, midX + ((N-A)*step)/2, H/2 + 100, `M ${midX} ${H/2 + 25} Q ${midX + ((N-A)*step)/2} ${H/2 + 70} ${W-margin} ${H/2 + 25}`);
+    }
+
+    function buildBoard() {
+        const b = document.getElementById('board'); b.innerHTML = '';
+        for(let r=0; r<4; r++) {
+            let row = document.createElement('div'); row.className = 'eq-row';
+            for(let c=0; c<5; c++) { 
+                let slot = document.createElement('div'); 
+                slot.className = 'slot'; 
+                slot.dataset.r = r;
+                slot.dataset.c = c;
+                
+                slot.addEventListener('click', () => {
+                    if (slot.classList.contains('filled')) {
+                        emitAction('clear_slot', { r, c });
+                    } else if (selectedItem && !isWin) {
+                        emitAction('fill_slot', { r, c, val: selectedItem.v, t: selectedItem.t });
+                    }
+                });
+
+                slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.classList.add('drag-over'); });
+                slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
+                slot.addEventListener('drop', (e) => {
+                    e.preventDefault(); slot.classList.remove('drag-over');
+                    if(isWin) return;
+                    let val = e.dataTransfer.getData('val'); let type = e.dataTransfer.getData('type');
+                    if (val && type) emitAction('fill_slot', { r, c, val: val, t: type });
+                });
+
+                row.appendChild(slot); 
+            }
+            b.appendChild(row);
+        }
+    }
+
+    function buildPalette() {
+        const p = document.getElementById('palette'); p.innerHTML = '';
+        const items = [ {v: currentLevel.total, t: 'num'}, {v: currentLevel.p1, t: 'num'}, {v: currentLevel.p2, t: 'num'}, {v: '+', t: 'sign'}, {v: '-', t: 'sign'}, {v: '=', t: 'sign'} ];
+        let uniqueItems = []; let seen = new Set();
+        items.forEach(i => { let key = i.v + i.t; if(!seen.has(key)) { seen.add(key); uniqueItems.push(i); } });
+        
+        uniqueItems.forEach(item => {
+            let el = document.createElement('div'); el.className = `draggable ${item.t}`;
+            el.dataset.val = item.v; el.dataset.type = item.t; el.textContent = item.v;
+            
+            el.addEventListener('click', () => {
+                playSound('pop');
+                document.querySelectorAll('.draggable').forEach(d => d.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedItem = { v: item.v, t: item.t };
+            });
+
+            el.draggable = true;
+            el.addEventListener('dragstart', (e) => {
+                if(isWin) { e.preventDefault(); return; }
+                e.dataTransfer.setData('val', item.v); e.dataTransfer.setData('type', item.t);
+                e.dataTransfer.effectAllowed = 'copyMove'; playSound('pop');
+                document.querySelectorAll('.draggable').forEach(d => d.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedItem = { v: item.v, t: item.t };
+            });
+            el.addEventListener('drag', (e) => {
+                if(e.clientX === 0 && e.clientY === 0) return;
+                emitDragMove(e.clientX, e.clientY, item.v, item.t);
+            });
+            el.addEventListener('dragend', () => emitDragEnd());
+
+            el.addEventListener('touchstart', handleTouchStart, {passive: false});
+            p.appendChild(el);
+        });
+    }
+
+    let touchClone = null; let touchData = null; let touchHoverSlot = null;
+
+    function handleTouchStart(e) {
+        if(isWin) return; e.preventDefault(); playSound('pop');
+        const target = e.currentTarget;
+        document.querySelectorAll('.draggable').forEach(d => d.classList.remove('selected'));
+        target.classList.add('selected');
+        selectedItem = { v: target.dataset.val, t: target.dataset.type };
+
+        touchData = { v: target.dataset.val, t: target.dataset.type };
+        touchClone = document.createElement('div');
+        touchClone.className = `drag-clone ${touchData.t}`;
+        touchClone.textContent = touchData.v;
+        touchClone.style.left = e.touches[0].clientX + 'px';
+        touchClone.style.top = e.touches[0].clientY + 'px';
+        document.body.appendChild(touchClone);
+
+        document.addEventListener('touchmove', handleTouchMove, {passive: false});
+        document.addEventListener('touchend', handleTouchEnd);
+        emitDragMove(e.touches[0].clientX, e.touches[0].clientY, touchData.v, touchData.t);
+    }
+
+    function handleTouchMove(e) {
+        if(!touchClone) return; e.preventDefault();
+        const touchX = e.touches[0].clientX; const touchY = e.touches[0].clientY;
+        touchClone.style.left = touchX + 'px'; touchClone.style.top = touchY + 'px';
+        touchClone.style.display = 'none';
+        const elUnder = document.elementFromPoint(touchX, touchY);
+        touchClone.style.display = 'flex';
+
+        emitDragMove(touchX, touchY, touchData.v, touchData.t);
+
+        const slot = elUnder ? elUnder.closest('.slot:not(.filled)') : null;
+        if (touchHoverSlot && touchHoverSlot !== slot) touchHoverSlot.classList.remove('drag-over');
+        if (slot) { slot.classList.add('drag-over'); touchHoverSlot = slot; } else { touchHoverSlot = null; }
+    }
+
+    function handleTouchEnd(e) {
+        if(!touchClone) return;
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+        emitDragEnd();
+
+        if (touchHoverSlot) {
+            touchHoverSlot.classList.remove('drag-over');
+            emitAction('fill_slot', { r: touchHoverSlot.dataset.r, c: touchHoverSlot.dataset.c, val: touchData.v, t: touchData.t });
+        } else {
+            playSound('pop');
+        }
+
+        if(touchHoverSlot) touchHoverSlot.classList.remove('drag-over');
+        touchClone.remove(); touchClone = null; touchData = null; touchHoverSlot = null;
+    }
+
+    // Анімація очей Дракончика
+    const pupils = document.querySelectorAll('.pupil'); 
+    const eyeBgs = document.querySelectorAll('.eye-bg');
+    document.addEventListener('mousemove', (e) => {
+        if(pupils.length === 2 && eyeBgs.length === 2 && e.clientX) {
+            for(let i=0; i<2; i++) {
+                const rect = eyeBgs[i].getBoundingClientRect();
+                const cx = rect.left + rect.width / 2; const cy = rect.top + rect.height / 2;
+                const angle = Math.atan2(e.clientY - cy, e.clientX - cx);
+                const dist = Math.min(6, Math.hypot(e.clientX - cx, e.clientY - cy) * 0.02);
+                pupils[i].style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+            }
+        }
+    });
+
+    function checkWin() {
+        if(isWin) return;
+        const rows = document.querySelectorAll('.eq-row');
+        let eqs = []; let fullCount = 0; let errorsFound = false;
+
+        rows.forEach(row => {
+            let str = ""; let rowFull = true;
+            row.querySelectorAll('.slot').forEach(s => {
+                if(!s.dataset.val) rowFull = false; str += s.dataset.val || "_";
+            });
+            if(rowFull) {
+                fullCount++; eqs.push(str);
+                if(!/^(\d+)([\+\-])(\d+)=(\d+)$/.test(str)) {
+                    row.querySelectorAll('.slot').forEach(s => { s.classList.add('error'); setTimeout(() => s.classList.remove('error'), 400); });
+                    errorsFound = true;
+                }
+            }
+        });
+
+        if(errorsFound) { playSound('error'); return; }
+
+        if(fullCount === 4) {
+            const T = currentLevel.total, A = currentLevel.p1, B = currentLevel.p2;
+            const expected = [ `${A}+${B}=${T}`, `${B}+${A}=${T}`, `${T}-${A}=${B}`, `${T}-${B}=${A}` ].sort();
+            const current = [...eqs].sort();
+
+            if (JSON.stringify(expected) === JSON.stringify(current)) {
+                isWin = true; playSound('win');
+                document.getElementById('character').classList.add('happy-jump'); 
+                createConfetti(); setTimeout(() => { playSound('pop'); initLevelLocal(currentLevel.total, currentLevel.p1); }, 4000);
+            } else {
+                playSound('error');
+                rows.forEach(row => { row.querySelectorAll('.slot').forEach(s => { s.classList.add('error'); setTimeout(() => s.classList.remove('error'), 400); }); });
+            }
+        }
+    }
+
+    function createConfetti() {
+        const colors = ['#ff4757', '#1e90ff', '#2ed573', '#f1c40f', '#ff9ff3'];
+        for(let i=0; i<80; i++) {
+            let c = document.createElement('div'); c.className = 'confetti';
+            c.style.left = Math.random() * 100 + 'vw';
+            let size = 0.5 + Math.random() * 1.5; c.style.width = size + 'vw'; c.style.height = size + 'vw';
+            c.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            c.style.animation = `fall ${2 + Math.random() * 2}s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards`;
+            document.body.appendChild(c); setTimeout(() => c.remove(), 4000);
+        }
+    }
+
+    initLevelLocal(8, 3);
+</script>
+</body>
+</html>
