@@ -80,8 +80,14 @@
             border: 2px solid #FFCDD2;
         }
 
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
         #wagon-input {
-            width: 70px;
+            width: 90px;
             height: 50px;
             font-size: 32px;
             text-align: center;
@@ -91,6 +97,26 @@
             color: #B71C1C;
             font-weight: bold;
             outline: none;
+            padding-right: 30px; /* Місце для ока */
+        }
+
+        #toggle-secret-btn {
+            position: absolute;
+            right: 5px;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        /* Секретне поле вводу */
+        .secret-text {
+            color: transparent !important;
+        }
+        .secret-text::selection {
+            color: transparent !important;
+            background: transparent !important;
         }
 
         #build-btn {
@@ -203,17 +229,9 @@
         /* Адаптивність */
         @media (max-width: 768px) {
             #ui-layer { transform: translateX(-50%) scale(0.8); top: 10px; }
-            #wagon-input { height: 40px; font-size: 24px; }
+            #wagon-input { height: 40px; font-size: 24px; width: 70px; padding-right: 25px; }
+            #toggle-secret-btn { font-size: 16px; right: 2px; }
             #build-btn { width: 50px; height: 50px; }
-        }
-
-        /* Поля вводу таємних слів (глобальний стиль на майбутнє) */
-        .secret-input {
-            color: transparent !important;
-        }
-        .secret-input::selection {
-            color: transparent !important;
-            background: transparent !important;
         }
 
         /* Кнопка налаштувань фону */
@@ -507,7 +525,10 @@
         </svg>
 
         <div id="ui-layer">
-            <input type="number" id="wagon-input" min="1" max="50" value="4">
+            <div class="input-wrapper">
+                <input type="number" id="wagon-input" min="1" max="50" value="4">
+                <button id="toggle-secret-btn" title="Сховати/Показати">👁️</button>
+            </div>
             <button id="build-btn">
                 <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#D32F2F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="10"></circle>
@@ -813,11 +834,13 @@
         document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
     });
 
-    // Примусове оновлення (не встановлюємо тут, тільки слухаємо)
+    // Примусове оновлення (із захистом від безкінечного циклу при першому завантаженні сторінки)
+    let isFirstForceRefresh = true;
     db.ref('force_refresh').on('value', snap => {
-        if (snap.val()) {
+        if (snap.val() && !isFirstForceRefresh) {
             window.location.reload();
         }
+        isFirstForceRefresh = false;
     });
 
     // Повернення в лобі з імунітетом 1 сек
@@ -944,6 +967,23 @@
     }
 
 
+    // ================= СЕКРЕТНИЙ ВВІД (КНОПКА ОКО) =================
+    const toggleSecretBtn = document.getElementById('toggle-secret-btn');
+    const input = document.getElementById('wagon-input');
+    let isSecret = false;
+    
+    toggleSecretBtn.addEventListener('click', () => {
+        isSecret = !isSecret;
+        if (isSecret) {
+            input.classList.add('secret-text');
+            toggleSecretBtn.innerText = '🙈';
+        } else {
+            input.classList.remove('secret-text');
+            toggleSecretBtn.innerText = '👁️';
+        }
+    });
+
+
     // ================= ІНСТРУМЕНТ МАЛЮВАННЯ =================
     const canvas = document.getElementById('draw-canvas');
     const ctx = canvas.getContext('2d');
@@ -1001,12 +1041,14 @@
         if (broadcast) sendAction({ type: 'clear_canvas' });
     }
 
-    // Отримання координат з врахуванням масштабування лупою
+    // Отримання координат: масштабування розраховується динамічно, незалежно від лупи
     function getMousePos(evt) {
         const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
         return {
-            x: (evt.clientX - rect.left) / currentZoom,
-            y: (evt.clientY - rect.top) / currentZoom
+            x: (evt.clientX - rect.left) * scaleX,
+            y: (evt.clientY - rect.top) * scaleY
         };
     }
 
@@ -1117,7 +1159,6 @@
         osc.start(); osc.stop(audioCtx.currentTime + 0.1);
     }
 
-    const input = document.getElementById('wagon-input');
     const btn = document.getElementById('build-btn');
     const trainWrapper = document.getElementById('train-wrapper');
     const girl = document.getElementById('girl');
@@ -1220,7 +1261,7 @@
     input.addEventListener('keydown', (e) => { if(e.key === 'Enter') buildTrain(false); });
 
     function makeDraggable(el) {
-        let isDragLoc = false, startX, startY, initLeft, initTop;
+        let isDragLoc = false, startX, startY, initLeft, initTop, dragScaleX, dragScaleY;
         let lastSyncTime = 0;
 
         el.addEventListener('pointerdown', e => {
@@ -1233,8 +1274,12 @@
             const rect = el.getBoundingClientRect();
             const pRect = container.getBoundingClientRect();
             
-            initLeft = (rect.left - pRect.left) / currentZoom;
-            initTop = (rect.top - pRect.top) / currentZoom;
+            // Динамічний розрахунок масштабу (ізольовано від лупи, бере фізичні пікселі)
+            dragScaleX = container.offsetWidth / pRect.width;
+            dragScaleY = container.offsetHeight / pRect.height;
+            
+            initLeft = (rect.left - pRect.left) * dragScaleX;
+            initTop = (rect.top - pRect.top) * dragScaleY;
             
             el.style.transition = 'none'; 
             
@@ -1245,9 +1290,9 @@
 
         el.addEventListener('pointermove', e => {
             if (!isDragLoc) return;
-            // Врахування масштабу при переміщенні
-            const newLeft = initLeft + (e.clientX - startX) / currentZoom;
-            const newTop = initTop + (e.clientY - startY) / currentZoom;
+            
+            const newLeft = initLeft + (e.clientX - startX) * dragScaleX;
+            const newTop = initTop + (e.clientY - startY) * dragScaleY;
             
             el.style.left = newLeft + 'px';
             el.style.top = newTop + 'px';
