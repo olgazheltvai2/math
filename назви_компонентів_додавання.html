@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Магічна Кузня: Гном-Коваль</title>
+<!-- Підключення Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+<style>
+    :root {
+        --cave-dark: #1a0f2e;
+        --cave-wall: #2d1b4e;
+        --gold: #ffd700;
+        --lava-glow: #ff4500;
+        --rune-glow: #00ffff;
+    }
+
+    body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Arial', sans-serif;
+        background-color: var(--cave-dark);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        overflow: hidden;
+        touch-action: manipulation;
+        color: #fff;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+    }
+
+    /* Контейнер 16:9 - Зроблено прозорим для динамічних фонів */
+    .game-wrapper {
+        position: relative;
+        width: 100vw;
+        height: 56.25vw; /* 16:9 ratio */
+        max-height: 100vh;
+        max-width: 177.78vh; /* 16:9 ratio */
+        overflow: hidden;
+        background: transparent; 
+        box-shadow: 0 0 50px rgba(255, 69, 0, 0.3);
+        border-radius: 20px;
+        transition: transform 0.2s ease;
+    }
+
+    /* ЧІТКИЙ деталізований фон (БЕЗ розмиття) */
+    .background-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    /* Іскри від лави */
+    .sparks-layer {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+    }
+
+    .spark {
+        position: absolute;
+        bottom: 10%;
+        width: 4px;
+        height: 4px;
+        background-color: var(--gold);
+        border-radius: 50%;
+        box-shadow: 0 0 10px var(--lava-glow);
+        animation: floatUp 3s linear infinite;
+        opacity: 0;
+    }
+
+    @keyframes floatUp {
+        0% { transform: translateY(0) scale(1); opacity: 1; }
+        100% { transform: translateY(-50vh) scale(0.5); opacity: 0; }
+    }
+
+    /* Ігровий інтерфейс */
+    .ui-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding-top: 4vh;
+        box-sizing: border-box;
+        pointer-events: none; 
+    }
+
+    .instruction {
+        font-size: 3.5vh;
+        margin-bottom: 2vh;
+        font-weight: bold;
+        text-align: center;
+        color: #fff;
+        text-shadow: 0 0 10px #000, 0 0 20px var(--lava-glow);
+        background: rgba(26, 15, 46, 0.85);
+        padding: 15px 45px;
+        border-radius: 15px;
+        border: 3px solid var(--gold);
+        box-shadow: 0 10px 20px rgba(0,0,0,0.6), inset 0 0 15px rgba(255, 215, 0, 0.3);
+        pointer-events: auto; 
+    }
+
+    .target-word {
+        color: var(--rune-glow);
+        font-size: 5.5vh;
+        text-transform: uppercase;
+        display: block;
+        margin-top: 8px;
+        text-shadow: 0 0 15px var(--rune-glow), 0 0 30px #0055ff;
+        animation: pulseRune 1.5s infinite alternate;
+    }
+
+    @keyframes pulseRune {
+        0% { filter: brightness(1) drop-shadow(0 0 5px var(--rune-glow)); }
+        100% { filter: brightness(1.3) drop-shadow(0 0 20px var(--rune-glow)); }
+    }
+
+    /* Робоча зона рівняння */
+    .equation-area {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3vw;
+        margin-top: 2vh;
+        z-index: 100; 
+        pointer-events: none; 
+    }
+
+    /* Ковадла з рунами (КНОПКИ) - Гарантовано клікабельні */
+    .math-part {
+        position: relative;
+        width: 15vw;
+        height: 16vw;
+        max-width: 150px;
+        max-height: 160px;
+        pointer-events: auto !important; 
+        cursor: pointer;
+        transition: transform 0.1s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .math-part:hover {
+        transform: scale(1.1) translateY(-5px);
+    }
+
+    .math-part:active {
+        transform: scale(0.95) translateY(5px);
+    }
+
+    .math-part svg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -1;
+        filter: drop-shadow(0px 15px 10px rgba(0,0,0,0.8));
+    }
+
+    .math-part .number {
+        font-size: 7.5vh;
+        font-weight: bold;
+        color: #fff;
+        text-shadow: 0 0 15px var(--rune-glow), 0 0 30px var(--rune-glow), 2px 2px 0 #000;
+        z-index: 2;
+        margin-top: -20%; /* Піднімаємо цифру на верхню площину ковадла */
+    }
+
+    .operator {
+        font-size: 9vh;
+        font-weight: bold;
+        color: var(--gold);
+        text-shadow: 0 0 15px var(--lava-glow), 3px 3px 0 #000;
+        pointer-events: none; 
+    }
+
+    /* Анімації відповідей */
+    .splat-anim {
+        animation: anvilCoolDown 0.6s forwards;
+    }
+    
+    @keyframes anvilCoolDown {
+        0% { transform: scale(1); filter: brightness(1); }
+        20% { transform: scale(0.9) translateX(-10px); }
+        40% { transform: scale(0.9) translateX(10px); filter: grayscale(0.8) brightness(0.5); }
+        60% { transform: scale(0.9) translateX(-10px); }
+        100% { transform: scale(1); filter: brightness(1); }
+    }
+
+    .blast-off-anim {
+        animation: runeForge 1.2s ease-in forwards;
+        z-index: 200;
+    }
+
+    @keyframes runeForge {
+        0% { transform: scale(1); filter: brightness(1); }
+        20% { transform: scale(1.3) translateY(-15px); filter: brightness(2) drop-shadow(0 0 40px var(--rune-glow)); }
+        100% { transform: scale(0) translateY(-400px); opacity: 0; filter: brightness(4); }
+    }
+
+    /* Живий персонаж (Гном-Коваль) */
+    .character-container {
+        position: absolute;
+        bottom: 2%;
+        right: 2%; 
+        width: 25vw; 
+        max-width: 250px;
+        z-index: 12;
+        pointer-events: none; 
+        transform-origin: bottom center;
+        animation: dwarfBreathe 3s ease-in-out infinite;
+    }
+
+    @keyframes dwarfBreathe {
+        0%, 100% { transform: scaleY(1) scaleX(1); }
+        50% { transform: scaleY(0.96) scaleX(1.02); }
+    }
+
+    .char-happy {
+        animation: dwarfStrike 1.5s ease-in-out !important;
+    }
+    @keyframes dwarfStrike {
+        0%, 100% { transform: translateY(0) scale(1); }
+        20% { transform: translateY(-40px) scale(1.1) rotate(10deg); }
+        40% { transform: translateY(0) scale(1) rotate(-5deg); }
+        60% { transform: translateY(-40px) scale(1.1) rotate(10deg); }
+        80% { transform: translateY(0) scale(1) rotate(-5deg); }
+    }
+
+    .char-sad {
+        animation: dwarfSad 0.8s ease-in-out !important;
+    }
+    @keyframes dwarfSad {
+        0%, 100% { transform: scale(1) translateY(0); }
+        50% { transform: scale(0.9) translateY(20px) rotate(-10deg); }
+    }
+
+    /* Магічний хаос (Скарби та кристали) */
+    .falling-item {
+        position: absolute;
+        top: -150px;
+        pointer-events: none;
+        z-index: 20;
+        animation: fallTreasure 3s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+    }
+
+    @keyframes fallTreasure {
+        0% { transform: translateY(0) rotate(0deg) scale(0.5); opacity: 0; }
+        10% { opacity: 1; scale: 1; }
+        100% { transform: translateY(120vh) rotate(720deg) scale(1.2); opacity: 0; }
+    }
+
+    /* Універсальний екран-заглушка */
+    #block-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        color: red;
+        font-size: 5vw;
+        font-weight: bold;
+        z-index: 999999;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        font-family: Arial, sans-serif;
+    }
+
+    /* Theme Manager UI */
+    #theme-btn {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        font-size: 30px;
+        background: #333;
+        color: white;
+        border: 2px solid white;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        cursor: pointer;
+        z-index: 80000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+    #theme-modal {
+        display: none;
+        position: fixed;
+        bottom: 80px;
+        right: 20px;
+        background: rgba(0, 0, 0, 0.9);
+        border: 2px solid #ffd700;
+        border-radius: 10px;
+        padding: 10px;
+        z-index: 80000;
+        max-height: 60vh;
+        overflow-y: auto;
+        width: 250px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    }
+    .theme-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+    .theme-card {
+        width: 100%;
+        height: 80px;
+        background-color: #444;
+        background-size: cover;
+        background-position: center;
+        border: 2px solid transparent;
+        border-radius: 5px;
+        cursor: pointer;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding-bottom: 5px;
+        position: relative;
+    }
+    .theme-card:hover { border-color: #ffd700; }
+    .theme-card span {
+        background: rgba(0,0,0,0.7);
+        color: white;
+        font-size: 12px;
+        padding: 2px 5px;
+        border-radius: 3px;
+        pointer-events: none;
+    }
+
+    /* Zoom / Лупа */
+    .zoom-controls {
+        position: fixed;
+        bottom: 150px;
+        right: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 80000;
+    }
+    .zoom-btn {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: #2980b9;
+        color: white;
+        font-size: 24px;
+        border: 2px solid white;
+        cursor: pointer;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+
+    /* Drawing Tool */
+    #toggle-draw-btn-global {
+        position: fixed;
+        bottom: 85px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: #8e44ad;
+        color: white;
+        font-size: 24px;
+        border: 2px solid white;
+        cursor: pointer;
+        z-index: 80000;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #draw-panel-global {
+        display: none;
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: #fff;
+        border-radius: 10px;
+        padding: 10px;
+        z-index: 90001;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        color: #000;
+        user-select: none;
+    }
+    #draw-panel-header {
+        cursor: grab;
+        background: #ecf0f1;
+        padding: 5px;
+        text-align: center;
+        font-weight: bold;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        display: flex;
+        justify-content: space-between;
+    }
+    #global-drawing-canvas {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        z-index: 90000;
+        pointer-events: none; 
+    }
+    .draw-controls-row {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 5px;
+        align-items: center;
+    }
+    .draw-btn {
+        padding: 5px 10px;
+        border: 1px solid #ccc;
+        background: #f9f9f9;
+        cursor: pointer;
+        border-radius: 5px;
+    }
+    .draw-btn.active {
+        background: #8e44ad;
+        color: white;
+    }
+    /* Адаптивність для панелей */
+    @media (max-width: 768px) {
+        .zoom-controls, #theme-btn, #toggle-draw-btn-global {
+            transform: scale(0.8);
+            transform-origin: bottom right;
+        }
+    }
+</style>
+</head>
+<body>
+
+<div id="block-overlay">Зачекай! Зараз не твій урок.</div>
+
+<div class="game-wrapper" id="game-container">
+    <!-- Іскри -->
+    <div class="sparks-layer" id="sparks-container"></div>
+
+    <!-- Чіткий деталізований фон SVG (Шахта та Кузня) -->
+    <svg id="default-bg-svg" class="background-layer" preserveAspectRatio="xMidYMid slice" viewBox="0 0 1920 1080">
+        <!-- Глибокі печери -->
+        <path d="M0,0 L1920,0 L1920,1080 L0,1080 Z" fill="#130b24"/>
+        
+        <!-- Задні кам'яні стовпи -->
+        <path d="M200,0 L350,0 L400,1080 L150,1080 Z" fill="#1d1136"/>
+        <path d="M1500,0 L1650,0 L1700,1080 L1450,1080 Z" fill="#1d1136"/>
+
+        <!-- Рейки для вагонеток -->
+        <path d="M0,900 Q960,850 1920,950 L1920,1080 L0,1080 Z" fill="#2a1a47"/>
+        <path d="M0,920 Q960,870 1920,970" fill="none" stroke="#5c4530" stroke-width="15"/>
+        <path d="M0,980 Q960,930 1920,1030" fill="none" stroke="#5c4530" stroke-width="15"/>
+        
+        <!-- Шпали -->
+        <g stroke="#3a2517" stroke-width="20" opacity="0.8">
+            <line x1="100" y1="910" x2="80" y2="990"/>
+            <line x1="300" y1="900" x2="280" y2="980"/>
+            <line x1="500" y1="890" x2="480" y2="970"/>
+            <line x1="700" y1="885" x2="680" y2="965"/>
+            <line x1="900" y1="880" x2="880" y2="960"/>
+            <line x1="1100" y1="885" x2="1120" y2="965"/>
+            <line x1="1300" y1="895" x2="1320" y2="975"/>
+            <line x1="1500" y1="915" x2="1520" y2="995"/>
+            <line x1="1700" y1="935" x2="1720" y2="1015"/>
+        </g>
+
+        <!-- Велика Піч / Кузня зліва -->
+        <path d="M-50,300 C150,250 350,400 400,700 C420,900 350,1080 -50,1080 Z" fill="#3d2b1f" stroke="#251710" stroke-width="10"/>
+        <!-- Кам'яна кладка печі -->
+        <path d="M50,400 Q150,420 180,500" fill="none" stroke="#251710" stroke-width="5"/>
+        <path d="M250,550 Q320,600 350,700" fill="none" stroke="#251710" stroke-width="5"/>
+        <path d="M200,850 Q280,900 300,1000" fill="none" stroke="#251710" stroke-width="5"/>
+        
+        <!-- Жар у печі -->
+        <path d="M-50,600 C50,550 150,650 200,800 C220,950 150,1080 -50,1080 Z" fill="#ff4500"/>
+        <path d="M-50,700 C20,650 80,750 120,850 C140,950 80,1080 -50,1080 Z" fill="#ff8c00"/>
+        <path d="M-50,800 C0,750 40,850 60,950 C70,1000 40,1080 -50,1080 Z" fill="#ffff00"/>
+
+        <!-- Гігантські Кристали на фоні (Чіткі) -->
+        <g stroke="#00ffff" stroke-width="2">
+            <polygon points="1700,800 1750,500 1800,550 1850,900 1750,950" fill="#0088ff" opacity="0.7"/>
+            <polygon points="1750,500 1780,400 1820,520 1800,550" fill="#00aaff" opacity="0.9"/>
+            <polygon points="1600,900 1630,700 1680,720 1720,950 1650,980" fill="#0066cc" opacity="0.6"/>
+        </g>
+        <g stroke="#ff00ff" stroke-width="2">
+            <polygon points="1200,950 1250,750 1300,800 1320,1000 1250,1020" fill="#aa00ff" opacity="0.7"/>
+            <polygon points="1250,750 1280,650 1320,780 1300,800" fill="#cc00ff" opacity="0.9"/>
+        </g>
+    </svg>
+
+    <!-- Інтерфейс -->
+    <div class="ui-layer">
+        <div class="instruction">
+            Викуй правильну магічну руну:
+            <span class="target-word" id="targetWord">СУМА</span>
+        </div>
+
+        <div class="equation-area">
+            <!-- Блоки-Ковадла -->
+            <div class="math-part" id="part-0" onclick="checkAnswer(0)">
+                <svg viewBox="0 0 150 160">
+                    <!-- Основа ковадла -->
+                    <path d="M30,150 L120,150 L100,100 L50,100 Z" fill="#2c3e50" stroke="#1a252f" stroke-width="3"/>
+                    <path d="M50,100 L100,100 L90,60 L60,60 Z" fill="#34495e"/>
+                    <!-- Верхня площина -->
+                    <path d="M10,60 C10,30 140,30 140,60 C140,70 120,80 120,80 L30,80 C30,80 10,70 10,60 Z" fill="#7f8c8d" stroke="#2c3e50" stroke-width="3"/>
+                    <ellipse cx="75" cy="50" rx="60" ry="15" fill="#bdc3c7"/>
+                    <!-- Сяйво під цифрою (Руна) -->
+                    <ellipse id="glow-0" cx="75" cy="50" rx="30" ry="10" fill="var(--rune-glow)" filter="blur(8px)" opacity="0.8"/>
+                </svg>
+                <span class="number">3</span>
+            </div>
+            
+            <div class="operator">+</div>
+            
+            <div class="math-part" id="part-1" onclick="checkAnswer(1)">
+                <svg viewBox="0 0 150 160">
+                    <path d="M30,150 L120,150 L100,100 L50,100 Z" fill="#2c3e50" stroke="#1a252f" stroke-width="3"/>
+                    <path d="M50,100 L100,100 L90,60 L60,60 Z" fill="#34495e"/>
+                    <path d="M10,60 C10,30 140,30 140,60 C140,70 120,80 120,80 L30,80 C30,80 10,70 10,60 Z" fill="#7f8c8d" stroke="#2c3e50" stroke-width="3"/>
+                    <ellipse cx="75" cy="50" rx="60" ry="15" fill="#bdc3c7"/>
+                    <ellipse id="glow-1" cx="75" cy="50" rx="30" ry="10" fill="var(--rune-glow)" filter="blur(8px)" opacity="0.8"/>
+                </svg>
+                <span class="number">4</span>
+            </div>
+            
+            <div class="operator">=</div>
+            
+            <div class="math-part" id="part-2" onclick="checkAnswer(2)">
+                <svg viewBox="0 0 150 160">
+                    <path d="M30,150 L120,150 L100,100 L50,100 Z" fill="#2c3e50" stroke="#1a252f" stroke-width="3"/>
+                    <path d="M50,100 L100,100 L90,60 L60,60 Z" fill="#34495e"/>
+                    <path d="M10,60 C10,30 140,30 140,60 C140,70 120,80 120,80 L30,80 C30,80 10,70 10,60 Z" fill="#7f8c8d" stroke="#2c3e50" stroke-width="3"/>
+                    <ellipse cx="75" cy="50" rx="60" ry="15" fill="#bdc3c7"/>
+                    <ellipse id="glow-2" cx="75" cy="50" rx="30" ry="10" fill="var(--rune-glow)" filter="blur(8px)" opacity="0.8"/>
+                </svg>
+                <span class="number">7</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Живий персонаж: Гном-Коваль -->
+    <div class="character-container" id="character-dwarf">
+        <svg viewBox="0 0 350 400" width="100%" height="100%">
+            <!-- Права рука (з молотом) -->
+            <g id="dwarf-arm-right" transform-origin="120 220">
+                <path d="M220,220 Q280,260 300,200" fill="none" stroke="#e67e22" stroke-width="35" stroke-linecap="round"/>
+                <!-- Молот -->
+                <rect x="285" y="100" width="15" height="150" fill="#795548" rx="5"/>
+                <rect x="260" y="80" width="65" height="40" fill="#7f8c8d" rx="10" stroke="#2c3e50" stroke-width="4"/>
+                <!-- Рукавиця -->
+                <circle cx="295" cy="200" r="25" fill="#5d4037"/>
+            </g>
+
+            <!-- Тіло -->
+            <ellipse id="dwarf-body" cx="175" cy="280" rx="80" ry="90" fill="#d35400" stroke="#8e44ad" stroke-width="8"/>
+            <!-- Ремінь -->
+            <rect x="95" y="270" width="160" height="30" fill="#2c3e50"/>
+            <rect x="155" y="260" width="40" height="50" fill="none" stroke="#f1c40f" stroke-width="8" rx="5"/>
+
+            <!-- Ліва рука -->
+            <path id="dwarf-arm-left" d="M130,230 Q70,270 50,320" fill="none" stroke="#e67e22" stroke-width="35" stroke-linecap="round"/>
+            <circle cx="50" cy="320" r="25" fill="#5d4037"/>
+
+            <!-- Голова -->
+            <circle id="dwarf-head" cx="175" cy="160" rx="60" ry="60" fill="#f5cba7"/>
+            
+            <!-- Величезна Борода -->
+            <path id="dwarf-beard" d="M115,160 Q100,280 175,320 Q250,280 235,160 Q175,220 115,160 Z" fill="#d35400" stroke="#a04000" stroke-width="5"/>
+            <path d="M130,180 Q175,250 220,180" fill="none" stroke="#a04000" stroke-width="4"/>
+            <path d="M150,220 Q175,280 200,220" fill="none" stroke="#a04000" stroke-width="4"/>
+
+            <!-- Ніс -->
+            <ellipse id="dwarf-nose" cx="175" cy="170" rx="20" ry="15" fill="#e59866"/>
+
+            <!-- Очі -->
+            <g id="dwarf-eyes">
+                <circle cx="150" cy="140" r="10" fill="#fff"/>
+                <circle id="pupil-l" cx="150" cy="140" r="4" fill="#000"/>
+                <circle cx="200" cy="140" r="10" fill="#fff"/>
+                <circle id="pupil-r" cx="200" cy="140" r="4" fill="#000"/>
+            </g>
+
+            <!-- Брови -->
+            <path id="eyebrow-l" d="M135,125 Q150,115 165,130" fill="none" stroke="#d35400" stroke-width="8" stroke-linecap="round"/>
+            <path id="eyebrow-r" d="M215,125 Q200,115 185,130" fill="none" stroke="#d35400" stroke-width="8" stroke-linecap="round"/>
+
+            <!-- Шолом гнома -->
+            <g id="dwarf-helmet">
+                <path d="M105,120 C105,40 245,40 245,120 Z" fill="#7f8c8d" stroke="#2c3e50" stroke-width="5"/>
+                <path d="M95,120 L255,120 L255,135 L95,135 Z" fill="#95a5a6" stroke="#2c3e50" stroke-width="5"/>
+                <!-- Роги -->
+                <path d="M110,80 Q70,40 50,70 Q70,90 100,100 Z" fill="#ecf0f1" stroke="#2c3e50" stroke-width="4"/>
+                <path d="M240,80 Q280,40 300,70 Q280,90 250,100 Z" fill="#ecf0f1" stroke="#2c3e50" stroke-width="4"/>
+            </g>
+
+            <!-- Ноги -->
+            <path d="M140,360 L140,390 L110,390" fill="none" stroke="#5d4037" stroke-width="25" stroke-linecap="round"/>
+            <path d="M210,360 L210,390 L240,390" fill="none" stroke="#5d4037" stroke-width="25" stroke-linecap="round"/>
+        </svg>
+    </div>
+</div>
+
+<!-- Інструменти масштабування -->
+<div class="zoom-controls">
+    <button class="zoom-btn" onclick="zoomGame(0.1)">🔍+</button>
+    <button class="zoom-btn" onclick="zoomGame(-0.1)">🔍-</button>
+</div>
+
+<!-- Theme Manager UI -->
+<button id="theme-btn" onclick="document.getElementById('theme-modal').style.display = document.getElementById('theme-modal').style.display === 'block' ? 'none' : 'block'">⚙️</button>
+<div id="theme-modal">
+    <div class="theme-grid" id="theme-grid"></div>
+</div>
+
+<!-- Drawing Tool UI -->
+<button id="toggle-draw-btn-global" onclick="toggleDrawPanel()">✏️</button>
+<div id="draw-panel-global">
+    <div id="draw-panel-header"><span>Панель малювання</span> <span style="cursor:pointer;" onclick="toggleDrawPanel()">✕</span></div>
+    <div class="draw-controls-row">
+        <button class="draw-btn active" id="btn-pencil" onclick="setDrawMode('pencil')">✏️ Олівець</button>
+        <button class="draw-btn" id="btn-eraser" onclick="setDrawMode('eraser')">🧽 Гумка</button>
+    </div>
+    <div class="draw-controls-row">
+        <input type="range" id="draw-size" min="1" max="50" value="5">
+        <input type="color" id="draw-color" value="#ff0000">
+        <button class="draw-btn" onclick="clearCanvasSync()">🗑️ Очистити</button>
+    </div>
+</div>
+<canvas id="global-drawing-canvas"></canvas>
+
+<script>
+    // ==========================================
+    // FIREBASE, ІДЕНТИФІКАЦІЯ, СИНХРОНІЗАЦІЯ
+    // ==========================================
+    const CONFIG = { gameId: 'dwarf_forge_game_v1' };
+    const firebaseConfig = {
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+        projectId: "lesson-13c44"
+    };
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // Отримання імені користувача
+    const urlParams = new URLSearchParams(window.location.search);
+    let myName = urlParams.get('user') || sessionStorage.getItem('userName');
+    if (!myName) {
+        myName = 'Гість_' + Math.floor(Math.random() * 1000);
+    }
+    sessionStorage.setItem('userName', myName);
+
+    // Універсальний блок контролю (Радар, Блокування, Лобі)
+    const tabId = Math.random().toString(36).substr(2, 9);
+    const radarRef = db.ref('online_users/' + myName + '/' + tabId);
+    db.ref('.info/connected').on('value', snap => {
+        if (snap.val() === true) {
+            radarRef.set(true);
+            radarRef.onDisconnect().remove();
+        }
+    });
+    window.addEventListener('beforeunload', () => radarRef.remove());
+
+    db.ref('blocked_users/' + myName).on('value', snap => {
+        document.getElementById('block-overlay').style.display = snap.val() ? 'flex' : 'none';
+    });
+
+    // Виправлення нескінченного циклу рефрешів (спрацює лише при зміні на true)
+    let isFirstForceRefresh = true;
+    db.ref('force_refresh').on('value', snap => {
+        if (snap.val() === true && !isFirstForceRefresh) {
+            window.location.reload();
+        }
+        isFirstForceRefresh = false;
+    });
+
+    const initTime = Date.now();
+    db.ref('current_activity').on('value', snap => {
+        if (snap.val() === 'lobby' && Date.now() - initTime > 1000) {
+            window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+        }
+    });
+
+    // Механізм синхронізації дій (game_action)
+    function sendGameAction(type, payload) {
+        const id = Math.random().toString(36).substr(2, 9);
+        db.ref('game_action').set({
+            id: id,
+            senderId: myName,
+            timestamp: firebase.database.ServerValue.TIMESTAMP,
+            type: type,
+            ...payload
+        });
+    }
+
+    let lastActionId = '';
+    db.ref('game_action').on('value', snap => {
+        const data = snap.val();
+        // Приймаємо екшени тільки якщо вони свіжі і не від нас
+        if (data && data.senderId !== myName && data.timestamp > Date.now() - 10000) {
+            if (data.id === lastActionId) return;
+            lastActionId = data.id;
+            
+            if (data.type === 'check_answer') {
+                checkAnswer(data.clickedId, true); // true означає, що це віддалений виклик
+            } else if (data.type === 'draw_line') {
+                drawRemoteLine(data.x0, data.y0, data.x1, data.y1, data.color, data.size, data.mode);
+            } else if (data.type === 'clear_canvas') {
+                clearCanvasLocal();
+            }
+        }
+    });
+
+    // Глобальний стейт гри (щоб ті, хто зайшов пізніше, бачили ту саму умову)
+    db.ref('game_state').on('value', snap => {
+        const state = snap.val();
+        if (state) {
+            applyEquation(state);
+        }
+    });
+
+
+    // ==========================================
+    // ТЕМА / ДИНАМІЧНІ ФОНИ (Theme Manager)
+    // ==========================================
+    function applyThemeToDOM(url) {
+        const svgBg = document.getElementById('default-bg-svg');
+        if (url === 'none') {
+            document.body.style.backgroundImage = 'none';
+            if (svgBg) svgBg.style.display = 'block';
+        } else {
+            document.body.style.backgroundImage = `url(${url})`;
+            if (svgBg) svgBg.style.display = 'none';
+        }
+    }
+
+    function selectTheme(url) {
+        applyThemeToDOM(url);
+        localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+        db.ref('game_theme').set(url);
+    }
+
+    db.ref('game_theme').on('value', snap => {
+        const url = snap.val();
+        if (url) {
+            applyThemeToDOM(url);
+            localStorage.setItem('mySavedBg_' + CONFIG.gameId, url);
+        }
+    });
+
+    // Строго послідовне завантаження фонів
+    async function loadThemes() {
+        const container = document.getElementById('theme-grid');
+        container.innerHTML = '<div class="theme-card" onclick="selectTheme(\'none\')" style="background-color:#555;"><span>Без фону</span></div>';
+        let index = 1;
+        let hasMore = true;
+        while(hasMore) {
+            let url = `https://olgazheltvai2.github.io/images/backgrounds/background_${index}.webp`;
+            try {
+                let res = await fetch(url, {method: 'HEAD'});
+                if (res.ok) {
+                    let card = document.createElement('div');
+                    card.className = 'theme-card';
+                    card.style.backgroundImage = `url(${url})`;
+                    card.innerHTML = `<span>Фон ${index}</span>`;
+                    card.onclick = () => selectTheme(url);
+                    container.appendChild(card);
+                    index++;
+                } else {
+                    hasMore = false; // зупинка на 404
+                }
+            } catch(e) { 
+                hasMore = false;
+            }
+        }
+    }
+    loadThemes();
+    
+    // Завантаження збереженої теми при старті
+    const savedTheme = localStorage.getItem('mySavedBg_' + CONFIG.gameId);
+    if (savedTheme) applyThemeToDOM(savedTheme);
+
+
+    // ==========================================
+    // ЛУПА (Масштабування)
+    // ==========================================
+    let currentZoom = 1;
+    function zoomGame(step) {
+        currentZoom += step;
+        if(currentZoom < 0.5) currentZoom = 0.5;
+        if(currentZoom > 2) currentZoom = 2;
+        document.getElementById('game-container').style.transform = `scale(${currentZoom})`;
+    }
+
+
+    // ==========================================
+    // ГЛОБАЛЬНЕ МАЛЮВАННЯ (Олівець / Гумка)
+    // ==========================================
+    const canvas = document.getElementById('global-drawing-canvas');
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    let drawMode = 'pencil';
+    let lastX = 0, lastY = 0;
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function toggleDrawPanel() {
+        const panel = document.getElementById('draw-panel-global');
+        if (panel.style.display === 'block') {
+            panel.style.display = 'none';
+            canvas.style.pointerEvents = 'none';
+        } else {
+            panel.style.display = 'block';
+            canvas.style.pointerEvents = 'auto';
+            setDrawMode('pencil');
+        }
+    }
+
+    function setDrawMode(mode) {
+        drawMode = mode;
+        document.getElementById('btn-pencil').className = mode === 'pencil' ? 'draw-btn active' : 'draw-btn';
+        document.getElementById('btn-eraser').className = mode === 'eraser' ? 'draw-btn active' : 'draw-btn';
+    }
+
+    function getCoords(e) {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX - rect.left, y: clientY - rect.top };
+    }
+
+    function startDrawing(e) {
+        if(canvas.style.pointerEvents === 'none') return;
+        isDrawing = true;
+        const coords = getCoords(e);
+        lastX = coords.x;
+        lastY = coords.y;
+    }
+
+    function drawLineLocal(e) {
+        if (!isDrawing) return;
+        e.preventDefault();
+        const coords = getCoords(e);
+        const color = document.getElementById('draw-color').value;
+        const size = document.getElementById('draw-size').value;
+        
+        drawRemoteLine(lastX / canvas.width, lastY / canvas.height, coords.x / canvas.width, coords.y / canvas.height, color, size, drawMode);
+        
+        sendGameAction('draw_line', {
+            x0: lastX / canvas.width, y0: lastY / canvas.height,
+            x1: coords.x / canvas.width, y1: coords.y / canvas.height,
+            color: color, size: size, mode: drawMode
+        });
+        
+        lastX = coords.x;
+        lastY = coords.y;
+    }
+
+    function stopDrawing() { isDrawing = false; }
+
+    function drawRemoteLine(x0, y0, x1, y1, color, size, mode) {
+        ctx.beginPath();
+        ctx.moveTo(x0 * canvas.width, y0 * canvas.height);
+        ctx.lineTo(x1 * canvas.width, y1 * canvas.height);
+        ctx.strokeStyle = mode === 'eraser' ? document.body.style.backgroundColor || '#1a0f2e' : color;
+        if(mode === 'eraser' && document.body.style.backgroundImage && document.body.style.backgroundImage !== 'none') {
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.strokeStyle = 'rgba(0,0,0,1)';
+        } else {
+            ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.lineWidth = size;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function clearCanvasSync() {
+        clearCanvasLocal();
+        sendGameAction('clear_canvas', {});
+    }
+    function clearCanvasLocal() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', drawLineLocal);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    canvas.addEventListener('touchstart', startDrawing, {passive: false});
+    canvas.addEventListener('touchmove', drawLineLocal, {passive: false});
+    canvas.addEventListener('touchend', stopDrawing);
+
+    // Draggable panel
+    const header = document.getElementById('draw-panel-header');
+    const panel = document.getElementById('draw-panel-global');
+    let isDragging = false, dragX, dragY;
+    header.onmousedown = (e) => { isDragging = true; dragX = e.clientX - panel.offsetLeft; dragY = e.clientY - panel.offsetTop; };
+    window.onmousemove = (e) => { if(isDragging) { panel.style.left = (e.clientX - dragX) + 'px'; panel.style.top = (e.clientY - dragY) + 'px'; } };
+    window.onmouseup = () => isDragging = false;
+    header.ontouchstart = (e) => { isDragging = true; dragX = e.touches[0].clientX - panel.offsetLeft; dragY = e.touches[0].clientY - panel.offsetTop; };
+    window.ontouchmove = (e) => { if(isDragging) { panel.style.left = (e.touches[0].clientX - dragX) + 'px'; panel.style.top = (e.touches[0].clientY - dragY) + 'px'; } };
+    window.ontouchend = () => isDragging = false;
+
+
+    // ==========================================
+    // ОРИГІНАЛЬНА ЛОГІКА ГРИ (Синхронізована)
+    // ==========================================
+
+    // Генерація іскор
+    function createSparks() {
+        const container = document.getElementById('sparks-container');
+        for(let i=0; i<40; i++) {
+            let spark = document.createElement('div');
+            spark.className = 'spark';
+            spark.style.left = Math.random() * 100 + 'vw';
+            spark.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            spark.style.animationDelay = (Math.random() * 3) + 's';
+            container.appendChild(spark);
+        }
+    }
+    createSparks();
+
+    const terms = [
+        { id: 0, name: "ПЕРШИЙ ДОДАНОК" },
+        { id: 1, name: "ДРУГИЙ ДОДАНОК" },
+        { id: 2, name: "СУМА" }
+    ];
+
+    const svgItems = [
+        `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#ffd700" stroke="#daa520" stroke-width="8"/><circle cx="50" cy="50" r="25" fill="none" stroke="#daa520" stroke-width="4"/><path d="M40,30 L60,30 L50,70 Z" fill="#daa520"/></svg>`, // Монета
+        `<svg viewBox="0 0 100 100"><polygon points="50,10 90,40 50,90 10,40" fill="#00ffff" stroke="#0088ff" stroke-width="4"/><polygon points="50,10 70,40 50,90 30,40" fill="#ccffff"/></svg>`, // Блакитний кристал
+        `<svg viewBox="0 0 100 100"><polygon points="50,10 90,40 50,90 10,40" fill="#ff00ff" stroke="#aa00ff" stroke-width="4"/><polygon points="50,10 70,40 50,90 30,40" fill="#ffccff"/></svg>`, // Фіолетовий кристал
+        `<svg viewBox="0 0 100 100"><polygon points="20,30 80,30 95,50 50,95 5,50" fill="#00ffaa" stroke="#008855" stroke-width="4"/><polygon points="20,30 80,30 50,50" fill="#aaffcc"/><polygon points="20,30 50,50 5,50" fill="#55ffaa"/><polygon points="80,30 95,50 50,50" fill="#55ffaa"/></svg>` // Діамант
+    ];
+
+    let currentTargetId = 0;
+    let isAnimating = false;
+
+    function getRandomSvgItem() {
+        const randomIndex = Math.floor(Math.random() * svgItems.length);
+        return svgItems[randomIndex];
+    }
+
+    // Застосовуємо отриманий стейт (локально або з Firebase)
+    function applyEquation(state) {
+        document.querySelector('#part-0 .number').innerText = state.a;
+        document.querySelector('#part-1 .number').innerText = state.b;
+        document.querySelector('#part-2 .number').innerText = state.sum;
+        
+        currentTargetId = state.targetId;
+        document.getElementById('targetWord').innerText = terms[currentTargetId].name;
+        
+        document.querySelectorAll('.math-part').forEach((el, index) => {
+            el.className = 'math-part';
+            el.style.transform = '';
+            el.style.opacity = '1';
+            document.getElementById(`glow-${index}`).setAttribute('fill', 'var(--rune-glow)');
+        });
+        
+        resetDwarf();
+    }
+
+    // Локальна генерація та відправка стейту у Firebase
+    function generateEquation(isRemote = false) {
+        if (!isRemote) {
+            const a = Math.floor(Math.random() * 10) + 1;
+            const b = Math.floor(Math.random() * (11 - a));
+            const sum = a + b;
+            const targetId = Math.floor(Math.random() * 3);
+
+            const state = { a: a, b: b, sum: sum, targetId: targetId };
+            
+            applyEquation(state);
+            db.ref('game_state').set(state);
+        }
+    }
+
+    function createChaos() {
+        const numItems = Math.floor(Math.random() * 20) + 25; 
+        
+        for (let i = 0; i < numItems; i++) {
+            setTimeout(() => {
+                const item = document.createElement('div');
+                item.className = 'falling-item';
+                item.innerHTML = getRandomSvgItem();
+                
+                const size = (Math.random() * 4 + 3) + 'vw';
+                item.style.width = size;
+                item.style.height = size;
+                item.style.left = (Math.random() * 90 + 5) + 'vw';
+                
+                document.body.appendChild(item);
+
+                setTimeout(() => item.remove(), 3500);
+            }, i * 70); 
+        }
+    }
+
+    function setDwarfHappy() {
+        document.getElementById('eyebrow-l').setAttribute('d', 'M135,115 Q150,100 165,115');
+        document.getElementById('eyebrow-r').setAttribute('d', 'M215,115 Q200,100 185,115');
+        document.getElementById('dwarf-arm-right').style.animation = "hammerSwing 0.5s ease-in-out infinite alternate";
+        if(!document.getElementById('hammer-style')) {
+            document.head.insertAdjacentHTML("beforeend", `<style id="hammer-style">@keyframes hammerSwing { from { transform: rotate(0deg); } to { transform: rotate(-40deg); } }</style>`);
+        }
+    }
+
+    function setDwarfSad() {
+        document.getElementById('dwarf-helmet').style.transform = "translateY(25px)";
+        document.getElementById('dwarf-head').setAttribute('fill', '#e74c3c');
+        document.getElementById('dwarf-nose').setAttribute('fill', '#c0392b');
+    }
+
+    function resetDwarf() {
+        document.getElementById('eyebrow-l').setAttribute('d', 'M135,125 Q150,115 165,130');
+        document.getElementById('eyebrow-r').setAttribute('d', 'M215,125 Q200,115 185,130');
+        document.getElementById('dwarf-arm-right').style.animation = "";
+        
+        document.getElementById('dwarf-helmet').style.transform = "translateY(0)";
+        document.getElementById('dwarf-head').setAttribute('fill', '#f5cba7');
+        document.getElementById('dwarf-nose').setAttribute('fill', '#e59866');
+    }
+
+    // isRemote гарантує, що не буде зациклення і дублювання команд між гравцями
+    function checkAnswer(clickedId, isRemote = false) {
+        if (isAnimating) return;
+        
+        if (!isRemote) {
+            sendGameAction('check_answer', { clickedId: clickedId });
+        }
+
+        const clickedElement = document.getElementById(`part-${clickedId}`);
+        const dwarf = document.getElementById('character-dwarf');
+
+        if (clickedId === currentTargetId) {
+            // ПРАВИЛЬНО
+            isAnimating = true;
+            clickedElement.classList.add('blast-off-anim');
+            document.getElementById(`glow-${clickedId}`).setAttribute('fill', '#00ffaa'); 
+            
+            dwarf.classList.add('char-happy');
+            setDwarfHappy();
+            
+            createChaos();
+
+            setTimeout(() => {
+                if(!isRemote) generateEquation(); // тільки ініціатор кліку створює нову умову
+                dwarf.classList.remove('char-happy');
+                isAnimating = false;
+            }, 2000);
+
+        } else {
+            // НЕПРАВИЛЬНО
+            isAnimating = true;
+            clickedElement.classList.add('splat-anim');
+            document.getElementById(`glow-${clickedId}`).setAttribute('fill', '#ff3333'); 
+            
+            dwarf.classList.add('char-sad');
+            setDwarfSad();
+            
+            setTimeout(() => {
+                clickedElement.classList.remove('splat-anim');
+                dwarf.classList.remove('char-sad');
+                document.getElementById(`glow-${clickedId}`).setAttribute('fill', 'var(--rune-glow)');
+                resetDwarf(); 
+                isAnimating = false;
+            }, 800); 
+        }
+    }
+
+    // Запуск гри при початковому завантаженнні
+    // Додано таймаут, щоб дати час Firebase завантажити стейт, якщо гра вже триває
+    setTimeout(() => {
+        if (currentTargetId === 0 && document.querySelector('#part-0 .number').innerText === "3") {
+            generateEquation();
+        }
+    }, 1000);
+
+</script>
+
+</body>
+</html>
