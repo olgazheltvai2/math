@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Переставний закон додавання</title>
+    <style>
+        /* Скидання базових стилів */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Контейнер 16:9 */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            max-width: 177.78vh; 
+            height: 56.25vw;
+            max-height: 100vh;
+            border-radius: 20px;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.9);
+            overflow: hidden;
+            background: #87CEEB;
+        }
+
+        /* Розмитий задній фон */
+        .bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            filter: blur(4px);
+            transform: scale(1.05);
+        }
+
+        /* Анімація хмар */
+        @keyframes floatClouds {
+            0% { transform: translateX(-2%); }
+            100% { transform: translateX(2%); }
+        }
+        .clouds {
+            animation: floatClouds 15s infinite alternate ease-in-out;
+        }
+
+        /* Інтерфейс гри */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-evenly;
+            padding: 2%;
+        }
+
+        /* Стилізовані скляні панелі */
+        .glass-panel {
+            background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.05));
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 25px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            padding: 1vw 2vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- СХЕМА --- */
+        #scheme-container {
+            width: 70%;
+            height: 18%;
+            position: relative;
+        }
+
+        .segment-wrapper {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .segment {
+            height: 3vw;
+            border-radius: 1.5vw;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 900;
+            font-size: 5vw;
+            text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 4px 4px 10px rgba(0,0,0,0.8);
+            box-shadow: inset 0 -5px 10px rgba(0,0,0,0.3), 0 5px 15px rgba(0,0,0,0.4);
+        }
+        .seg-color1 { background: linear-gradient(90deg, #ff0844 0%, #ffb199 100%); }
+        .seg-color2 { background: linear-gradient(90deg, #00c6ff 0%, #0072ff 100%); }
+
+        /* --- ПРЕДМЕТИ --- */
+        #items-area {
+            width: 80%;
+            height: 35%;
+            position: relative;
+        }
+
+        .item-group {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-wrap: wrap;
+            flex-direction: row; /* Примусове горизонтальне розташування */
+            gap: 1vw;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5vw;
+            border-radius: 2vw;
+            transition: left 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            width: 45%; /* Ширина, щоб елементи не падали вертикально */
+        }
+        .group-color1 { background: rgba(255, 8, 68, 0.2); border: 3px dashed #ff0844; }
+        .group-color2 { background: rgba(0, 198, 255, 0.2); border: 3px dashed #00c6ff; }
+
+        .item-svg {
+            width: 6vw;
+            height: 6vw;
+            filter: drop-shadow(3px 5px 5px rgba(0,0,0,0.5));
+            transition: transform 0.3s;
+        }
+        .item-svg:hover { transform: scale(1.15) rotate(10deg); }
+
+        /* --- ПРИКЛАД (РІВНЯННЯ) --- */
+        #equation-area {
+            display: flex;
+            align-items: center;
+            font-size: 7vw;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 4px 4px 0 #000, 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .addends-box {
+            position: relative;
+            width: 35vw;
+            height: 10vw;
+        }
+
+        .eq-num {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transition: left 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .eq-plus {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+        }
+
+        .eq-result-box {
+            display: flex;
+            align-items: center;
+            margin-left: 2vw;
+        }
+
+        /* --- ПОЗИЦІЇ ДЛЯ АНІМАЦІЇ --- */
+        .pos-left { left: 25%; }
+        .pos-right { left: 75%; }
+
+        /* --- КНОПКА ПЕРЕСТАНОВКИ --- */
+        #swap-btn {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            border: 4px solid #fff;
+            border-radius: 50px;
+            padding: 1vw 3vw;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+        #swap-btn:hover {
+            transform: scale(1.1) translateY(-3px);
+            box-shadow: 0 15px 30px rgba(0,0,0,0.5);
+        }
+        #swap-btn:active { transform: scale(0.9); }
+        #swap-btn svg {
+            width: 4vw;
+            height: 4vw;
+            fill: #fff;
+            filter: drop-shadow(2px 2px 3px rgba(0,0,0,0.5));
+        }
+
+        /* --- НАВІГАЦІЯ --- */
+        .nav-btn {
+            position: absolute;
+            top: 3%;
+            border: none;
+            border-radius: 1vw;
+            width: 4vw;
+            height: 4vw;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 20;
+            background: rgba(255,255,255,0.8);
+        }
+        .nav-btn:hover { background: #fff; transform: scale(1.1); }
+        .nav-btn svg { width: 60%; height: 60%; fill: #333; }
+        
+        #prev-btn { left: 3%; }
+        #next-btn { right: 3%; }
+        
+        /* Кнопка правила тепер знизу справа */
+        #rule-btn {
+            position: absolute;
+            bottom: 3%;
+            right: 3%;
+            background: linear-gradient(135deg, #FFD700 0%, #FF8C00 100%);
+            border: 3px solid #fff;
+            border-radius: 50%;
+            width: 5vw;
+            height: 5vw;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            transition: transform 0.2s;
+        }
+        #rule-btn:hover { transform: scale(1.1); }
+        #rule-btn svg { width: 60%; height: 60%; fill: #fff; }
+
+        /* --- ПЕРСОНАЖ (ЛИСИЧКА) --- */
+        #character {
+            position: absolute;
+            bottom: 2%;
+            left: 2%;
+            width: 15vw;
+            height: 15vw;
+            z-index: 15;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(5px 5px 10px rgba(0,0,0,0.5));
+        }
+        .jump {
+            transform: translateY(-3vw) scale(1.05);
+        }
+        /* Анімація переведення погляду (без кліпання) */
+        @keyframes lookAround {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-3px); }
+            75% { transform: translateX(3px); }
+        }
+        .fox-eyes { transform-origin: center; animation: lookAround 4s infinite ease-in-out; }
+
+        /* --- ПРАВИЛО (НА ВЕСЬ ЕКРАН) --- */
+        #rule-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(20, 30, 48, 0.95) 0%, rgba(36, 59, 85, 0.98) 100%);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s;
+        }
+        #rule-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .rule-content {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 4px dashed #FFD700;
+            border-radius: 3vw;
+            padding: 3vw;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 0 50px rgba(255, 215, 0, 0.3);
+        }
+        .rule-content svg { width: 70vw; height: 30vw; }
+        #close-rule {
+            position: absolute;
+            top: -2vw;
+            right: -2vw;
+            width: 4vw;
+            height: 4vw;
+            background: #ff0844;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 2.5vw;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        
+        <!-- Розмитий деталізований сюжетний фон -->
+        <svg class="bg-layer" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#FF9A9E"/>
+                    <stop offset="100%" stop-color="#FECFEF"/>
+                </linearGradient>
+                <linearGradient id="hillGrad1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#2193b0"/>
+                    <stop offset="100%" stop-color="#6dd5ed"/>
+                </linearGradient>
+                <linearGradient id="hillGrad2" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#11998e"/>
+                    <stop offset="100%" stop-color="#38ef7d"/>
+                </linearGradient>
+                <pattern id="dots" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <circle cx="20" cy="20" r="2" fill="#fff" opacity="0.3"/>
+                </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#skyGrad)"/>
+            <rect width="100%" height="100%" fill="url(#dots)"/>
+            
+            <g transform="translate(1300, 200)">
+                <circle cx="0" cy="0" r="100" fill="#FFD700" opacity="0.8" filter="drop-shadow(0 0 30px #FFD700)"/>
+                <circle cx="0" cy="0" r="70" fill="#FFA500"/>
+            </g>
+
+            <g class="clouds" fill="#fff" opacity="0.8">
+                <path d="M 150 300 Q 200 250 250 300 Q 320 280 350 330 Q 380 350 330 380 L 120 380 Q 80 340 150 300" />
+                <path d="M 850 150 Q 900 100 950 150 Q 1020 130 1050 180 Q 1080 200 1030 230 L 820 230 Q 780 190 850 150" />
+            </g>
+
+            <path d="M0 550 Q 400 400 800 600 T 1600 500 L 1600 900 L 0 900 Z" fill="url(#hillGrad1)"/>
+            <path d="M0 650 Q 500 500 1000 700 T 1600 600 L 1600 900 L 0 900 Z" fill="url(#hillGrad2)"/>
+            
+            <g transform="translate(200, 500)">
+                <rect x="-15" y="0" width="30" height="180" fill="#5D4037" rx="10"/>
+                <circle cx="0" cy="-20" r="80" fill="#2E7D32"/>
+                <circle cx="-50" cy="10" r="60" fill="#1B5E20"/>
+                <circle cx="50" cy="20" r="65" fill="#388E3C"/>
+            </g>
+            <g transform="translate(1400, 450) scale(1.2)">
+                <rect x="-15" y="0" width="30" height="150" fill="#4E342E" rx="10"/>
+                <circle cx="0" cy="-10" r="75" fill="#00695C"/>
+                <circle cx="-45" cy="20" r="55" fill="#004D40"/>
+                <circle cx="45" cy="30" r="60" fill="#00796B"/>
+            </g>
+        </svg>
+
+        <!-- Живий персонаж (Лисичка) -->
+        <svg id="character" viewBox="0 0 200 200">
+            <path d="M 150 150 Q 190 120 180 80 Q 160 50 130 100 Z" fill="#E65100"/>
+            <path d="M 180 80 Q 190 60 170 50 Q 160 50 150 70 Z" fill="#fff"/>
+            <ellipse cx="100" cy="130" rx="40" ry="50" fill="#EF6C00"/>
+            <ellipse cx="100" cy="140" rx="25" ry="35" fill="#FFE082"/>
+            <circle cx="90" cy="80" r="45" fill="#EF6C00"/>
+            <polygon points="55,50 40,10 80,45" fill="#E65100"/>
+            <polygon points="125,50 140,10 100,45" fill="#E65100"/>
+            <path d="M 50 90 Q 90 130 130 90 Z" fill="#FFE082"/>
+            <circle cx="90" cy="110" r="8" fill="#212121"/>
+            <g class="fox-eyes">
+                <circle cx="70" cy="75" r="6" fill="#212121"/>
+                <circle cx="110" cy="75" r="6" fill="#212121"/>
+                <circle cx="68" cy="73" r="2" fill="#fff"/>
+                <circle cx="108" cy="73" r="2" fill="#fff"/>
+            </g>
+            <ellipse cx="70" cy="170" rx="15" ry="10" fill="#D84315"/>
+            <ellipse cx="130" cy="170" rx="15" ry="10" fill="#D84315"/>
+            <ellipse cx="65" cy="120" rx="10" ry="20" fill="#D84315" transform="rotate(30 65 120)"/>
+            <ellipse cx="135" cy="120" rx="10" ry="20" fill="#D84315" transform="rotate(-30 135 120)"/>
+        </svg>
+
+        <!-- Ігровий Інтерфейс -->
+        <div id="ui-layer">
+            
+            <div id="scheme-container" class="glass-panel">
+                <div class="segment-wrapper">
+                    <div id="seg1" class="segment seg-color1"></div>
+                    <div id="seg2" class="segment seg-color2"></div>
+                </div>
+            </div>
+
+            <div id="items-area">
+                <div id="group1" class="item-group group-color1 pos-left"></div>
+                <div id="group2" class="item-group group-color2 pos-right"></div>
+            </div>
+
+            <div id="equation-area" class="glass-panel">
+                <div class="addends-box">
+                    <div id="eq-num1" class="eq-num pos-left" style="color: #ff0844;"></div>
+                    <div class="eq-plus">+</div>
+                    <div id="eq-num2" class="eq-num pos-right" style="color: #00c6ff;"></div>
+                </div>
+                <div class="eq-result-box">
+                    <span style="margin-right: 2vw;">=</span>
+                    <span id="eq-sum" style="color: #FFD700; text-shadow: 3px 3px 0 #D84315, 0 0 15px rgba(0,0,0,0.8);"></span>
+                </div>
+            </div>
+
+            <button id="swap-btn">
+                <svg viewBox="0 0 24 24">
+                    <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/>
+                </svg>
+            </button>
+        </div>
+
+        <button id="prev-btn" class="nav-btn">
+            <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+        </button>
+
+        <button id="rule-btn">
+            <svg viewBox="0 0 24 24"><path d="M11 18h2v-2h-2v2zm1-16C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-2.21 0-4 1.79-4 4h2c0-1.1.9-2 2-2s2 .9 2 2c0 2-3 1.75-3 5h2c0-2.25 3-2.5 3-5 0-2.21-1.79-4-4-4z"/></svg>
+        </button>
+
+        <button id="next-btn" class="nav-btn">
+            <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </button>
+
+        <!-- Екран Правила -->
+        <div id="rule-overlay">
+            <div class="rule-content">
+                <button id="close-rule">×</button>
+                <svg viewBox="0 0 1000 300">
+                    <defs>
+                        <linearGradient id="textGlow1" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stop-color="#FFD700"/>
+                            <stop offset="100%" stop-color="#FFA500"/>
+                        </linearGradient>
+                        <filter id="neon">
+                            <feGaussianBlur stdDeviation="4" result="blur"/>
+                            <feMerge>
+                                <feMergeNode in="blur"/>
+                                <feMergeNode in="SourceGraphic"/>
+                            </feMerge>
+                        </filter>
+                    </defs>
+                    <text x="500" y="80" font-size="55" font-weight="900" fill="url(#textGlow1)" text-anchor="middle" filter="url(#neon)">ВІД ПЕРЕСТАНОВКИ ДОДАНКІВ</text>
+                    <text x="500" y="150" font-size="55" font-weight="900" fill="#00e5ff" text-anchor="middle" filter="url(#neon)">СУМА НЕ ЗМІНЮЄТЬСЯ!</text>
+                    
+                    <rect x="320" y="200" width="70" height="25" fill="#ff0844" rx="12"/>
+                    <text x="420" y="222" font-size="40" fill="#fff" font-weight="bold">+</text>
+                    <rect x="460" y="200" width="70" height="25" fill="#00c6ff" rx="12"/>
+                    
+                    <text x="560" y="222" font-size="40" fill="#fff" font-weight="bold">=</text>
+                    
+                    <rect x="600" y="200" width="70" height="25" fill="#00c6ff" rx="12"/>
+                    <text x="700" y="222" font-size="40" fill="#fff" font-weight="bold">+</text>
+                    <rect x="740" y="200" width="70" height="25" fill="#ff0844" rx="12"/>
+                </svg>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+
+            switch(type) {
+                case 'pop':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(500, now);
+                    osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                    break;
+                case 'swap':
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.linearRampToValueAtTime(200, now + 0.2);
+                    osc.frequency.linearRampToValueAtTime(600, now + 0.4);
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(0.3, now + 0.2);
+                    gain.gain.linearRampToValueAtTime(0, now + 0.4);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                    break;
+                case 'magic':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.linearRampToValueAtTime(0, now + 0.6);
+                    osc.start(now);
+                    osc.stop(now + 0.6);
+                    break;
+            }
+        }
+
+        const svgBerry1 = `
+            <svg class="item-svg" viewBox="0 0 100 100">
+                <path d="M50 95 C 10 95, 5 50, 20 25 C 30 10, 70 10, 80 25 C 95 50, 90 95, 50 95 Z" fill="#ff0844" stroke="#c00030" stroke-width="2"/>
+                <path d="M50 15 C 30 20, 15 10, 15 10 C 25 30, 40 30, 50 20 C 60 30, 75 30, 85 10 C 85 10, 70 20, 50 15 Z" fill="#2ECC71" stroke="#27AE60" stroke-width="2"/>
+                <circle cx="35" cy="40" r="2.5" fill="#FFD700"/>
+                <circle cx="65" cy="45" r="2.5" fill="#FFD700"/>
+                <circle cx="50" cy="55" r="2.5" fill="#FFD700"/>
+                <circle cx="35" cy="65" r="2.5" fill="#FFD700"/>
+                <circle cx="65" cy="70" r="2.5" fill="#FFD700"/>
+                <circle cx="50" cy="80" r="2.5" fill="#FFD700"/>
+            </svg>`;
+            
+        const svgBerry2 = `
+            <svg class="item-svg" viewBox="0 0 100 100">
+                <circle cx="50" cy="55" r="42" fill="#00c6ff" stroke="#0072ff" stroke-width="3"/>
+                <path d="M30 20 L45 35 L50 15 L55 35 L70 20 Z" fill="#0072ff"/>
+                <ellipse cx="40" cy="45" rx="8" ry="4" fill="#fff" opacity="0.6" transform="rotate(-30 40 45)"/>
+                <path d="M 25 55 A 25 25 0 0 0 50 85" stroke="#fff" stroke-width="4" fill="none" opacity="0.4" stroke-linecap="round"/>
+            </svg>`;
+
+        const group1 = document.getElementById('group1');
+        const group2 = document.getElementById('group2');
+        const num1El = document.getElementById('eq-num1');
+        const num2El = document.getElementById('eq-num2');
+        const sumEl = document.getElementById('eq-sum');
+        const seg1 = document.getElementById('seg1');
+        const seg2 = document.getElementById('seg2');
+        const charEl = document.getElementById('character');
+
+        let val1, val2, total;
+        let swapped = false;
+
+        function initLevel() {
+            val1 = Math.floor(Math.random() * 5) + 1;
+            val2 = Math.floor(Math.random() * 4) + 2; 
+            if(val1 === val2) val2 = val1 === 5 ? 4 : val1 + 1;
+            total = val1 + val2;
+            swapped = false;
+
+            group1.className = 'item-group group-color1 pos-left';
+            group2.className = 'item-group group-color2 pos-right';
+            num1El.className = 'eq-num pos-left';
+            num2El.className = 'eq-num pos-right';
+
+            group1.innerHTML = '';
+            group2.innerHTML = '';
+            
+            for(let i=0; i<val1; i++) {
+                setTimeout(() => { group1.innerHTML += svgBerry1; playSound('pop'); }, i * 100);
+            }
+            for(let i=0; i<val2; i++) {
+                setTimeout(() => { group2.innerHTML += svgBerry2; playSound('pop'); }, (val1 * 100) + (i * 100));
+            }
+
+            num1El.textContent = val1;
+            num2El.textContent = val2;
+            sumEl.textContent = total;
+
+            updateScheme(false);
+        }
+
+        function updateScheme(isSwapped) {
+            const p1 = (val1 / total) * 100;
+            const p2 = (val2 / total) * 100;
+            
+            if (!isSwapped) {
+                seg1.style.width = p1 + '%';
+                seg1.style.left = '0%';
+                seg1.textContent = val1;
+                
+                seg2.style.width = p2 + '%';
+                seg2.style.left = p1 + '%';
+                seg2.textContent = val2;
+            } else {
+                seg1.style.left = p2 + '%';
+                seg2.style.left = '0%';
+            }
+        }
+
+        document.getElementById('swap-btn').addEventListener('click', () => {
+            playSound('swap');
+            
+            charEl.classList.add('jump');
+            setTimeout(() => charEl.classList.remove('jump'), 300);
+
+            swapped = !swapped;
+
+            if (swapped) {
+                group1.classList.replace('pos-left', 'pos-right');
+                group2.classList.replace('pos-right', 'pos-left');
+                num1El.classList.replace('pos-left', 'pos-right');
+                num2El.classList.replace('pos-right', 'pos-left');
+            } else {
+                group1.classList.replace('pos-right', 'pos-left');
+                group2.classList.replace('pos-left', 'pos-right');
+                num1El.classList.replace('pos-right', 'pos-left');
+                num2El.classList.replace('pos-left', 'pos-right');
+            }
+
+            updateScheme(swapped);
+        });
+
+        const ruleOverlay = document.getElementById('rule-overlay');
+        document.getElementById('rule-btn').addEventListener('click', () => {
+            playSound('magic');
+            ruleOverlay.classList.add('active');
+        });
+        document.getElementById('close-rule').addEventListener('click', () => {
+            playSound('pop');
+            ruleOverlay.classList.remove('active');
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            playSound('magic');
+            initLevel();
+        });
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            playSound('magic');
+            initLevel();
+        });
+
+        window.onload = () => {
+            document.body.addEventListener('click', function unlockAudio() {
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                document.body.removeEventListener('click', unlockAudio);
+            });
+            initLevel();
+        };
+    </script>
+</body>
+</html>
