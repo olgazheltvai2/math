@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Переставний закон додавання - Океан</title>
+    <style>
+        /* Скидання базових стилів */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #030a16;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        /* Контейнер 16:9 */
+        #game-container {
+            position: relative;
+            width: 100vw;
+            max-width: 177.78vh; 
+            height: 56.25vw;
+            max-height: 100vh;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(0, 229, 255, 0.2);
+            overflow: hidden;
+            background: #021a3a;
+        }
+
+        /* Розмитий задній фон */
+        .bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+            filter: blur(2px);
+            transform: scale(1.02);
+        }
+
+        /* Анімація підводних елементів */
+        @keyframes floatBubbles {
+            0% { transform: translateY(100px) scale(0.8); opacity: 0; }
+            20% { opacity: 0.6; }
+            100% { transform: translateY(-900px) scale(1.2); opacity: 0; }
+        }
+        /* ЗМЕНШЕНО АМПЛІТУДУ ВОДОРОСТЕЙ */
+        @keyframes swayKelp {
+            0%, 100% { transform: skewX(-1.5deg); }
+            50% { transform: skewX(1.5deg); }
+        }
+        .bubble1 { animation: floatBubbles 12s infinite linear; }
+        .bubble2 { animation: floatBubbles 15s infinite linear 4s; }
+        .bubble3 { animation: floatBubbles 10s infinite linear 2s; }
+        .bubble4 { animation: floatBubbles 18s infinite linear 7s; }
+        
+        /* ЗМЕНШЕНО ШВИДКІСТЬ ВОДОРОСТЕЙ */
+        .kelp { transform-origin: bottom; animation: swayKelp 10s infinite ease-in-out; }
+        .kelp-fast { transform-origin: bottom; animation: swayKelp 7s infinite ease-in-out reverse; }
+
+        /* Інтерфейс гри */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-evenly;
+            padding: 2%;
+        }
+
+        /* Стилізовані скляні панелі - Морські */
+        .glass-panel {
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.15), rgba(0, 100, 255, 0.05));
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 2px solid rgba(0, 229, 255, 0.3);
+            border-radius: 25px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0,229,255,0.1);
+            padding: 1vw 2vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- СХЕМА --- */
+        #scheme-container {
+            width: 70%;
+            height: 18%;
+            position: relative;
+        }
+
+        .segment-wrapper {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .segment {
+            height: 3vw;
+            border-radius: 1.5vw;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: all 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 900;
+            font-size: 5vw;
+            text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 4px 4px 10px rgba(0,0,0,0.8);
+            box-shadow: inset 0 -5px 10px rgba(0,0,0,0.3), 0 5px 15px rgba(0,0,0,0.4);
+        }
+        /* Кораловий та Аквамариновий */
+        .seg-color1 { background: linear-gradient(90deg, #FF5722 0%, #FF9800 100%); }
+        .seg-color2 { background: linear-gradient(90deg, #00B4DB 0%, #0083B0 100%); }
+
+        /* --- ПРЕДМЕТИ --- */
+        #items-area {
+            width: 80%;
+            height: 35%;
+            position: relative;
+        }
+
+        .item-group {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-wrap: wrap;
+            flex-direction: row; 
+            gap: 1vw;
+            justify-content: center;
+            align-items: center;
+            padding: 1.5vw;
+            border-radius: 2vw;
+            transition: left 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            width: 45%; 
+        }
+        .group-color1 { background: rgba(255, 87, 34, 0.15); border: 3px dashed #FF5722; }
+        .group-color2 { background: rgba(0, 180, 219, 0.15); border: 3px dashed #00B4DB; }
+
+        .item-svg {
+            width: 6.5vw;
+            height: 6.5vw;
+            filter: drop-shadow(3px 5px 5px rgba(0,0,0,0.6));
+            transition: transform 0.3s;
+        }
+        .item-svg:hover { transform: scale(1.15) rotate(15deg); }
+
+        /* --- ПРИКЛАД (РІВНЯННЯ) --- */
+        #equation-area {
+            display: flex;
+            align-items: center;
+            font-size: 7vw;
+            font-weight: 900;
+            color: #fff;
+            text-shadow: 4px 4px 0 #000, 0 0 20px rgba(0,229,255,0.5);
+        }
+
+        .addends-box {
+            position: relative;
+            width: 35vw;
+            height: 10vw;
+        }
+
+        .eq-num {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transition: left 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+
+        .eq-plus {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+        }
+
+        .eq-result-box {
+            display: flex;
+            align-items: center;
+            margin-left: 2vw;
+        }
+
+        /* --- ПОЗИЦІЇ ДЛЯ АНІМАЦІЇ --- */
+        .pos-left { left: 25%; }
+        .pos-right { left: 75%; }
+
+        /* --- КНОПКА ПЕРЕСТАНОВКИ (Перлинна) --- */
+        #swap-btn {
+            background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+            border: 4px solid #fff;
+            border-radius: 50px;
+            padding: 1vw 3vw;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4), inset 0 -5px 15px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+        #swap-btn:hover {
+            transform: scale(1.1) translateY(-3px);
+            box-shadow: 0 15px 30px rgba(0,229,255,0.5);
+        }
+        #swap-btn:active { transform: scale(0.9); }
+        #swap-btn svg {
+            width: 4vw;
+            height: 4vw;
+            fill: #2C3E50;
+            filter: drop-shadow(2px 2px 2px rgba(255,255,255,0.8));
+        }
+
+        /* --- НАВІГАЦІЯ --- */
+        .nav-btn {
+            position: absolute;
+            top: 3%;
+            border: none;
+            border-radius: 1vw;
+            width: 4vw;
+            height: 4vw;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            z-index: 20;
+            background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(200,255,255,0.9));
+        }
+        .nav-btn:hover { background: #fff; transform: scale(1.1); box-shadow: 0 0 20px #00E5FF; }
+        .nav-btn svg { width: 60%; height: 60%; fill: #005C97; }
+        
+        #prev-btn { left: 3%; }
+        #next-btn { right: 3%; }
+        
+        /* Кнопка правила */
+        #rule-btn {
+            position: absolute;
+            bottom: 3%;
+            right: 3%;
+            background: linear-gradient(135deg, #FF9800 0%, #F44336 100%);
+            border: 3px solid #fff;
+            border-radius: 50%;
+            width: 5vw;
+            height: 5vw;
+            cursor: pointer;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.6), 0 0 20px rgba(255,152,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        #rule-btn:hover { transform: scale(1.1); box-shadow: 0 0 30px #FF9800; }
+        #rule-btn svg { width: 60%; height: 60%; fill: #fff; }
+
+        /* --- ПЕРСОНАЖ (МОРСЬКА ЧЕРЕПАШКА) --- */
+        #character {
+            position: absolute;
+            bottom: 2%;
+            left: 2%;
+            width: 18vw;
+            height: 18vw;
+            z-index: 15;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            filter: drop-shadow(8px 10px 15px rgba(0,0,0,0.6));
+            animation: floatTurtle 5s infinite ease-in-out;
+        }
+        @keyframes floatTurtle {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            50% { transform: translateY(-1.5vw) rotate(3deg); }
+        }
+        .jump {
+            animation: turtleJump 0.5s ease-out !important;
+        }
+        @keyframes turtleJump {
+            0% { transform: translateY(0) scale(1) rotate(0deg); }
+            50% { transform: translateY(-4vw) scale(1.05) rotate(15deg); }
+            100% { transform: translateY(0) scale(1) rotate(0deg); }
+        }
+        @keyframes flapFlipperL {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(-25deg); }
+        }
+        @keyframes flapFlipperR {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(25deg); }
+        }
+        @keyframes headBob {
+            0%, 100% { transform: rotate(0deg) translateY(0); }
+            25% { transform: rotate(-4deg) translateY(-2px); }
+            75% { transform: rotate(4deg) translateY(-2px); }
+        }
+        @keyframes lookAround {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-3px) translateY(2px); }
+            40% { transform: translateX(3px) translateY(-1px); }
+            80% { transform: translateX(2px) translateY(1px); }
+        }
+        @keyframes blink {
+            0%, 96%, 100% { transform: scaleY(1); }
+            98% { transform: scaleY(0.1); }
+        }
+        
+        .flipper-left { transform-origin: 60px 80px; animation: flapFlipperL 3s infinite ease-in-out; }
+        .flipper-right { transform-origin: 140px 80px; animation: flapFlipperR 3s infinite ease-in-out; }
+        .turtle-head { transform-origin: 100px 75px; animation: headBob 5s infinite ease-in-out; }
+        .turtle-eyes { transform-origin: center; animation: blink 5s infinite; }
+        .turtle-pupils { animation: lookAround 7s infinite ease-in-out; }
+        .flipper-back-left { transform-origin: 50px 145px; animation: flapFlipperL 4s infinite ease-in-out reverse; }
+        .flipper-back-right { transform-origin: 150px 145px; animation: flapFlipperR 4s infinite ease-in-out reverse; }
+
+        /* --- ПРАВИЛО (НА ВЕСЬ ЕКРАН) --- */
+        #rule-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(2, 26, 58, 0.95) 0%, rgba(1, 10, 22, 0.98) 100%);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s;
+        }
+        #rule-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .rule-content {
+            background: rgba(0, 229, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 4px dashed #00B4DB;
+            border-radius: 3vw;
+            padding: 3vw;
+            text-align: center;
+            position: relative;
+            box-shadow: 0 0 60px rgba(0, 229, 255, 0.2), inset 0 0 30px rgba(0,229,255,0.1);
+        }
+        .rule-content svg { width: 70vw; height: 30vw; }
+        #close-rule {
+            position: absolute;
+            top: -2vw;
+            right: -2vw;
+            width: 4vw;
+            height: 4vw;
+            background: #FF5722;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            color: #fff;
+            font-size: 2.5vw;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 5px 10px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+        #close-rule:hover { transform: scale(1.1) rotate(90deg); }
+
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        
+        <!-- Розмитий деталізований сюжетний фон Океану -->
+        <svg class="bg-layer" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+            <defs>
+                <linearGradient id="oceanGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#005C97"/>
+                    <stop offset="40%" stop-color="#02427a"/>
+                    <stop offset="100%" stop-color="#011833"/>
+                </linearGradient>
+                <linearGradient id="lightRays" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="rgba(255,255,255,0.3)"/>
+                    <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+                </linearGradient>
+                <radialGradient id="sandGrad" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#2a3854"/>
+                    <stop offset="100%" stop-color="#111c30"/>
+                </radialGradient>
+            </defs>
+            
+            <!-- Вода -->
+            <rect width="100%" height="100%" fill="url(#oceanGrad)"/>
+            
+            <!-- Промені світла згори -->
+            <polygon points="0,0 300,0 700,900 100,900" fill="url(#lightRays)" opacity="0.4"/>
+            <polygon points="600,0 1100,0 1500,900 900,900" fill="url(#lightRays)" opacity="0.2"/>
+            <polygon points="1200,0 1600,0 1600,900 1400,900" fill="url(#lightRays)" opacity="0.3"/>
+
+            <!-- Бульбашки -->
+            <g fill="#ffffff" opacity="0.3">
+                <circle cx="200" cy="900" r="10" class="bubble1"/>
+                <circle cx="220" cy="950" r="15" class="bubble1" style="animation-delay: 1s"/>
+                <circle cx="800" cy="900" r="8" class="bubble2"/>
+                <circle cx="850" cy="920" r="12" class="bubble2" style="animation-delay: 0.5s"/>
+                <circle cx="1400" cy="900" r="20" class="bubble3"/>
+                <circle cx="1350" cy="980" r="14" class="bubble4"/>
+            </g>
+
+            <!-- Морське дно -->
+            <path d="M0 700 Q 300 650 600 750 T 1200 700 T 1600 780 L 1600 900 L 0 900 Z" fill="url(#sandGrad)"/>
+            <path d="M0 780 Q 400 700 800 820 T 1600 750 L 1600 900 L 0 900 Z" fill="#0d1526"/>
+            
+            <!-- Корали та водорості зліва -->
+            <g transform="translate(150, 750)">
+                <path class="kelp" d="M -50 50 Q -30 -50 -60 -150 Q -80 -250 -40 -350" fill="none" stroke="#2E7D32" stroke-width="25" stroke-linecap="round"/>
+                <path class="kelp-fast" d="M -10 50 Q 20 -20 0 -100 Q -20 -200 10 -250" fill="none" stroke="#388E3C" stroke-width="15" stroke-linecap="round"/>
+                <path d="M -40 50 Q -60 -20 -100 -40 Q -70 0 -40 50" fill="#9C27B0"/>
+                <path d="M -40 50 Q -20 -30 20 -50 Q -10 10 -40 50" fill="#7B1FA2"/>
+                <!-- Мозковий корал -->
+                <circle cx="-80" cy="30" r="60" fill="#D32F2F"/>
+                <circle cx="-80" cy="30" r="50" fill="#F44336" stroke="#B71C1C" stroke-width="5" stroke-dasharray="10 5"/>
+                <!-- Трубчасті корали -->
+                <rect x="20" y="-80" width="20" height="130" rx="10" fill="#E91E63" transform="rotate(15)"/>
+                <ellipse cx="10" cy="-75" rx="10" ry="5" fill="#880E4F"/>
+                <rect x="45" y="-50" width="16" height="100" rx="8" fill="#F06292" transform="rotate(25)"/>
+                <ellipse cx="25" cy="-45" rx="8" ry="4" fill="#880E4F"/>
+            </g>
+
+            <!-- Корали справа -->
+            <g transform="translate(1350, 720)">
+                <path class="kelp" d="M 50 80 Q 20 -50 60 -180 Q 90 -280 40 -400" fill="none" stroke="#00695C" stroke-width="30" stroke-linecap="round"/>
+                <path class="kelp-fast" d="M 0 80 Q -30 0 -10 -120 Q 10 -220 -20 -300" fill="none" stroke="#00897B" stroke-width="18" stroke-linecap="round"/>
+                <!-- Великий губчастий корал -->
+                <path d="M -60 80 Q -100 -50 -50 -120 Q 0 -50 20 80" fill="#FFB300"/>
+                <circle cx="-50" cy="-100" r="15" fill="#FF8F00"/>
+                <circle cx="-30" cy="-60" r="12" fill="#FF8F00"/>
+                <circle cx="-70" cy="-50" r="10" fill="#FF8F00"/>
+                <circle cx="-40" cy="-20" r="18" fill="#FF8F00"/>
+                <circle cx="-10" cy="20" r="12" fill="#FF8F00"/>
+            </g>
+        </svg>
+
+        <!-- Живий персонаж (Морська Черепашка) -->
+        <svg id="character" viewBox="0 0 200 200">
+            <defs>
+                <radialGradient id="shellGrad" cx="50%" cy="40%" r="60%">
+                    <stop offset="0%" stop-color="#8BC34A"/>
+                    <stop offset="70%" stop-color="#388E3C"/>
+                    <stop offset="100%" stop-color="#1B5E20"/>
+                </radialGradient>
+                <radialGradient id="skinGrad" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#C8E6C9"/>
+                    <stop offset="80%" stop-color="#4CAF50"/>
+                    <stop offset="100%" stop-color="#2E7D32"/>
+                </radialGradient>
+            </defs>
+
+            <!-- Задні ласти -->
+            <path class="flipper-back-left" d="M 70 145 Q 40 180 30 170 Q 20 160 50 135 Z" fill="url(#skinGrad)" stroke="#1B5E20" stroke-width="2"/>
+            <path class="flipper-back-right" d="M 130 145 Q 160 180 170 170 Q 180 160 150 135 Z" fill="url(#skinGrad)" stroke="#1B5E20" stroke-width="2"/>
+
+            <!-- Передні ласти (рухаються) -->
+            <g class="flipper-left">
+                <path d="M 60 70 Q -10 90 20 130 Q 30 100 70 100 Z" fill="url(#skinGrad)" stroke="#1B5E20" stroke-width="2"/>
+                <ellipse cx="25" cy="110" rx="3" ry="5" fill="#8BC34A" transform="rotate(-30 25 110)"/>
+                <ellipse cx="35" cy="95" rx="4" ry="6" fill="#8BC34A" transform="rotate(-40 35 95)"/>
+            </g>
+            <g class="flipper-right">
+                <path d="M 140 70 Q 210 90 180 130 Q 170 100 130 100 Z" fill="url(#skinGrad)" stroke="#1B5E20" stroke-width="2"/>
+                <ellipse cx="175" cy="110" rx="3" ry="5" fill="#8BC34A" transform="rotate(30 175 110)"/>
+                <ellipse cx="165" cy="95" rx="4" ry="6" fill="#8BC34A" transform="rotate(40 165 95)"/>
+            </g>
+
+            <!-- Голова (рухається) -->
+            <g class="turtle-head">
+                <path d="M 75 60 Q 75 10 100 10 Q 125 10 125 60 Q 100 80 75 60 Z" fill="url(#skinGrad)" stroke="#1B5E20" stroke-width="2"/>
+                <!-- Рум'янець -->
+                <circle cx="85" cy="50" r="5" fill="#FF8A65" opacity="0.6"/>
+                <circle cx="115" cy="50" r="5" fill="#FF8A65" opacity="0.6"/>
+                
+                <!-- Очі -->
+                <g class="turtle-eyes">
+                    <ellipse cx="85" cy="35" rx="8" ry="12" fill="#fff" stroke="#1B5E20" stroke-width="1.5"/>
+                    <ellipse cx="115" cy="35" rx="8" ry="12" fill="#fff" stroke="#1B5E20" stroke-width="1.5"/>
+                    <g class="turtle-pupils">
+                        <ellipse cx="85" cy="35" rx="5" ry="7" fill="#000"/>
+                        <ellipse cx="115" cy="35" rx="5" ry="7" fill="#000"/>
+                        <!-- Відблиски -->
+                        <circle cx="83" cy="32" r="2.5" fill="#fff"/>
+                        <circle cx="113" cy="32" r="2.5" fill="#fff"/>
+                        <circle cx="87" cy="38" r="1" fill="#fff"/>
+                        <circle cx="117" cy="38" r="1" fill="#fff"/>
+                    </g>
+                </g>
+                <!-- Посмішка -->
+                <path d="M 90 60 Q 100 65 110 60" fill="none" stroke="#1B5E20" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+
+            <!-- Панцир (основа) -->
+            <ellipse cx="100" cy="115" rx="55" ry="65" fill="url(#shellGrad)" stroke="#1B5E20" stroke-width="4"/>
+            
+            <!-- Візерунки на панцирі (шестикутники) -->
+            <path d="M 100 70 L 120 82 L 120 105 L 100 117 L 80 105 L 80 82 Z" fill="#689F38" stroke="#1B5E20" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M 100 117 L 120 129 L 120 152 L 100 164 L 80 152 L 80 129 Z" fill="#689F38" stroke="#1B5E20" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M 75 95 L 80 105 L 80 129 L 75 140 L 55 125 L 55 105 Z" fill="#558B2F" stroke="#1B5E20" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M 125 95 L 145 105 L 145 125 L 125 140 L 120 129 L 120 105 Z" fill="#558B2F" stroke="#1B5E20" stroke-width="2.5" stroke-linejoin="round"/>
+            
+            <path d="M 100 55 L 115 62 L 100 70 L 85 62 Z" fill="#7CB342" stroke="#1B5E20" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M 100 164 L 115 171 L 100 178 L 85 171 Z" fill="#7CB342" stroke="#1B5E20" stroke-width="2" stroke-linejoin="round"/>
+            
+            <!-- Бліки на панцирі -->
+            <path d="M 95 75 Q 110 70 115 85" fill="none" stroke="#C5E1A5" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+            <path d="M 95 122 Q 110 117 115 132" fill="none" stroke="#C5E1A5" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+        </svg>
+
+        <!-- Ігровий Інтерфейс -->
+        <div id="ui-layer">
+            
+            <div id="scheme-container" class="glass-panel">
+                <div class="segment-wrapper">
+                    <div id="seg1" class="segment seg-color1"></div>
+                    <div id="seg2" class="segment seg-color2"></div>
+                </div>
+            </div>
+
+            <div id="items-area">
+                <div id="group1" class="item-group group-color1 pos-left"></div>
+                <div id="group2" class="item-group group-color2 pos-right"></div>
+            </div>
+
+            <div id="equation-area" class="glass-panel">
+                <div class="addends-box">
+                    <div id="eq-num1" class="eq-num pos-left" style="color: #FF7F50;"></div>
+                    <div class="eq-plus">+</div>
+                    <div id="eq-num2" class="eq-num pos-right" style="color: #00E5FF;"></div>
+                </div>
+                <div class="eq-result-box">
+                    <span style="margin-right: 2vw;">=</span>
+                    <span id="eq-sum" style="color: #FFD700; text-shadow: 3px 3px 0 #005C97, 0 0 15px rgba(0,0,0,0.8);"></span>
+                </div>
+            </div>
+
+            <button id="swap-btn">
+                <svg viewBox="0 0 24 24">
+                    <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/>
+                </svg>
+            </button>
+        </div>
+
+        <button id="prev-btn" class="nav-btn">
+            <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+        </button>
+
+        <button id="rule-btn">
+            <!-- Іконка компаса / штурвала -->
+            <svg viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2.5-4.5l8-3.5-3.5-8-8 3.5 3.5 8zM12 10.9c.61 0 1.1.49 1.1 1.1s-.49 1.1-1.1 1.1-1.1-.49-1.1-1.1.49-1.1 1.1-1.1z"/>
+            </svg>
+        </button>
+
+        <button id="next-btn" class="nav-btn">
+            <svg viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+        </button>
+
+        <!-- Екран Правила -->
+        <div id="rule-overlay">
+            <div class="rule-content">
+                <button id="close-rule">×</button>
+                <svg viewBox="0 0 1000 300">
+                    <defs>
+                        <linearGradient id="textGlow1" x1="0" y1="0" x2="1" y2="0">
+                            <stop offset="0%" stop-color="#FFD700"/>
+                            <stop offset="100%" stop-color="#FF9800"/>
+                        </linearGradient>
+                        <filter id="neon">
+                            <feGaussianBlur stdDeviation="4" result="blur"/>
+                            <feMerge>
+                                <feMergeNode in="blur"/>
+                                <feMergeNode in="SourceGraphic"/>
+                            </feMerge>
+                        </filter>
+                    </defs>
+                    <text x="500" y="80" font-size="55" font-weight="900" fill="url(#textGlow1)" text-anchor="middle" filter="url(#neon)">ВІД ПЕРЕСТАНОВКИ ДОДАНКІВ</text>
+                    <text x="500" y="150" font-size="55" font-weight="900" fill="#00E5FF" text-anchor="middle" filter="url(#neon)">СУМА НЕ ЗМІНЮЄТЬСЯ!</text>
+                    
+                    <rect x="320" y="200" width="70" height="25" fill="#FF5722" rx="12"/>
+                    <text x="420" y="222" font-size="40" fill="#fff" font-weight="bold">+</text>
+                    <rect x="460" y="200" width="70" height="25" fill="#00B4DB" rx="12"/>
+                    
+                    <text x="560" y="222" font-size="40" fill="#fff" font-weight="bold">=</text>
+                    
+                    <rect x="600" y="200" width="70" height="25" fill="#00B4DB" rx="12"/>
+                    <text x="700" y="222" font-size="40" fill="#fff" font-weight="bold">+</text>
+                    <rect x="740" y="200" width="70" height="25" fill="#FF5722" rx="12"/>
+                </svg>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+
+            switch(type) {
+                case 'pop':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(500, now);
+                    osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+                    gain.gain.setValueAtTime(0.4, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                    break;
+                case 'swap':
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(400, now);
+                    osc.frequency.linearRampToValueAtTime(200, now + 0.2);
+                    osc.frequency.linearRampToValueAtTime(600, now + 0.4);
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(0.3, now + 0.2);
+                    gain.gain.linearRampToValueAtTime(0, now + 0.4);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                    break;
+                case 'magic':
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(600, now);
+                    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.3);
+                    gain.gain.setValueAtTime(0.3, now);
+                    gain.gain.linearRampToValueAtTime(0, now + 0.6);
+                    osc.start(now);
+                    osc.stop(now + 0.6);
+                    break;
+            }
+        }
+
+        // Морська зірка
+        const svgItem1 = `
+            <svg class="item-svg" viewBox="0 0 100 100">
+                <defs>
+                    <radialGradient id="starGrad" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="#FF9800"/>
+                        <stop offset="80%" stop-color="#FF5722"/>
+                        <stop offset="100%" stop-color="#E64A19"/>
+                    </radialGradient>
+                </defs>
+                <path d="M 50 10 L 60 40 L 90 45 L 65 65 L 75 95 L 50 75 L 25 95 L 35 65 L 10 45 L 40 40 Z" fill="url(#starGrad)" stroke="#D84315" stroke-width="2" stroke-linejoin="round"/>
+                <circle cx="50" cy="50" r="3" fill="#FFE082"/>
+                <circle cx="50" cy="30" r="2" fill="#FFE082"/>
+                <circle cx="50" cy="70" r="2" fill="#FFE082"/>
+                <circle cx="35" cy="50" r="2" fill="#FFE082"/>
+                <circle cx="65" cy="50" r="2" fill="#FFE082"/>
+                <circle cx="40" cy="40" r="1.5" fill="#FFCC80"/>
+                <circle cx="60" cy="40" r="1.5" fill="#FFCC80"/>
+                <circle cx="42" cy="62" r="1.5" fill="#FFCC80"/>
+                <circle cx="58" cy="62" r="1.5" fill="#FFCC80"/>
+            </svg>`;
+            
+        // Морська мушля (перлинна)
+        const svgItem2 = `
+            <svg class="item-svg" viewBox="0 0 100 100">
+                <defs>
+                    <linearGradient id="shellItemGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stop-color="#E1BEE7"/>
+                        <stop offset="50%" stop-color="#00B4DB"/>
+                        <stop offset="100%" stop-color="#0083B0"/>
+                    </linearGradient>
+                </defs>
+                <path d="M 20 80 Q 50 95 80 80 Q 95 50 85 20 Q 50 5 15 20 Q 5 50 20 80 Z" fill="url(#shellItemGrad)" stroke="#005C97" stroke-width="2"/>
+                <path d="M 50 90 L 50 10 M 40 88 L 25 15 M 60 88 L 75 15 M 30 84 L 10 30 M 70 84 L 90 30" stroke="#E1BEE7" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.6"/>
+                <circle cx="50" cy="65" r="12" fill="#fff" filter="drop-shadow(0 5px 5px rgba(0,0,0,0.4))"/>
+                <circle cx="46" cy="61" r="3" fill="#E0F7FA"/>
+            </svg>`;
+
+        const group1 = document.getElementById('group1');
+        const group2 = document.getElementById('group2');
+        const num1El = document.getElementById('eq-num1');
+        const num2El = document.getElementById('eq-num2');
+        const sumEl = document.getElementById('eq-sum');
+        const seg1 = document.getElementById('seg1');
+        const seg2 = document.getElementById('seg2');
+        const charEl = document.getElementById('character');
+
+        let val1, val2, total;
+        let swapped = false;
+
+        function initLevel() {
+            val1 = Math.floor(Math.random() * 5) + 1;
+            val2 = Math.floor(Math.random() * 4) + 2; 
+            if(val1 === val2) val2 = val1 === 5 ? 4 : val1 + 1;
+            total = val1 + val2;
+            swapped = false;
+
+            group1.className = 'item-group group-color1 pos-left';
+            group2.className = 'item-group group-color2 pos-right';
+            num1El.className = 'eq-num pos-left';
+            num2El.className = 'eq-num pos-right';
+
+            group1.innerHTML = '';
+            group2.innerHTML = '';
+            
+            for(let i=0; i<val1; i++) {
+                setTimeout(() => { group1.innerHTML += svgItem1; playSound('pop'); }, i * 100);
+            }
+            for(let i=0; i<val2; i++) {
+                setTimeout(() => { group2.innerHTML += svgItem2; playSound('pop'); }, (val1 * 100) + (i * 100));
+            }
+
+            num1El.textContent = val1;
+            num2El.textContent = val2;
+            sumEl.textContent = total;
+
+            updateScheme(false);
+        }
+
+        function updateScheme(isSwapped) {
+            const p1 = (val1 / total) * 100;
+            const p2 = (val2 / total) * 100;
+            
+            if (!isSwapped) {
+                seg1.style.width = p1 + '%';
+                seg1.style.left = '0%';
+                seg1.textContent = val1;
+                
+                seg2.style.width = p2 + '%';
+                seg2.style.left = p1 + '%';
+                seg2.textContent = val2;
+            } else {
+                seg1.style.left = p2 + '%';
+                seg2.style.left = '0%';
+            }
+        }
+
+        document.getElementById('swap-btn').addEventListener('click', () => {
+            playSound('swap');
+            
+            // Запускаємо анімацію стрибка у черепашки
+            charEl.classList.remove('jump'); // скидання
+            void charEl.offsetWidth; // тригер рефлоу
+            charEl.classList.add('jump');
+
+            swapped = !swapped;
+
+            if (swapped) {
+                group1.classList.replace('pos-left', 'pos-right');
+                group2.classList.replace('pos-right', 'pos-left');
+                num1El.classList.replace('pos-left', 'pos-right');
+                num2El.classList.replace('pos-right', 'pos-left');
+            } else {
+                group1.classList.replace('pos-right', 'pos-left');
+                group2.classList.replace('pos-left', 'pos-right');
+                num1El.classList.replace('pos-right', 'pos-left');
+                num2El.classList.replace('pos-left', 'pos-right');
+            }
+
+            updateScheme(swapped);
+        });
+
+        const ruleOverlay = document.getElementById('rule-overlay');
+        document.getElementById('rule-btn').addEventListener('click', () => {
+            playSound('magic');
+            ruleOverlay.classList.add('active');
+        });
+        document.getElementById('close-rule').addEventListener('click', () => {
+            playSound('pop');
+            ruleOverlay.classList.remove('active');
+        });
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            playSound('magic');
+            initLevel();
+        });
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            playSound('magic');
+            initLevel();
+        });
+
+        window.onload = () => {
+            document.body.addEventListener('click', function unlockAudio() {
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+                document.body.removeEventListener('click', unlockAudio);
+            });
+            initLevel();
+        };
+    </script>
+</body>
+</html>
