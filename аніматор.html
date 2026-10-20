@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Аніматор + Музичний Синтезатор + Зошит</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; padding: 15px; 
+            background: #e9ecef; 
+            touch-action: none; 
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+        }
+
+        .workspace {
+            display: flex;
+            flex-direction: row;
+            gap: 20px;
+            width: 100%;
+            max-width: 1320px;
+            align-items: stretch;
+        }
+
+        .panel {
+            background: #ffffff;
+            border-radius: 14px;
+            padding: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .left-panel {
+            flex: 0 0 440px;
+        }
+
+        .right-panel {
+            flex: 1;
+            min-height: 620px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        canvas { 
+            background: white; 
+            border: 2px solid #343a40; 
+            border-radius: 10px; 
+            cursor: crosshair; 
+            touch-action: none; 
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.05); 
+        }
+
+        .controls, .palette { 
+            margin-top: 10px; 
+            display: flex; 
+            gap: 8px; 
+            flex-wrap: wrap; 
+            justify-content: center; 
+            width: 100%;
+        }
+
+        .slider-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #f8f9fa;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 8px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .slider-box input[type="range"] {
+            cursor: pointer;
+            width: 140px;
+        }
+
+        .color-btn { 
+            padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer; 
+            border: 3px solid transparent; border-radius: 6px; color: white; text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            transition: 0.15s;
+        }
+        .color-btn.active { border-color: #212529; transform: scale(1.08); box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+        
+        #btnHead { background: #ff0000; }
+        #btnTorso { background: #0000ff; }
+        #btnArms { background: #00cc00; }
+        #btnLegs { background: #ffee00; color: #111; text-shadow: none; }
+        
+        button.action { 
+            padding: 10px 14px; font-size: 14px; cursor: pointer; border: none; 
+            border-radius: 6px; background: #343a40; color: white; font-weight: bold; 
+            transition: 0.15s;
+        }
+        button.action:hover { opacity: 0.92; }
+        button.action:active { transform: scale(0.96); }
+        
+        #clearBtn { background: #dc3545; }
+        #animateBtn { background: #28a745; }
+        #nextDanceBtn { background: #6f42c1; }
+        #muteBtn { background: #fd7e14; }
+        #drawBtn { background: #007bff; }
+        
+        .instruction { 
+            font-size: 13px; color: #555; text-align: center; 
+            margin: 0 0 8px 0; max-width: 380px; line-height: 1.4;
+        }
+
+        .dance-badge {
+            display: none;
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+
+        /* Праве вікно — Зошит у клітинку */
+        .notebook-header {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .notebook-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #343a40;
+            margin: 0;
+        }
+
+        .notebook-sheet {
+            width: 100%;
+            flex: 1;
+            background-color: #ffffff;
+            border: 2px solid #adb5bd;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.04);
+            --grid-size: 25px;
+            background-image: 
+                linear-gradient(to right, #cfe2ff 1px, transparent 1px),
+                linear-gradient(to bottom, #cfe2ff 1px, transparent 1px);
+            background-size: var(--grid-size) var(--grid-size);
+        }
+
+        .notebook-sheet::before {
+            content: '';
+            position: absolute;
+            top: 0; bottom: 0; right: 45px;
+            width: 2px;
+            background-color: #ff8787;
+            pointer-events: none;
+        }
+
+        @media (max-width: 900px) {
+            .workspace { flex-direction: column; }
+            .left-panel { flex: auto; width: 100%; }
+            .right-panel { min-height: 450px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="workspace">
+    <!-- ЛІВА ПАНЕЛЬ: МАЛЮВАЛКА ТА АНІМАТОР -->
+    <div class="panel left-panel">
+        <p class="instruction" id="instruction">
+            Малюй так, щоб руки, ноги та голова <b>заходили (накладалися)</b> на синє тіло!
+        </p>
+
+        <div class="dance-badge" id="danceNameBadge">Танець: Марш</div>
+
+        <div class="slider-box" id="brushControls">
+            <label for="brushSize">Товщина лінії: <b><span id="brushVal">16</span> px</b></label>
+            <input type="range" id="brushSize" min="4" max="36" value="16">
+        </div>
+
+        <div class="palette" id="palette">
+            <button class="color-btn active" id="btnHead" data-color="#ff0000">Голова (Червона)</button>
+            <button class="color-btn" id="btnTorso" data-color="#0000ff">Тіло (Синє)</button>
+            <button class="color-btn" id="btnArms" data-color="#00ff00">Руки (Зелені)</button>
+            <button class="color-btn" id="btnLegs" data-color="#ffff00">Ноги (Жовті)</button>
+        </div>
+
+        <canvas id="gameCanvas" width="400" height="480" style="margin-top: 10px;"></canvas>
+        
+        <div class="controls">
+            <button class="action" id="clearBtn">Очистити</button>
+            <button class="action" id="animateBtn">Оживити! 🕺🎵</button>
+            <button class="action" id="nextDanceBtn" style="display:none;">Інший танець 🎲</button>
+            <button class="action" id="muteBtn" style="display:none;">🔊 Звук</button>
+            <button class="action" id="drawBtn" style="display:none;">Малювати ✏️</button>
+        </div>
+    </div>
+
+    <!-- ПРАВА ПАНЕЛЬ: ЗОШИТ У КЛІТИНКУ ДЛЯ ЗАВДАНЬ -->
+    <div class="panel right-panel">
+        <div class="notebook-header">
+            <h3 class="notebook-title">📒 Робочий зошит для завдань</h3>
+            <div class="slider-box" style="width: auto; margin-bottom: 0;">
+                <label for="gridSize">Розмір клітинки: <b><span id="gridVal">25</span> px</b></label>
+                <input type="range" id="gridSize" min="10" max="60" value="25">
+            </div>
+        </div>
+        <div class="notebook-sheet" id="notebookSheet"></div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    let isDrawing = false;
+    let isAnimating = false;
+    let animationFrameId;
+    let startTime = 0;
+    let currentDance = -1;
+    let savedDrawing = null;
+    
+    let bodyParts = {};
+    let joints = {};
+
+    const DANCE_NAMES = [
+        "1. Веселий марш 🚶",
+        "2. Стрибки радості 🙌",
+        "3. Запальне Диско 🕺",
+        "4. Кібер-Робот 🤖",
+        "5. Український Гопак 👢",
+        "6. Гавайська хвиля 🌊",
+        "7. Латина / Сальса 💃",
+        "8. Рок-гітарист 🎸",
+        "9. Єгипетський фараон 🏺",
+        "10. Супер-спринт 🏃‍♂️"
+    ];
+
+    // =========================================================================
+    // ПОЛІФОНІЧНИЙ ГЕНЕРАТОР МЕЛОДІЙ (WEB AUDIO API)
+    // =========================================================================
+    let audioCtx = null;
+    let isMuted = false;
+    let musicTimer = null;
+    let currentSong = null;
+    let currentStep = 0;
+
+    // Музичні лади (інтервали у півтонах на 2 октави)
+    const SCALES = {
+        major:      [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19],
+        minor:      [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19],
+        pentatonic: [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24],
+        dorian:     [0, 2, 3, 5, 7, 9, 10, 12, 14, 15, 17, 19],
+        hijaz:      [0, 1, 4, 5, 7, 8, 11, 12, 13, 16, 17, 19], // Східний колорит
+        blues:      [0, 3, 5, 6, 7, 10, 12, 15, 17, 18, 19, 22]
+    };
+
+    // Пресети стилів під кожен із 10 танців
+    const STYLE_PRESETS = [
+        { scale: 'major',      tempo: 125, leadWave: 'triangle', bassWave: 'sawtooth', style: 'march' },
+        { scale: 'pentatonic', tempo: 142, leadWave: 'square',   bassWave: 'triangle', style: 'happy' },
+        { scale: 'dorian',     tempo: 126, leadWave: 'sawtooth', bassWave: 'sawtooth', style: 'disco' },
+        { scale: 'minor',      tempo: 116, leadWave: 'square',   bassWave: 'square',   style: 'robot' },
+        { scale: 'minor',      tempo: 154, leadWave: 'sawtooth', bassWave: 'triangle', style: 'hopak' },
+        { scale: 'major',      tempo: 105, leadWave: 'sine',     bassWave: 'sine',     style: 'wave'  },
+        { scale: 'dorian',     tempo: 132, leadWave: 'triangle', bassWave: 'sawtooth', style: 'salsa' },
+        { scale: 'blues',      tempo: 145, leadWave: 'sawtooth', bassWave: 'sawtooth', style: 'rock'  },
+        { scale: 'hijaz',      tempo: 118, leadWave: 'sawtooth', bassWave: 'triangle', style: 'egypt' },
+        { scale: 'pentatonic', tempo: 168, leadWave: 'square',   bassWave: 'sawtooth', style: 'run'   }
+    ];
+
+    function midiToFreq(midi) {
+        return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    // Створює нову рандомну структуровану мелодію (32 кроки = 2 такти по 16)
+    function generateRandomSong(danceIdx) {
+        const preset = STYLE_PRESETS[danceIdx % STYLE_PRESETS.length];
+        const scale = SCALES[preset.scale];
+        
+        // Випадкова тональність (До, Ре, Мі, Фа, Соль або Ля)
+        const roots = [57, 59, 60, 62, 64, 65, 67];
+        const rootMidi = roots[Math.floor(Math.random() * roots.length)];
+        const tempo = preset.tempo + Math.floor(Math.random() * 12 - 6);
+
+        // Випадкова акордова прогресія з 4 ступенів
+        const progressions = [
+            [0, 3, 4, 0],
+            [0, 4, 5, 3],
+            [0, 5, 3, 4],
+            [0, 2, 3, 4],
+            [0, 3, 0, 4]
+        ];
+        const prog = progressions[Math.floor(Math.random() * progressions.length)];
+
+        // Генератор 8-крокової музичної фрази (мотиву) з плавним рухом по гамі
+        function makeMotif(startDeg, isEnding) {
+            let motif = [];
+            let deg = startDeg;
+            for (let i = 0; i < 8; i++) {
+                if (isEnding && i === 6) {
+                    motif.push(0); // Тоніка у фіналі
+                    continue;
+                }
+                if (isEnding && i === 7) {
+                    motif.push(null); // Пауза в кінці фрази
+                    continue;
+                }
+
+                // На сильних долях нота звучить майже завжди, на слабких — рандомно
+                let playProb = (i % 2 === 0) ? 0.92 : 0.62;
+                if (preset.style === 'robot') playProb = 0.85;
+
+                if (Math.random() < playProb) {
+                    const stepMove = [-2, -1, -1, 0, 1, 1, 2, 3][Math.floor(Math.random() * 8)];
+                    deg = Math.max(0, Math.min(scale.length - 1, deg + stepMove));
+                    motif.push(deg);
+                } else {
+                    motif.push(null);
+                }
+            }
+            return motif;
+        }
+
+        // Формуємо структуру мелодії A - B - A - C (питання - відповідь)
+        const motifA = makeMotif(prog[0], false);
+        const motifB = makeMotif(prog[1], false);
+        const motifA2 = motifA.map((n, idx) => (idx === 7 ? prog[2] : n));
+        const motifC = makeMotif(prog[3], true);
+
+        const melodyDegrees = [...motifA, ...motifB, ...motifA2, ...motifC];
+
+        return {
+            preset,
+            scale,
+            rootMidi,
+            tempo,
+            prog,
+            melodyDegrees
+        };
+    }
+
+    // Синтез мелодичної або басової ноти
+    function playSynthTone(freq, duration, waveType, volume, slide = false) {
+        if (!audioCtx || isMuted) return;
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = waveType;
+        if (slide) {
+            osc.frequency.setValueAtTime(freq * 0.85, now);
+            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.04);
+        } else {
+            osc.frequency.setValueAtTime(freq, now);
+        }
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(volume, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        osc.start(now);
+        osc.stop(now + duration + 0.02);
+    }
+
+    // Синтез ударних (Бочка, Малий барабан, Хай-хет)
+    function playDrum(type) {
+        if (!audioCtx || isMuted) return;
+        const now = audioCtx.currentTime;
+
+        if (type === 'kick') {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(135, now);
+            osc.frequency.exponentialRampToValueAtTime(32, now + 0.11);
+            gain.gain.setValueAtTime(0.28, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.15);
+        } 
+        else if (type === 'snare') {
+            const bufSize = audioCtx.sampleRate * 0.1;
+            const buffer = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.setValueAtTime(650, now);
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.14, now);
+            gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            noise.start(now);
+        } 
+        else if (type === 'hat') {
+            const bufSize = audioCtx.sampleRate * 0.035;
+            const buffer = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+
+            const noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.setValueAtTime(5200, now);
+
+            const gain = audioCtx.createGain();
+            gain.gain.setValueAtTime(0.05, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtx.destination);
+            noise.start(now);
+        }
+    }
+
+    // Відтворення одного кроку секвенсора (1/16 такту)
+    function playSequencerStep() {
+        if (!isAnimating || !currentSong) return;
+
+        const { preset, scale, rootMidi, tempo, prog, melodyDegrees } = currentSong;
+        const stepDur = 60 / tempo / 4; // Тривалість 16-ї ноти в секундах
+        const s = currentStep % 32;
+        const barIndex = Math.floor(s / 8); // Який зараз акорд (0..3)
+        const chordDeg = prog[barIndex];
+
+        // 1. СОЛО-МЕЛОДІЯ
+        const noteDeg = melodyDegrees[s];
+        if (noteDeg !== null && noteDeg !== undefined) {
+            const semitones = scale[noteDeg % scale.length];
+            const midi = rootMidi + semitones;
+            const dur = (s % 2 === 0) ? stepDur * 1.65 : stepDur * 1.1;
+            const slide = (preset.style === 'egypt' || preset.style === 'salsa') && (s % 4 === 2);
+            playSynthTone(midiToFreq(midi), dur, preset.leadWave, 0.11, slide);
+        }
+
+        // 2. БАС-ПАРТІЯ (на кожну парну долю або октавний диско-бас)
+        if (s % 2 === 0) {
+            let bassSemitones = scale[chordDeg % scale.length];
+            // У диско та гопаку бас стрибає на октаву вгору на слабку долю
+            if ((preset.style === 'disco' || preset.style === 'hopak') && (s % 4 === 2)) {
+                bassSemitones += 12;
+            }
+            const bassMidi = rootMidi - 12 + bassSemitones;
+            playSynthTone(midiToFreq(bassMidi), stepDur * 1.5, preset.bassWave, 0.13, false);
+        }
+
+        // 3. АКОРДОВИЙ АКОМПАНЕМЕНТ (тризвук на слабку долю)
+        if (s % 4 === 2) {
+            const c1 = rootMidi + scale[chordDeg % scale.length];
+            const c2 = rootMidi + scale[(chordDeg + 2) % scale.length];
+            const c3 = rootMidi + scale[(chordDeg + 4) % scale.length];
+            playSynthTone(midiToFreq(c1), stepDur * 1.4, 'triangle', 0.04, false);
+            playSynthTone(midiToFreq(c2), stepDur * 1.4, 'triangle', 0.04, false);
+            playSynthTone(midiToFreq(c3), stepDur * 1.4, 'triangle', 0.04, false);
+        }
+
+        // 4. УДАРНІ (Ритм-секція)
+        if (s % 4 === 0) {
+            playDrum('kick');
+        } else if (preset.style === 'salsa' && s % 8 === 3) {
+            playDrum('kick'); // Синкопа для сальси
+        }
+
+        if (s % 8 === 4) {
+            playDrum('snare');
+        } else if (preset.style === 'march' && (s % 8 === 6 || s % 8 === 7)) {
+            playDrum('snare'); // Маршовий дріб
+        }
+
+        if (s % 2 === 1) {
+            playDrum('hat');
+        }
+
+        currentStep++;
+        // Кожні 64 кроки (2 повні квадрати) створюємо свіжу варіацію мелодії, щоб вона ніколи не набридала
+        if (currentStep % 64 === 0) {
+            currentSong = generateRandomSong(currentDance);
+        }
+    }
+
+    function startMusicForDance(danceIdx) {
+        stopMusic();
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        currentSong = generateRandomSong(danceIdx);
+        currentStep = 0;
+        const stepMs = (60 / currentSong.tempo / 4) * 1000;
+        playSequencerStep();
+        musicTimer = setInterval(playSequencerStep, stepMs);
+    }
+
+    function stopMusic() {
+        if (musicTimer) {
+            clearInterval(musicTimer);
+            musicTimer = null;
+        }
+    }
+
+    // =========================================================================
+    // НАЛАШТУВАННЯ ІНТЕРФЕЙСУ ТА МАЛЮВАННЯ
+    // =========================================================================
+    let currentBrushSize = 16;
+    let currentStrokeColor = '#ff0000';
+    ctx.lineWidth = currentBrushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = currentStrokeColor;
+
+    // Товщина лінії
+    const brushSlider = document.getElementById('brushSize');
+    const brushVal = document.getElementById('brushVal');
+    brushSlider.addEventListener('input', (e) => {
+        currentBrushSize = parseInt(e.target.value, 10);
+        ctx.lineWidth = currentBrushSize;
+        brushVal.textContent = currentBrushSize;
+    });
+
+    // Розмір клітинок зошита
+    const gridSlider = document.getElementById('gridSize');
+    const gridVal = document.getElementById('gridVal');
+    const notebookSheet = document.getElementById('notebookSheet');
+    gridSlider.addEventListener('input', (e) => {
+        const size = e.target.value;
+        gridVal.textContent = size;
+        notebookSheet.style.setProperty('--grid-size', size + 'px');
+    });
+
+    // Палітра
+    document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentStrokeColor = e.target.getAttribute('data-color');
+            ctx.strokeStyle = currentStrokeColor;
+        });
+    });
+
+    function getEventPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return { 
+            x: (e.clientX - rect.left) * scaleX, 
+            y: (e.clientY - rect.top) * scaleY 
+        };
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+        if (isAnimating) return;
+        isDrawing = true;
+        ctx.lineWidth = currentBrushSize;
+        ctx.strokeStyle = currentStrokeColor;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        const pos = getEventPos(e);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+        if (!isDrawing || isAnimating) return;
+        const pos = getEventPos(e);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+    });
+
+    canvas.addEventListener('pointerup', () => isDrawing = false);
+    canvas.addEventListener('pointercancel', () => isDrawing = false);
+
+    // Кнопки
+    document.getElementById('clearBtn').addEventListener('click', () => {
+        savedDrawing = null;
+        stopAnimation(true);
+    });
+
+    document.getElementById('animateBtn').addEventListener('click', () => {
+        if (isAnimating) return;
+        processColorsAndAnimate();
+    });
+
+    document.getElementById('nextDanceBtn').addEventListener('click', () => {
+        if (!isAnimating) return;
+        pickRandomDance();
+    });
+
+    document.getElementById('muteBtn').addEventListener('click', (e) => {
+        isMuted = !isMuted;
+        e.target.textContent = isMuted ? '🔇 Без звуку' : '🔊 Звук';
+        e.target.style.background = isMuted ? '#6c757d' : '#fd7e14';
+    });
+
+    document.getElementById('drawBtn').addEventListener('click', () => stopAnimation(false));
+
+    function pickRandomDance() {
+        let next = Math.floor(Math.random() * 10);
+        if (next === currentDance) {
+            next = (next + 1) % 10;
+        }
+        currentDance = next;
+        startTime = Date.now();
+        const badge = document.getElementById('danceNameBadge');
+        badge.textContent = "Танець: " + DANCE_NAMES[currentDance];
+        badge.style.display = 'block';
+
+        // Генеруємо та запускаємо нову мелодію під обраний танець
+        startMusicForDance(currentDance);
+    }
+
+    // --- АЛГОРИТМ ПОШУКУ СУГЛОБІВ ---
+    function processColorsAndAnimate() {
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imgData.data;
+
+        const TARGETS = {
+            head: [255, 0, 0],
+            torso: [0, 0, 255],
+            arms: [0, 255, 0],
+            legs: [255, 255, 0]
+        };
+
+        let pixelsByColor = { head: [], torso: [], arms: [], legs: [] };
+        let isTorsoGrid = new Uint8Array(canvas.width * canvas.height);
+
+        let torsoSumX = 0, torsoSumY = 0, torsoCount = 0;
+
+        for (let i = 0; i < data.length; i += 4) {
+            if (data[i+3] < 10) continue; 
+            
+            let r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+            let category = getClosestColor(r, g, b, TARGETS);
+            
+            let x = (i / 4) % canvas.width;
+            let y = Math.floor((i / 4) / canvas.width);
+            let px = { x, y, r, g, b, a };
+
+            pixelsByColor[category].push(px);
+
+            if (category === 'torso') {
+                isTorsoGrid[y * canvas.width + x] = 1;
+                torsoSumX += x;
+                torsoSumY += y;
+                torsoCount++;
+            }
+        }
+
+        if (torsoCount === 0) {
+            alert("Намалюй синє Тіло, щоб гра зрозуміла, куди кріпити інші частини!");
+            return;
+        }
+
+        savedDrawing = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        const torsoCenterX = torsoSumX / torsoCount;
+        const torsoCenterY = torsoSumY / torsoCount;
+
+        let pixelsByPart = { 
+            head: pixelsByColor.head, 
+            torso: pixelsByColor.torso, 
+            leftArm: [], rightArm: [], leftLeg: [], rightLeg: [] 
+        };
+
+        pixelsByColor.arms.forEach(p => p.x < torsoCenterX ? pixelsByPart.leftArm.push(p) : pixelsByPart.rightArm.push(p));
+        pixelsByColor.legs.forEach(p => p.x < torsoCenterX ? pixelsByPart.leftLeg.push(p) : pixelsByPart.rightLeg.push(p));
+
+        joints = {};
+        const SEARCH_RADIUS = 3;
+
+        ['head', 'leftArm', 'rightArm', 'leftLeg', 'rightLeg'].forEach(partName => {
+            let pixels = pixelsByPart[partName];
+            if (!pixels || pixels.length === 0) return;
+
+            let touchingPixels = [];
+            let closestDist = Infinity;
+            let closestPx = pixels[0];
+
+            for (let p of pixels) {
+                let isTouching = false;
+                for(let dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; dy++) {
+                    for(let dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; dx++) {
+                        let nx = p.x + dx;
+                        let ny = p.y + dy;
+                        if(nx >= 0 && nx < canvas.width && ny >= 0 && ny < canvas.height) {
+                            if(isTorsoGrid[ny * canvas.width + nx] === 1) {
+                                isTouching = true;
+                                break;
+                            }
+                        }
+                    }
+                    if(isTouching) break;
+                }
+
+                if (isTouching) {
+                    touchingPixels.push(p);
+                } else if (touchingPixels.length === 0) {
+                    let dist = Math.hypot(p.x - torsoCenterX, p.y - torsoCenterY);
+                    if (dist < closestDist) {
+                        closestDist = dist;
+                        closestPx = p;
+                    }
+                }
+            }
+
+            if (touchingPixels.length > 0) {
+                let sumX = 0, sumY = 0;
+                touchingPixels.forEach(tp => { sumX += tp.x; sumY += tp.y; });
+                joints[partName] = { x: sumX / touchingPixels.length, y: sumY / touchingPixels.length };
+            } else {
+                joints[partName] = { x: closestPx.x, y: closestPx.y };
+            }
+        });
+
+        bodyParts = {};
+        for (const [partName, pixels] of Object.entries(pixelsByPart)) {
+            if (pixels.length === 0) continue;
+            
+            let minX = canvas.width, minY = canvas.height, maxX = 0, maxY = 0;
+            pixels.forEach(p => {
+                minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+                maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+            });
+
+            let w = maxX - minX + 1;
+            let h = maxY - minY + 1;
+
+            let partCanvas = document.createElement('canvas');
+            partCanvas.width = w;
+            partCanvas.height = h;
+            let pCtx = partCanvas.getContext('2d');
+            let pData = pCtx.createImageData(w, h);
+
+            pixels.forEach(p => {
+                let idx = ((p.y - minY) * w + (p.x - minX)) * 4;
+                pData.data[idx] = p.r; pData.data[idx+1] = p.g; pData.data[idx+2] = p.b; pData.data[idx+3] = p.a;
+            });
+            pCtx.putImageData(pData, 0, 0);
+
+            let connectX = w / 2; 
+            let connectY = h / 2;
+            
+            if (joints[partName]) {
+                connectX = joints[partName].x - minX;
+                connectY = joints[partName].y - minY;
+            }
+
+            bodyParts[partName] = { canvas: partCanvas, offsetX: minX, offsetY: minY, connectX: connectX, connectY: connectY };
+        }
+
+        document.getElementById('palette').style.display = 'none';
+        document.getElementById('brushControls').style.display = 'none';
+        document.getElementById('clearBtn').style.display = 'none';
+        document.getElementById('animateBtn').style.display = 'none';
+        document.getElementById('instruction').style.display = 'none';
+        document.getElementById('nextDanceBtn').style.display = 'inline-block';
+        document.getElementById('muteBtn').style.display = 'inline-block';
+        document.getElementById('drawBtn').style.display = 'inline-block';
+        
+        isAnimating = true;
+        pickRandomDance();
+        animateLoop();
+    }
+
+    function getClosestColor(r, g, b, targets) {
+        let minDiff = Infinity;
+        let bestMatch = '';
+        for (const [name, color] of Object.entries(targets)) {
+            let diff = Math.abs(r - color[0]) + Math.abs(g - color[1]) + Math.abs(b - color[2]);
+            if (diff < minDiff) { minDiff = diff; bestMatch = name; }
+        }
+        return bestMatch;
+    }
+
+    // --- 10 ВИДІВ АНІМАЦІЇ (БЕЗ ОБЕРТАННЯ НАВКОЛО СВОЄЇ ОСІ) ---
+    function getDancePose(t, danceIndex) {
+        let pose = {
+            bodyX: 0, bodyY: 0, bodyRot: 0,
+            headRot: 0, leftArmRot: 0, rightArmRot: 0, leftLegRot: 0, rightLegRot: 0
+        };
+
+        switch (danceIndex) {
+            case 0: // 1. Веселий марш
+                pose.bodyY = -Math.abs(Math.sin(t * 6)) * 8;
+                pose.leftArmRot = Math.sin(t * 6) * 0.5;
+                pose.rightArmRot = -Math.sin(t * 6) * 0.5;
+                pose.leftLegRot = -Math.sin(t * 6) * 0.5;
+                pose.rightLegRot = Math.sin(t * 6) * 0.5;
+                pose.headRot = Math.sin(t * 3) * 0.1;
+                break;
+
+            case 1: // 2. Стрибки радості
+                let jump = (Math.sin(t * 8) + 1) / 2;
+                pose.bodyY = -jump * 28;
+                pose.leftArmRot = jump * 1.35;
+                pose.rightArmRot = -jump * 1.35;
+                pose.leftLegRot = jump * 0.6;
+                pose.rightLegRot = -jump * 0.6;
+                pose.headRot = Math.sin(t * 4) * 0.08;
+                break;
+
+            case 2: // 3. Запальне Диско
+                pose.bodyX = Math.sin(t * 5) * 14;
+                pose.bodyY = -Math.abs(Math.cos(t * 10)) * 8;
+                pose.bodyRot = Math.sin(t * 5) * 0.12;
+                pose.leftArmRot = Math.sin(t * 5) * 1.1 + 0.5;
+                pose.rightArmRot = Math.cos(t * 5) * 1.1 - 0.5;
+                pose.leftLegRot = Math.sin(t * 10) * 0.35;
+                pose.rightLegRot = -Math.sin(t * 10) * 0.35;
+                pose.headRot = -Math.sin(t * 5) * 0.25;
+                break;
+
+            case 3: // 4. Кібер-Робот
+                let step = Math.floor(t * 5) / 5;
+                pose.bodyY = (Math.floor(t * 4) % 2) * -6;
+                pose.leftArmRot = Math.round(Math.sin(step * 6) * 2) * 0.45;
+                pose.rightArmRot = Math.round(Math.cos(step * 6) * 2) * 0.45;
+                pose.leftLegRot = Math.round(Math.cos(step * 4)) * 0.25;
+                pose.rightLegRot = -Math.round(Math.cos(step * 4)) * 0.25;
+                pose.headRot = (Math.floor(t * 3) % 3 - 1) * 0.22;
+                break;
+
+            case 4: // 5. Український Гопак
+                pose.bodyY = Math.sin(t * 10) * 15 + 10;
+                pose.leftArmRot = -0.5 + Math.sin(t * 5) * 0.3;
+                pose.rightArmRot = 0.5 - Math.sin(t * 5) * 0.3;
+                pose.leftLegRot = Math.max(0, Math.sin(t * 5)) * 1.25;
+                pose.rightLegRot = -Math.max(0, -Math.sin(t * 5)) * 1.25;
+                pose.headRot = Math.sin(t * 10) * 0.15;
+                break;
+
+            case 5: // 6. Гавайська хвиля
+                pose.bodyX = Math.sin(t * 4) * 22;
+                pose.bodyRot = Math.cos(t * 4) * 0.18;
+                pose.headRot = Math.sin(t * 4 - 1) * 0.3;
+                pose.leftArmRot = Math.sin(t * 8) * 0.75 + Math.cos(t * 4) * 0.35;
+                pose.rightArmRot = Math.sin(t * 8 + 1.5) * 0.75 + Math.cos(t * 4) * 0.35;
+                pose.leftLegRot = -pose.bodyRot * 1.2;
+                pose.rightLegRot = -pose.bodyRot * 1.2;
+                break;
+
+            case 6: // 7. Латина / Сальса (замість обертання навколо осі)
+                pose.bodyX = Math.sin(t * 7) * 18;
+                pose.bodyY = -Math.abs(Math.sin(t * 14)) * 7;
+                pose.bodyRot = -Math.sin(t * 7) * 0.16;
+                pose.leftArmRot = 0.6 + Math.sin(t * 7) * 0.7;
+                pose.rightArmRot = -0.6 + Math.cos(t * 7) * 0.7;
+                pose.leftLegRot = Math.sin(t * 7) * 0.55;
+                pose.rightLegRot = Math.cos(t * 7) * 0.55;
+                pose.headRot = Math.sin(t * 7) * 0.22;
+                break;
+
+            case 7: // 8. Рок-гітарист
+                pose.bodyY = Math.abs(Math.sin(t * 12)) * 10;
+                pose.bodyRot = Math.sin(t * 6) * 0.15 + 0.1;
+                pose.headRot = Math.sin(t * 14) * 0.55;
+                pose.leftArmRot = -0.4 + Math.sin(t * 16) * 0.5;
+                pose.rightArmRot = 0.3 + Math.cos(t * 8) * 0.25;
+                pose.leftLegRot = 0.35;
+                pose.rightLegRot = -0.35;
+                break;
+
+            case 8: // 9. Єгипетський фараон
+                pose.bodyX = Math.sin(t * 4) * 18;
+                pose.bodyY = -Math.abs(Math.sin(t * 8)) * 5;
+                pose.leftArmRot = 0.9 + Math.sin(t * 8) * 0.35;
+                pose.rightArmRot = -0.9 + Math.sin(t * 8) * 0.35;
+                pose.leftLegRot = Math.sin(t * 4) * 0.4;
+                pose.rightLegRot = -Math.sin(t * 4) * 0.4;
+                pose.headRot = Math.cos(t * 8) * 0.18;
+                break;
+
+            case 9: // 10. Супер-спринт
+                pose.bodyY = -Math.abs(Math.sin(t * 18)) * 12;
+                pose.bodyX = Math.sin(t * 3) * 12;
+                pose.leftLegRot = Math.sin(t * 18) * 0.85;
+                pose.rightLegRot = -Math.sin(t * 18) * 0.85;
+                pose.leftArmRot = -Math.sin(t * 18) * 0.9;
+                pose.rightArmRot = Math.sin(t * 18) * 0.9;
+                pose.headRot = Math.sin(t * 9) * 0.2;
+                break;
+        }
+        return pose;
+    }
+
+    // --- ЦИКЛ АНІМАЦІЇ ---
+    function animateLoop() {
+        if (!isAnimating) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const time = (Date.now() - startTime) / 1000;
+
+        const pose = getDancePose(time, currentDance);
+
+        let pivotX = canvas.width / 2;
+        let pivotY = canvas.height / 2;
+        if (bodyParts.torso) {
+            pivotX = bodyParts.torso.offsetX + bodyParts.torso.canvas.width / 2;
+            pivotY = bodyParts.torso.offsetY + bodyParts.torso.canvas.height / 2;
+        }
+
+        ctx.save();
+        ctx.translate(pivotX + pose.bodyX, pivotY + pose.bodyY);
+        ctx.rotate(pose.bodyRot);
+        ctx.translate(-pivotX, -pivotY);
+
+        // 1. Ноги (на задньому плані)
+        drawConnectedPart(bodyParts.leftLeg, joints.leftLeg, pose.leftLegRot);
+        drawConnectedPart(bodyParts.rightLeg, joints.rightLeg, pose.rightLegRot);
+
+        // 2. Торс
+        if (bodyParts.torso) {
+            ctx.drawImage(bodyParts.torso.canvas, bodyParts.torso.offsetX, bodyParts.torso.offsetY);
+        }
+
+        // 3. Руки (на передньому плані)
+        drawConnectedPart(bodyParts.leftArm, joints.leftArm, pose.leftArmRot);
+        drawConnectedPart(bodyParts.rightArm, joints.rightArm, pose.rightArmRot);
+
+        // 4. Голова
+        drawConnectedPart(bodyParts.head, joints.head, pose.headRot);
+
+        ctx.restore();
+        animationFrameId = requestAnimationFrame(animateLoop);
+    }
+
+    function drawConnectedPart(part, joint, angle) {
+        if (!part || !joint) return;
+        ctx.save();
+        ctx.translate(joint.x, joint.y);
+        ctx.rotate(angle);
+        ctx.drawImage(part.canvas, -part.connectX, -part.connectY);
+        ctx.restore();
+    }
+
+    function stopAnimation(clearCanvas = false) {
+        isAnimating = false;
+        stopMusic();
+        cancelAnimationFrame(animationFrameId);
+        document.getElementById('palette').style.display = 'flex';
+        document.getElementById('brushControls').style.display = 'flex';
+        document.getElementById('clearBtn').style.display = 'inline-block';
+        document.getElementById('animateBtn').style.display = 'inline-block';
+        document.getElementById('instruction').style.display = 'block';
+        document.getElementById('nextDanceBtn').style.display = 'none';
+        document.getElementById('muteBtn').style.display = 'none';
+        document.getElementById('drawBtn').style.display = 'none';
+        document.getElementById('danceNameBadge').style.display = 'none';
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!clearCanvas && savedDrawing) {
+            ctx.putImageData(savedDrawing, 0, 0);
+        }
+    }
+</script>
+
+</body>
+</html>
