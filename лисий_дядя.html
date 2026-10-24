@@ -1,0 +1,2681 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Barbershop</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #2b1810;
+    cursor: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+    cursor: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * ВІНТАЖНА ПЕРУКАРНЯ "ЛИСИЙ ДЯДЯ"
+ * Реалістичний симулятор малювання та стрижки волосся без тексту та емодзі.
+ * Усі елементи, персонаж, інструменти, волосся та фон намальовані процедурно на HTML5 Canvas.
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let W = window.innerWidth;
+let H = window.innerHeight;
+
+// ============================================================================
+// ТИХА ПРОЦЕДУРНА АУДІОСИСТЕМА (Web Audio API)
+// ============================================================================
+class QuietBarberAudio {
+  constructor() {
+    this.ctx = null;
+    this.masterGain = null;
+    this.lastSnipTime = 0;
+    this.lastRustleTime = 0;
+    this.lastMoodSoundTime = 0;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      this.ctx = new AudioCtx();
+      this.masterGain = this.ctx.createGain();
+      // Дуже делікатна, тиха загальна гучність
+      this.masterGain.gain.value = 0.14;
+      this.masterGain.connect(this.ctx.destination);
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Тихий металевий звук клацання ножиць (холостий або під час зрізання)
+  playScissorSnip(cutHair = false) {
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    if (now - this.lastSnipTime < 0.065) return;
+    this.lastSnipTime = now;
+
+    // 1. Короткий високочастотний металевий шелест лез (фільтрований шум)
+    const bufferSize = Math.floor(this.ctx.sampleRate * (cutHair ? 0.055 : 0.04));
+    const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      const env = Math.pow(1 - i / bufferSize, 2.2);
+      data[i] = (Math.random() * 2 - 1) * env;
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = noiseBuffer;
+
+    const bandpass = this.ctx.createBiquadFilter();
+    bandpass.type = 'bandpass';
+    bandpass.frequency.setValueAtTime(cutHair ? 4200 : 5400, now);
+    bandpass.Q.setValueAtTime(cutHair ? 3.5 : 5.0, now);
+
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(cutHair ? 0.22 : 0.14, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + (cutHair ? 0.052 : 0.038));
+
+    noise.connect(bandpass);
+    bandpass.connect(noiseGain);
+    noiseGain.connect(this.masterGain);
+    noise.start(now);
+
+    // 2. Тонкий металевий дзвін змикання сталі
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'triangle';
+    const baseFreq = cutHair ? 1850 + Math.random() * 220 : 2350 + Math.random() * 250;
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.55, now + 0.032);
+
+    oscGain.gain.setValueAtTime(cutHair ? 0.12 : 0.08, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+
+    osc.connect(oscGain);
+    oscGain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.038);
+
+    // 3. Якщо перерізано волосся — м'який "хрусь" волосинки
+    if (cutHair) {
+      const crunchOsc = this.ctx.createOscillator();
+      const crunchGain = this.ctx.createGain();
+      crunchOsc.type = 'sine';
+      crunchOsc.frequency.setValueAtTime(620 + Math.random() * 180, now);
+      crunchOsc.frequency.exponentialRampToValueAtTime(190, now + 0.045);
+
+      crunchGain.gain.setValueAtTime(0.11, now);
+      crunchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+
+      crunchOsc.connect(crunchGain);
+      crunchGain.connect(this.masterGain);
+      crunchOsc.start(now);
+      crunchOsc.stop(now + 0.048);
+    }
+  }
+
+  // Тихий м'який шурхіт під час малювання волосся
+  playHairDrawGrain(isCurly = false) {
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    if (now - this.lastRustleTime < 0.045) return;
+    this.lastRustleTime = now;
+
+    const dur = 0.035;
+    const bufferSize = Math.floor(this.ctx.sampleRate * dur);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufferSize) * Math.PI);
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(isCurly ? 1400 + Math.random() * 600 : 950 + Math.random() * 350, now);
+    filter.Q.setValueAtTime(2.0, now);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.07, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+    noise.start(now);
+  }
+
+  // Тихий дерев'яний клік при виборі інструменту або баночки з фарбою
+  playToolSelect(pitchFactor = 1.0) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(380 * pitchFactor, now);
+    osc.frequency.exponentialRampToValueAtTime(520 * pitchFactor, now + 0.06);
+
+    gain.gain.setValueAtTime(0.10, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(now);
+    osc.stop(now + 0.07);
+  }
+
+  // Дуже тихе кумедне мугикання (фагот/віолончель), коли дядя змінює міміку
+  playMoodMurmur(moodIndex) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (now - this.lastMoodSoundTime < 1.2) return;
+    this.lastMoodSoundTime = now;
+
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    const baseFreqs = [135, 195, 150, 175, 115, 210, 165];
+    const endFreqs  = [142, 245, 132, 215, 98,  185, 225];
+    const f0 = baseFreqs[moodIndex % baseFreqs.length];
+    const f1 = endFreqs[moodIndex % endFreqs.length];
+
+    osc.frequency.setValueAtTime(f0, now);
+    osc.frequency.exponentialRampToValueAtTime(f1, now + 0.24);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(420, now);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.055, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(now);
+    osc.stop(now + 0.28);
+  }
+}
+
+const audio = new QuietBarberAudio();
+
+// ============================================================================
+// ПАЛІТРА ФАРБ ДЛЯ ВОЛОССЯ ТА НАЛАШТУВАННЯ ІНСТРУМЕНТІВ
+// ============================================================================
+const HAIR_COLORS = [
+  { id: 'darkBrown', main: '#331c10', dark: '#1a0c05', light: '#683f28', cap: '#4a2918' },
+  { id: 'jetBlack',  main: '#1c1e24', dark: '#0b0c0f', light: '#4d5363', cap: '#2b2e38' },
+  { id: 'ginger',    main: '#b84318', dark: '#732307', light: '#eb7642', cap: '#cc4e1f' },
+  { id: 'blonde',    main: '#d9a738', dark: '#966c14', light: '#f7d87c', cap: '#e6b847' },
+  { id: 'silver',    main: '#b8c0c8', dark: '#78818a', light: '#eef3f7', cap: '#cfd6de' },
+  { id: 'royalBlue', main: '#2556b8', dark: '#112d69', light: '#689cf7', cap: '#3267cf' }
+];
+
+// Інструменти:
+// 'straight' - вільне малювання волосся за траєкторією руки (пряме, хвилясте, будь-яке)
+// 'curly'    - автоматичне малювання пружних кучериків
+// 'scissors' - гострі перукарські ножиці для стрижки
+let currentTool = 'straight';
+let currentColorIdx = 0;
+let isMultiStrand = false; // false = по 1 волосинці, true = густе пасмо (3 волосинки)
+
+// ============================================================================
+// СТАН ДЯДІ: МІМІКА, ОЧІ (БЕЗ КЛІПАННЯ), НАСТРОЇ ТА КООРДИНАТИ ГОЛОВИ
+// ============================================================================
+const MOODS = [
+  // 0: Спокійний / Уважний
+  {
+    name: 'calm',
+    lBrowLift: 0, rBrowLift: 0, lBrowTilt: 0.05, rBrowTilt: -0.05, browCurve: 0.25,
+    mouthWidth: 1.0, mouthCurve: 0.22, mouthOpen: 0.0, mouthSkew: 0.0, pout: 0.0,
+    cheekPuff: 0.1, earWiggle: 0.0, foreheadCrease: 0.15, headTilt: 0.0
+  },
+  // 1: Здивований ("Ого!")
+  {
+    name: 'surprised',
+    lBrowLift: -20, rBrowLift: -20, lBrowTilt: -0.08, rBrowTilt: 0.08, browCurve: 0.55,
+    mouthWidth: 0.52, mouthCurve: 0.0, mouthOpen: 0.85, mouthSkew: 0.0, pout: 0.2,
+    cheekPuff: 0.0, earWiggle: 0.35, foreheadCrease: 0.95, headTilt: -0.015
+  },
+  // 2: Скептичний детектив (одна брова високо вгору, хитра посмішка набік)
+  {
+    name: 'skeptical',
+    lBrowLift: 8, rBrowLift: -22, lBrowTilt: 0.28, rBrowTilt: 0.18, browCurve: 0.35,
+    mouthWidth: 0.92, mouthCurve: 0.12, mouthOpen: 0.0, mouthSkew: 0.45, pout: 0.1,
+    cheekPuff: 0.2, earWiggle: -0.2, foreheadCrease: 0.65, headTilt: 0.03
+  },
+  // 3: Щасливий / Гордий зачіскою
+  {
+    name: 'delighted',
+    lBrowLift: -10, rBrowLift: -10, lBrowTilt: -0.15, rBrowTilt: 0.15, browCurve: 0.42,
+    mouthWidth: 1.25, mouthCurve: 0.75, mouthOpen: 0.42, mouthSkew: 0.0, pout: 0.0,
+    cheekPuff: 0.85, earWiggle: 0.5, foreheadCrease: 0.35, headTilt: 0.02
+  },
+  // 4: Кумедно насуплений / Буркотливий
+  {
+    name: 'grumpy',
+    lBrowLift: 12, rBrowLift: 12, lBrowTilt: 0.42, rBrowTilt: -0.42, browCurve: -0.1,
+    mouthWidth: 0.88, mouthCurve: -0.55, mouthOpen: 0.0, mouthSkew: -0.15, pout: 0.9,
+    cheekPuff: 0.3, earWiggle: -0.35, foreheadCrease: 0.75, headTilt: -0.025
+  },
+  // 5: Лоскотно / Кумедна хвиляста гримаса
+  {
+    name: 'tickled',
+    lBrowLift: -14, rBrowLift: 4, lBrowTilt: -0.25, rBrowTilt: -0.3, browCurve: 0.5,
+    mouthWidth: 1.05, mouthCurve: 0.2, mouthOpen: 0.12, mouthSkew: -0.35, pout: 0.3,
+    cheekPuff: 0.65, earWiggle: 0.9, foreheadCrease: 0.55, headTilt: -0.035, wavyMouth: 1.0
+  },
+  // 6: Захоплений (розглядає маківку)
+  {
+    name: 'amazed',
+    lBrowLift: -16, rBrowLift: -16, lBrowTilt: 0.0, rBrowTilt: 0.0, browCurve: 0.48,
+    mouthWidth: 1.15, mouthCurve: 0.6, mouthOpen: 0.6, mouthSkew: 0.1, pout: 0.0,
+    cheekPuff: 0.6, earWiggle: 0.4, foreheadCrease: 0.8, headTilt: 0.015
+  }
+];
+
+const uncle = {
+  cx: 0,
+  cy: 0,
+  rx: 170, // радіус голови по горизонталі
+  ry: 210, // радіус голови по вертикалі
+  scale: 1,
+  angle: 0,
+  breathPhase: 0,
+
+  // Погляд (НІКОЛИ НЕ КЛІПАЄ)
+  lEyeGazeX: 0, lEyeGazeY: 0,
+  rEyeGazeX: 0, rEyeGazeY: 0,
+  targetLGazeX: 0, targetLGazeY: 0,
+  targetRGazeX: 0, targetRGazeY: 0,
+  gazeTimer: 1.5,
+
+  // Поточний інтерпольований стан міміки
+  moodIdx: 0,
+  moodTimer: 4.5,
+  face: {
+    lBrowLift: 0, rBrowLift: 0, lBrowTilt: 0.05, rBrowTilt: -0.05, browCurve: 0.25,
+    mouthWidth: 1.0, mouthCurve: 0.22, mouthOpen: 0.0, mouthSkew: 0.0, pout: 0.0,
+    cheekPuff: 0.1, earWiggle: 0.0, foreheadCrease: 0.15, headTilt: 0.0, wavyMouth: 0.0
+  }
+};
+
+// ============================================================================
+// СТРУКТУРИ ДАНИХ ВОЛОССЯ, ОБРІЗКІВ ТА ЧАСТИНОК
+// ============================================================================
+const hairs = [];           // Прикріплені до голови волосинки
+const fallingClippings = []; // Відрізані пасма, що падають
+const microParticles = [];   // Дрібні ворсинки під час стрижки
+const dustMotes = [];        // Пилочки у сонячному промені фону
+const toolButtons = [];      // Інтерактивні зони на лівому столику
+const dyeButtons = [];       // Баночки з фарбою на правому столику
+
+// Стан курсора та вводу
+const pointer = {
+  x: W / 2,
+  y: H / 2,
+  prevX: W / 2,
+  prevY: H / 2,
+  vx: 0,
+  vy: 0,
+  isDown: false,
+  rightButtonDown: false,
+  activeDraftHairs: null,
+  drawDistance: 0,
+  scissorAngle: 0.35,      // Кут розкриття лез ножиць
+  scissorPhase: 0,         // Фаза клацання ножиць
+  scissorFlash: 0          // Відблиск металу при зрізанні
+};
+
+// ============================================================================
+// ДОПОМОЖНІ ГЕОМЕТРИЧНІ ТА МАТЕМАТИЧНІ ФУНКЦІЇ
+// ============================================================================
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+// Перетворення світових координат (екран) у локальні координати голови дяді
+function worldToHead(wx, wy) {
+  const dx = wx - uncle.cx;
+  const dy = wy - uncle.cy;
+  const cos = Math.cos(-uncle.angle);
+  const sin = Math.sin(-uncle.angle);
+  return {
+    lx: (dx * cos - dy * sin) / uncle.scale,
+    ly: (dx * sin + dy * cos) / uncle.scale
+  };
+}
+
+// Перетворення локальних координат голови у світові координати (екран)
+function headToWorld(lx, ly) {
+  const sx = lx * uncle.scale;
+  const sy = ly * uncle.scale;
+  const cos = Math.cos(uncle.angle);
+  const sin = Math.sin(uncle.angle);
+  return {
+    wx: uncle.cx + sx * cos - sy * sin,
+    wy: uncle.cy + sx * sin + sy * cos
+  };
+}
+
+// Перевірка, чи точка знаходиться на голові/вухах/підборідді дяді, де може рости волосся
+function isPointOnHeadCanGrowHair(wx, wy) {
+  const { lx, ly } = worldToHead(wx, wy);
+  // Дозволяємо малювати на всій черепній коробці, скронях, вухах, щоках, бровах та підборідді,
+  // але не всередині очних яблук!
+  const eyeY = -12;
+  const eyeSep = 62;
+  const distLeftEye = Math.hypot((lx + eyeSep) / 34, (ly - eyeY) / 26);
+  const distRightEye = Math.hypot((lx - eyeSep) / 34, (ly - eyeY) / 26);
+  if (distLeftEye < 0.95 || distRightEye < 0.95) return false;
+
+  // Верхня частина черепа + щоки/підборіддя + вуха
+  const normHead = Math.hypot(lx / 188, (ly + 10) / 232);
+  const normEars = Math.hypot(lx / 225, (ly - 5) / 85);
+  return normHead <= 1.08 || normEars <= 1.0;
+}
+
+// Перетин двох відрізків AB та CD. Повертає { x, y, t, u } або null
+function getSegmentIntersection(ax, ay, bx, by, cx, cy, dx, dy) {
+  const r_x = bx - ax;
+  const r_y = by - ay;
+  const s_x = dx - cx;
+  const s_y = dy - cy;
+  const denom = r_x * s_y - r_y * s_x;
+  if (Math.abs(denom) < 1e-6) return null;
+
+  const u = ((cx - ax) * r_y - (cy - ay) * r_x) / denom;
+  const t = ((cx - ax) * s_y - (cy - ay) * s_x) / denom;
+
+  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    return {
+      x: ax + t * r_x,
+      y: ay + t * r_y,
+      t,
+      u
+    };
+  }
+  return null;
+}
+
+// ============================================================================
+// ІНІЦІАЛІЗАЦІЯ РОЗМІРІВ, ПОЛИЦЬ ТА ПОЧАТКОВИХ КУМЕДНИХ ВОЛОСИНОК
+// ============================================================================
+function updateLayout() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W;
+  canvas.height = H;
+
+  // Розрахунок масштабу дяді для широкого екрану
+  const minDim = Math.min(W * 0.72, H * 0.88);
+  uncle.scale = clamp(minDim / 500, 0.68, 1.45);
+  uncle.cx = W * 0.5;
+  uncle.cy = H * 0.54;
+
+  // Ліва дерев'яна стійка майстра (4 інструменти)
+  const leftX = Math.max(66, W * 0.075);
+  const shelfTop = H * 0.17;
+  const shelfHeight = H * 0.68;
+  const gap = shelfHeight / 4;
+
+  toolButtons.length = 0;
+  const toolIds = ['straight', 'curly', 'scissors', 'thickness'];
+  for (let i = 0; i < 4; i++) {
+    toolButtons.push({
+      id: toolIds[i],
+      x: leftX,
+      y: shelfTop + gap * (i + 0.5),
+      r: clamp(H * 0.068, 38, 56),
+      hover: 0
+    });
+  }
+
+  // Права дерев'яна полиця з 6 скляними флаконами фарби для волосся
+  const rightX = W - Math.max(66, W * 0.075);
+  const dyeGap = shelfHeight / 6;
+  dyeButtons.length = 0;
+  for (let i = 0; i < HAIR_COLORS.length; i++) {
+    dyeButtons.push({
+      colorIdx: i,
+      x: rightX,
+      y: shelfTop + dyeGap * (i + 0.5),
+      r: clamp(H * 0.048, 28, 42),
+      hover: 0
+    });
+  }
+}
+
+function createInitialFunnyHairs() {
+  hairs.length = 0;
+  // Додамо 5 кумедних стартових волосинок на лисій маківці, щоб дитина одразу бачила, як вони виглядають і гойдаються
+  const presets = [
+    // Центральна кучерява антена на маківці
+    {
+      colorIdx: 0,
+      pts: [
+        { lx: -6, ly: -196 },
+        { lx: -14, ly: -218 },
+        { lx: 6, ly: -238 },
+        { lx: -12, ly: -258 },
+        { lx: 14, ly: -272 },
+        { lx: 2, ly: -290 }
+      ]
+    },
+    // Сусідня стирчаща волосинка
+    {
+      colorIdx: 0,
+      pts: [
+        { lx: 18, ly: -194 },
+        { lx: 28, ly: -220 },
+        { lx: 42, ly: -246 },
+        { lx: 58, ly: -264 }
+      ]
+    },
+    // Ліва скронева волосинка
+    {
+      colorIdx: 0,
+      pts: [
+        { lx: -146, ly: -65 },
+        { lx: -168, ly: -82 },
+        { lx: -188, ly: -74 },
+        { lx: -202, ly: -55 }
+      ]
+    },
+    // Права скронева кучеряшка
+    {
+      colorIdx: 0,
+      pts: [
+        { lx: 145, ly: -68 },
+        { lx: 170, ly: -85 },
+        { lx: 192, ly: -72 },
+        { lx: 180, ly: -52 },
+        { lx: 204, ly: -44 }
+      ]
+    },
+    // Маленька волосинка на маківці зліва
+    {
+      colorIdx: 0,
+      pts: [
+        { lx: -36, ly: -190 },
+        { lx: -52, ly: -218 },
+        { lx: -68, ly: -236 }
+      ]
+    }
+  ];
+
+  for (const p of presets) {
+    const nodes = p.pts.map((pt, idx) => {
+      const w = headToWorld(pt.lx, pt.ly);
+      return {
+        lx: pt.lx,
+        ly: pt.ly,
+        wx: w.wx,
+        wy: w.wy,
+        vx: 0,
+        vy: 0,
+        flex: idx / Math.max(1, p.pts.length - 1)
+      };
+    });
+    hairs.push({
+      color: HAIR_COLORS[p.colorIdx],
+      thickness: 3.4,
+      nodes,
+      bluntTip: false,
+      swaySeed: Math.random() * 100
+    });
+  }
+}
+
+function initDustMotes() {
+  dustMotes.length = 0;
+  for (let i = 0; i < 35; i++) {
+    dustMotes.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      r: 1 + Math.random() * 2.5,
+      vx: -0.15 + Math.random() * 0.3,
+      vy: -0.25 - Math.random() * 0.35,
+      alpha: 0.15 + Math.random() * 0.45,
+      phase: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+// ============================================================================
+// ПОВЕДІНКА ДЯДІ: РУХ ОЧЕЙ БЕЗ КЛІПАННЯ ТА ЗМІНА МІМІКИ
+// ============================================================================
+function pickNewGaze(lookAtCursor = false) {
+  if (lookAtCursor) {
+    const dx = (pointer.x - uncle.cx) / (220 * uncle.scale);
+    const dy = (pointer.y - (uncle.cy - 12 * uncle.scale)) / (220 * uncle.scale);
+    const gx = clamp(dx, -0.95, 0.95);
+    const gy = clamp(dy, -0.95, 0.90);
+    uncle.targetLGazeX = gx;
+    uncle.targetLGazeY = gy;
+    uncle.targetRGazeX = gx;
+    uncle.targetRGazeY = gy;
+    uncle.gazeTimer = 1.1 + Math.random() * 1.4;
+    return;
+  }
+
+  const r = Math.random();
+  if (r < 0.28) {
+    // Дивиться прямо вгору на свою лису маківку / нову зачіску!
+    const side = (Math.random() - 0.5) * 0.5;
+    uncle.targetLGazeX = side + 0.12;
+    uncle.targetLGazeY = -0.88;
+    uncle.targetRGazeX = side - 0.12;
+    uncle.targetRGazeY = -0.88;
+  } else if (r < 0.42) {
+    // Кумедно зводить очі до кінчика носа
+    uncle.targetLGazeX = 0.65;
+    uncle.targetLGazeY = 0.32;
+    uncle.targetRGazeX = -0.65;
+    uncle.targetRGazeY = 0.32;
+  } else if (r < 0.68) {
+    // Розглядає інструменти зліва або баночки справа
+    const dir = Math.random() < 0.5 ? -0.88 : 0.88;
+    const vert = (Math.random() - 0.5) * 0.65;
+    uncle.targetLGazeX = dir;
+    uncle.targetLGazeY = vert;
+    uncle.targetRGazeX = dir;
+    uncle.targetRGazeY = vert;
+  } else if (r < 0.85) {
+    // Погляд на курсор (ножиці/пензлик)
+    pickNewGaze(true);
+    return;
+  } else {
+    // Дивиться прямо на гравця
+    uncle.targetLGazeX = (Math.random() - 0.5) * 0.25;
+    uncle.targetLGazeY = (Math.random() - 0.5) * 0.25;
+    uncle.targetRGazeX = uncle.targetLGazeX;
+    uncle.targetRGazeY = uncle.targetLGazeY;
+  }
+  uncle.gazeTimer = 1.4 + Math.random() * 2.2;
+}
+
+function setUncleMood(newMoodIdx, playSound = true) {
+  if (newMoodIdx === undefined) {
+    let idx = Math.floor(Math.random() * MOODS.length);
+    if (idx === uncle.moodIdx) idx = (idx + 1) % MOODS.length;
+    uncle.moodIdx = idx;
+  } else {
+    uncle.moodIdx = newMoodIdx % MOODS.length;
+  }
+  uncle.moodTimer = 3.8 + Math.random() * 3.5;
+  if (playSound) {
+    audio.playMoodMurmur(uncle.moodIdx);
+  }
+}
+
+function updateUncle(dt, time) {
+  uncle.breathPhase += dt * 1.8;
+  const targetMood = MOODS[uncle.moodIdx];
+
+  // Плавна інтерполяція всіх параметрів обличчя
+  const faceSpeed = Math.min(1, dt * 6.5);
+  for (const key in uncle.face) {
+    const targetVal = targetMood[key] !== undefined ? targetMood[key] : 0;
+    uncle.face[key] = lerp(uncle.face[key], targetVal, faceSpeed);
+  }
+
+  // Плавний нахил голови + дихання
+  uncle.angle = uncle.face.headTilt + Math.sin(time * 1.1) * 0.008;
+
+  // Оновлення погляду (ОЧІ ЗАВЖДИ ВІДКРИТІ, ЖОДНОГО КЛІПАННЯ)
+  uncle.gazeTimer -= dt;
+  if (uncle.gazeTimer <= 0) {
+    pickNewGaze(false);
+  }
+
+  const gazeSpeed = Math.min(1, dt * 10.0);
+  uncle.lEyeGazeX = lerp(uncle.lEyeGazeX, uncle.targetLGazeX, gazeSpeed);
+  uncle.lEyeGazeY = lerp(uncle.lEyeGazeY, uncle.targetLGazeY, gazeSpeed);
+  uncle.rEyeGazeX = lerp(uncle.rEyeGazeX, uncle.targetRGazeX, gazeSpeed);
+  uncle.rEyeGazeY = lerp(uncle.rEyeGazeY, uncle.targetRGazeY, gazeSpeed);
+
+  // Періодична зміна настрою
+  uncle.moodTimer -= dt;
+  if (uncle.moodTimer <= 0) {
+    setUncleMood(undefined, false);
+  }
+}
+
+// ============================================================================
+// МЕХАНІКА МАЛЮВАННЯ ТА СТРИЖКИ ВОЛОССЯ
+// ============================================================================
+function startDrawingHair(wx, wy) {
+  if (!isPointOnHeadCanGrowHair(wx, wy)) return;
+
+  const colorObj = HAIR_COLORS[currentColorIdx];
+  const strandOffsets = isMultiStrand
+    ? [{ dx: 0, dy: 0 }, { dx: -7, dy: -4 }, { dx: 7, dy: 4 }]
+    : [{ dx: 0, dy: 0 }];
+
+  const createdStrands = [];
+  for (const off of strandOffsets) {
+    const sx = wx + off.dx;
+    const sy = wy + off.dy;
+    if (!isPointOnHeadCanGrowHair(sx, sy)) continue;
+
+    const loc = worldToHead(sx, sy);
+    const strand = {
+      color: colorObj,
+      thickness: (2.8 + Math.random() * 1.1) * (isMultiStrand ? 0.92 : 1.05),
+      nodes: [
+        {
+          lx: loc.lx,
+          ly: loc.ly,
+          wx: sx,
+          wy: sy,
+          vx: 0,
+          vy: 0,
+          flex: 0
+        }
+      ],
+      bluntTip: false,
+      swaySeed: Math.random() * 100,
+      offsetX: off.dx + (Math.random() - 0.5) * 3,
+      offsetY: off.dy + (Math.random() - 0.5) * 3,
+      curlPhase: Math.random() * Math.PI * 2
+    };
+    hairs.push(strand);
+    createdStrands.push(strand);
+  }
+
+  if (createdStrands.length > 0) {
+    pointer.activeDraftHairs = createdStrands;
+    pointer.drawDistance = 0;
+    audio.playHairDrawGrain(currentTool === 'curly');
+
+    // Дядя переводить погляд вгору або змінює міміку, коли йому малюють волосся
+    if (Math.random() < 0.45) {
+      uncle.targetLGazeX = clamp((wx - uncle.cx) / (200 * uncle.scale), -0.85, 0.85);
+      uncle.targetLGazeY = -0.85;
+      uncle.targetRGazeX = uncle.targetLGazeX;
+      uncle.targetRGazeY = -0.85;
+      uncle.gazeTimer = 2.0;
+    }
+    if (Math.random() < 0.25) {
+      setUncleMood(Math.random() < 0.5 ? 6 : 3, true);
+    }
+  }
+}
+
+function continueDrawingHair(wx, wy) {
+  if (!pointer.activeDraftHairs || pointer.activeDraftHairs.length === 0) {
+    // Якщо гравець почав вести лінію за межами голови і зайшов на голову — починаємо ростити волосинку!
+    if (isPointOnHeadCanGrowHair(wx, wy)) {
+      startDrawingHair(wx, wy);
+    }
+    return;
+  }
+
+  const firstStrand = pointer.activeDraftHairs[0];
+  const lastNode = firstStrand.nodes[firstStrand.nodes.length - 1];
+  const lastWorld = headToWorld(lastNode.lx, lastNode.ly);
+  const dist = Math.hypot(wx - lastWorld.wx, wy - lastWorld.wy);
+
+  const minStep = currentTool === 'curly' ? 5.5 : 7.5;
+  if (dist < minStep) return;
+
+  // Обмежуємо максимальну кількість сегментів однієї волосинки для високої швидкодії
+  if (firstStrand.nodes.length > 95) return;
+
+  const steps = Math.min(6, Math.max(1, Math.floor(dist / minStep)));
+  for (let s = 1; s <= steps; s++) {
+    const t = s / steps;
+    const ix = lerp(lastWorld.wx, wx, t);
+    const iy = lerp(lastWorld.wy, wy, t);
+    pointer.drawDistance += dist / steps;
+
+    for (const strand of pointer.activeDraftHairs) {
+      if (strand.nodes.length > 95) continue;
+
+      let px = ix + strand.offsetX;
+      let py = iy + strand.offsetY;
+
+      // Якщо обрано інструмент "Кучерява щітка", додаємо пружні завитки вздовж траєкторії
+      if (currentTool === 'curly') {
+        strand.curlPhase += 0.82;
+        const curlRadius = 9.5 * uncle.scale;
+        px += Math.cos(strand.curlPhase) * curlRadius;
+        py += Math.sin(strand.curlPhase) * curlRadius;
+      }
+
+      const loc = worldToHead(px, py);
+      strand.nodes.push({
+        lx: loc.lx,
+        ly: loc.ly,
+        wx: px,
+        wy: py,
+        vx: 0,
+        vy: 0,
+        flex: 0
+      });
+
+      // Перерахунок коефіцієнта гнучкості вздовж волосинки (0 біля кореня -> 1 на кінчику)
+      const len = strand.nodes.length;
+      for (let i = 0; i < len; i++) {
+        strand.nodes[i].flex = Math.pow(i / Math.max(1, len - 1), 1.45);
+      }
+    }
+  }
+
+  audio.playHairDrawGrain(currentTool === 'curly');
+}
+
+function finishDrawingHair() {
+  if (!pointer.activeDraftHairs) return;
+  // Якщо дитина просто клікнула по голові, вирощуємо коротку милу волосинку-їжачок
+  for (const strand of pointer.activeDraftHairs) {
+    if (strand.nodes.length === 1) {
+      const root = strand.nodes[0];
+      // Напрямок від центру голови назовні
+      const mag = Math.hypot(root.lx, root.ly) || 1;
+      const nx = root.lx / mag;
+      const ny = root.ly / mag;
+      for (let k = 1; k <= 3; k++) {
+        const lx = root.lx + nx * (k * 8) + (currentTool === 'curly' ? Math.sin(k * 2) * 5 : 0);
+        const ly = root.ly + ny * (k * 8) - k * 3;
+        const w = headToWorld(lx, ly);
+        strand.nodes.push({
+          lx, ly, wx: w.wx, wy: w.wy, vx: 0, vy: 0, flex: k / 3
+        });
+      }
+    }
+  }
+  pointer.activeDraftHairs = null;
+}
+
+// Стрижка волосся ножицями вздовж лінії лез
+function performScissorCut(x1, y1, x2, y2) {
+  // Радіус захвата лез ножиць у точці курсора
+  const dirX = x2 - x1;
+  const dirY = y2 - y1;
+  const moveAngle = Math.hypot(dirX, dirY) > 1 ? Math.atan2(dirY, dirX) : -Math.PI * 0.75;
+  const bladeReach = 34 * uncle.scale;
+
+  // Два відрізки для перевірки перетину: траєкторія руху ножиць + розмах лез
+  const cutSegments = [
+    {
+      ax: x1 - Math.cos(moveAngle) * 14,
+      ay: y1 - Math.sin(moveAngle) * 14,
+      bx: x2 + Math.cos(moveAngle) * bladeReach,
+      by: y2 + Math.sin(moveAngle) * bladeReach
+    },
+    {
+      ax: x2 - Math.sin(moveAngle) * 20,
+      ay: y2 + Math.cos(moveAngle) * 20,
+      bx: x2 + Math.sin(moveAngle) * 20,
+      by: y2 - Math.cos(moveAngle) * 20
+    }
+  ];
+
+  let anyCut = false;
+
+  for (let hIdx = hairs.length - 1; hIdx >= 0; hIdx--) {
+    const strand = hairs[hIdx];
+    const nodes = strand.nodes;
+    if (nodes.length < 2) continue;
+
+    let cutFound = null;
+    let cutSegIndex = -1;
+
+    for (let i = 0; i < nodes.length - 1; i++) {
+      const p1 = nodes[i];
+      const p2 = nodes[i + 1];
+
+      for (const seg of cutSegments) {
+        const hit = getSegmentIntersection(seg.ax, seg.ay, seg.bx, seg.by, p1.wx, p1.wy, p2.wx, p2.wy);
+        if (hit) {
+          cutFound = hit;
+          cutSegIndex = i;
+          break;
+        }
+      }
+      if (cutFound) break;
+    }
+
+    if (cutFound) {
+      anyCut = true;
+      pointer.scissorFlash = 1.0;
+
+      // Створюємо відрізане пасмо, яке падає вниз за законами фізики
+      const severedNodes = [];
+      severedNodes.push({ x: cutFound.x, y: cutFound.y });
+      for (let j = cutSegIndex + 1; j < nodes.length; j++) {
+        severedNodes.push({ x: nodes[j].wx, y: nodes[j].wy });
+      }
+
+      if (severedNodes.length >= 2) {
+        spawnFallingClipping(severedNodes, strand.color, strand.thickness);
+      }
+
+      // Створюємо дрібні розлітаючі ворсинки у місці зрізу
+      spawnCutMicroParticles(cutFound.x, cutFound.y, strand.color);
+
+      // Якщо зрізано майже біля самого кореня (перший сегмент і близько до шкіри) — волосинка зникає повністю
+      if (cutSegIndex === 0 && cutFound.t < 0.45) {
+        hairs.splice(hIdx, 1);
+      } else {
+        // Залишаємо вкорочену частину волосинки на голові!
+        const cutLoc = worldToHead(cutFound.x, cutFound.y);
+        const remaining = nodes.slice(0, cutSegIndex + 1);
+        remaining.push({
+          lx: cutLoc.lx,
+          ly: cutLoc.ly,
+          wx: cutFound.x,
+          wy: cutFound.y,
+          vx: (Math.random() - 0.5) * 4,
+          vy: -2,
+          flex: 1
+        });
+
+        // Оновлюємо гнучкість для вкороченої волосинки
+        for (let k = 0; k < remaining.length; k++) {
+          remaining[k].flex = Math.pow(k / Math.max(1, remaining.length - 1), 1.45);
+        }
+
+        strand.nodes = remaining;
+        strand.bluntTip = true;
+      }
+    }
+  }
+
+  if (anyCut) {
+    audio.playScissorSnip(true);
+    // Дядя живо реагує на стрижку поглядом та емоцією
+    if (Math.random() < 0.55) {
+      pickNewGaze(true);
+    }
+    if (Math.random() < 0.35) {
+      const reactMoods = [1, 2, 3, 4, 5];
+      setUncleMood(reactMoods[Math.floor(Math.random() * reactMoods.length)], true);
+    }
+  }
+}
+
+function spawnFallingClipping(worldPts, color, thickness) {
+  // Знаходимо центр мас відрізаного пасма
+  let cx = 0, cy = 0;
+  for (const p of worldPts) {
+    cx += p.x;
+    cy += p.y;
+  }
+  cx /= worldPts.length;
+  cy /= worldPts.length;
+
+  const relPts = worldPts.map(p => ({ x: p.x - cx, y: p.y - cy }));
+
+  fallingClippings.push({
+    x: cx,
+    y: cy,
+    vx: (Math.random() - 0.5) * 110 + clamp(pointer.vx * 0.25, -90, 90),
+    vy: -45 - Math.random() * 55,
+    angle: 0,
+    vAngle: (Math.random() - 0.5) * 5.5,
+    flutterPhase: Math.random() * Math.PI * 2,
+    relPts,
+    color,
+    thickness,
+    alpha: 1.0
+  });
+}
+
+function spawnCutMicroParticles(x, y, color) {
+  for (let i = 0; i < 6; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 25 + Math.random() * 85;
+    microParticles.push({
+      x,
+      y,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd - 30,
+      len: 4 + Math.random() * 7,
+      angle: Math.random() * Math.PI * 2,
+      vAngle: (Math.random() - 0.5) * 12,
+      color: i % 2 === 0 ? color.main : color.light,
+      life: 1.0
+    });
+  }
+}
+
+// ============================================================================
+// ОНОВЛЕННЯ ФІЗИКИ ВОЛОССЯ ТА ПАДАЮЧИХ ПАСЕМ
+// ============================================================================
+function updateHairPhysics(dt, time) {
+  const wind = Math.sin(time * 1.7) * 0.45;
+
+  for (let s = 0; s < hairs.length; s++) {
+    const strand = hairs[s];
+    const nodes = strand.nodes;
+
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const anchor = headToWorld(n.lx, n.ly);
+
+      if (i === 0) {
+        // Корінь волосинки жорстко закріплений у шкірі голови
+        n.wx = anchor.wx;
+        n.wy = anchor.wy;
+        n.vx = 0;
+        n.vy = 0;
+      } else {
+        // Пружне повернення до намальованої форми + легке коливання
+        const swayX = Math.sin(time * 2.4 + strand.swaySeed + i * 0.35) * 2.2 * n.flex + wind * 3 * n.flex;
+        const swayY = Math.cos(time * 1.9 + strand.swaySeed + i * 0.25) * 1.2 * n.flex;
+
+        const targetX = anchor.wx + swayX;
+        const targetY = anchor.wy + swayY;
+
+        // Реакція волосинок, коли поруч проводять курсором
+        const distToCursor = Math.hypot(n.wx - pointer.x, n.wy - pointer.y);
+        if (distToCursor < 42 * uncle.scale) {
+          const push = (1 - distToCursor / (42 * uncle.scale)) * n.flex * 0.32;
+          n.vx += pointer.vx * push * dt;
+          n.vy += pointer.vy * push * dt;
+        }
+
+        const stiffness = 26.0;
+        const damping = 0.80;
+
+        n.vx += (targetX - n.wx) * stiffness * dt;
+        n.vy += (targetY - n.wy) * stiffness * dt;
+        n.vx *= damping;
+        n.vy *= damping;
+
+        n.wx += n.vx;
+        n.wy += n.vy;
+      }
+    }
+  }
+
+  // Оновлення відрізаних пасем, що падають
+  for (let i = fallingClippings.length - 1; i >= 0; i--) {
+    const c = fallingClippings[i];
+    c.flutterPhase += dt * 7.5;
+    c.vy += 340 * dt; // гравітація з опором повітря
+    c.vy = Math.min(c.vy, 290);
+    c.vx *= 0.985;
+    c.vx += Math.sin(c.flutterPhase) * 85 * dt; // планування у повітрі
+
+    c.x += c.vx * dt;
+    c.y += c.vy * dt;
+    c.angle += c.vAngle * dt + Math.cos(c.flutterPhase) * 0.8 * dt;
+
+    // Зісковзування по голові або плечах дяді під час падіння
+    const dx = c.x - uncle.cx;
+    const dy = c.y - uncle.cy;
+    const headRadius = 175 * uncle.scale;
+    const dist = Math.hypot(dx, dy);
+    if (dist < headRadius && dy < 40 * uncle.scale) {
+      const nx = dx / (dist || 1);
+      c.vx += nx * 160 * dt;
+    }
+
+    if (c.y > H + 120) {
+      fallingClippings.splice(i, 1);
+    }
+  }
+
+  // Оновлення дрібних ворсинок
+  for (let i = microParticles.length - 1; i >= 0; i--) {
+    const p = microParticles[i];
+    p.vy += 380 * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.angle += p.vAngle * dt;
+    p.life -= dt * 1.35;
+    if (p.life <= 0 || p.y > H + 50) {
+      microParticles.splice(i, 1);
+    }
+  }
+}
+
+// ============================================================================
+// МАЛЮВАННЯ СЮЖЕТНОГО "ЖИВОГО" ФОНУ ВІНТАЖНОЇ ПЕРУКАРНІ
+// ============================================================================
+function drawBarbershopBackground(time) {
+  // 1. Теплі смугасті вінтажні шпалери
+  const wallGrad = ctx.createLinearGradient(0, 0, 0, H);
+  wallGrad.addColorStop(0, '#4f291c');
+  wallGrad.addColorStop(0.65, '#6b3826');
+  wallGrad.addColorStop(1, '#3d1e13');
+  ctx.fillStyle = wallGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Вертикальні оксамитово-золотаві смужки шпалер
+  const stripeW = Math.max(36, W / 34);
+  ctx.save();
+  for (let x = 0; x < W + stripeW; x += stripeW * 2) {
+    ctx.fillStyle = 'rgba(235, 184, 112, 0.07)';
+    ctx.fillRect(x, 0, stripeW, H * 0.74);
+
+    // Тонкий візерунковий кант
+    ctx.fillStyle = 'rgba(255, 215, 145, 0.06)';
+    ctx.fillRect(x + stripeW * 0.45, 0, 2, H * 0.74);
+  }
+  ctx.restore();
+
+  // 2. Дерев'яна різьблена панель (буазері) у нижній частині стіни
+  const wainscotY = H * 0.73;
+  const woodGrad = ctx.createLinearGradient(0, wainscotY, 0, H);
+  woodGrad.addColorStop(0, '#4a2515');
+  woodGrad.addColorStop(0.08, '#2e150b');
+  woodGrad.addColorStop(1, '#1c0c06');
+  ctx.fillStyle = woodGrad;
+  ctx.fillRect(0, wainscotY, W, H - wainscotY);
+
+  // Карниз дерев'яної панелі
+  const trimGrad = ctx.createLinearGradient(0, wainscotY - 12, 0, wainscotY + 10);
+  trimGrad.addColorStop(0, '#8c5332');
+  trimGrad.addColorStop(0.5, '#593018');
+  trimGrad.addColorStop(1, '#291308');
+  ctx.fillStyle = trimGrad;
+  ctx.fillRect(0, wainscotY - 12, W, 22);
+
+  // Декоративні фільонки на дерев'яній стіні
+  const panelCount = 8;
+  const panelW = W / panelCount;
+  ctx.strokeStyle = 'rgba(168, 107, 68, 0.22)';
+  ctx.lineWidth = 3;
+  for (let i = 0; i < panelCount; i++) {
+    ctx.strokeRect(i * panelW + 18, wainscotY + 24, panelW - 36, H - wainscotY - 40);
+  }
+
+  // 3. Велике овальне дзеркало в різьбленій рамі позаду крісла
+  ctx.save();
+  ctx.translate(uncle.cx, uncle.cy - 25 * uncle.scale);
+  const mirrorRX = 250 * uncle.scale;
+  const mirrorRY = 275 * uncle.scale;
+
+  // Зовнішня рама червоного дерева
+  const frameGrad = ctx.createLinearGradient(-mirrorRX, -mirrorRY, mirrorRX, mirrorRY);
+  frameGrad.addColorStop(0, '#5e2c17');
+  frameGrad.addColorStop(0.5, '#874629');
+  frameGrad.addColorStop(1, '#36160a');
+  ctx.fillStyle = frameGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, mirrorRX + 24 * uncle.scale, mirrorRY + 24 * uncle.scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Золотий внутрішній обідок рами
+  ctx.strokeStyle = '#c99749';
+  ctx.lineWidth = 5 * uncle.scale;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, mirrorRX + 6 * uncle.scale, mirrorRY + 6 * uncle.scale, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Скло дзеркала з м'яким теплим градієнтом
+  const glassGrad = ctx.createRadialGradient(
+    -40 * uncle.scale, -60 * uncle.scale, 20 * uncle.scale,
+    0, 0, mirrorRY
+  );
+  glassGrad.addColorStop(0, '#6e8c8a');
+  glassGrad.addColorStop(0.6, '#486163');
+  glassGrad.addColorStop(1, '#2c3d40');
+  ctx.fillStyle = glassGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, mirrorRX, mirrorRY, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Діагональні сонячні бліки на дзеркалі
+  ctx.save();
+  ctx.clip();
+  ctx.rotate(-0.45);
+  ctx.fillStyle = 'rgba(255, 245, 220, 0.08)';
+  ctx.fillRect(-mirrorRX * 1.5, -mirrorRY - 40, mirrorRX * 3, 55);
+  ctx.fillRect(-mirrorRX * 1.5, -mirrorRY + 45, mirrorRX * 3, 22);
+  ctx.restore();
+  ctx.restore();
+
+  // 4. Обертовий перукарський циліндр (Barber Pole) зліва від дзеркала
+  drawBarberPole(W * 0.21, H * 0.28, uncle.scale * 0.85, time);
+
+  // 5. Вінтажний маятниковий годинник справа від дзеркала
+  drawPendulumClock(W * 0.79, H * 0.25, uncle.scale * 0.85, time);
+
+  // 6. Кімнатна пальма в мідному вазоні, що легко гойдається
+  drawParlourPalm(W * 0.82, H * 0.88, uncle.scale * 0.9, time);
+
+  // 7. Теплі сонячні промені та золоті пилочки у повітрі
+  ctx.save();
+  const beamGrad = ctx.createLinearGradient(0, 0, W * 0.7, H * 0.85);
+  beamGrad.addColorStop(0, 'rgba(255, 232, 175, 0.11)');
+  beamGrad.addColorStop(0.6, 'rgba(255, 220, 145, 0.04)');
+  beamGrad.addColorStop(1, 'rgba(255, 220, 145, 0)');
+  ctx.fillStyle = beamGrad;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.12, 0);
+  ctx.lineTo(W * 0.45, 0);
+  ctx.lineTo(W * 0.88, H);
+  ctx.lineTo(W * 0.35, H);
+  ctx.closePath();
+  ctx.fill();
+
+  for (const m of dustMotes) {
+    m.x += m.vx + Math.sin(time + m.phase) * 0.15;
+    m.y += m.vy;
+    if (m.y < -10) m.y = H + 10;
+    if (m.x < -10) m.x = W + 10;
+    if (m.x > W + 10) m.x = -10;
+
+    ctx.fillStyle = `rgba(255, 238, 185, ${m.alpha * (0.6 + 0.4 * Math.sin(time * 2 + m.phase))})`;
+    ctx.beginPath();
+    ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBarberPole(x, y, s, time) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+
+  const pw = 36;
+  const ph = 130;
+
+  // Тінь на стіні
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+  ctx.beginPath();
+  ctx.roundRect(-pw / 2 + 8, -ph / 2 + 10, pw, ph, 14);
+  ctx.fill();
+
+  // Скляна колба зі спіральними смужками
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-pw / 2, -ph / 2, pw, ph);
+  ctx.clip();
+
+  ctx.fillStyle = '#f5efe6';
+  ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
+
+  const offset = (time * 38) % 60;
+  for (let sy = -ph - 60 + offset; sy < ph + 60; sy += 30) {
+    // Червона смуга
+    ctx.fillStyle = '#c93429';
+    ctx.beginPath();
+    ctx.moveTo(-pw, sy);
+    ctx.lineTo(pw, sy + 28);
+    ctx.lineTo(pw, sy + 40);
+    ctx.lineTo(-pw, sy + 12);
+    ctx.closePath();
+    ctx.fill();
+
+    // Синя смуга
+    ctx.fillStyle = '#245294';
+    ctx.beginPath();
+    ctx.moveTo(-pw, sy + 15);
+    ctx.lineTo(pw, sy + 43);
+    ctx.lineTo(pw, sy + 55);
+    ctx.lineTo(-pw, sy + 27);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Циліндричне об'ємне затінення та скляний блік
+  const cylGrad = ctx.createLinearGradient(-pw / 2, 0, pw / 2, 0);
+  cylGrad.addColorStop(0, 'rgba(20, 10, 5, 0.45)');
+  cylGrad.addColorStop(0.28, 'rgba(255, 255, 255, 0.38)');
+  cylGrad.addColorStop(0.55, 'rgba(255, 255, 255, 0.0)');
+  cylGrad.addColorStop(1, 'rgba(15, 8, 4, 0.55)');
+  ctx.fillStyle = cylGrad;
+  ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
+  ctx.restore();
+
+  // Латунні куполи зверху та знизу
+  const brassGrad = ctx.createLinearGradient(-pw / 2 - 4, 0, pw / 2 + 4, 0);
+  brassGrad.addColorStop(0, '#785118');
+  brassGrad.addColorStop(0.35, '#f2cf7e');
+  brassGrad.addColorStop(0.65, '#c79638');
+  brassGrad.addColorStop(1, '#59390c');
+
+  ctx.fillStyle = brassGrad;
+  ctx.beginPath();
+  ctx.roundRect(-pw / 2 - 5, -ph / 2 - 12, pw + 10, 14, 5);
+  ctx.roundRect(-pw / 2 - 5, ph / 2 - 2, pw + 10, 14, 5);
+  ctx.fill();
+
+  // Світильник-куля зверху
+  const globeGrad = ctx.createRadialGradient(-4, -ph / 2 - 28, 2, 0, -ph / 2 - 24, 18);
+  globeGrad.addColorStop(0, '#fffdf5');
+  globeGrad.addColorStop(0.7, '#f5d996');
+  globeGrad.addColorStop(1, '#bf9547');
+  ctx.fillStyle = globeGrad;
+  ctx.beginPath();
+  ctx.arc(0, -ph / 2 - 24, 16, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawPendulumClock(x, y, s, time) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+
+  // Маятник, що коливається
+  const swing = Math.sin(time * 2.6) * 0.28;
+  ctx.save();
+  ctx.rotate(swing);
+  ctx.strokeStyle = '#c4933f';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, 20);
+  ctx.lineTo(0, 108);
+  ctx.stroke();
+
+  const bobGrad = ctx.createRadialGradient(-5, 106, 2, 0, 110, 18);
+  bobGrad.addColorStop(0, '#fae098');
+  bobGrad.addColorStop(0.6, '#cc9637');
+  bobGrad.addColorStop(1, '#6e4b11');
+  ctx.fillStyle = bobGrad;
+  ctx.beginPath();
+  ctx.arc(0, 110, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Дерев'яний корпус годинника
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.arc(5, 7, 50, 0, Math.PI * 2);
+  ctx.fill();
+
+  const caseGrad = ctx.createRadialGradient(-12, -12, 10, 0, 0, 52);
+  caseGrad.addColorStop(0, '#7a3d20');
+  caseGrad.addColorStop(0.75, '#4a210e');
+  caseGrad.addColorStop(1, '#291005');
+  ctx.fillStyle = caseGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, 50, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Латунний обідок та циферблат
+  ctx.strokeStyle = '#d4a34a';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(0, 0, 41, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = '#f5ead6';
+  ctx.beginPath();
+  ctx.arc(0, 0, 38, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Поділки циферблата (без цифр!)
+  ctx.strokeStyle = '#3b2416';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    ctx.lineWidth = i % 3 === 0 ? 3 : 1.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * 29, Math.sin(a) * 29);
+    ctx.lineTo(Math.cos(a) * 35, Math.sin(a) * 35);
+    ctx.stroke();
+  }
+
+  // Стрілки годинника
+  ctx.strokeStyle = '#24140b';
+  ctx.lineCap = 'round';
+  // Годинна
+  const hAngle = time * 0.03 - Math.PI / 3;
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(hAngle) * 19, Math.sin(hAngle) * 19);
+  ctx.stroke();
+
+  // Хвилинна
+  const mAngle = time * 0.25 - Math.PI / 2;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(Math.cos(mAngle) * 28, Math.sin(mAngle) * 28);
+  ctx.stroke();
+
+  ctx.fillStyle = '#b8832c';
+  ctx.beginPath();
+  ctx.arc(0, 0, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParlourPalm(x, y, s, time) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+
+  // Гілки пальми
+  const fronds = [-0.9, -0.5, -0.15, 0.25, 0.65, 1.0];
+  for (let i = 0; i < fronds.length; i++) {
+    const baseAngle = fronds[i] - Math.PI / 2;
+    const sway = Math.sin(time * 1.4 + i) * 0.05;
+    ctx.save();
+    ctx.rotate(baseAngle + sway);
+    ctx.strokeStyle = i % 2 === 0 ? '#2a5929' : '#366e34';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(25, -65, 65, -110);
+    ctx.stroke();
+
+    // Листочки на гілці
+    ctx.fillStyle = i % 2 === 0 ? '#326930' : '#43823f';
+    for (let t = 0.2; t <= 0.95; t += 0.12) {
+      const lx = 25 * 2 * (1 - t) * t + 65 * t * t;
+      const ly = -65 * 2 * (1 - t) * t - 110 * t * t;
+      ctx.beginPath();
+      ctx.ellipse(lx - 10, ly, 12 * (1 - t * 0.4), 3.5, -0.5, 0, Math.PI * 2);
+      ctx.ellipse(lx + 8, ly + 4, 12 * (1 - t * 0.4), 3.5, 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Латунний вазон
+  const potGrad = ctx.createLinearGradient(-35, 0, 35, 0);
+  potGrad.addColorStop(0, '#6e4514');
+  potGrad.addColorStop(0.35, '#dba653');
+  potGrad.addColorStop(0.7, '#9e6a24');
+  potGrad.addColorStop(1, '#472a08');
+  ctx.fillStyle = potGrad;
+  ctx.beginPath();
+  ctx.moveTo(-36, -5);
+  ctx.lineTo(36, -5);
+  ctx.lineTo(26, 55);
+  ctx.lineTo(-26, 55);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.roundRect(-40, -12, 80, 10, 5);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ============================================================================
+// МАЛЮВАННЯ ПЕРСОНАЖА ("ЛИСИЙ ДЯДЯ") ТА ПЕРУКАРСЬКОГО КРІСЛА
+// ============================================================================
+function drawBarberChairAndCape() {
+  ctx.save();
+  ctx.translate(uncle.cx, uncle.cy);
+  ctx.scale(uncle.scale, uncle.scale);
+
+  // 1. Спинка вінтажного шкіряного перукарського крісла
+  const chairGrad = ctx.createRadialGradient(0, 60, 30, 0, 80, 290);
+  chairGrad.addColorStop(0, '#8a231b');
+  chairGrad.addColorStop(0.7, '#59120d');
+  chairGrad.addColorStop(1, '#2e0704');
+
+  // Різьблене обрамлення спинки
+  ctx.fillStyle = '#38190b';
+  ctx.beginPath();
+  ctx.roundRect(-235, 15, 470, 320, 70);
+  ctx.fill();
+
+  ctx.strokeStyle = '#c49241';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.roundRect(-226, 24, 452, 300, 64);
+  ctx.stroke();
+
+  ctx.fillStyle = chairGrad;
+  ctx.beginPath();
+  ctx.roundRect(-218, 32, 436, 285, 58);
+  ctx.fill();
+
+  // Стьобані гудзики спинки крісла
+  ctx.fillStyle = '#330805';
+  const tufts = [-165, -110, 110, 165];
+  for (const tx of tufts) {
+    for (const ty of [80, 145]) {
+      ctx.beginPath();
+      ctx.arc(tx, ty, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // 2. Шия дяді
+  const neckGrad = ctx.createLinearGradient(-65, 160, 65, 160);
+  neckGrad.addColorStop(0, '#c78865');
+  neckGrad.addColorStop(0.5, '#ebad88');
+  neckGrad.addColorStop(1, '#b87856');
+  ctx.fillStyle = neckGrad;
+  ctx.beginPath();
+  ctx.roundRect(-62, 145, 124, 95, 25);
+  ctx.fill();
+
+  // Тінь під підборіддям на шиї
+  const neckShadow = ctx.createRadialGradient(0, 168, 10, 0, 175, 78);
+  neckShadow.addColorStop(0, 'rgba(95, 45, 25, 0.55)');
+  neckShadow.addColorStop(1, 'rgba(95, 45, 25, 0)');
+  ctx.fillStyle = neckShadow;
+  ctx.beginPath();
+  ctx.ellipse(0, 180, 68, 42, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 3. Смугаста перукарська накидка (пеньюар) на плечах
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(-80, 205);
+  ctx.quadraticCurveTo(-240, 235, -275, 390);
+  ctx.lineTo(275, 390);
+  ctx.quadraticCurveTo(240, 235, 80, 205);
+  ctx.quadraticCurveTo(0, 232, -80, 205);
+  ctx.closePath();
+  ctx.clip();
+
+  ctx.fillStyle = '#f5ede0';
+  ctx.fillRect(-280, 200, 560, 200);
+
+  // Смужки на накидці
+  for (let sx = -280; sx < 280; sx += 36) {
+    ctx.fillStyle = '#b8372c';
+    ctx.fillRect(sx, 200, 12, 200);
+    ctx.fillStyle = '#2d5a8c';
+    ctx.fillRect(sx + 18, 200, 6, 200);
+  }
+
+  // Тінь та складки тканини накидки
+  const capeShade = ctx.createRadialGradient(0, 220, 40, 0, 280, 280);
+  capeShade.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
+  capeShade.addColorStop(0.65, 'rgba(40, 20, 10, 0.18)');
+  capeShade.addColorStop(1, 'rgba(25, 10, 5, 0.55)');
+  ctx.fillStyle = capeShade;
+  ctx.fillRect(-280, 200, 560, 200);
+  ctx.restore();
+
+  // М'який білий комірець навколо шиї
+  ctx.fillStyle = '#fcf8f0';
+  ctx.strokeStyle = '#d4c8b4';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-78, 198);
+  ctx.quadraticCurveTo(0, 232, 78, 198);
+  ctx.quadraticCurveTo(85, 214, 72, 220);
+  ctx.quadraticCurveTo(0, 252, -72, 220);
+  ctx.quadraticCurveTo(-85, 214, -78, 198);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawUncleHead(time) {
+  ctx.save();
+  ctx.translate(uncle.cx, uncle.cy);
+  ctx.rotate(uncle.angle);
+  ctx.scale(uncle.scale, uncle.scale);
+
+  const f = uncle.face;
+  const breathY = Math.sin(uncle.breathPhase) * 2.2;
+  ctx.translate(0, breathY);
+
+  // 1. ВУХА (ворушаться при зміні настрою)
+  const earWig = f.earWiggle * 8 + Math.sin(time * 6) * f.earWiggle * 3;
+  for (const side of [-1, 1]) {
+    ctx.save();
+    ctx.translate(side * 166, -4 + earWig * side * 0.4);
+    ctx.rotate(side * (0.12 + f.earWiggle * 0.12));
+
+    const earGrad = ctx.createRadialGradient(-side * 6, -8, 4, 0, 0, 48);
+    earGrad.addColorStop(0, '#f5ba98');
+    earGrad.addColorStop(0.7, '#dead89');
+    earGrad.addColorStop(1, '#bd7c58');
+    ctx.fillStyle = earGrad;
+    ctx.strokeStyle = '#a86744';
+    ctx.lineWidth = 2.5;
+
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 26, 44, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Внутрішня раковина вуха
+    ctx.strokeStyle = '#b56c49';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(-side * 3, -2, 14, -Math.PI * 0.7, Math.PI * 0.7, side < 0);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(155, 75, 45, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(-side * 4, 4, 8, 13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // 2. ВЕЛИКА БЛИСКУЧА ЛИСА ГОЛОВА ДЯДІ
+  const skinGrad = ctx.createRadialGradient(-38, -75, 22, 0, -10, 225);
+  skinGrad.addColorStop(0, '#ffe0c7');
+  skinGrad.addColorStop(0.32, '#f5bd99');
+  skinGrad.addColorStop(0.78, '#dfa079');
+  skinGrad.addColorStop(1, '#ba7854');
+
+  ctx.fillStyle = skinGrad;
+  ctx.strokeStyle = '#9e5f3d';
+  ctx.lineWidth = 3;
+
+  // Контур черепа, щік та підборіддя
+  ctx.beginPath();
+  ctx.moveTo(0, -206);
+  ctx.bezierCurveTo(118, -206, 174, -125, 170, -15);
+  ctx.bezierCurveTo(168, 78 + f.cheekPuff * 12, 138 + f.cheekPuff * 14, 155, 65, 185);
+  ctx.quadraticCurveTo(0, 206 + f.mouthOpen * 18, -65, 185);
+  ctx.bezierCurveTo(-138 - f.cheekPuff * 14, 155, -168, 78 + f.cheekPuff * 12, -170, -15);
+  ctx.bezierCurveTo(-174, -125, -118, -206, 0, -206);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Ямочка на підборідді
+  ctx.strokeStyle = 'rgba(158, 92, 58, 0.5)';
+  ctx.lineWidth = 2.8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, 176 + f.mouthOpen * 12, 10, Math.PI * 0.2, Math.PI * 0.8);
+  ctx.stroke();
+
+  // Глянцевий сонячний блік на лисій маківці
+  const shineGrad = ctx.createRadialGradient(-48, -138, 4, -42, -132, 78);
+  shineGrad.addColorStop(0, 'rgba(255, 250, 242, 0.65)');
+  shineGrad.addColorStop(0.45, 'rgba(255, 245, 230, 0.22)');
+  shineGrad.addColorStop(1, 'rgba(255, 245, 230, 0)');
+  ctx.fillStyle = shineGrad;
+  ctx.beginPath();
+  ctx.ellipse(-45, -135, 68, 42, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Другий менший блік справа
+  ctx.fillStyle = 'rgba(255, 248, 238, 0.25)';
+  ctx.beginPath();
+  ctx.ellipse(58, -145, 26, 14, 0.45, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 3. ЗМОРШКИ НА ЧОЛІ (реагують на підняття брів)
+  if (f.foreheadCrease > 0.05) {
+    ctx.strokeStyle = `rgba(162, 95, 62, ${f.foreheadCrease * 0.55})`;
+    ctx.lineWidth = 2.6;
+    for (let c = 0; c < 3; c++) {
+      const cy = -126 - c * 15 + (f.lBrowLift + f.rBrowLift) * 0.22;
+      const cw = 76 - c * 14;
+      ctx.beginPath();
+      ctx.moveTo(-cw, cy + f.lBrowLift * 0.25);
+      ctx.quadraticCurveTo(0, cy - 8 * f.foreheadCrease, cw, cy + f.rBrowLift * 0.25);
+      ctx.stroke();
+    }
+  }
+
+  // 4. РУМ'ЯНІ ЩІЧКИ
+  for (const side of [-1, 1]) {
+    const blushX = side * (98 + f.cheekPuff * 6);
+    const blushY = 52 - f.cheekPuff * 5;
+    const blushGrad = ctx.createRadialGradient(blushX, blushY, 4, blushX, blushY, 38 + f.cheekPuff * 10);
+    blushGrad.addColorStop(0, `rgba(232, 108, 92, ${0.28 + f.cheekPuff * 0.22})`);
+    blushGrad.addColorStop(1, 'rgba(232, 108, 92, 0)');
+    ctx.fillStyle = blushGrad;
+    ctx.beginPath();
+    ctx.arc(blushX, blushY, 44, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 5. ОЧІ (ЗАВЖДИ ВІДКРИТІ — ЖОДНОГО КЛІПАННЯ)
+  const eyeY = -12;
+  const eyeSep = 62;
+  const eyes = [
+    { side: -1, x: -eyeSep, y: eyeY, gx: uncle.lEyeGazeX, gy: uncle.lEyeGazeY },
+    { side:  1, x:  eyeSep, y: eyeY, gx: uncle.rEyeGazeX, gy: uncle.rEyeGazeY }
+  ];
+
+  for (const e of eyes) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+
+    // М'яка тінь очної западини
+    ctx.fillStyle = 'rgba(150, 88, 56, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 36, 28, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Білок ока (склера)
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 31, 24, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    const scleraGrad = ctx.createRadialGradient(-4, -4, 4, 0, 0, 32);
+    scleraGrad.addColorStop(0, '#ffffff');
+    scleraGrad.addColorStop(0.78, '#f5eee8');
+    scleraGrad.addColorStop(1, '#d9c5b8');
+    ctx.fillStyle = scleraGrad;
+    ctx.fillRect(-35, -30, 70, 60);
+
+    // Положення райдужки та зіниці
+    const irisX = e.gx * 13.5;
+    const irisY = e.gy * 10.5;
+
+    // Райдужка (живий бурштиново-зелений колір з волокнами)
+    const irisGrad = ctx.createRadialGradient(irisX - 2, irisY - 2, 2, irisX, irisY, 13.5);
+    irisGrad.addColorStop(0, '#8fb85c');
+    irisGrad.addColorStop(0.55, '#4b7838');
+    irisGrad.addColorStop(0.88, '#28451d');
+    irisGrad.addColorStop(1, '#182b11');
+    ctx.fillStyle = irisGrad;
+    ctx.beginPath();
+    ctx.arc(irisX, irisY, 13.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Зіниця
+    ctx.fillStyle = '#0d0f12';
+    ctx.beginPath();
+    ctx.arc(irisX, irisY, 6.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Глянцеві бліки на оці
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+    ctx.beginPath();
+    ctx.arc(irisX - 4.2, irisY - 4.2, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.beginPath();
+    ctx.arc(irisX + 3.8, irisY + 3.2, 1.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Тонка тінь від верхньої повіки (очі завжди повністю відкриті!)
+    ctx.fillStyle = 'rgba(90, 45, 25, 0.16)';
+    ctx.fillRect(-34, -24, 68, 6);
+
+    ctx.restore();
+
+    // Контур повіки та мішечок під оком
+    ctx.strokeStyle = '#733f24';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 31, 24, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Складка верхньої повіки
+    ctx.strokeStyle = 'rgba(135, 75, 45, 0.55)';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(0, -1, 34, Math.PI * 1.12, Math.PI * 1.88);
+    ctx.stroke();
+
+    // Зморшка усмішки під оком
+    ctx.beginPath();
+    ctx.arc(0, 3, 29, Math.PI * 0.2, Math.PI * 0.8);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // 6. ВИРАЗНІ БРОВИ (рухаються залежно від настрою)
+  const brows = [
+    { side: -1, x: -eyeSep, y: -50 + f.lBrowLift, tilt: f.lBrowTilt },
+    { side:  1, x:  eyeSep, y: -50 + f.rBrowLift, tilt: f.rBrowTilt }
+  ];
+  for (const b of brows) {
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.tilt);
+
+    ctx.fillStyle = '#472817';
+    ctx.strokeStyle = '#2b160b';
+    ctx.lineWidth = 2;
+
+    const arch = f.browCurve * 22;
+    ctx.beginPath();
+    ctx.moveTo(-b.side * 34, 4);
+    ctx.quadraticCurveTo(0, -12 - arch, b.side * 36, 2);
+    ctx.quadraticCurveTo(b.side * 38, 10, b.side * 30, 11);
+    ctx.quadraticCurveTo(0, -1 - arch * 0.7, -b.side * 32, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 7. ОБ'ЄМНИЙ НІС КАРТОПЛИНКОЮ
+  ctx.save();
+  ctx.translate(0, 26);
+
+  // Тінь під носом
+  ctx.fillStyle = 'rgba(145, 78, 45, 0.36)';
+  ctx.beginPath();
+  ctx.ellipse(0, 26, 30, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Спинка та кінчик носа
+  const noseGrad = ctx.createRadialGradient(-8, 4, 4, 0, 8, 34);
+  noseGrad.addColorStop(0, '#ffd4b8');
+  noseGrad.addColorStop(0.55, '#eb9f78');
+  noseGrad.addColorStop(1, '#bd724d');
+  ctx.fillStyle = noseGrad;
+
+  ctx.beginPath();
+  ctx.moveTo(-14, -32);
+  ctx.bezierCurveTo(-18, -8, -34, 6, -32, 18);
+  ctx.bezierCurveTo(-30, 30, 30, 30, 32, 18);
+  ctx.bezierCurveTo(34, 6, 18, -8, 14, -32);
+  ctx.fill();
+
+  // Ніздрі
+  ctx.fillStyle = '#75391e';
+  ctx.beginPath();
+  ctx.ellipse(-14, 19, 6, 3.5, 0.35, 0, Math.PI * 2);
+  ctx.ellipse(14, 19, 6, 3.5, -0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Контур крил носа
+  ctx.strokeStyle = '#9e5938';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(-22, 4);
+  ctx.bezierCurveTo(-35, 10, -33, 25, -18, 24);
+  ctx.moveTo(22, 4);
+  ctx.bezierCurveTo(35, 10, 33, 25, 18, 24);
+  ctx.stroke();
+
+  // Світлий блік на кінчику носа
+  ctx.fillStyle = 'rgba(255, 245, 235, 0.5)';
+  ctx.beginPath();
+  ctx.ellipse(-5, 8, 9, 6, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 8. РОТ ТА ГУБИ (багата анімація настроїв)
+  ctx.save();
+  ctx.translate(f.mouthSkew * 18, 104);
+
+  const mw = 56 * f.mouthWidth;
+  const mc = f.mouthCurve * 38;
+  const mo = f.mouthOpen * 32;
+
+  // Носогубні складки усмішки
+  ctx.strokeStyle = 'rgba(155, 88, 56, 0.42)';
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(-36, -42);
+  ctx.quadraticCurveTo(-mw - 18, -10, -mw - 8, mc * 0.45 + 8);
+  ctx.moveTo(36, -42);
+  ctx.quadraticCurveTo(mw + 18, -10, mw + 8, mc * 0.45 + 8);
+  ctx.stroke();
+
+  if (mo > 2.5) {
+    // Відкритий рот (здивування або широка усмішка)
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(-mw, 0);
+    ctx.quadraticCurveTo(0, mc - mo * 0.45, mw, -f.mouthSkew * 10);
+    ctx.quadraticCurveTo(0, mc + mo * 1.35, -mw, 0);
+    ctx.closePath();
+
+    ctx.fillStyle = '#4f1714';
+    ctx.fill();
+    ctx.clip();
+
+    // Верхні зуби
+    ctx.fillStyle = '#fcf8f0';
+    ctx.beginPath();
+    ctx.roundRect(-mw * 0.75, -mo * 0.5, mw * 1.5, mo * 0.55 + mc * 0.35, 6);
+    ctx.fill();
+
+    // Язик
+    ctx.fillStyle = '#d9625b';
+    ctx.beginPath();
+    ctx.ellipse(0, mc + mo * 0.85, mw * 0.55, mo * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Обведення губ
+    ctx.strokeStyle = '#994739';
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.moveTo(-mw, 0);
+    ctx.quadraticCurveTo(0, mc - mo * 0.45, mw, -f.mouthSkew * 10);
+    ctx.quadraticCurveTo(0, mc + mo * 1.35, -mw, 0);
+    ctx.closePath();
+    ctx.stroke();
+  } else {
+    // Закритий рот (усмішка, хитрий вираз, надута губа або хвиляста гримаса)
+    if (f.pout > 0.2) {
+      // Випнута нижня губа, коли дядя насуплений
+      ctx.fillStyle = '#d9826c';
+      ctx.beginPath();
+      ctx.ellipse(0, 8 - mc * 0.3, mw * 0.58 * f.pout, 9 * f.pout, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = '#8c3d2b';
+    ctx.lineWidth = 4.8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    if (f.wavyMouth > 0.3) {
+      ctx.moveTo(-mw, 0);
+      ctx.bezierCurveTo(-mw * 0.4, -14, -mw * 0.1, 14, 0, 0);
+      ctx.bezierCurveTo(mw * 0.2, -14, mw * 0.5, 14, mw, -6);
+    } else {
+      ctx.moveTo(-mw, -f.mouthSkew * 6);
+      ctx.quadraticCurveTo(0, mc, mw, -f.mouthSkew * 14);
+    }
+    ctx.stroke();
+
+    // Куточки губ
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(-mw - 2, -f.mouthSkew * 6, 5, -0.6, 0.8);
+    ctx.moveTo(mw + 2, -f.mouthSkew * 14);
+    ctx.arc(mw + 2, -f.mouthSkew * 14, 5, Math.PI - 0.8, Math.PI + 0.6);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+  ctx.restore();
+}
+
+// ============================================================================
+// МАЛЮВАННЯ РЕАЛІСТИЧНОГО ВОЛОССЯ ТА ПАДАЮЧИХ ОБРІЗКІВ
+// ============================================================================
+function drawHairStrands() {
+  ctx.save();
+  ctx.lineJoin = 'round';
+
+  for (let s = 0; s < hairs.length; s++) {
+    const strand = hairs[s];
+    const pts = strand.nodes;
+    if (pts.length < 2) continue;
+
+    // 1. Маленька пора-фолікул у шкірі, звідки росте волосинка
+    const root = pts[0];
+    ctx.fillStyle = 'rgba(70, 35, 18, 0.45)';
+    ctx.beginPath();
+    ctx.arc(root.wx, root.wy, strand.thickness * 0.65, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Побудова плавної кривої волосинки через контрольні точки
+    const buildCurve = (offsetX = 0, offsetY = 0) => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].wx + offsetX, pts[0].wy + offsetY);
+      if (pts.length === 2) {
+        ctx.lineTo(pts[1].wx + offsetX, pts[1].wy + offsetY);
+      } else {
+        for (let i = 1; i < pts.length - 1; i++) {
+          const xc = (pts[i].wx + pts[i + 1].wx) * 0.5 + offsetX;
+          const yc = (pts[i].wy + pts[i + 1].wy) * 0.5 + offsetY;
+          ctx.quadraticCurveTo(pts[i].wx + offsetX, pts[i].wy + offsetY, xc, yc);
+        }
+        const last = pts[pts.length - 1];
+        ctx.lineTo(last.wx + offsetX, last.wy + offsetY);
+      }
+    };
+
+    ctx.lineCap = strand.bluntTip ? 'butt' : 'round';
+
+    // 2. Тіньова основа волосинки для глибини
+    ctx.strokeStyle = strand.color.dark;
+    ctx.lineWidth = strand.thickness * uncle.scale + 1.4;
+    buildCurve(0.8, 1.2);
+    ctx.stroke();
+
+    // 3. Основний пігментований стрижень волосинки
+    ctx.strokeStyle = strand.color.main;
+    ctx.lineWidth = strand.thickness * uncle.scale;
+    buildCurve(0, 0);
+    ctx.stroke();
+
+    // 4. Глянцевий світлий відблиск уздовж волосинки
+    ctx.strokeStyle = strand.color.light;
+    ctx.lineWidth = Math.max(1.0, strand.thickness * uncle.scale * 0.35);
+    buildCurve(-0.6, -0.6);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawFallingClippingsAndParticles() {
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'butt';
+
+  // Малювання відрізаних пасем волосся, що падають
+  for (const c of fallingClippings) {
+    const pts = c.relPts;
+    if (pts.length < 2) continue;
+
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.angle);
+
+    // Тінь пасма
+    ctx.strokeStyle = c.color.dark;
+    ctx.lineWidth = c.thickness * uncle.scale + 1.2;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x + 1, pts[0].y + 1.5);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x + 1, pts[i].y + 1.5);
+    }
+    ctx.stroke();
+
+    // Основний колір пасма
+    ctx.strokeStyle = c.color.main;
+    ctx.lineWidth = c.thickness * uncle.scale;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.stroke();
+
+    // Світлий відблиск
+    ctx.strokeStyle = c.color.light;
+    ctx.lineWidth = Math.max(1.0, c.thickness * uncle.scale * 0.35);
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x - 0.5, pts[0].y - 0.5);
+    for (let i = 1; i < pts.length; i++) {
+      ctx.lineTo(pts[i].x - 0.5, pts[i].y - 0.5);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // Дрібні ворсинки під час роботи ножиць
+  for (const p of microParticles) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.angle);
+    ctx.globalAlpha = clamp(p.life, 0, 1);
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(-p.len * 0.5, 0);
+    ctx.lineTo(p.len * 0.5, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// ============================================================================
+// ОРГАНІЧНІ ДЕРЕВ'ЯНІ ПОЛИЦІ З ІНСТРУМЕНТАМИ ТА ФЛАКОНАМИ ФАРБИ (БЕЗ ТЕКСТУ)
+// ============================================================================
+function drawWoodenShelvesAndTools(time) {
+  // 1. Ліва різьблена стійка червоного дерева для інструментів
+  if (toolButtons.length > 0) {
+    const x = toolButtons[0].x;
+    const r = toolButtons[0].r;
+    const topY = toolButtons[0].y - r * 1.35;
+    const botY = toolButtons[toolButtons.length - 1].y + r * 1.35;
+    const standW = r * 2.35;
+
+    ctx.save();
+    // Тінь стійки
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+    ctx.beginPath();
+    ctx.roundRect(x - standW * 0.5 + 8, topY + 10, standW, botY - topY, 28);
+    ctx.fill();
+
+    // Дерев'яна основа
+    const woodGrad = ctx.createLinearGradient(x - standW * 0.5, 0, x + standW * 0.5, 0);
+    woodGrad.addColorStop(0, '#36180b');
+    woodGrad.addColorStop(0.3, '#632e17');
+    woodGrad.addColorStop(0.7, '#4d2210');
+    woodGrad.addColorStop(1, '#261006');
+    ctx.fillStyle = woodGrad;
+    ctx.beginPath();
+    ctx.roundRect(x - standW * 0.5, topY, standW, botY - topY, 28);
+    ctx.fill();
+
+    // Латунна окантовка стійки
+    ctx.strokeStyle = '#c99642';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.roundRect(x - standW * 0.5 + 5, topY + 5, standW - 10, botY - topY - 10, 23);
+    ctx.stroke();
+    ctx.restore();
+
+    // Кнопки-медальйони інструментів
+    for (const btn of toolButtons) {
+      const isSelected =
+        (btn.id === currentTool) ||
+        (btn.id === 'thickness' && isMultiStrand);
+
+      const isHovered = Math.hypot(pointer.x - btn.x, pointer.y - btn.y) < btn.r;
+      btn.hover = lerp(btn.hover, isHovered ? 1 : 0, 0.2);
+
+      ctx.save();
+      ctx.translate(btn.x, btn.y);
+      const scale = 1 + btn.hover * 0.08 + (isSelected ? 0.05 : 0);
+      ctx.scale(scale, scale);
+
+      // Латунне гніздо інструменту
+      const ringGrad = ctx.createRadialGradient(-btn.r * 0.3, -btn.r * 0.3, 4, 0, 0, btn.r);
+      if (isSelected) {
+        ringGrad.addColorStop(0, '#fff3c4');
+        ringGrad.addColorStop(0.65, '#e8b34b');
+        ringGrad.addColorStop(1, '#8c5a12');
+      } else {
+        ringGrad.addColorStop(0, '#9e7232');
+        ringGrad.addColorStop(0.7, '#5c3d14');
+        ringGrad.addColorStop(1, '#301d07');
+      }
+      ctx.fillStyle = ringGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, btn.r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Внутрішній оксамитовий медальйон
+      const padGrad = ctx.createRadialGradient(0, -6, 4, 0, 0, btn.r * 0.84);
+      padGrad.addColorStop(0, isSelected ? '#522918' : '#33180d');
+      padGrad.addColorStop(1, isSelected ? '#2e140a' : '#1c0c06');
+      ctx.fillStyle = padGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, btn.r * 0.84, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Іконка інструменту (намальована векторно)
+      const iconScale = btn.r / 46;
+      ctx.scale(iconScale, iconScale);
+
+      if (btn.id === 'straight') {
+        // Олівець-гребінець для вільного росту волосся + плавна волосинка
+        ctx.strokeStyle = HAIR_COLORS[currentColorIdx].light;
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-22, -16);
+        ctx.quadraticCurveTo(-5, -28, 18, -14);
+        ctx.stroke();
+
+        // Дерев'яна ручка пензлика
+        ctx.rotate(-0.55);
+        ctx.fillStyle = '#c97a3e';
+        ctx.beginPath();
+        ctx.roundRect(-6, -8, 12, 32, 5);
+        ctx.fill();
+        ctx.fillStyle = '#e0b35a';
+        ctx.fillRect(-6, -12, 12, 6);
+        // Щетина
+        ctx.fillStyle = HAIR_COLORS[currentColorIdx].main;
+        ctx.beginPath();
+        ctx.moveTo(-6, -12);
+        ctx.quadraticCurveTo(0, -28, 6, -12);
+        ctx.fill();
+      } else if (btn.id === 'curly') {
+        // Щітка для пружних кучериків + спіральний локон
+        ctx.strokeStyle = HAIR_COLORS[currentColorIdx].light;
+        ctx.lineWidth = 3.8;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let t = 0; t <= 1; t += 0.03) {
+          const cx = -24 + t * 48 + Math.cos(t * Math.PI * 5) * 6;
+          const cy = -8 + Math.sin(t * Math.PI * 5) * 9;
+          if (t === 0) ctx.moveTo(cx, cy);
+          else ctx.lineTo(cx, cy);
+        }
+        ctx.stroke();
+
+        // Міні-гребінець знизу
+        ctx.fillStyle = '#d99b43';
+        ctx.beginPath();
+        ctx.roundRect(-18, 12, 36, 7, 3);
+        ctx.fill();
+        for (let tx = -14; tx <= 14; tx += 5) {
+          ctx.fillRect(tx - 1, 6, 2, 7);
+        }
+      } else if (btn.id === 'scissors') {
+        // Перукарські сталеві ножиці на полиці
+        const demoAngle = isSelected ? 0.25 + Math.sin(time * 6) * 0.15 : 0.22;
+        drawVectorScissors(0, 0, 0.72, demoAngle, -Math.PI * 0.25);
+      } else if (btn.id === 'thickness') {
+        // Перемикач густоти: 1 волосинка або густе пасмо з 3 волосинок
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = HAIR_COLORS[currentColorIdx].light;
+        if (!isMultiStrand) {
+          ctx.lineWidth = 4.5;
+          ctx.beginPath();
+          ctx.moveTo(0, 22);
+          ctx.quadraticCurveTo(-8, 0, 4, -22);
+          ctx.stroke();
+        } else {
+          const offsets = [-12, 0, 12];
+          ctx.lineWidth = 4.0;
+          for (const ox of offsets) {
+            ctx.beginPath();
+            ctx.moveTo(ox * 0.6, 22);
+            ctx.quadraticCurveTo(ox - 6, 0, ox + 4, -22);
+            ctx.stroke();
+          }
+        }
+      }
+
+      ctx.restore();
+    }
+  }
+
+  // 2. Права дерев'яна полиця з 6 скляними баночками тоніка-фарби для волосся
+  if (dyeButtons.length > 0) {
+    const x = dyeButtons[0].x;
+    const r = dyeButtons[0].r;
+    const topY = dyeButtons[0].y - r * 1.45;
+    const botY = dyeButtons[dyeButtons.length - 1].y + r * 1.45;
+    const standW = r * 2.4;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+    ctx.beginPath();
+    ctx.roundRect(x - standW * 0.5 + 8, topY + 10, standW, botY - topY, 26);
+    ctx.fill();
+
+    const woodGrad = ctx.createLinearGradient(x - standW * 0.5, 0, x + standW * 0.5, 0);
+    woodGrad.addColorStop(0, '#36180b');
+    woodGrad.addColorStop(0.3, '#632e17');
+    woodGrad.addColorStop(0.7, '#4d2210');
+    woodGrad.addColorStop(1, '#261006');
+    ctx.fillStyle = woodGrad;
+    ctx.beginPath();
+    ctx.roundRect(x - standW * 0.5, topY, standW, botY - topY, 26);
+    ctx.fill();
+
+    ctx.strokeStyle = '#c99642';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.roundRect(x - standW * 0.5 + 5, topY + 5, standW - 10, botY - topY - 10, 21);
+    ctx.stroke();
+    ctx.restore();
+
+    for (const dBtn of dyeButtons) {
+      const col = HAIR_COLORS[dBtn.colorIdx];
+      const isSelected = currentColorIdx === dBtn.colorIdx;
+      const isHovered = Math.hypot(pointer.x - dBtn.x, pointer.y - dBtn.y) < dBtn.r;
+      dBtn.hover = lerp(dBtn.hover, isHovered ? 1 : 0, 0.2);
+
+      ctx.save();
+      ctx.translate(dBtn.x, dBtn.y);
+      const scale = (dBtn.r / 34) * (1 + dBtn.hover * 0.1 + (isSelected ? 0.1 : 0));
+      ctx.scale(scale, scale);
+
+      // Золоте сяйво обраного флакона
+      if (isSelected) {
+        ctx.strokeStyle = '#ffe596';
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.arc(0, 2, 31, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Коркова пробка флакона
+      ctx.fillStyle = '#b8844b';
+      ctx.beginPath();
+      ctx.roundRect(-7, -28, 14, 9, 3);
+      ctx.fill();
+
+      // Скляне горлечко
+      ctx.fillStyle = 'rgba(235, 245, 255, 0.45)';
+      ctx.beginPath();
+      ctx.roundRect(-9, -20, 18, 6, 2);
+      ctx.fill();
+
+      // Пузатий скляний флакон з фарбою
+      ctx.fillStyle = col.main;
+      ctx.strokeStyle = isSelected ? '#ffd97d' : 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(-20, -14, 40, 38, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      // Світлий відблиск на склі флакона
+      ctx.fillStyle = col.light;
+      ctx.beginPath();
+      ctx.roundRect(-14, -9, 8, 26, 4);
+      ctx.fill();
+
+      // Маленька хвиляста прядка волосся на етикетці флакона
+      ctx.strokeStyle = '#fff8eb';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-8, 8);
+      ctx.quadraticCurveTo(0, -2, 10, 8);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  }
+}
+
+// ============================================================================
+// ДЕТАЛІЗОВАНІ МЕТАЛЕВІ ПЕРУКАРСЬКІ НОЖИЦІ ТА КУРСОР
+// ============================================================================
+function drawVectorScissors(x, y, scale, openAngle, rotation) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
+  ctx.scale(scale, scale);
+
+  // Два сталеві леза з ручками-кільцями, які змикаються та розмикаються навколо гвинта
+  for (const side of [-1, 1]) {
+    ctx.save();
+    ctx.rotate(side * openAngle);
+
+    // Сталеве лезо (від центрального гвинта вперед до вістря)
+    const bladeGrad = ctx.createLinearGradient(0, -8, 0, 8);
+    bladeGrad.addColorStop(0, '#f2f6fa');
+    bladeGrad.addColorStop(0.45, '#b8c4d0');
+    bladeGrad.addColorStop(1, '#64707d');
+
+    ctx.fillStyle = bladeGrad;
+    ctx.strokeStyle = '#39424d';
+    ctx.lineWidth = 1.6;
+
+    ctx.beginPath();
+    ctx.moveTo(-6, side * 2);
+    ctx.lineTo(56, side * 0.5);
+    ctx.lineTo(48, side * 8.5);
+    ctx.lineTo(-6, side * 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Ріжуча блискуча кромка
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, side * 1.5);
+    ctx.lineTo(54, side * 0.5);
+    ctx.stroke();
+
+    // Металева дужка до кільця ручки
+    ctx.strokeStyle = '#9aa7b5';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-4, side * 3);
+    ctx.quadraticCurveTo(-22, side * 8, -34, side * 16);
+    ctx.stroke();
+
+    // Латунне ергономічне кільце для пальців
+    const ringGrad = ctx.createLinearGradient(-58, 0, -26, 0);
+    ringGrad.addColorStop(0, '#8f611b');
+    ringGrad.addColorStop(0.5, '#f5d27a');
+    ringGrad.addColorStop(1, '#a67426');
+    ctx.strokeStyle = ringGrad;
+    ctx.lineWidth = 5.5;
+
+    ctx.beginPath();
+    ctx.ellipse(-44, side * 20, 13, 9.5, side * 0.25, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Упор для мізинця на одній із ручок
+    if (side === 1) {
+      ctx.beginPath();
+      ctx.moveTo(-55, 24);
+      ctx.quadraticCurveTo(-64, 29, -66, 35);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // Центральний латунний гвинт-шарнір ножиць
+  const screwGrad = ctx.createRadialGradient(-1, -1, 1, 0, 0, 5.5);
+  screwGrad.addColorStop(0, '#fff2ba');
+  screwGrad.addColorStop(0.6, '#d49d3b');
+  screwGrad.addColorStop(1, '#6e490c');
+  ctx.fillStyle = screwGrad;
+  ctx.strokeStyle = '#472d04';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(0, 0, 5.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Шліц гвинта
+  ctx.strokeStyle = '#5c3c09';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-3, -2);
+  ctx.lineTo(3, 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawCustomCursor(dt, time) {
+  const isCuttingNow =
+    currentTool === 'scissors' ||
+    pointer.rightButtonDown;
+
+  // Розрахунок анімації клацання лез ножиць
+  if (isCuttingNow && (pointer.isDown || pointer.rightButtonDown)) {
+    const moveSpd = Math.hypot(pointer.vx, pointer.vy);
+    pointer.scissorPhase += dt * (18 + Math.min(22, moveSpd * 0.04));
+    const prevAngle = pointer.scissorAngle;
+    pointer.scissorAngle = 0.04 + Math.abs(Math.sin(pointer.scissorPhase)) * 0.44;
+
+    // Коли леза змикаються — тихий реалістичний звук "клац"
+    if (prevAngle > 0.14 && pointer.scissorAngle <= 0.14) {
+      audio.playScissorSnip(false);
+    }
+  } else {
+    // Плавне дихання лез у режимі очікування
+    pointer.scissorAngle = lerp(pointer.scissorAngle, 0.34 + Math.sin(time * 3.5) * 0.05, 0.2);
+  }
+
+  pointer.scissorFlash = Math.max(0, pointer.scissorFlash - dt * 5);
+
+  ctx.save();
+
+  // Якщо курсор у режимі малювання волосся (прямого чи кучерявого),
+  // ми показуємо і кінчик гребінця/пензлика з кольором фарби, і ножиці поруч (або повні ножиці в режимі стрижки)
+  if (isCuttingNow) {
+    // Повнорозмірні перукарські ножиці, вістрям у точку курсора
+    // Зміщуємо шарнір трохи назад, щоб точка перетину лез збігалася з (pointer.x, pointer.y)
+    const rot = -Math.PI * 0.75 + clamp(pointer.vx * 0.0005, -0.25, 0.25);
+    const pivotOffset = 22 * uncle.scale;
+    const px = pointer.x - Math.cos(rot) * pivotOffset;
+    const py = pointer.y - Math.sin(rot) * pivotOffset;
+
+    // Тінь ножиць
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    drawVectorScissors(px + 5, py + 8, 1.05 * uncle.scale, pointer.scissorAngle, rot);
+    ctx.restore();
+
+    drawVectorScissors(px, py, 1.05 * uncle.scale, pointer.scissorAngle, rot);
+
+    // Іскорка на лезах у момент зрізання волосинки
+    if (pointer.scissorFlash > 0.05) {
+      ctx.strokeStyle = `rgba(255, 250, 210, ${pointer.scissorFlash})`;
+      ctx.lineWidth = 2.5;
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + time * 4;
+        const r1 = 4;
+        const r2 = 14 * pointer.scissorFlash;
+        ctx.beginPath();
+        ctx.moveTo(pointer.x + Math.cos(a) * r1, pointer.y + Math.sin(a) * r1);
+        ctx.lineTo(pointer.x + Math.cos(a) * r2, pointer.y + Math.sin(a) * r2);
+        ctx.stroke();
+      }
+    }
+  } else {
+    // У режимі малювання: витончений перукарський пензлик-аплікатор у точці курсора
+    // + напіврозкриті ножиці трохи збоку в руці майстра, щоб ножиці завжди супроводжували курсор!
+    const col = HAIR_COLORS[currentColorIdx];
+
+    // Міні-ножиці у руці перукаря трохи нижче-правіше
+    drawVectorScissors(pointer.x + 26 * uncle.scale, pointer.y + 26 * uncle.scale, 0.62 * uncle.scale, 0.25, -Math.PI * 0.65);
+
+    ctx.translate(pointer.x, pointer.y);
+    const tilt = -0.65 + clamp(pointer.vx * 0.0006, -0.25, 0.25);
+    ctx.rotate(tilt);
+    ctx.scale(uncle.scale, uncle.scale);
+
+    // Щетина на самому кінчику курсора (0, 0)
+    ctx.fillStyle = col.main;
+    ctx.strokeStyle = col.light;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-7, 12, -5, 18);
+    ctx.lineTo(5, 18);
+    ctx.quadraticCurveTo(7, 12, 0, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Латунна обойма пензлика
+    ctx.fillStyle = '#e0b153';
+    ctx.fillRect(-5.5, 18, 11, 7);
+
+    // Дерев'яна ручка пензлика
+    const handleGrad = ctx.createLinearGradient(-6, 0, 6, 0);
+    handleGrad.addColorStop(0, '#592512');
+    handleGrad.addColorStop(0.5, '#9e4725');
+    handleGrad.addColorStop(1, '#3d1709');
+    ctx.fillStyle = handleGrad;
+    ctx.beginPath();
+    ctx.roundRect(-6, 25, 12, 36, 5);
+    ctx.fill();
+
+    // Якщо активна кучерява щітка — маленька золота спіралька на ручці
+    if (currentTool === 'curly') {
+      ctx.strokeStyle = '#ffe28a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let t = 0; t <= 1; t += 0.1) {
+        const sx = Math.sin(t * Math.PI * 4) * 3.5;
+        const sy = 30 + t * 22;
+        if (t === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+// ============================================================================
+// ОБРОБКА ПОДІЙ МИШІ ТА СЕНСОРНОГО ЕКРАНА
+// ============================================================================
+function checkShelfClick(x, y) {
+  for (const btn of toolButtons) {
+    if (Math.hypot(x - btn.x, y - btn.y) <= btn.r * 1.08) {
+      if (btn.id === 'thickness') {
+        isMultiStrand = !isMultiStrand;
+        audio.playToolSelect(isMultiStrand ? 1.25 : 0.95);
+      } else {
+        currentTool = btn.id;
+        if (currentTool === 'scissors') {
+          audio.playScissorSnip(false);
+        } else {
+          audio.playToolSelect(currentTool === 'curly' ? 1.15 : 1.0);
+        }
+      }
+      return true;
+    }
+  }
+
+  for (const dBtn of dyeButtons) {
+    if (Math.hypot(x - dBtn.x, y - dBtn.y) <= dBtn.r * 1.12) {
+      currentColorIdx = dBtn.colorIdx;
+      // Якщо зараз активні ножиці, а дитина обрала баночку з фарбою — автоматично вмикаємо пензлик!
+      if (currentTool === 'scissors') {
+        currentTool = 'straight';
+      }
+      audio.playToolSelect(0.85 + dBtn.colorIdx * 0.08);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function handlePointerDown(x, y, button = 0) {
+  audio.init();
+  pointer.prevX = x;
+  pointer.prevY = y;
+  pointer.x = x;
+  pointer.y = y;
+
+  if (button === 2) {
+    pointer.rightButtonDown = true;
+    audio.playScissorSnip(false);
+    performScissorCut(x - 4, y - 4, x + 4, y + 4);
+    return;
+  }
+
+  // Перевіряємо клік по інструментах на дерев'яних полицях
+  if (checkShelfClick(x, y)) {
+    return;
+  }
+
+  pointer.isDown = true;
+
+  if (currentTool === 'scissors') {
+    audio.playScissorSnip(false);
+    performScissorCut(x - 5, y - 5, x + 5, y + 5);
+  } else {
+    startDrawingHair(x, y);
+  }
+}
+
+function handlePointerMove(x, y) {
+  pointer.prevX = pointer.x;
+  pointer.prevY = pointer.y;
+  pointer.x = x;
+  pointer.y = y;
+
+  const isCutting = currentTool === 'scissors' || pointer.rightButtonDown;
+
+  if (isCutting && (pointer.isDown || pointer.rightButtonDown)) {
+    performScissorCut(pointer.prevX, pointer.prevY, pointer.x, pointer.y);
+  } else if (pointer.isDown && !pointer.rightButtonDown) {
+    continueDrawingHair(pointer.x, pointer.y);
+  }
+}
+
+function handlePointerUp(button = 0) {
+  if (button === 2) {
+    pointer.rightButtonDown = false;
+    return;
+  }
+  pointer.isDown = false;
+  finishDrawingHair();
+}
+
+// Слухачі подій миші та тачу
+window.addEventListener('mousedown', (e) => {
+  handlePointerDown(e.clientX, e.clientY, e.button);
+});
+
+window.addEventListener('mousemove', (e) => {
+  handlePointerMove(e.clientX, e.clientY);
+});
+
+window.addEventListener('mouseup', (e) => {
+  handlePointerUp(e.button);
+});
+
+window.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
+window.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (e.touches.length > 0) {
+    const t = e.touches[0];
+    handlePointerDown(t.clientX, t.clientY, 0);
+  }
+}, { passive: false });
+
+window.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (e.touches.length > 0) {
+    const t = e.touches[0];
+    handlePointerMove(t.clientX, t.clientY);
+  }
+}, { passive: false });
+
+window.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  handlePointerUp(0);
+}, { passive: false });
+
+window.addEventListener('resize', () => {
+  updateLayout();
+});
+
+// ============================================================================
+// ГОЛОВНИЙ ІГРОВИЙ ЦИКЛ
+// ============================================================================
+let lastTime = performance.now();
+
+function gameLoop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  const time = now / 1000;
+
+  // Розрахунок швидкості курсора для фізики волосся та анімації ножиць
+  pointer.vx = lerp(pointer.vx, (pointer.x - pointer.prevX) / Math.max(0.008, dt), 0.35);
+  pointer.vy = lerp(pointer.vy, (pointer.y - pointer.prevY) / Math.max(0.008, dt), 0.35);
+  pointer.prevX = pointer.x;
+  pointer.prevY = pointer.y;
+
+  // 1. Оновлення стану дяді та фізики волосся
+  updateUncle(dt, time);
+  updateHairPhysics(dt, time);
+
+  // 2. Рендеринг живої сцени перукарні
+  drawBarbershopBackground(time);
+  drawBarberChairAndCape();
+  drawUncleHead(time);
+  drawHairStrands();
+  drawFallingClippingsAndParticles();
+  drawWoodenShelvesAndTools(time);
+  drawCustomCursor(dt, time);
+
+  requestAnimationFrame(gameLoop);
+}
+
+window.onload = function () {
+  updateLayout();
+  initDustMotes();
+  createInitialFunnyHairs();
+  requestAnimationFrame(gameLoop);
+};
+</script>
+</body>
+</html>
