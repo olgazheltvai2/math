@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Таємний Код Скрині</title>
+<style>
+  /* ================= ОСНОВНІ СТИЛІ ТА СКИДАННЯ ================= */
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    background: #0d1b2a;
+  }
+
+  /* Контейнер всієї сцени */
+  #game-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5vh 2.5vw;
+    z-index: 1;
+  }
+
+  /* Фоновий SVG на весь екран */
+  #bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* Canvas для салюту, блискіток та магічного пилу */
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 25;
+    pointer-events: none;
+  }
+
+  /* ================= АНІМАЦІЇ ФОНУ ТА ПЕРСОНАЖА ================= */
+  @keyframes palmSway {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(3.2deg); }
+  }
+  @keyframes palmSwayReverse {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-2.8deg); }
+  }
+  @keyframes waveFloat {
+    0%, 100% { transform: translateX(0px) translateY(0px); }
+    50% { transform: translateX(18px) translateY(4px); }
+  }
+  @keyframes sunPulse {
+    0%, 100% { opacity: 0.75; transform: scale(1); }
+    50% { opacity: 0.95; transform: scale(1.06); }
+  }
+  @keyframes parrotIdle {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-6px) rotate(1.5deg); }
+  }
+  @keyframes parrotHappy {
+    0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+    25% { transform: translateY(-22px) scale(1.06) rotate(-8deg); }
+    50% { transform: translateY(-5px) scale(1.02) rotate(6deg); }
+    75% { transform: translateY(-18px) scale(1.05) rotate(-5deg); }
+  }
+  @keyframes parrotSad {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    20% { transform: translateX(-8px) rotate(-6deg); }
+    40% { transform: translateX(8px) rotate(6deg); }
+    60% { transform: translateX(-6px) rotate(-4deg); }
+    80% { transform: translateX(6px) rotate(4deg); }
+  }
+  @keyframes wingFlap {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-28deg) translateY(-6px); }
+  }
+
+  .palm-left { transform-origin: 0% 40%; animation: palmSway 6s ease-in-out infinite; }
+  .palm-right { transform-origin: 100% 35%; animation: palmSwayReverse 7s ease-in-out infinite; }
+  .wave-anim-1 { animation: waveFloat 5s ease-in-out infinite; }
+  .wave-anim-2 { animation: waveFloat 7s ease-in-out infinite reverse; }
+  .sun-glow { transform-origin: 50% 45%; animation: sunPulse 5s ease-in-out infinite; }
+
+  /* ================= ЛІВА ЧАСТИНА: ТАБЛИЦЯ-КЛЮЧ (3x3) ================= */
+  #left-panel {
+    position: relative;
+    z-index: 5;
+    width: 42%;
+    max-width: 560px;
+    height: 92vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* Дерев'яно-золота рама таблиці */
+  .ancient-board {
+    position: relative;
+    width: 100%;
+    padding: 22px 24px 26px 24px;
+    border-radius: 28px;
+    background: 
+      radial-gradient(circle at 20% 20%, rgba(255, 200, 110, 0.14), transparent 60%),
+      repeating-linear-gradient(90deg, #4a2810 0px, #583115 14px, #3f210c 28px),
+      linear-gradient(145deg, #5c3417, #2f1708);
+    border: 6px solid #c8963e;
+    box-shadow: 
+      0 18px 40px rgba(0,0,0,0.75),
+      inset 0 0 25px rgba(0,0,0,0.85),
+      inset 0 2px 4px rgba(255, 230, 150, 0.6);
+  }
+
+  /* Золоті кутики на дошці */
+  .board-corner {
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff3a8, #d49b27 60%, #6e4808 100%);
+    box-shadow: 0 3px 6px rgba(0,0,0,0.6), inset 0 1px 2px #fff;
+    z-index: 2;
+  }
+  .board-corner.tl { top: 10px; left: 10px; }
+  .board-corner.tr { top: 10px; right: 10px; }
+  .board-corner.bl { bottom: 10px; left: 10px; }
+  .board-corner.br { bottom: 10px; right: 10px; }
+
+  /* Сітка: 3 колонки чисел + 1 колонка справа для фігур */
+  .matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr) 1.15fr;
+    grid-template-rows: auto repeat(3, 1fr);
+    gap: 12px;
+    width: 100%;
+    aspect-ratio: 4.15 / 3.9;
+    align-items: stretch;
+  }
+
+  /* Верхні клітинки кольорів */
+  .color-header-cell {
+    border-radius: 18px;
+    background: linear-gradient(145deg, #2d180a, #1b0e05);
+    border: 3px solid #9c6f27;
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.85), 0 4px 8px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    position: relative;
+  }
+
+  /* Порожній правий верхній кут сітки (прикрашений компасом/зіркою) */
+  .corner-ornament-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Клітинки з числами 1-9 */
+  .number-cell {
+    position: relative;
+    border-radius: 18px;
+    background: 
+      radial-gradient(circle at 30% 25%, #f7e2b8, #d9b372 65%, #9e7332 100%);
+    border: 4px solid #6b4415;
+    box-shadow: 
+      0 6px 0 #3d2408,
+      0 10px 16px rgba(0,0,0,0.55),
+      inset 0 2px 4px rgba(255, 250, 220, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(1.9rem, 3.8vw, 3.3rem);
+    font-weight: 900;
+    color: #3b1c04;
+    text-shadow: 0 2px 0 rgba(255, 240, 200, 0.8), 0 -1px 2px rgba(0,0,0,0.4);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+    cursor: pointer;
+  }
+
+  .number-cell:hover {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 
+      0 9px 0 #3d2408,
+      0 14px 20px rgba(0,0,0,0.65),
+      inset 0 0 12px rgba(255, 245, 170, 0.95);
+  }
+
+  .number-cell.highlight-hint {
+    animation: cellPulse 0.65s ease-in-out;
+  }
+
+  @keyframes cellPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); filter: brightness(1.25); }
+  }
+
+  /* Права колонка з геометричними фігурами */
+  .shape-row-cell {
+    border-radius: 18px;
+    background: linear-gradient(145deg, #2d180a, #1b0e05);
+    border: 3px solid #9c6f27;
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.85), 0 4px 8px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .shape-row-cell svg, .color-header-cell svg {
+    width: 82%;
+    height: 82%;
+    overflow: visible;
+    filter: drop-shadow(0 4px 5px rgba(0,0,0,0.65));
+  }
+
+  /* ================= ЦЕНТРАЛЬНА / ПРАВА ЧАСТИНА: ЗАВДАННЯ ТА СКРИНЯ ================= */
+  #right-panel {
+    position: relative;
+    z-index: 5;
+    width: 55%;
+    height: 95vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Верхній ряд правої панелі: 2 кодових завдання + ключі */
+  #codes-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    gap: 1.5vw;
+    margin-top: 0.5vh;
+  }
+
+  /* Окрема дерев'яно-кована плашка для кожного з 2 кодів */
+  .code-card {
+    position: relative;
+    flex: 1;
+    max-width: 390px;
+    padding: 12px 14px 14px 14px;
+    border-radius: 22px;
+    background: 
+      repeating-linear-gradient(135deg, #3b2210 0px, #492a14 12px, #2f1a0b 24px);
+    border: 4px solid #c99738;
+    box-shadow: 
+      0 10px 24px rgba(0,0,0,0.7),
+      inset 0 0 18px rgba(0,0,0,0.8),
+      inset 0 2px 3px rgba(255, 225, 130, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    transition: all 0.4s ease;
+  }
+
+  .code-card.unlocked {
+    border-color: #52e36a;
+    box-shadow: 
+      0 0 25px rgba(82, 227, 106, 0.55),
+      inset 0 0 18px rgba(40, 140, 60, 0.45);
+  }
+
+  .code-card.wrong-shake {
+    animation: cardShake 0.45s ease-in-out;
+    border-color: #ff4747;
+  }
+
+  @keyframes cardShake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-8px); }
+    40%, 80% { transform: translateX(8px); }
+  }
+
+  /* 3 слоти в кожному коді */
+  .code-slots-group {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    justify-content: space-around;
+  }
+
+  .code-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+  }
+
+  /* Віконце з кольоровою фігурою-завданням */
+  .target-clue-box {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-width: 68px;
+    border-radius: 14px;
+    background: radial-gradient(circle at 50% 40%, #331e0e, #170c04);
+    border: 2.5px solid #8a6224;
+    box-shadow: inset 0 3px 8px rgba(0,0,0,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+  }
+
+  .target-clue-box svg {
+    width: 88%;
+    height: 88%;
+    overflow: visible;
+    filter: drop-shadow(0 3px 4px rgba(0,0,0,0.7));
+  }
+
+  /* Віконце для вводу цифри дитиною */
+  .digit-input-box {
+    width: 100%;
+    height: 48px;
+    max-width: 68px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #211207, #38200d);
+    border: 3px solid #b58532;
+    box-shadow: inset 0 4px 8px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(1.5rem, 2.5vw, 2.1rem);
+    font-weight: 900;
+    color: #ffe484;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .digit-input-box.active-slot {
+    border-color: #00f5d4;
+    background: linear-gradient(180deg, #16332f, #234f48);
+    box-shadow: 
+      0 0 14px #00f5d4,
+      inset 0 0 10px rgba(0, 245, 212, 0.5);
+    transform: scale(1.06);
+  }
+
+  .digit-input-box.locked-slot {
+    border-color: #4cd964;
+    background: linear-gradient(180deg, #173d1e, #256330);
+    color: #a8ff9e;
+    cursor: default;
+  }
+
+  /* Міні-холдер для золотого ключа біля коду */
+  .key-dock {
+    width: 56px;
+    height: 110px;
+    border-radius: 14px;
+    background: radial-gradient(circle, #291608, #120903);
+    border: 2px dashed #7a5520;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  .key-svg-wrapper {
+    width: 48px;
+    height: 96px;
+    transition: transform 0.85s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s;
+    filter: drop-shadow(0 5px 8px rgba(0,0,0,0.75));
+    z-index: 20;
+  }
+
+  /* ================= СЕРЕДНЯ ЗОНА: ПАПУГА, СКРИНЯ ТА СКАРБИ ================= */
+  #chest-stage {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 250px;
+  }
+
+  /* Персонаж Папуга Ара */
+  #parrot-container {
+    position: absolute;
+    left: 0%;
+    bottom: 4%;
+    width: clamp(135px, 15vw, 210px);
+    height: clamp(175px, 21vw, 275px);
+    z-index: 12;
+    cursor: pointer;
+    animation: parrotIdle 3.2s ease-in-out infinite;
+  }
+
+  #parrot-container.happy {
+    animation: parrotHappy 0.85s ease-in-out 2;
+  }
+
+  #parrot-container.sad {
+    animation: parrotSad 0.55s ease-in-out;
+  }
+
+  /* Головний контейнер скрині */
+  #chest-wrapper {
+    position: relative;
+    width: clamp(290px, 34vw, 460px);
+    height: clamp(230px, 27vw, 360px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  #chest-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    filter: drop-shadow(0 18px 25px rgba(0,0,0,0.75));
+  }
+
+  /* Анімація тремтіння скрині перед відкриттям */
+  @keyframes chestRumble {
+    0%, 100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+    20% { transform: translate(-5px, -3px) rotate(-2deg) scale(1.03); }
+    40% { transform: translate(5px, -6px) rotate(2deg) scale(1.05); }
+    60% { transform: translate(-6px, -4px) rotate(-2deg) scale(1.06); }
+    80% { transform: translate(6px, -2px) rotate(2deg) scale(1.04); }
+  }
+
+  .chest-rumbling {
+    animation: chestRumble 0.65s ease-in-out;
+  }
+
+  /* Контейнер нагороди, яка з'являється з відкритої скрині */
+  #reward-showcase {
+    position: absolute;
+    top: -12%;
+    left: 50%;
+    transform: translate(-50%, 40px) scale(0);
+    width: clamp(240px, 28vw, 380px);
+    height: clamp(190px, 22vw, 300px);
+    z-index: 15;
+    pointer-events: none;
+    opacity: 0;
+    transition: transform 0.75s cubic-bezier(0.18, 1.35, 0.4, 1), opacity 0.45s ease;
+    filter: drop-shadow(0 12px 24px rgba(0,0,0,0.85));
+  }
+
+  #reward-showcase.visible {
+    transform: translate(-50%, -18px) scale(1.08);
+    opacity: 1;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  /* Полиця зібраних скарбів (праворуч від скрині) */
+  #collection-rack {
+    position: absolute;
+    right: 0;
+    bottom: 6%;
+    width: clamp(72px, 7.5vw, 102px);
+    padding: 10px 8px;
+    border-radius: 20px;
+    background: linear-gradient(145deg, rgba(58, 32, 14, 0.92), rgba(28, 14, 5, 0.95));
+    border: 3px solid #b5832e;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.7), inset 0 0 12px rgba(0,0,0,0.85);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    z-index: 12;
+  }
+
+  .trophy-slot {
+    width: clamp(44px, 4.6vw, 62px);
+    height: clamp(44px, 4.6vw, 62px);
+    border-radius: 50%;
+    background: radial-gradient(circle, #241307, #100802);
+    border: 2px solid #6e4c1b;
+    box-shadow: inset 0 3px 6px rgba(0,0,0,0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px;
+    opacity: 0.35;
+    filter: grayscale(1);
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .trophy-slot.earned {
+    opacity: 1;
+    filter: grayscale(0);
+    border-color: #ffd700;
+    background: radial-gradient(circle, #5e3f12, #241404);
+    box-shadow: 0 0 12px rgba(255, 215, 0, 0.65);
+    transform: scale(1.06);
+  }
+
+  /* Кнопка перезапуску (з'являється коли скриня відкрита, без слів) */
+  #replay-btn {
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%) scale(0);
+    width: 74px;
+    height: 74px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #ffe97d, #d99b1e 65%, #875805 100%);
+    border: 4px solid #fff3b8;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.8), 0 0 25px rgba(255, 215, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 30;
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  #replay-btn.show {
+    transform: translateX(-50%) scale(1);
+  }
+
+  #replay-btn:hover {
+    transform: translateX(-50%) scale(1.13) rotate(25deg);
+  }
+
+  /* ================= НИЖНЯ ПАНЕЛЬ: ЗОЛОТІ МОНЕТИ-ЦИФРИ (1-9) ================= */
+  #numpad-bar {
+    width: 100%;
+    max-width: 720px;
+    padding: 10px 16px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, rgba(64, 35, 14, 0.92), rgba(33, 17, 6, 0.96));
+    border: 4px solid #ba8730;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.75), inset 0 2px 5px rgba(255, 225, 130, 0.45);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    z-index: 14;
+  }
+
+  .coin-btn {
+    flex: 1;
+    aspect-ratio: 1 / 1;
+    max-width: 64px;
+    border-radius: 50%;
+    background: 
+      radial-gradient(circle at 32% 28%, #fff6b3 0%, #f5c242 42%, #bd7e13 82%, #784b04 100%);
+    border: 3px solid #fce288;
+    box-shadow: 
+      0 5px 0 #593602,
+      0 8px 14px rgba(0,0,0,0.65),
+      inset 0 2px 4px #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(1.35rem, 2.2vw, 1.95rem);
+    font-weight: 900;
+    color: #4a2502;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .coin-btn:hover {
+    transform: translateY(-3px) scale(1.06);
+    filter: brightness(1.08);
+  }
+
+  .coin-btn:active {
+    transform: translateY(3px) scale(0.96);
+    box-shadow: 0 2px 0 #593602, 0 3px 6px rgba(0,0,0,0.6);
+  }
+
+  /* Адаптивність для менших екранів */
+  @media (max-width: 980px) {
+    #game-scene {
+      flex-direction: column;
+      padding: 1vh 2vw;
+      overflow-y: auto;
+    }
+    #left-panel, #right-panel {
+      width: 96%;
+      height: auto;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= СЮЖЕТНИЙ ЖИВИЙ ФОН (ТРОПІЧНА БУХТА СКАРБІВ) ================= -->
+<svg id="bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <!-- Градієнт вечірнього тропічного неба -->
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1a0b2e"/>
+      <stop offset="28%" stop-color="#4b1d52"/>
+      <stop offset="55%" stop-color="#9c354d"/>
+      <stop offset="78%" stop-color="#e86f38"/>
+      <stop offset="100%" stop-color="#ffca58"/>
+    </linearGradient>
+
+    <!-- Сяйво сонця -->
+    <radialGradient id="sunGlowGrad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff8c4" stop-opacity="1"/>
+      <stop offset="30%" stop-color="#ffae34" stop-opacity="0.7"/>
+      <stop offset="70%" stop-color="#e8482c" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#e8482c" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Градієнт океану -->
+    <linearGradient id="seaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#d95b43"/>
+      <stop offset="25%" stop-color="#6b2d5c"/>
+      <stop offset="60%" stop-color="#194a63"/>
+      <stop offset="100%" stop-color="#0a2636"/>
+    </linearGradient>
+
+    <!-- Градієнт піщаного берега -->
+    <linearGradient id="sandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d69c4e"/>
+      <stop offset="50%" stop-color="#a66c29"/>
+      <stop offset="100%" stop-color="#5e3610"/>
+    </linearGradient>
+
+    <!-- Градієнт листя пальм -->
+    <linearGradient id="palmLeafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2d6a3e"/>
+      <stop offset="60%" stop-color="#163d22"/>
+      <stop offset="100%" stop-color="#0b2112"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Небо -->
+  <rect width="1920" height="660" fill="url(#skyGrad)"/>
+
+  <!-- Сонце над горизонтом -->
+  <g class="sun-glow">
+    <circle cx="960" cy="490" r="320" fill="url(#sunGlowGrad)"/>
+    <circle cx="960" cy="490" r="95" fill="#fff3b0"/>
+  </g>
+
+  <!-- Далекі тропічні острови та скелі -->
+  <path d="M 0 580 Q 180 450 370 530 Q 520 470 670 580 Z" fill="#3a193f" opacity="0.85"/>
+  <path d="M 1250 580 Q 1440 430 1620 510 Q 1780 440 1920 580 Z" fill="#321536" opacity="0.9"/>
+
+  <!-- Море -->
+  <rect y="560" width="1920" height="520" fill="url(#seaGrad)"/>
+
+  <!-- Сонячна доріжка на воді -->
+  <g class="wave-anim-1" opacity="0.65">
+    <ellipse cx="960" cy="590" rx="140" ry="8" fill="#ffe58f"/>
+    <ellipse cx="960" cy="620" rx="190" ry="10" fill="#ffbe57"/>
+    <ellipse cx="960" cy="660" rx="240" ry="12" fill="#f78840"/>
+    <ellipse cx="960" cy="710" rx="180" ry="10" fill="#e05a47"/>
+  </g>
+
+  <!-- Хвилі океану -->
+  <g class="wave-anim-2" opacity="0.35">
+    <path d="M 100 640 Q 260 625 420 640 T 740 640" stroke="#ffdc85" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 1180 670 Q 1340 655 1500 670 T 1820 670" stroke="#ffdc85" stroke-width="5" fill="none" stroke-linecap="round"/>
+    <path d="M 350 740 Q 520 725 690 740 T 1030 740" stroke="#5cc9e8" stroke-width="6" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Піщаний берег та дерев'яний поміст скарбів -->
+  <path d="M 0 760 Q 480 690 980 750 Q 1480 810 1920 720 L 1920 1080 L 0 1080 Z" fill="url(#sandGrad)"/>
+  <path d="M 0 830 Q 600 770 1200 830 Q 1600 860 1920 800 L 1920 1080 L 0 1080 Z" fill="#47260a" opacity="0.7"/>
+
+  <!-- Кам'яні брили та морські зірки на піску -->
+  <ellipse cx="150" cy="960" rx="130" ry="55" fill="#2c221e"/>
+  <ellipse cx="1800" cy="940" rx="150" ry="65" fill="#241b18"/>
+
+  <!-- Пальма зліва -->
+  <g class="palm-left">
+    <path d="M -20 950 Q 90 520 220 220 L 255 235 Q 140 530 55 950 Z" fill="#3d200e"/>
+    <path d="M 230 230 Q 420 150 560 280 Q 390 240 230 230 Z" fill="url(#palmLeafGrad)"/>
+    <path d="M 230 230 Q 380 80 540 120 Q 360 150 230 230 Z" fill="url(#palmLeafGrad)"/>
+    <path d="M 230 230 Q 180 40 330 10 Q 250 110 230 230 Z" fill="url(#palmLeafGrad)"/>
+    <path d="M 230 230 Q 40 120 -40 240 Q 110 200 230 230 Z" fill="url(#palmLeafGrad)"/>
+    <path d="M 230 230 Q 330 260 440 390 Q 310 320 230 230 Z" fill="url(#palmLeafGrad)"/>
+    <circle cx="225" cy="245" r="18" fill="#593112"/>
+    <circle cx="248" cy="252" r="16" fill="#47260c"/>
+  </g>
+
+  <!-- Пальма справа -->
+  <g class="palm-right">
+    <path d="M 1950 960 Q 1820 500 1690 190 L 1655 205 Q 1770 510 1875 960 Z" fill="#361c0c"/>
+    <path d="M 1675 198 Q 1470 120 1330 250 Q 1500 210 1675 198 Z" fill="url(#palmLeafGrad)"/>
+    <path d="M 1675 198 Q 1520 50 1370 90 Q 1540 125 1675 198 Z" fill="url(#palmLeafGrad)"/>
+    <path d="M 1675 198 Q 1730 20 1590 -10 Q 1660 90 1675 198 Z" fill="url(#palmLeafGrad)"/>
+    <path d="M 1675 198 Q 1560 240 1460 370 Q 1580 300 1675 198 Z" fill="url(#palmLeafGrad)"/>
+    <circle cx="1680" cy="215" r="17" fill="#593112"/>
+    <circle cx="1658" cy="222" r="16" fill="#47260c"/>
+  </g>
+</svg>
+
+<!-- Canvas для частинок і феєрверків -->
+<canvas id="fx-canvas"></canvas>
+
+<!-- ================= ОСНОВНА ІГРОВА СЦЕНА ================= -->
+<div id="game-scene">
+
+  <!-- ЛІВА ПАНЕЛЬ: ТАБЛИЦЯ 3x3 (ЗВЕРХУ КОЛЬОРИ, СПРАВА ФІГУРИ) -->
+  <div id="left-panel">
+    <div class="ancient-board">
+      <div class="board-corner tl"></div>
+      <div class="board-corner tr"></div>
+      <div class="board-corner bl"></div>
+      <div class="board-corner br"></div>
+
+      <!-- Сітка генерується динамічно через JS -->
+      <div class="matrix-grid" id="matrix-grid"></div>
+    </div>
+  </div>
+
+  <!-- ПРАВА ПАНЕЛЬ: 2 КОДИ, СКРИНЯ З 2 ЗАМКАМИ, ПАПУГА ТА КЛАВІАТУРА МОНЕТ -->
+  <div id="right-panel">
+
+    <!-- 2 КОДОВИХ ЗАВДАННЯ -->
+    <div id="codes-container">
+      <!-- Код 1 -->
+      <div class="code-card" id="code-card-0">
+        <div class="code-slots-group" id="code-slots-0"></div>
+        <div class="key-dock">
+          <div class="key-svg-wrapper" id="key-0"></div>
+        </div>
+      </div>
+
+      <!-- Код 2 -->
+      <div class="code-card" id="code-card-1">
+        <div class="code-slots-group" id="code-slots-1"></div>
+        <div class="key-dock">
+          <div class="key-svg-wrapper" id="key-1"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- СЦЕНА З ПАПУГОЮ, СКРИНЕЮ ТА ПОЛИЦЕЮ НАГОРОД -->
+    <div id="chest-stage">
+
+      <!-- ЖИВИЙ ПЕРСОНАЖ: ПАПУГА АРА -->
+      <div id="parrot-container" title="">
+        <svg viewBox="0 0 220 290" width="100%" height="100%" overflow="visible">
+          <defs>
+            <linearGradient id="parrotRed" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ff3b30"/>
+              <stop offset="65%" stop-color="#c91414"/>
+              <stop offset="100%" stop-color="#7a0606"/>
+            </linearGradient>
+            <linearGradient id="parrotWing" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#ffcf24"/>
+              <stop offset="40%" stop-color="#29b848"/>
+              <stop offset="80%" stop-color="#0077ff"/>
+              <stop offset="100%" stop-color="#052c70"/>
+            </linearGradient>
+            <linearGradient id="beakTop" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fff6cf"/>
+              <stop offset="70%" stop-color="#d4b572"/>
+              <stop offset="100%" stop-color="#695226"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Дерев'яна жердина -->
+          <rect x="20" y="232" width="175" height="22" rx="10" fill="#5c3312" stroke="#2e1705" stroke-width="4"/>
+          <ellipse cx="105" cy="280" rx="22" ry="8" fill="rgba(0,0,0,0.4)"/>
+
+          <!-- Довгий хвіст -->
+          <path d="M 85 215 L 65 288 L 95 278 L 118 288 L 112 215 Z" fill="#0066cc"/>
+          <path d="M 76 210 L 52 280 L 88 265 L 105 210 Z" fill="#d91b1b"/>
+
+          <!-- Тулуб папуги -->
+          <ellipse cx="105" cy="162" rx="48" ry="68" fill="url(#parrotRed)"/>
+          <ellipse cx="115" cy="170" rx="34" ry="50" fill="#ff5447" opacity="0.45"/>
+
+          <!-- Ліве крило (рухоме) -->
+          <g id="parrot-wing-left" style="transform-origin: 72px 135px; transition: transform 0.3s;">
+            <path d="M 68 122 C 25 145, 28 215, 76 226 C 92 195, 88 155, 68 122 Z" fill="url(#parrotWing)" stroke="#1b0d05" stroke-width="2.5"/>
+          </g>
+
+          <!-- Праве крило -->
+          <g id="parrot-wing-right" style="transform-origin: 138px 135px; transition: transform 0.3s;">
+            <path d="M 140 122 C 175 148, 172 212, 132 224 C 122 192, 125 152, 140 122 Z" fill="url(#parrotWing)" stroke="#1b0d05" stroke-width="2.5"/>
+          </g>
+
+          <!-- Лапки на жердині -->
+          <g fill="#4a4a4a" stroke="#1f1f1f" stroke-width="2">
+            <rect x="78" y="224" width="8" height="16" rx="4"/>
+            <rect x="86" y="224" width="8" height="16" rx="4"/>
+            <rect x="118" y="224" width="8" height="16" rx="4"/>
+            <rect x="126" y="224" width="8" height="16" rx="4"/>
+          </g>
+
+          <!-- Голова папуги -->
+          <g id="parrot-head" style="transform-origin: 105px 88px; transition: transform 0.25s;">
+            <!-- Чубчик -->
+            <path d="M 92 36 Q 82 10 104 20 Q 112 4 124 24 Q 134 14 128 38 Z" fill="#ff2a1f"/>
+            <circle cx="105" cy="82" r="46" fill="url(#parrotRed)"/>
+
+            <!-- Біла маска навколо очей з чорними смужками -->
+            <ellipse cx="90" cy="78" rx="19" ry="22" fill="#fff8eb"/>
+            <ellipse cx="126" cy="78" rx="17" ry="20" fill="#fff8eb"/>
+            <path d="M 75 88 Q 88 94 98 88" stroke="#2b1911" stroke-width="2" fill="none"/>
+            <path d="M 78 93 Q 88 98 96 93" stroke="#2b1911" stroke-width="1.8" fill="none"/>
+
+            <!-- Очі -->
+            <g id="parrot-eyes">
+              <circle cx="90" cy="74" r="10" fill="#ffcf33"/>
+              <circle cx="92" cy="74" r="6" fill="#111"/>
+              <circle cx="89" cy="71" r="2.5" fill="#fff"/>
+
+              <circle cx="126" cy="74" r="9" fill="#ffcf33"/>
+              <circle cx="124" cy="74" r="5.5" fill="#111"/>
+              <circle cx="122" cy="71" r="2.2" fill="#fff"/>
+            </g>
+
+            <!-- Великий вигнутий дзьоб -->
+            <path d="M 96 86 C 96 72, 134 72, 140 94 C 142 110, 128 124, 118 126 C 114 110, 102 104, 96 86 Z" fill="url(#beakTop)" stroke="#3d2c10" stroke-width="2.5"/>
+            <path d="M 98 96 C 102 114, 116 118, 122 106 Z" fill="#292421"/>
+
+            <!-- Піратська бандана/капелюшок шукача скарбів -->
+            <path d="M 62 56 Q 105 32 148 56 Q 132 40 105 40 Q 78 40 62 56 Z" fill="#1b4d89" stroke="#f5c242" stroke-width="3"/>
+            <circle cx="105" cy="46" r="6" fill="#ffd700"/>
+          </g>
+        </svg>
+      </div>
+
+      <!-- СКРИНЯ ЗІ СКАРБАМИ ТА 2 НАВІСНИМИ ЗАМКАМИ -->
+      <div id="chest-wrapper">
+        <!-- Сюди рендериться обрана нагорода при відкритті -->
+        <div id="reward-showcase"></div>
+
+        <!-- SVG Скрині -->
+        <svg id="chest-svg" viewBox="0 0 500 400">
+          <defs>
+            <!-- Градієнти дерева скрині -->
+            <linearGradient id="chestWoodDark" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#753b14"/>
+              <stop offset="50%" stop-color="#4d2409"/>
+              <stop offset="100%" stop-color="#291103"/>
+            </linearGradient>
+            <linearGradient id="chestWoodLid" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#9e5422"/>
+              <stop offset="45%" stop-color="#6e3510"/>
+              <stop offset="100%" stop-color="#3d1b06"/>
+            </linearGradient>
+            <!-- Градієнт кованого золота -->
+            <linearGradient id="chestGold" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#fff4ad"/>
+              <stop offset="35%" stop-color="#e8ad2c"/>
+              <stop offset="75%" stop-color="#9c6809"/>
+              <stop offset="100%" stop-color="#593802"/>
+            </linearGradient>
+            <!-- Внутрішнє золоте сяйво відкритої скрині -->
+            <radialGradient id="innerTreasureGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="35%" stop-color="#ffe866"/>
+              <stop offset="75%" stop-color="#ff9900" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#ff5500" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+
+          <!-- Тінь під скринею -->
+          <ellipse cx="250" cy="365" rx="210" ry="26" fill="rgba(0,0,0,0.65)"/>
+
+          <!-- ВІДКРИТА КРИШКА (спочатку прихована, показується при відкритті) -->
+          <g id="chest-lid-open" style="display: none;">
+            <path d="M 65 185 C 60 65, 440 65, 435 185 Z" fill="#2e1304" stroke="url(#chestGold)" stroke-width="14"/>
+            <path d="M 85 180 C 85 90, 415 90, 415 180 Z" fill="#471d07"/>
+            <!-- Магічне сяйво зі скрині -->
+            <ellipse cx="250" cy="195" rx="195" ry="95" fill="url(#innerTreasureGlow)"/>
+            <!-- Гора золотих монет всередині скрині -->
+            <path d="M 75 205 Q 160 155 250 175 Q 340 150 425 205 Z" fill="#f5b922" stroke="#b07807" stroke-width="3"/>
+          </g>
+
+          <!-- НИЖНЯ ОСНОВА СКРИНІ -->
+          <g id="chest-base">
+            <!-- Корпус з дощок -->
+            <path d="M 55 195 L 445 195 L 425 355 L 75 355 Z" fill="url(#chestWoodDark)" stroke="#240f02" stroke-width="4"/>
+            <!-- Горизонтальні стики дощок -->
+            <line x1="62" y1="248" x2="438" y2="248" stroke="#240f02" stroke-width="4"/>
+            <line x1="68" y1="302" x2="432" y2="302" stroke="#240f02" stroke-width="4"/>
+
+            <!-- Золоті вертикальні окуття основи -->
+            <path d="M 55 195 L 92 195 L 108 355 L 75 355 Z" fill="url(#chestGold)"/>
+            <path d="M 445 195 L 408 195 L 392 355 L 425 355 Z" fill="url(#chestGold)"/>
+            <rect x="232" y="195" width="36" height="160" fill="url(#chestGold)"/>
+            <!-- Нижня золота планка -->
+            <path d="M 72 332 L 428 332 L 425 355 L 75 355 Z" fill="url(#chestGold)"/>
+
+            <!-- Заклепки -->
+            <g fill="#fff1a8" stroke="#694303" stroke-width="2">
+              <circle cx="78" cy="220" r="5"/><circle cx="84" cy="275" r="5"/><circle cx="90" cy="343" r="5"/>
+              <circle cx="422" cy="220" r="5"/><circle cx="416" cy="275" r="5"/><circle cx="410" cy="343" r="5"/>
+              <circle cx="250" cy="230" r="5"/><circle cx="250" cy="285" r="5"/><circle cx="250" cy="343" r="5"/>
+            </g>
+          </g>
+
+          <!-- ЗАКРИТА ОПУКЛА КРИШКА СКРИНІ -->
+          <g id="chest-lid-closed">
+            <path d="M 50 198 C 50 75, 450 75, 450 198 Z" fill="url(#chestWoodLid)" stroke="#240f02" stroke-width="4"/>
+            <!-- Лінії дощок на кришці -->
+            <path d="M 68 148 Q 250 118 432 148" stroke="#2b1203" stroke-width="4" fill="none"/>
+            <!-- Золоті ребра кришки -->
+            <path d="M 50 198 C 50 92, 92 92, 92 198 Z" fill="url(#chestGold)"/>
+            <path d="M 450 198 C 450 92, 408 92, 408 198 Z" fill="url(#chestGold)"/>
+            <path d="M 230 198 L 230 96 L 270 96 L 270 198 Z" fill="url(#chestGold)"/>
+            <!-- Золотий обід між кришкою і основою -->
+            <rect x="46" y="184" width="408" height="22" rx="8" fill="url(#chestGold)" stroke="#5c3b02" stroke-width="3"/>
+          </g>
+
+          <!-- Петлі для двох навісних замків -->
+          <rect x="142" y="175" width="36" height="45" rx="8" fill="url(#chestGold)" stroke="#4f3202" stroke-width="3"/>
+          <rect x="322" y="175" width="36" height="45" rx="8" fill="url(#chestGold)" stroke="#4f3202" stroke-width="3"/>
+
+          <!-- НАВІСНИЙ ЗАМОК 1 (Лівий) -->
+          <g id="padlock-0" style="transform-origin: 160px 245px; transition: transform 0.65s ease, opacity 0.55s ease;">
+            <!-- Дужка замка -->
+            <path id="shackle-0" d="M 138 232 L 138 202 C 138 180, 182 180, 182 202 L 182 232" fill="none" stroke="#d8e2eb" stroke-width="11" stroke-linecap="round" style="transition: transform 0.35s ease;"/>
+            <!-- Корпус замка -->
+            <rect x="122" y="226" width="76" height="66" rx="16" fill="url(#chestGold)" stroke="#523302" stroke-width="4"/>
+            <rect x="130" y="234" width="60" height="50" rx="10" fill="none" stroke="#fff3a6" stroke-width="2" opacity="0.6"/>
+            <!-- Замкова щілина -->
+            <circle cx="160" cy="252" r="8" fill="#211103"/>
+            <polygon points="156,252 164,252 167,274 153,274" fill="#211103"/>
+          </g>
+
+          <!-- НАВІСНИЙ ЗАМОК 2 (Правий) -->
+          <g id="padlock-1" style="transform-origin: 340px 245px; transition: transform 0.65s ease, opacity 0.55s ease;">
+            <!-- Дужка замка -->
+            <path id="shackle-1" d="M 318 232 L 318 202 C 318 180, 362 180, 362 202 L 362 232" fill="none" stroke="#d8e2eb" stroke-width="11" stroke-linecap="round" style="transition: transform 0.35s ease;"/>
+            <!-- Корпус замка -->
+            <rect x="302" y="226" width="76" height="66" rx="16" fill="url(#chestGold)" stroke="#523302" stroke-width="4"/>
+            <rect x="310" y="234" width="60" height="50" rx="10" fill="none" stroke="#fff3a6" stroke-width="2" opacity="0.6"/>
+            <!-- Замкова щілина -->
+            <circle cx="340" cy="252" r="8" fill="#211103"/>
+            <polygon points="336,252 344,252 347,274 333,274" fill="#211103"/>
+          </g>
+        </svg>
+
+        <!-- Іконка-кнопка нового раунду (з'являється після відкриття скрині, без слів) -->
+        <button id="replay-btn" aria-label="New Chest">
+          <svg viewBox="0 0 64 64" width="42" height="42">
+            <path d="M 32 10 A 22 22 0 1 0 54 32" fill="none" stroke="#4a2502" stroke-width="7" stroke-linecap="round"/>
+            <polygon points="32,2 46,12 32,22" fill="#4a2502"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- ПОЛИЦЯ КОЛЕКЦІЇ НАГОРОД (показує відкриті скарби) -->
+      <div id="collection-rack"></div>
+    </div>
+
+    <!-- НИЖНЯ КЛАВІАТУРА ЗОЛОТИХ МОНЕТ (1-9) -->
+    <div id="numpad-bar">
+      <div class="coin-btn" data-num="1">1</div>
+      <div class="coin-btn" data-num="2">2</div>
+      <div class="coin-btn" data-num="3">3</div>
+      <div class="coin-btn" data-num="4">4</div>
+      <div class="coin-btn" data-num="5">5</div>
+      <div class="coin-btn" data-num="6">6</div>
+      <div class="coin-btn" data-num="7">7</div>
+      <div class="coin-btn" data-num="8">8</div>
+      <div class="coin-btn" data-num="9">9</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   НАЛАШТУВАННЯ КОЛЬОРІВ ТА 9 ГЕОМЕТРИЧНИХ ФІГУР (МОЖНА ЛЕГКО РЕДАГУВАТИ)
+   ============================================================================ */
+
+// База кольорів (для стовпчиків зверху таблиці)
+const COLORS_POOL = [
+  { id: 'yellow', main: '#ffd60a', light: '#fff799', dark: '#b58400', stroke: '#7a5600' }, // Жовтий
+  { id: 'green',  main: '#2ec44d', light: '#99f7ab', dark: '#107526', stroke: '#094716' }, // Зелений
+  { id: 'blue',   main: '#1d8cf8', light: '#99d1ff', dark: '#084b94', stroke: '#042b57' }, // Синій
+  { id: 'red',    main: '#ff3b30', light: '#ffa39e', dark: '#9e1008', stroke: '#5c0602' }, // Червоний
+  { id: 'purple', main: '#af52de', light: '#e5b8ff', dark: '#631d87', stroke: '#3a0d52' }, // Фіолетовий
+  { id: 'orange', main: '#ff8811', light: '#ffd099', dark: '#a84c00', stroke: '#632b00' }  // Помаранчевий
+];
+
+// Всі 9 видів геометричних фігур за умовою (круг, овал, квадрат, прямокутник, ромб, трапеція, трикутник, п'ятикутник, шестикутник)
+const SHAPES_POOL = [
+  'circle',     // Круг
+  'oval',       // Овал
+  'square',     // Квадрат
+  'rectangle',  // Прямокутник
+  'rhombus',    // Ромб
+  'trapezoid',  // Трапеція
+  'triangle',   // Трикутник
+  'pentagon',   // П'ятикутник
+  'hexagon'     // Шестикутник
+];
+
+/* ============================================================================
+   ГЕНЕРАТОР ОБ'ЄМНИХ SVG-ФІГУР ТА КОЛЬОРОВИХ КРИСТАЛІВ
+   ============================================================================ */
+
+let svgUid = 0; // Лічильник для унікальних ID градієнтів
+
+/**
+ * Малює одну з 9 геометричних фігур у заданому кольорі (або нейтральному сріблясто-слонової кістки для заголовків рядків справа)
+ */
+function createShapeSVG(shapeType, colorObj = null) {
+  svgUid++;
+  const gradId = `shapeGrad_${svgUid}`;
+  const shineId = `shapeShine_${svgUid}`;
+
+  // Якщо колір не передано — це фігура-заголовок справа таблиці (робимо її благородною перлинно-золотистою)
+  const c = colorObj || {
+    main: '#e8dcc5',
+    light: '#ffffff',
+    dark: '#9e8c6c',
+    stroke: '#4a3d28'
+  };
+
+  let shapeElement = '';
+  let highlightElement = '';
+
+  switch (shapeType) {
+    case 'circle': // Круг
+      shapeElement = `<circle cx="50" cy="50" r="37" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<ellipse cx="38" cy="34" rx="14" ry="8" transform="rotate(-25 38 34)" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'oval': // Овал (чітко витягнутий горизонтально)
+      shapeElement = `<ellipse cx="50" cy="50" rx="44" ry="25" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<ellipse cx="36" cy="40" rx="18" ry="6" transform="rotate(-12 36 40)" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'square': // Квадрат (рівні сторони)
+      shapeElement = `<rect x="17" y="17" width="66" height="66" rx="8" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<rect x="23" y="22" width="54" height="14" rx="5" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'rectangle': // Прямокутник (чітко витягнутий горизонтально, щоб не плутати з квадратом)
+      shapeElement = `<rect x="7" y="27" width="86" height="46" rx="7" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<rect x="13" y="32" width="74" height="12" rx="4" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'rhombus': // Ромб
+      shapeElement = `<polygon points="50,8 90,50 50,92 10,50" stroke-linejoin="round" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<polygon points="50,15 76,43 50,48 24,43" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'trapezoid': // Трапеція
+      shapeElement = `<polygon points="25,20 75,20 93,80 7,80" stroke-linejoin="round" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<polygon points="28,26 72,26 78,42 22,42" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'triangle': // Трикутник
+      shapeElement = `<polygon points="50,10 91,84 9,84" stroke-linejoin="round" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<polygon points="50,18 68,52 32,52" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'pentagon': // П'ятикутник
+      shapeElement = `<polygon points="50,9 91,39 75,87 25,87 9,39" stroke-linejoin="round" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<polygon points="50,16 78,38 50,48 22,38" fill="url(#${shineId})"/>`;
+      break;
+
+    case 'hexagon': // Шестикутник
+      shapeElement = `<polygon points="27,12 73,12 94,50 73,88 27,88 6,50" stroke-linejoin="round" fill="url(#${gradId})" stroke="${c.stroke}" stroke-width="4.5"/>`;
+      highlightElement = `<polygon points="30,18 70,18 82,42 18,42" fill="url(#${shineId})"/>`;
+      break;
+  }
+
+  return `
+    <svg viewBox="0 0 100 100">
+      <defs>
+        <radialGradient id="${gradId}" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="${c.light}"/>
+          <stop offset="45%" stop-color="${c.main}"/>
+          <stop offset="100%" stop-color="${c.dark}"/>
+        </radialGradient>
+        <linearGradient id="${shineId}" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.75"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      ${shapeElement}
+      ${highlightElement}
+    </svg>
+  `;
+}
+
+/**
+ * Малює об'ємну кольорову пляму/самоцвіт для шапки стовпця кольору (без прив'язки до конкретної геометричної фігури)
+ */
+function createColorSwatchSVG(colorObj) {
+  svgUid++;
+  const id = `swatch_${svgUid}`;
+  return `
+    <svg viewBox="0 0 100 100">
+      <defs>
+        <radialGradient id="${id}" cx="35%" cy="30%" r="68%">
+          <stop offset="0%" stop-color="${colorObj.light}"/>
+          <stop offset="50%" stop-color="${colorObj.main}"/>
+          <stop offset="100%" stop-color="${colorObj.dark}"/>
+        </radialGradient>
+      </defs>
+      <!-- Хвиляста палітра-клякса з об'ємним відблиском -->
+      <path d="M 50 10 C 72 8, 92 24, 88 48 C 85 68, 94 84, 72 90 C 52 95, 28 92, 15 76 C 4 62, 12 42, 18 26 C 25 12, 36 11, 50 10 Z"
+            fill="url(#${id})" stroke="${colorObj.stroke}" stroke-width="4.5"/>
+      <ellipse cx="38" cy="30" rx="16" ry="9" transform="rotate(-22 38 30)" fill="rgba(255,255,255,0.65)"/>
+      <circle cx="62" cy="28" r="4.5" fill="rgba(255,255,255,0.5)"/>
+    </svg>
+  `;
+}
+
+/**
+ * Малює реалістичний золотий ключ із самоцвітом
+ */
+function createGoldenKeySVG(gemColor) {
+  svgUid++;
+  const gId = `keyGold_${svgUid}`;
+  return `
+    <svg viewBox="0 0 80 160" width="100%" height="100%">
+      <defs>
+        <linearGradient id="${gId}" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fff6ad"/>
+          <stop offset="45%" stop-color="#f0b429"/>
+          <stop offset="85%" stop-color="#9c6706"/>
+          <stop offset="100%" stop-color="#593802"/>
+        </linearGradient>
+      </defs>
+      <!-- Стрижень та борідка ключа -->
+      <rect x="34" y="55" width="12" height="92" rx="5" fill="url(#${gId})" stroke="#523302" stroke-width="2.5"/>
+      <path d="M 46 112 L 66 112 L 66 122 L 54 122 L 54 130 L 68 130 L 68 142 L 46 142 Z" fill="url(#${gId})" stroke="#523302" stroke-width="2.5"/>
+      <rect x="31" y="64" width="18" height="8" rx="3" fill="url(#${gId})" stroke="#523302" stroke-width="2"/>
+      <!-- Ажурна головка ключа -->
+      <circle cx="40" cy="36" r="26" fill="url(#${gId})" stroke="#523302" stroke-width="3"/>
+      <circle cx="40" cy="36" r="14" fill="#211104" stroke="#fff29c" stroke-width="2"/>
+      <!-- Дорогоцінний камінь у центрі головки -->
+      <circle cx="40" cy="36" r="9" fill="${gemColor}"/>
+      <circle cx="37" cy="33" r="3" fill="#ffffff" opacity="0.8"/>
+    </svg>
+  `;
+}
+
+/* ============================================================================
+   6 НАДДЕТАЛІЗОВАНИХ SVG-НАГОРОД (НЕ ПОВТОРЮЮТЬСЯ ПОКИ ВСІ НЕ ВІДКРИТІ)
+   ============================================================================ */
+const REWARDS_SVG = [
+  // 1. Королівська Корона, Діаманти та Золоті Дублони
+  `<svg viewBox="0 0 320 260" width="100%" height="100%">
+    <defs>
+      <radialGradient id="rwGlow1" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff8b0"/><stop offset="60%" stop-color="#ffae00" stop-opacity="0.4"/><stop offset="100%" stop-color="#ffae00" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="crownG" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fff59e"/><stop offset="50%" stop-color="#f5b01b"/><stop offset="100%" stop-color="#8f5b04"/>
+      </linearGradient>
+      <linearGradient id="diamG" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff"/><stop offset="45%" stop-color="#7ce8ff"/><stop offset="100%" stop-color="#0077cc"/>
+      </linearGradient>
+    </defs>
+    <circle cx="160" cy="135" r="125" fill="url(#rwGlow1)"/>
+    <!-- Розсип золотих монет та перлин -->
+    <g fill="#f7be25" stroke="#8c5a04" stroke-width="2.5">
+      <ellipse cx="85" cy="210" rx="26" ry="12"/><ellipse cx="120" cy="220" rx="28" ry="13"/>
+      <ellipse cx="165" cy="224" rx="30" ry="13"/><ellipse cx="215" cy="218" rx="28" ry="13"/>
+      <ellipse cx="245" cy="205" rx="25" ry="12"/><ellipse cx="145" cy="206" rx="26" ry="12"/>
+    </g>
+    <!-- Оксамитова подушка корони -->
+    <path d="M 88 168 Q 160 115 232 168 Z" fill="#c91429" stroke="#6e0511" stroke-width="3"/>
+    <!-- Золота королівська корона -->
+    <path d="M 75 175 L 62 85 L 112 128 L 160 65 L 208 128 L 258 85 L 245 175 Z" fill="url(#crownG)" stroke="#5c3802" stroke-width="4" stroke-linejoin="round"/>
+    <rect x="73" y="168" width="174" height="24" rx="8" fill="url(#crownG)" stroke="#5c3802" stroke-width="3.5"/>
+    <!-- Самоцвіти на короні -->
+    <circle cx="62" cy="82" r="9" fill="#ff2a4b"/><circle cx="160" cy="60" r="11" fill="#00e5ff"/><circle cx="258" cy="82" r="9" fill="#ff2a4b"/>
+    <polygon points="160,118 175,140 160,162 145,140" fill="#ff1744" stroke="#fff" stroke-width="2"/>
+    <circle cx="110" cy="150" r="9" fill="#00e676" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="210" cy="150" r="9" fill="#00e676" stroke="#fff" stroke-width="1.5"/>
+    <!-- Гігантський огранений діамант попереду -->
+    <polygon points="130,185 190,185 208,205 160,248 112,205" fill="url(#diamG)" stroke="#004c8c" stroke-width="3"/>
+    <polyline points="112,205 208,205 190,185 172,205 160,248 148,205 130,185" fill="none" stroke="#ffffff" stroke-width="2"/>
+  </svg>`,
+
+  // 2. Казкові Солодощі (Пончик у глазурі, Льодяники на паличці, Шоколад, Цукерки)
+  `<svg viewBox="0 0 320 260" width="100%" height="100%">
+    <defs>
+      <radialGradient id="rwGlow2" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffd1ed"/><stop offset="65%" stop-color="#ff4da6" stop-opacity="0.35"/><stop offset="100%" stop-color="#ff4da6" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="donutFrost" cx="40%" cy="35%" r="65%">
+        <stop offset="0%" stop-color="#ff85c2"/><stop offset="60%" stop-color="#e61c7a"/><stop offset="100%" stop-color="#8c0845"/>
+      </radialGradient>
+    </defs>
+    <circle cx="160" cy="135" r="125" fill="url(#rwGlow2)"/>
+    <!-- Плитка молочного шоколаду в золотій фользі -->
+    <g transform="rotate(-16 100 130)">
+      <rect x="48" y="65" width="90" height="130" rx="10" fill="#592b11" stroke="#2e1304" stroke-width="3.5"/>
+      <rect x="56" y="74" width="32" height="28" rx="4" fill="#753b19" stroke="#3b1906" stroke-width="2"/>
+      <rect x="94" y="74" width="32" height="28" rx="4" fill="#753b19" stroke="#3b1906" stroke-width="2"/>
+      <rect x="56" y="108" width="32" height="28" rx="4" fill="#753b19" stroke="#3b1906" stroke-width="2"/>
+      <rect x="94" y="108" width="32" height="28" rx="4" fill="#753b19" stroke="#3b1906" stroke-width="2"/>
+      <path d="M 45 135 L 140 120 L 140 198 L 45 198 Z" fill="#ffd700" stroke="#9e7404" stroke-width="3"/>
+    </g>
+    <!-- Веселковий льодяник на паличці -->
+    <g transform="rotate(18 225 120)">
+      <rect x="220" y="120" width="10" height="110" rx="5" fill="#fff5e6" stroke="#b8a386" stroke-width="2"/>
+      <circle cx="225" cy="95" r="48" fill="#ff3b5c" stroke="#9e0b24" stroke-width="3.5"/>
+      <path d="M 225 95 m -36 0 a 36 36 0 1 0 72 0 a 26 26 0 1 0 -52 0 a 16 16 0 1 0 32 0" fill="none" stroke="#fff7a1" stroke-width="8" stroke-linecap="round"/>
+      <ellipse cx="208" cy="72" rx="16" ry="7" transform="rotate(-25 208 72)" fill="rgba(255,255,255,0.65)"/>
+    </g>
+    <!-- Великий глазурований пончик з посипкою -->
+    <circle cx="155" cy="175" r="56" fill="#e8a856" stroke="#8c5611" stroke-width="4"/>
+    <path d="M 103 165 C 100 130, 210 130, 207 165 C 209 185, 195 198, 185 188 C 175 205, 155 205, 145 190 C 132 204, 102 192, 103 165 Z" fill="url(#donutFrost)"/>
+    <circle cx="155" cy="175" r="18" fill="#471d07" stroke="#8c5611" stroke-width="3"/>
+    <!-- Кольорова посипка -->
+    <g stroke-width="5" stroke-linecap="round">
+      <line x1="125" y1="145" x2="136" y2="140" stroke="#00f5d4"/>
+      <line x1="165" y1="138" x2="178" y2="144" stroke="#ffe600"/>
+      <line x1="182" y1="168" x2="192" y2="162" stroke="#ffffff"/>
+      <line x1="120" y1="175" x2="132" y2="182" stroke="#ffe600"/>
+      <line x1="150" y1="152" x2="158" y2="144" stroke="#70ff00"/>
+    </g>
+  </svg>`,
+
+  // 3. Скарби Океану (Перлинна Мушля, Сапфірова Морська Зірка, Золотий Морський Коник)
+  `<svg viewBox="0 0 320 260" width="100%" height="100%">
+    <defs>
+      <radialGradient id="rwGlow3" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#b8fff9"/><stop offset="60%" stop-color="#00b4d8" stop-opacity="0.4"/><stop offset="100%" stop-color="#00b4d8" stop-opacity="0"/>
+      </radialGradient>
+      <radialGradient id="pearlGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#ffffff"/><stop offset="50%" stop-color="#ffd6eb"/><stop offset="85%" stop-color="#d499b9"/><stop offset="100%" stop-color="#8f5876"/>
+      </radialGradient>
+      <linearGradient id="shellGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffcae5"/><stop offset="50%" stop-color="#db70a6"/><stop offset="100%" stop-color="#6e1b45"/>
+      </linearGradient>
+    </defs>
+    <circle cx="160" cy="135" r="125" fill="url(#rwGlow3)"/>
+    <!-- Кристали аквамарину позаду -->
+    <polygon points="75,180 50,85 85,65 110,175" fill="#00e5ff" stroke="#006978" stroke-width="3"/>
+    <polygon points="245,180 270,80 235,65 210,175" fill="#18ffff" stroke="#006978" stroke-width="3"/>
+    <!-- Розкрита перламутрова мушля -->
+    <path d="M 75 155 C 65 65, 255 65, 245 155 Q 160 185 75 155 Z" fill="url(#shellGrad)" stroke="#4f0e2f" stroke-width="4"/>
+    <path d="M 160 165 L 95 95 M 160 165 L 125 82 M 160 165 L 160 76 M 160 165 L 195 82 M 160 165 L 225 95" stroke="#ffa8d4" stroke-width="3"/>
+    <path d="M 70 170 Q 160 135 250 170 C 260 225, 60 225, 70 170 Z" fill="url(#shellGrad)" stroke="#4f0e2f" stroke-width="4"/>
+    <!-- Сяюча гігантська перлина в центрі -->
+    <circle cx="160" cy="160" r="38" fill="url(#pearlGrad)" stroke="#b57c9c" stroke-width="2.5"/>
+    <ellipse cx="146" cy="144" rx="12" ry="7" transform="rotate(-25 146 144)" fill="#ffffff"/>
+    <!-- Сапфірова морська зірка -->
+    <polygon points="95,165 106,188 132,192 112,210 118,235 95,222 72,235 78,210 58,192 84,188" fill="#0096c7" stroke="#023e8a" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="95" cy="202" r="7" fill="#ffd60a"/>
+  </svg>`,
+
+  // 4. Королівське Морозиво-Сандей з Вишенькою та Вафлями
+  `<svg viewBox="0 0 320 260" width="100%" height="100%">
+    <defs>
+      <radialGradient id="rwGlow4" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff4bd"/><stop offset="60%" stop-color="#ff85a1" stop-opacity="0.4"/><stop offset="100%" stop-color="#ff85a1" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="160" cy="135" r="125" fill="url(#rwGlow4)"/>
+    <!-- Хрусткі вафельні трубочки -->
+    <g transform="rotate(-24 115 110)">
+      <rect x="102" y="38" width="18" height="105" rx="8" fill="#d99441" stroke="#78470a" stroke-width="3"/>
+      <line x1="102" y1="55" x2="120" y2="70" stroke="#78470a" stroke-width="3"/>
+      <line x1="102" y1="80" x2="120" y2="95" stroke="#78470a" stroke-width="3"/>
+    </g>
+    <g transform="rotate(26 205 110)">
+      <rect x="195" y="38" width="18" height="105" rx="8" fill="#d99441" stroke="#78470a" stroke-width="3"/>
+      <line x1="195" y1="55" x2="213" y2="70" stroke="#78470a" stroke-width="3"/>
+      <line x1="195" y1="80" x2="213" y2="95" stroke="#78470a" stroke-width="3"/>
+    </g>
+    <!-- 3 кульки морозива (фісташкова, шоколадна, полунична) -->
+    <circle cx="122" cy="136" r="40" fill="#95e06c" stroke="#3c7a1b" stroke-width="3.5"/>
+    <circle cx="198" cy="136" r="40" fill="#7a4424" stroke="#3d1e0b" stroke-width="3.5"/>
+    <circle cx="160" cy="98" r="44" fill="#ff7597" stroke="#a61c3c" stroke-width="3.5"/>
+    <!-- Шоколадний топінг та вершки -->
+    <path d="M 122 85 Q 160 60 198 85 C 202 108, 185 118, 178 102 C 170 124, 150 124, 142 102 C 132 115, 118 105, 122 85 Z" fill="#4a220b"/>
+    <!-- Глянцева вишенька зверху -->
+    <path d="M 160 58 Q 185 28 205 22" fill="none" stroke="#2b6e12" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="160" cy="60" r="18" fill="#e60026" stroke="#660011" stroke-width="3"/>
+    <ellipse cx="154" cy="54" rx="6" ry="3.5" transform="rotate(-25 154 54)" fill="#ffffff"/>
+    <!-- Кришталева креманка / вафельний конус -->
+    <polygon points="104,154 216,154 185,235 135,235" fill="#e69f49" stroke="#7a480b" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M 118 154 L 175 235 M 148 154 L 192 215 M 182 154 L 140 235 M 202 154 L 158 235" stroke="#9e6014" stroke-width="2.5"/>
+    <ellipse cx="160" cy="238" rx="42" ry="10" fill="#ffd700" stroke="#7a480b" stroke-width="3"/>
+  </svg>`,
+
+  // 5. Давні Золоті Артефакти (Золотий Кубок з Рубінами та Медальйон Сонця)
+  `<svg viewBox="0 0 320 260" width="100%" height="100%">
+    <defs>
+      <radialGradient id="rwGlow5" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffe97d"/><stop offset="65%" stop-color="#ff7b00" stop-opacity="0.4"/><stop offset="100%" stop-color="#ff7b00" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="chaliceG" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#fff6b3"/><stop offset="45%" stop-color="#f2b224"/><stop offset="100%" stop-color="#7d4e03"/>
+      </linearGradient>
+    </defs>
+    <circle cx="160" cy="135" r="125" fill="url(#rwGlow5)"/>
+    <!-- Смарагдовий скіпетр/медальйон позаду -->
+    <circle cx="105" cy="175" r="46" fill="url(#chaliceG)" stroke="#5c3802" stroke-width="4"/>
+    <circle cx="105" cy="175" r="22" fill="#00c853" stroke="#004d1f" stroke-width="3"/>
+    <ellipse cx="98" cy="167" rx="8" ry="4" transform="rotate(-25 98 167)" fill="#b9f6ca"/>
+    <!-- Золотий Королівський Кубок -->
+    <path d="M 140 65 L 240 65 C 240 140, 205 158, 190 162 L 190 212 L 228 228 L 152 228 L 190 212" fill="url(#chaliceG)" stroke="#523202" stroke-width="4" stroke-linejoin="round"/>
+    <rect x="178" y="156" width="24" height="58" rx="6" fill="url(#chaliceG)" stroke="#523202" stroke-width="3.5"/>
+    <ellipse cx="190" cy="228" rx="44" ry="11" fill="url(#chaliceG)" stroke="#523202" stroke-width="3.5"/>
+    <!-- Дорогоцінні рубіни на кубку -->
+    <circle cx="190" cy="108" r="14" fill="#ff1744" stroke="#fff" stroke-width="2"/>
+    <circle cx="162" cy="105" r="8" fill="#00e5ff" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="218" cy="105" r="8" fill="#00e5ff" stroke="#fff" stroke-width="1.5"/>
+  </svg>`,
+
+  // 6. Екзотичний Кошик: Полуниця в Шоколаді, Золотий Ананас та Ягоди
+  `<svg viewBox="0 0 320 260" width="100%" height="100%">
+    <defs>
+      <radialGradient id="rwGlow6" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffd6d6"/><stop offset="60%" stop-color="#ff9900" stop-opacity="0.35"/><stop offset="100%" stop-color="#ff9900" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <circle cx="160" cy="135" r="125" fill="url(#rwGlow6)"/>
+    <!-- Золотий тропічний ананас -->
+    <path d="M 160 72 L 140 25 L 158 48 L 168 18 L 176 48 L 196 26 L 178 72 Z" fill="#2ec44d" stroke="#0d5c1e" stroke-width="3" stroke-linejoin="round"/>
+    <ellipse cx="168" cy="135" rx="48" ry="62" fill="#ffbe19" stroke="#855200" stroke-width="4"/>
+    <path d="M 132 100 L 204 165 M 125 135 L 185 190 M 148 80 L 212 138 M 204 100 L 132 165 M 212 135 L 148 190" stroke="#a66700" stroke-width="3"/>
+    <!-- Велика полуниця в шоколадній глазурі зліва -->
+    <path d="M 75 135 C 50 135, 55 215, 95 225 C 135 215, 140 135, 115 135 Z" fill="#ff2442" stroke="#800516" stroke-width="3.5"/>
+    <path d="M 62 168 Q 95 152 128 168 C 125 205, 110 222, 95 225 C 80 222, 65 205, 62 168 Z" fill="#471f08"/>
+    <path d="M 65 182 Q 80 198 95 180 Q 110 198 124 182" fill="none" stroke="#fff3d1" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 75 135 L 95 120 L 115 135 L 95 144 Z" fill="#2ec44d" stroke="#0d5c1e" stroke-width="2.5"/>
+    <!-- Лохина та золоті ягоди справа -->
+    <circle cx="222" cy="195" r="24" fill="#3a50bf" stroke="#162369" stroke-width="3.5"/>
+    <circle cx="215" cy="188" r="6" fill="#9cb0ff"/>
+    <circle cx="250" cy="210" r="20" fill="#283ca6" stroke="#162369" stroke-width="3.5"/>
+    <circle cx="244" cy="204" r="5" fill="#9cb0ff"/>
+  </svg>`
+];
+
+/* ============================================================================
+   СИНТЕЗАТОР ЗВУКІВ (WEB AUDIO API — БЕЗ ЗОВНІШНІХ ФАЙЛІВ І БЕЗ СЛІВ)
+   ============================================================================ */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Звук вибору клітинки або натискання золотої монети
+  playCoinTap(freq = 620) {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.45, now + 0.09);
+
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  // Звук повороту ключа та клацання замка
+  playLockUnlock() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((n, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(n, now + idx * 0.08);
+      gain.gain.setValueAtTime(0.28, now + idx * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.25);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + idx * 0.08);
+      osc.stop(now + idx * 0.08 + 0.26);
+    });
+  }
+
+  // Звук помилки у 3-значному коді
+  playError() {
+    this.init();
+    const now = this.ctx.currentTime;
+    [210, 165].forEach((n, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(n, now + idx * 0.14);
+      gain.gain.setValueAtTime(0.18, now + idx * 0.14);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.18);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + idx * 0.14);
+      osc.stop(now + idx * 0.14 + 0.2);
+    });
+  }
+
+  // Фанфари відкриття скрині зі скарбами
+  playTreasureFanfare() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const chord = [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98];
+    chord.forEach((n, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      const start = now + idx * 0.09;
+      osc.frequency.setValueAtTime(n, start);
+      gain.gain.setValueAtTime(0.25, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.65);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.66);
+    });
+  }
+
+  // Веселий свист папуги при кліку на нього
+  playParrotChirp() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(900, now);
+    osc.frequency.exponentialRampToValueAtTime(1650, now + 0.08);
+    osc.frequency.exponentialRampToValueAtTime(1150, now + 0.16);
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.19);
+  }
+}
+
+const sfx = new SoundEngine();
+
+/* ============================================================================
+   СИСТЕМА ЧАСТИНОК (ЗОЛОТІ ІСКРИ, СВІТЛЯЧКИ ТА САЛЮТ СКАРБІВ)
+   ============================================================================ */
+const canvas = document.getElementById('fx-canvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+let fireflies = [];
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// Створюємо атмосферних світлячків на фоні
+for (let i = 0; i < 24; i++) {
+  fireflies.push({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    r: 1.8 + Math.random() * 2.5,
+    vx: (Math.random() - 0.5) * 0.45,
+    vy: (Math.random() - 0.5) * 0.45,
+    alpha: Math.random(),
+    dAlpha: 0.008 + Math.random() * 0.012
+  });
+}
+
+function spawnSparkles(x, y, count = 35) {
+  const palette = ['#ffd700', '#fff7a1', '#00f5d4', '#ff4da6', '#52e36a', '#ff8811'];
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 8;
+    particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      size: 4 + Math.random() * 6,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      life: 1,
+      decay: 0.014 + Math.random() * 0.015
+    });
+  }
+}
+
+function animateParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Малюємо світлячків
+  fireflies.forEach(f => {
+    f.x += f.vx;
+    f.y += f.vy;
+    f.alpha += f.dAlpha;
+    if (f.alpha > 1 || f.alpha < 0.15) f.dAlpha *= -1;
+    if (f.x < 0) f.x = canvas.width;
+    if (f.x > canvas.width) f.x = 0;
+    if (f.y < 0) f.y = canvas.height;
+    if (f.y > canvas.height) f.y = 0;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, f.alpha));
+    ctx.fillStyle = '#ffe97d';
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Малюємо святкові іскри
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.18; // Гравітація
+    p.life -= p.decay;
+
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  requestAnimationFrame(animateParticles);
+}
+animateParticles();
+
+/* ============================================================================
+   ЛОГІКА ГРИ ТА КОНТРОЛЬ НЕПОВТОРЮВАНИХ НАГОРОД
+   ============================================================================ */
+
+let activeColors = [];       // 3 обрані кольори для поточного раунду (стовпці)
+let activeShapes = [];       // 3 обрані фігури для поточного раунду (рядки справа)
+let gridNumbers = [];        // Матриця 3x3 з числами 1..9
+let codesData = [[], []];    // 2 завдання по 3 елементи: { row, col, answer, userVal }
+let locksSolved = [false, false];
+let selectedSlot = { codeIdx: 0, slotIdx: 0 }; // Активна клітинка для вводу
+
+// Черга індексів нагород (щоб жодна не повторювалась, поки не випадуть усі 6)
+let rewardBag = [];
+let earnedRewardsSet = new Set();
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function getNextUniqueRewardIndex() {
+  if (rewardBag.length === 0) {
+    rewardBag = shuffleArray([0, 1, 2, 3, 4, 5]);
+  }
+  return rewardBag.pop();
+}
+
+// Ініціалізація полиці колекції нагород
+function initCollectionRack() {
+  const rack = document.getElementById('collection-rack');
+  rack.innerHTML = '';
+  REWARDS_SVG.forEach((svgCode, idx) => {
+    const slot = document.createElement('div');
+    slot.className = 'trophy-slot';
+    slot.id = `trophy-slot-${idx}`;
+    slot.innerHTML = svgCode;
+    rack.appendChild(slot);
+  });
+}
+
+// Емоції папуги Ара
+function triggerParrotEmotion(type) {
+  const parrot = document.getElementById('parrot-container');
+  const wingL = document.getElementById('parrot-wing-left');
+  const wingR = document.getElementById('parrot-wing-right');
+  parrot.classList.remove('happy', 'sad');
+  void parrot.offsetWidth;
+
+  if (type === 'happy') {
+    parrot.classList.add('happy');
+    wingL.style.transform = 'rotate(-35deg)';
+    wingR.style.transform = 'rotate(35deg)';
+    setTimeout(() => {
+      wingL.style.transform = 'rotate(0deg)';
+      wingR.style.transform = 'rotate(0deg)';
+    }, 800);
+  } else if (type === 'sad') {
+    parrot.classList.add('sad');
+    wingL.style.transform = 'rotate(18deg)';
+    setTimeout(() => {
+      wingL.style.transform = 'rotate(0deg)';
+    }, 550);
+  }
+}
+
+document.getElementById('parrot-container').addEventListener('click', () => {
+  sfx.playParrotChirp();
+  triggerParrotEmotion('happy');
+});
+
+/**
+ * Запуск / перегенерація нового раунду гри
+ */
+function startNewRound() {
+  locksSolved = [false, false];
+
+  // Скидаємо стан скрині та замків
+  document.getElementById('chest-lid-closed').style.display = 'block';
+  document.getElementById('chest-lid-open').style.display = 'none';
+  const rewardShowcase = document.getElementById('reward-showcase');
+  rewardShowcase.classList.remove('visible');
+  document.getElementById('replay-btn').classList.remove('show');
+
+  [0, 1].forEach(idx => {
+    const padlock = document.getElementById(`padlock-${idx}`);
+    const shackle = document.getElementById(`shackle-${idx}`);
+    const card = document.getElementById(`code-card-${idx}`);
+    padlock.style.transform = 'translate(0, 0) rotate(0deg) scale(1)';
+    padlock.style.opacity = '1';
+    shackle.style.transform = 'translateY(0)';
+    card.classList.remove('unlocked', 'wrong-shake');
+  });
+
+  // 1. Вибираємо 3 випадкові кольори (стовпці зверху) та 3 випадкові фігури з 9 (рядки справа)
+  activeColors = shuffleArray(COLORS_POOL).slice(0, 3);
+  activeShapes = shuffleArray(SHAPES_POOL).slice(0, 3);
+
+  // 2. Перемішуємо числа 1..9 для матриці 3x3
+  const nums = shuffleArray([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  gridNumbers = [
+    nums.slice(0, 3),
+    nums.slice(3, 6),
+    nums.slice(6, 9)
+  ];
+
+  // 3. Будуємо таблицю 3x3 (зверху кольори, справа фігури)
+  renderMatrixBoard();
+
+  // 4. Генеруємо 2 коди по 3 клітинки (разом 6 різних комбінацій колір+фігура)
+  const allCells = [];
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      allCells.push({ row: r, col: c, answer: gridNumbers[r][c] });
+    }
+  }
+  const pickedCells = shuffleArray(allCells).slice(0, 6);
+
+  codesData[0] = pickedCells.slice(0, 3).map(item => ({ ...item, userVal: '' }));
+  codesData[1] = pickedCells.slice(3, 6).map(item => ({ ...item, userVal: '' }));
+
+  // 5. Малюємо 2 плашки кодів і золоті ключі
+  renderCodeCards();
+
+  // 6. Робимо першу клітинку першого коду активною
+  selectSlot(0, 0);
+}
+
+/**
+ * Рендер таблиці-шифрувальника: зверху 3 кольори, всередині 9 чисел, справа 3 фігури
+ */
+function renderMatrixBoard() {
+  const gridEl = document.getElementById('matrix-grid');
+  gridEl.innerHTML = '';
+
+  // Верхній ряд: 3 кольори + декоративна золота роза вітрів у правому верхньому куті
+  for (let c = 0; c < 3; c++) {
+    const colorCell = document.createElement('div');
+    colorCell.className = 'color-header-cell';
+    colorCell.innerHTML = createColorSwatchSVG(activeColors[c]);
+    gridEl.appendChild(colorCell);
+  }
+
+  const cornerCell = document.createElement('div');
+  cornerCell.className = 'corner-ornament-cell';
+  cornerCell.innerHTML = `
+    <svg viewBox="0 0 80 80" width="65%" height="65%">
+      <polygon points="40,4 49,31 76,40 49,49 40,76 31,49 4,40 31,31" fill="#e8ad2c" stroke="#5c3802" stroke-width="2.5"/>
+      <circle cx="40" cy="40" r="8" fill="#fff3a8"/>
+    </svg>
+  `;
+  gridEl.appendChild(cornerCell);
+
+  // 3 рядки: у кожному рядку 3 числа + 1 фігура СПРАВА
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const numCell = document.createElement('div');
+      numCell.className = 'number-cell';
+      numCell.id = `matrix-cell-${r}-${c}`;
+      numCell.textContent = gridNumbers[r][c];
+
+      // Якщо дитина клікає прямо на число в таблиці — воно підставляється у вибране віконце коду
+      numCell.addEventListener('click', () => {
+        numCell.classList.remove('highlight-hint');
+        void numCell.offsetWidth;
+        numCell.classList.add('highlight-hint');
+        handleNumberInput(gridNumbers[r][c]);
+      });
+
+      gridEl.appendChild(numCell);
+    }
+
+    // Права клітинка рядка — геометрична фігура
+    const shapeCell = document.createElement('div');
+    shapeCell.className = 'shape-row-cell';
+    shapeCell.innerHTML = createShapeSVG(activeShapes[r], null);
+    gridEl.appendChild(shapeCell);
+  }
+}
+
+/**
+ * Рендер двох кодових карток та їхніх золотих ключів
+ */
+function renderCodeCards() {
+  const keyGems = ['#ff2a4b', '#00e5ff'];
+
+  [0, 1].forEach(codeIdx => {
+    const slotsContainer = document.getElementById(`code-slots-${codeIdx}`);
+    slotsContainer.innerHTML = '';
+
+    codesData[codeIdx].forEach((slotData, slotIdx) => {
+      const slotEl = document.createElement('div');
+      slotEl.className = 'code-slot';
+
+      // Зображення кольорової фігури
+      const clueBox = document.createElement('div');
+      clueBox.className = 'target-clue-box';
+      const colorObj = activeColors[slotData.col];
+      const shapeType = activeShapes[slotData.row];
+      clueBox.innerHTML = createShapeSVG(shapeType, colorObj);
+
+      // Поле вводу числа
+      const inputBox = document.createElement('div');
+      inputBox.className = 'digit-input-box';
+      inputBox.id = `input-${codeIdx}-${slotIdx}`;
+      inputBox.textContent = slotData.userVal;
+
+      inputBox.addEventListener('click', () => {
+        if (!locksSolved[codeIdx]) {
+          sfx.playCoinTap(520);
+          selectSlot(codeIdx, slotIdx);
+        }
+      });
+
+      slotEl.appendChild(clueBox);
+      slotEl.appendChild(inputBox);
+      slotsContainer.appendChild(slotEl);
+    });
+
+    // Малюємо ключ у доці
+    const keyWrap = document.getElementById(`key-${codeIdx}`);
+    keyWrap.style.transform = 'translate(0, 0) rotate(0deg) scale(1)';
+    keyWrap.style.opacity = '1';
+    keyWrap.innerHTML = createGoldenKeySVG(keyGems[codeIdx]);
+  });
+}
+
+/**
+ * Вибір активного слота для вводу цифри
+ */
+function selectSlot(codeIdx, slotIdx) {
+  if (locksSolved[codeIdx]) return;
+  selectedSlot = { codeIdx, slotIdx };
+
+  document.querySelectorAll('.digit-input-box').forEach(el => {
+    el.classList.remove('active-slot');
+  });
+
+  const targetEl = document.getElementById(`input-${codeIdx}-${slotIdx}`);
+  if (targetEl) {
+    targetEl.classList.add('active-slot');
+  }
+}
+
+/**
+ * Обробка введеної цифри (1-9) з клавіатури або монет
+ */
+function handleNumberInput(num) {
+  const { codeIdx, slotIdx } = selectedSlot;
+  if (locksSolved[codeIdx]) return;
+
+  sfx.playCoinTap(580 + num * 35);
+
+  // Записуємо цифру в поточний слот
+  codesData[codeIdx][slotIdx].userVal = num;
+  const inputEl = document.getElementById(`input-${codeIdx}-${slotIdx}`);
+  inputEl.textContent = num;
+
+  // Перевіряємо, чи всі 3 цифри цього коду заповнені
+  const currentCode = codesData[codeIdx];
+  const allFilled = currentCode.every(item => item.userVal !== '');
+
+  if (allFilled) {
+    verifyCode(codeIdx);
+  } else {
+    // Переходимо на наступне порожнє віконце в цьому коді
+    for (let i = 0; i < 3; i++) {
+      const nextIdx = (slotIdx + 1 + i) % 3;
+      if (currentCode[nextIdx].userVal === '') {
+        selectSlot(codeIdx, nextIdx);
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Перевірка введеного 3-значного коду для замка `codeIdx`
+ */
+function verifyCode(codeIdx) {
+  const currentCode = codesData[codeIdx];
+  const isCorrect = currentCode.every(item => Number(item.userVal) === item.answer);
+
+  if (isCorrect) {
+    // Код правильний! Блокуємо слоти та запускаємо анімацію ключа і замка
+    locksSolved[codeIdx] = true;
+    sfx.playLockUnlock();
+    triggerParrotEmotion('happy');
+
+    const card = document.getElementById(`code-card-${codeIdx}`);
+    card.classList.add('unlocked');
+
+    for (let i = 0; i < 3; i++) {
+      const el = document.getElementById(`input-${codeIdx}-${i}`);
+      el.classList.remove('active-slot');
+      el.classList.add('locked-slot');
+    }
+
+    animateKeyAndPadlock(codeIdx);
+
+    // Якщо інший код ще не розгаданий — автоматично переводимо курсор туди
+    const otherCodeIdx = codeIdx === 0 ? 1 : 0;
+    if (!locksSolved[otherCodeIdx]) {
+      const firstEmpty = codesData[otherCodeIdx].findIndex(item => item.userVal === '');
+      selectSlot(otherCodeIdx, firstEmpty !== -1 ? firstEmpty : 0);
+    }
+  } else {
+    // Є помилка: підтрушуємо картку і очищаємо неправильні цифри, залишаючи правильні
+    sfx.playError();
+    triggerParrotEmotion('sad');
+
+    const card = document.getElementById(`code-card-${codeIdx}`);
+    card.classList.remove('wrong-shake');
+    void card.offsetWidth;
+    card.classList.add('wrong-shake');
+
+    setTimeout(() => {
+      let firstWrongSlot = -1;
+      currentCode.forEach((item, idx) => {
+        if (Number(item.userVal) !== item.answer) {
+          item.userVal = '';
+          const el = document.getElementById(`input-${codeIdx}-${idx}`);
+          el.textContent = '';
+          if (firstWrongSlot === -1) firstWrongSlot = idx;
+        }
+      });
+      if (firstWrongSlot !== -1) {
+        selectSlot(codeIdx, firstWrongSlot);
+      }
+    }, 450);
+  }
+}
+
+/**
+ * Анімація польоту ключа в навісний замок та його відкриття
+ */
+function animateKeyAndPadlock(codeIdx) {
+  const keyEl = document.getElementById(`key-${codeIdx}`);
+  const padlockEl = document.getElementById(`padlock-${codeIdx}`);
+  const shackleEl = document.getElementById(`shackle-${codeIdx}`);
+
+  const keyRect = keyEl.getBoundingClientRect();
+  const lockRect = padlockEl.getBoundingClientRect();
+
+  const dx = (lockRect.left + lockRect.width / 2) - (keyRect.left + keyRect.width / 2);
+  const dy = (lockRect.top + lockRect.height / 2) - (keyRect.top + keyRect.height / 2);
+
+  // Ключ летить до замка і повертається
+  keyEl.style.transform = `translate(${dx}px, ${dy}px) rotate(90deg) scale(1.15)`;
+
+  setTimeout(() => {
+    // Іскри на замку та підйом дужки
+    spawnSparkles(lockRect.left + lockRect.width / 2, lockRect.top + lockRect.height / 2, 28);
+    shackleEl.style.transform = 'translateY(-18px)';
+
+    setTimeout(() => {
+      // Замок падає вниз і зникає разом із ключем
+      padlockEl.style.transform = 'translateY(90px) rotate(28deg) scale(0.7)';
+      padlockEl.style.opacity = '0';
+      keyEl.style.opacity = '0';
+
+      // Якщо обидва замки відкрито — відчиняємо скриню!
+      if (locksSolved[0] && locksSolved[1]) {
+        setTimeout(openTreasureChest, 450);
+      }
+    }, 350);
+  }, 750);
+}
+
+/**
+ * Відкриття скрині та показ унікальної нагороди
+ */
+function openTreasureChest() {
+  const chestWrapper = document.getElementById('chest-wrapper');
+  chestWrapper.classList.add('chest-rumbling');
+
+  setTimeout(() => {
+    chestWrapper.classList.remove('chest-rumbling');
+
+    // Відкриваємо кришку скрині
+    document.getElementById('chest-lid-closed').style.display = 'none';
+    document.getElementById('chest-lid-open').style.display = 'block';
+
+    // Обираємо унікальну нагороду, яка ще не випадала
+    const rewardIdx = getNextUniqueRewardIndex();
+    earnedRewardsSet.add(rewardIdx);
+
+    const rewardShowcase = document.getElementById('reward-showcase');
+    rewardShowcase.innerHTML = REWARDS_SVG[rewardIdx];
+    rewardShowcase.classList.add('visible');
+
+    // Позначаємо нагороду на полиці колекції
+    const trophySlot = document.getElementById(`trophy-slot-${rewardIdx}`);
+    if (trophySlot) {
+      trophySlot.classList.add('earned');
+    }
+
+    // Святковий звук, радість папуги та великий салют
+    sfx.playTreasureFanfare();
+    triggerParrotEmotion('happy');
+
+    const chestRect = chestWrapper.getBoundingClientRect();
+    const cx = chestRect.left + chestRect.width / 2;
+    const cy = chestRect.top + chestRect.height / 3;
+    spawnSparkles(cx, cy, 85);
+    setTimeout(() => spawnSparkles(cx - 90, cy - 40, 50), 300);
+    setTimeout(() => spawnSparkles(cx + 90, cy - 40, 50), 550);
+
+    // Показуємо круглу золоту кнопку для наступної гри
+    setTimeout(() => {
+      document.getElementById('replay-btn').classList.add('show');
+    }, 900);
+  }, 600);
+}
+
+/* ============================================================================
+   ОБРОБНИКИ ПОДІЙ (ЕКРАННІ МОНЕТИ, ФІЗИЧНА КЛАВІАТУРА, НАСТУПНА СКРИНЯ)
+   ============================================================================ */
+
+// Клік по золотих монетах 1-9 знизу
+document.querySelectorAll('.coin-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const num = Number(btn.getAttribute('data-num'));
+    handleNumberInput(num);
+  });
+});
+
+// Підтримка введення цифр 1-9 з клавіатури комп'ютера
+window.addEventListener('keydown', e => {
+  if (e.key >= '1' && e.key <= '9') {
+    handleNumberInput(Number(e.key));
+  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+    const { codeIdx, slotIdx } = selectedSlot;
+    if (!locksSolved[codeIdx]) {
+      codesData[codeIdx][slotIdx].userVal = '';
+      document.getElementById(`input-${codeIdx}-${slotIdx}`).textContent = '';
+      sfx.playCoinTap(400);
+    }
+  }
+});
+
+// Клік на нагороду або кнопку оновлення генерує нове завдання з новою нагородою
+document.getElementById('replay-btn').addEventListener('click', () => {
+  sfx.playCoinTap(750);
+  startNewRound();
+});
+
+document.getElementById('reward-showcase').addEventListener('click', () => {
+  sfx.playTreasureFanfare();
+  const rect = document.getElementById('reward-showcase').getBoundingClientRect();
+  spawnSparkles(rect.left + rect.width / 2, rect.top + rect.height / 2, 45);
+});
+
+// Старт гри при завантаженні
+initCollectionRack();
+startNewRound();
+</script>
+</body>
+</html>
