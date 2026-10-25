@@ -1,0 +1,2237 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>&lt; = &gt;</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #2b4222;
+      font-family: 'Fredoka', 'Trebuchet MS', sans-serif;
+    }
+
+    #game-root {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Повноекранний Canvas зі сценою, персонажами та коробками */
+    #scene-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+    }
+
+    /* Шар інтерактивного інтерфейсу (завжди в межах екрана) */
+    #ui-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Верхній ряд: дві різьблені дерев'яні таблички з прикладами та центральний латунний медальйон (8% - 22% від верху) */
+    #top-comparison-bar {
+      position: absolute;
+      top: 7vh;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(16px, 3vw, 44px);
+      pointer-events: none;
+    }
+
+    /* Підвісні канати до верхніх дерев'яних табличок */
+    .plaque-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .rope-hangers {
+      position: absolute;
+      top: -8vh;
+      left: 0;
+      right: 0;
+      height: 8.5vh;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 26px;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .rope-strand {
+      width: 8px;
+      height: 100%;
+      background: repeating-linear-gradient(
+        45deg,
+        #c79e61 0px,
+        #c79e61 5px,
+        #8c622b 5px,
+        #8c622b 10px
+      );
+      border-left: 1.5px solid #593a12;
+      border-right: 1.5px solid #593a12;
+      box-shadow: 2px 4px 6px rgba(0, 0, 0, 0.35);
+    }
+
+    /* Різьблена дубова табличка з латунною накладкою */
+    .wood-plaque {
+      position: relative;
+      min-width: clamp(195px, 21vw, 290px);
+      height: clamp(74px, 11vh, 106px);
+      padding: 8px 14px;
+      border-radius: 22px;
+      background:
+        repeating-linear-gradient(
+          8deg,
+          rgba(60, 26, 5, 0.14) 0px,
+          rgba(60, 26, 5, 0.14) 4px,
+          transparent 4px,
+          transparent 11px
+        ),
+        linear-gradient(180deg, #9c5b27 0%, #753e14 52%, #4f2608 100%);
+      border: 4px solid #381904;
+      box-shadow:
+        0 10px 22px rgba(20, 10, 2, 0.45),
+        inset 0 3px 2px rgba(255, 208, 148, 0.35),
+        inset 0 -4px 6px rgba(25, 10, 2, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .plaque-brass-plate {
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      background:
+        radial-gradient(circle at 50% 35%, #f9ebd0 0%, #ebd09e 68%, #cfa563 100%);
+      border: 3px solid #784c12;
+      box-shadow:
+        inset 0 2px 5px rgba(90, 52, 8, 0.35),
+        0 1px 0 rgba(255, 232, 185, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* Латунні заклепки по кутах */
+    .rivet {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #fff2b2, #b87b1e 70%, #523204 100%);
+      border: 1px solid #472b03;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+    .rivet.tl { top: 6px; left: 7px; }
+    .rivet.tr { top: 6px; right: 7px; }
+    .rivet.bl { bottom: 6px; left: 7px; }
+    .rivet.br { bottom: 6px; right: 7px; }
+
+    .expr-value {
+      font-size: clamp(28px, 3.6vw, 48px);
+      font-weight: 700;
+      color: #361805;
+      letter-spacing: 1.5px;
+      text-shadow: 0 2px 0 rgba(255, 245, 220, 0.75);
+    }
+
+    /* Центральний латунно-дубовий медальйон для знака [ ? ] */
+    #central-slot {
+      position: relative;
+      width: clamp(82px, 11.5vh, 112px);
+      height: clamp(82px, 11.5vh, 112px);
+      border-radius: 50%;
+      background: linear-gradient(135deg, #fbe28e 0%, #cf9229 45%, #8f5c0d 80%, #f5cb67 100%);
+      border: 4px solid #3d2105;
+      box-shadow:
+        0 10px 22px rgba(20, 10, 2, 0.48),
+        inset 0 3px 4px rgba(255, 248, 210, 0.7),
+        inset 0 -4px 6px rgba(68, 38, 4, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+    }
+
+    #central-slot-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 42% 35%, #faecd2 0%, #dfc088 70%, #b58947 100%);
+      border: 3px dashed #8c5c19;
+      box-shadow: inset 0 4px 8px rgba(60, 32, 4, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #slot-sign-svg {
+      width: 62%;
+      height: 62%;
+      opacity: 0;
+      transform: scale(0.4);
+      transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #slot-sign-svg.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* ЦЕНТРАЛЬНА ПАНЕЛЬ КНОПОК (<, =, >) — 27%–38% від верху, 100% стабільна, НІКОЛИ не зміщує хітбокс */
+    #center-buttons-dock {
+      position: absolute;
+      top: 26vh;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(14px, 2.2vw, 28px);
+      padding: clamp(10px, 1.5vh, 16px) clamp(20px, 2.6vw, 34px);
+      border-radius: 64px;
+      background:
+        repeating-linear-gradient(
+          12deg,
+          rgba(48, 20, 3, 0.16) 0px,
+          rgba(48, 20, 3, 0.16) 5px,
+          transparent 5px,
+          transparent 13px
+        ),
+        linear-gradient(180deg, #874b1e 0%, #5e300d 55%, #3d1c05 100%);
+      border: 4px solid #291102;
+      box-shadow:
+        0 12px 26px rgba(15, 7, 1, 0.52),
+        inset 0 2px 3px rgba(255, 205, 140, 0.38),
+        inset 0 -4px 6px rgba(15, 6, 1, 0.75);
+      pointer-events: auto;
+    }
+
+    /* Сама кнопка <button> НІКОЛИ не змінює свою позицію чи розмір при hover/active */
+    .sign-choice-btn {
+      position: relative;
+      width: clamp(68px, 9.5vh, 92px);
+      height: clamp(68px, 9.5vh, 92px);
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      outline: none;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Усі візуальні ефекти відбуваються лише на внутрішньому <span> з pointer-events: none */
+    .sign-choice-btn .btn-face {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #fce592 0%, #d4982f 48%, #915d0e 85%, #f5cb69 100%);
+      border: 3px solid #3d2105;
+      box-shadow:
+        0 6px 12px rgba(18, 8, 1, 0.55),
+        inset 0 2px 3px rgba(255, 250, 215, 0.8),
+        inset 0 -3px 5px rgba(77, 43, 4, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      transition: filter 0.16s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .sign-choice-btn .btn-core {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 32%, #fff3db 0%, #ecd2a2 65%, #c79a56 100%);
+      border: 2px solid #7d5012;
+      box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sign-choice-btn:hover .btn-face {
+      filter: brightness(1.1);
+      box-shadow:
+        0 8px 18px rgba(255, 215, 100, 0.45),
+        0 6px 12px rgba(18, 8, 1, 0.6),
+        inset 0 2px 4px rgba(255, 250, 215, 0.95);
+      transform: scale(1.06);
+    }
+
+    .sign-choice-btn:active .btn-face {
+      filter: brightness(0.96);
+      transform: scale(0.95);
+    }
+
+    .sign-choice-btn svg {
+      pointer-events: none;
+      width: 56%;
+      height: 56%;
+    }
+
+    /* Анімація похитування при помилці (без зміщення хітбоксу кнопки) */
+    @keyframes wobbleFace {
+      0%, 100% { transform: rotate(0deg); }
+      20% { transform: rotate(-14deg); }
+      40% { transform: rotate(12deg); }
+      60% { transform: rotate(-9deg); }
+      80% { transform: rotate(6deg); }
+    }
+
+    .wobble-error .btn-face {
+      animation: wobbleFace 0.45s ease;
+    }
+
+    /* Мінімалістична кнопка "Далі" (правий верхній кут, іконка стрілки без слів) */
+    #skip-next-btn {
+      position: absolute;
+      top: clamp(14px, 2.5vh, 26px);
+      right: clamp(16px, 2.5vw, 32px);
+      width: clamp(58px, 8vh, 74px);
+      height: clamp(58px, 8vh, 74px);
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      outline: none;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #skip-next-btn .btn-face {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #9c5b27 0%, #633410 60%, #3b1c05 100%);
+      border: 3px solid #261002;
+      box-shadow:
+        0 8px 16px rgba(15, 7, 1, 0.48),
+        inset 0 2px 3px rgba(255, 210, 150, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      transition: filter 0.16s ease, transform 0.16s ease;
+    }
+
+    #skip-next-btn .btn-core {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #fce694 0%, #d4982f 65%, #966110 100%);
+      border: 2px solid #573605;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #skip-next-btn:hover .btn-face {
+      filter: brightness(1.12);
+      transform: scale(1.06);
+    }
+
+    #skip-next-btn:active .btn-face {
+      transform: scale(0.94);
+    }
+
+    #skip-next-btn svg {
+      pointer-events: none;
+      width: 55%;
+      height: 55%;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-root">
+    <!-- Повноекранне живописне полотно зі сценою, персонажами та 3D-коробками -->
+    <canvas id="scene-canvas"></canvas>
+
+    <!-- Нерухомий та 100% стабільний шар інтерактивних елементів -->
+    <div id="ui-layer">
+      <!-- Верхні дерев'яні таблички з прикладами та центральний медальйон порівняння -->
+      <div id="top-comparison-bar">
+        <div class="plaque-wrapper">
+          <div class="rope-hangers">
+            <div class="rope-strand"></div>
+            <div class="rope-strand"></div>
+          </div>
+          <div class="wood-plaque" id="left-plaque">
+            <div class="plaque-brass-plate">
+              <span class="rivet tl"></span>
+              <span class="rivet tr"></span>
+              <span class="rivet bl"></span>
+              <span class="rivet br"></span>
+              <span class="expr-value" id="left-expr-dom">36 + 8</span>
+            </div>
+          </div>
+        </div>
+
+        <div id="central-slot">
+          <div id="central-slot-inner">
+            <svg id="slot-sign-svg" viewBox="0 0 60 60">
+              <path id="slot-sign-path" d="" fill="none" stroke="#421c04" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="plaque-wrapper">
+          <div class="rope-hangers">
+            <div class="rope-strand"></div>
+            <div class="rope-strand"></div>
+          </div>
+          <div class="wood-plaque" id="right-plaque">
+            <div class="plaque-brass-plate">
+              <span class="rivet tl"></span>
+              <span class="rivet tr"></span>
+              <span class="rivet bl"></span>
+              <span class="rivet br"></span>
+              <span class="expr-value" id="right-expr-dom">40 + 8</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Центральні кнопки вибору знака (<, =, >) прямо посередині екрана між персонажами -->
+      <div id="center-buttons-dock">
+        <button type="button" class="sign-choice-btn" id="btn-less" aria-label="Less">
+          <span class="btn-face">
+            <span class="btn-core">
+              <svg viewBox="0 0 50 50">
+                <path d="M33,12 L15,25 L33,38" fill="none" stroke="#421c04" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </span>
+        </button>
+
+        <button type="button" class="sign-choice-btn" id="btn-equal" aria-label="Equal">
+          <span class="btn-face">
+            <span class="btn-core">
+              <svg viewBox="0 0 50 50">
+                <path d="M14,18 L36,18 M14,32 L36,32" fill="none" stroke="#421c04" stroke-width="8" stroke-linecap="round" />
+              </svg>
+            </span>
+          </span>
+        </button>
+
+        <button type="button" class="sign-choice-btn" id="btn-greater" aria-label="Greater">
+          <span class="btn-face">
+            <span class="btn-core">
+              <svg viewBox="0 0 50 50">
+                <path d="M17,12 L35,25 L17,38" fill="none" stroke="#421c04" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+
+      <!-- Мінімалістична кнопка переходу до наступного завдання у правому верхньому куті -->
+      <button type="button" id="skip-next-btn" aria-label="Next">
+        <span class="btn-face">
+          <span class="btn-core">
+            <svg viewBox="0 0 50 50">
+              <path d="M13,25 L35,25 M25,14 L37,25 L25,36" fill="none" stroke="#3b1903" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /* ============================================================================
+       1. СИНТЕЗАТОР ЗВУКІВ (WEB AUDIO API — БЕЗ СЛІВ ТА ЗОВНІШНІХ ФАЙЛІВ)
+       ============================================================================ */
+    const SoundFX = (() => {
+      let ctx = null;
+
+      function getCtx() {
+        if (!ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          ctx = new AudioCtx();
+        }
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        return ctx;
+      }
+
+      function playHover() {
+        try {
+          const c = getCtx();
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(540, c.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(680, c.currentTime + 0.04);
+          gain.gain.setValueAtTime(0.05, c.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.045);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start();
+          osc.stop(c.currentTime + 0.05);
+        } catch (e) {}
+      }
+
+      function playClick() {
+        try {
+          const c = getCtx();
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(360, c.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(820, c.currentTime + 0.065);
+          gain.gain.setValueAtTime(0.18, c.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.075);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start();
+          osc.stop(c.currentTime + 0.08);
+        } catch (e) {}
+      }
+
+      function playLiftEffort() {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+
+          // Шурхіт крафтового картону та зусилля підйому
+          const bufLen = Math.floor(c.sampleRate * 0.35);
+          const buf = c.createBuffer(1, bufLen, c.sampleRate);
+          const data = buf.getChannelData(0);
+          for (let i = 0; i < bufLen; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufLen) * Math.PI);
+          }
+          const noise = c.createBufferSource();
+          noise.buffer = buf;
+
+          const filter = c.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(350, now);
+          filter.frequency.exponentialRampToValueAtTime(900, now + 0.35);
+          filter.Q.value = 2.4;
+
+          const nGain = c.createGain();
+          nGain.gain.setValueAtTime(0.16, now);
+          nGain.gain.exponentialRampToValueAtTime(0.005, now + 0.35);
+
+          noise.connect(filter);
+          filter.connect(nGain);
+          nGain.connect(c.destination);
+          noise.start(now);
+
+          const osc = c.createOscillator();
+          const oGain = c.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(165, now);
+          osc.frequency.exponentialRampToValueAtTime(370, now + 0.36);
+          oGain.gain.setValueAtTime(0.15, now);
+          oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+          osc.connect(oGain);
+          oGain.connect(c.destination);
+          osc.start(now);
+          osc.stop(now + 0.4);
+        } catch (e) {}
+      }
+
+      function playVictoryAndSigh(isEqual = false) {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+          const chord = [523.25, 659.25, 783.99, 1046.5];
+          chord.forEach((freq, i) => {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + i * 0.07);
+            gain.gain.setValueAtTime(0.001, now + i * 0.07);
+            gain.gain.linearRampToValueAtTime(0.16, now + i * 0.07 + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.55);
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now + i * 0.07);
+            osc.stop(now + i * 0.07 + 0.58);
+          });
+
+          if (!isEqual) {
+            const sigh = c.createOscillator();
+            const sGain = c.createGain();
+            sigh.type = 'sine';
+            sigh.frequency.setValueAtTime(392, now + 0.34);
+            sigh.frequency.linearRampToValueAtTime(285, now + 0.85);
+            sGain.gain.setValueAtTime(0.001, now + 0.34);
+            sGain.gain.linearRampToValueAtTime(0.085, now + 0.44);
+            sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.88);
+            sigh.connect(sGain);
+            sGain.connect(c.destination);
+            sigh.start(now + 0.34);
+            sigh.stop(now + 0.9);
+          }
+        } catch (e) {}
+      }
+
+      function playWoodenThud() {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(135, now);
+          osc.frequency.exponentialRampToValueAtTime(42, now + 0.18);
+          gain.gain.setValueAtTime(0.3, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start(now);
+          osc.stop(now + 0.22);
+        } catch (e) {}
+      }
+
+      function playWoodenBonk() {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(230, now);
+          osc.frequency.linearRampToValueAtTime(150, now + 0.14);
+          osc.frequency.linearRampToValueAtTime(185, now + 0.24);
+          osc.frequency.linearRampToValueAtTime(125, now + 0.36);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start(now);
+          osc.stop(now + 0.4);
+        } catch (e) {}
+      }
+
+      return {
+        playHover,
+        playClick,
+        playLiftEffort,
+        playVictoryAndSigh,
+        playWoodenThud,
+        playWoodenBonk
+      };
+    })();
+
+    /* ============================================================================
+       2. ТОЧНА ПОСЛІДОВНІСТЬ ПРИКЛАДІВ ІЗ ФОТО + НЕСКІНЧЕННИЙ ГЕНЕРАТОР
+       ============================================================================ */
+    const PHOTO_PROBLEMS = [
+      { leftText: '36 + 8', leftVal: 44, rightText: '40 + 8', rightVal: 48, sign: '<' },
+      { leftText: '8 + 4',  leftVal: 12, rightText: '4 + 8',  rightVal: 12, sign: '=' },
+      { leftText: '6 + 3',  leftVal: 9,  rightText: '10 - 4', rightVal: 6,  sign: '>' },
+      { leftText: '18 - 4', leftVal: 14, rightText: '18 - 5', rightVal: 13, sign: '>' },
+      { leftText: '25 + 8', leftVal: 33, rightText: '25 - 8', rightVal: 17, sign: '>' },
+      { leftText: '8 - 6',  leftVal: 2,  rightText: '7 - 5',  rightVal: 2,  sign: '=' },
+      { leftText: '76 + 4', leftVal: 80, rightText: '76 + 2', rightVal: 78, sign: '>' },
+      { leftText: '56 - 6', leftVal: 50, rightText: '56 + 6', rightVal: 62, sign: '<' },
+      { leftText: '4 + 5',  leftVal: 9,  rightText: '9 - 2',  rightVal: 7,  sign: '>' }
+    ];
+
+    let problemIdx = 0;
+    let currentProblem = PHOTO_PROBLEMS[0];
+    let isBusy = false;
+
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function getNextProblem() {
+      if (problemIdx < PHOTO_PROBLEMS.length) {
+        return PHOTO_PROBLEMS[problemIdx++];
+      }
+      const mode = randInt(1, 6);
+      let leftText, leftVal, rightText, rightVal;
+
+      if (mode === 1) {
+        const a = randInt(3, 9);
+        const b = randInt(3, 9);
+        leftText = `${a} + ${b}`; leftVal = a + b;
+        rightText = `${b} + ${a}`; rightVal = b + a;
+      } else if (mode === 2) {
+        const a = randInt(2, 8) * 10 + randInt(2, 7);
+        const b = randInt(2, 8);
+        let c = randInt(2, 8);
+        if (c === b) c = (c % 8) + 1;
+        leftText = `${a} + ${b}`; leftVal = a + b;
+        rightText = `${a} + ${c}`; rightVal = a + c;
+      } else if (mode === 3) {
+        const a = randInt(15, 58);
+        const b = randInt(2, 8);
+        let c = randInt(2, 8);
+        if (c === b) c = (c % 8) + 1;
+        leftText = `${a} - ${b}`; leftVal = a - b;
+        rightText = `${a} - ${c}`; rightVal = a - c;
+      } else if (mode === 4) {
+        const a = randInt(20, 68);
+        const b = randInt(3, 9);
+        if (Math.random() < 0.5) {
+          leftText = `${a} + ${b}`; leftVal = a + b;
+          rightText = `${a} - ${b}`; rightVal = a - b;
+        } else {
+          leftText = `${a} - ${b}`; leftVal = a - b;
+          rightText = `${a} + ${b}`; rightVal = a + b;
+        }
+      } else if (mode === 5) {
+        const diff = randInt(2, 6);
+        const k = randInt(4, 9);
+        let m = randInt(4, 9);
+        if (m === k) m++;
+        leftText = `${k + diff} - ${k}`; leftVal = diff;
+        rightText = `${m + diff} - ${m}`; rightVal = diff;
+      } else {
+        const b = randInt(4, 9);
+        const a = randInt(24, 64);
+        const c = a + (Math.random() < 0.5 ? 10 : -10);
+        leftText = `${a} + ${b}`; leftVal = a + b;
+        rightText = `${c} + ${b}`; rightVal = c + b;
+      }
+
+      const sign = leftVal < rightVal ? '<' : leftVal > rightVal ? '>' : '=';
+      problemIdx++;
+      return { leftText, leftVal, rightText, rightVal, sign };
+    }
+
+    /* ============================================================================
+       3. ПРЯМОНОГА КІНЕМАТИКА ПЕРСОНАЖІВ ТА POSE-СИСТЕМА
+       ============================================================================
+       КРИТИЧНЕ ПРАВИЛО:
+       - Коли персонаж стоїть (IDLE), сумує (SAD), дивується (PUZZLED) або тримає
+         підняту коробку (HOLD_PROUD) — його ноги ПОВНІСТЮ ПРЯМІ (kneeBend = 0)!
+         Стегно, коліно та щиколотка утворюють ідеально пряму вертикальну лінію.
+       - Персонаж нахиляє корпус вперед і лише злегка згинає коліна виключно в момент,
+         коли тягнеться вниз до коробки на підлозі (REACH_BOX) або ставить її назад.
+       ============================================================================ */
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+    function easeOutBack(t) {
+      const c1 = 1.6;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+
+    // Ключові пози у локальному просторі персонажа (де (0,0) — опорна точка стоп на терасі,
+    // а вісь +X спрямована до центру сцени, тобто до коробки персонажа)
+    const KEY_POSES = {
+      // Стоїть рівно на прямих ногах, коробка стоїть попереду на терасі
+      IDLE: {
+        kneeBend: 0,          // 0 = абсолютно прямі ноги!
+        torsoTiltDeg: 0,      // пряма спина
+        headTiltDeg: 2,
+        shoulderDrop: 0,
+        boxX: 162,
+        boxY: -68,            // лежить на підлозі (висота коробки 136, центр на -68)
+        boxRotDeg: 0,
+        handsOnBox: false,
+        frontHandX: 14,
+        frontHandY: -158,
+        backHandX: 28,
+        backHandY: -162,
+        mood: 'neutral'
+      },
+      // Нахиляється вперед за коробкою, охоплює її двома руками
+      REACH_BOX: {
+        kneeBend: 0.16,       // легке фізіологічне згинання лише під час нахилу до підлоги
+        torsoTiltDeg: 52,     // глибокий нахил корпусу вперед до коробки
+        headTiltDeg: -14,
+        shoulderDrop: 0,
+        boxX: 162,
+        boxY: -68,
+        boxRotDeg: 0,
+        handsOnBox: true,
+        frontHandX: 136,
+        frontHandY: -48,
+        backHandX: 178,
+        backHandY: -64,
+        mood: 'effort'
+      },
+      // Проміжна фаза відриву коробки від підлоги, ноги вже випрямляються
+      LIFT_PASSING: {
+        kneeBend: 0.05,
+        torsoTiltDeg: 18,
+        headTiltDeg: -4,
+        shoulderDrop: 0,
+        boxX: 134,
+        boxY: -136,
+        boxRotDeg: -4,
+        handsOnBox: true,
+        frontHandX: 108,
+        frontHandY: -114,
+        backHandX: 150,
+        backHandY: -130,
+        mood: 'effort'
+      },
+      // ПЕРЕМОЖЕЦЬ: стоїть на ПОВНІСТЮ ПРЯМИХ НОГАХ і гордо тримає коробку в руках!
+      HOLD_PROUD: {
+        kneeBend: 0,          // 0 = абсолютно прямі ноги!
+        torsoTiltDeg: -4,     // горда постава
+        headTiltDeg: 5,
+        shoulderDrop: 0,
+        boxX: 112,
+        boxY: -198,           // високо в руках на рівні пояса/грудей
+        boxRotDeg: -5,
+        handsOnBox: true,
+        frontHandX: 86,
+        frontHandY: -174,
+        backHandX: 128,
+        backHandY: -190,
+        mood: 'happy'
+      },
+      // СУМНИЙ ПЕРСОНАЖ: стоїть на ПОВНІСТЮ ПРЯМИХ НОГАХ, похилив голову й плечі
+      SAD_STANDING: {
+        kneeBend: 0,          // 0 = абсолютно прямі ноги!
+        torsoTiltDeg: 11,     // легкий сумний нахил плечей
+        headTiltDeg: 24,      // голова похилена вниз, дивиться на свою легшу коробку
+        shoulderDrop: 10,
+        boxX: 162,
+        boxY: -68,
+        boxRotDeg: 0,
+        handsOnBox: false,
+        frontHandX: 16,
+        frontHandY: -142,
+        backHandX: 26,
+        backHandY: -146,
+        mood: 'sad'
+      },
+      // Здивування при неправильній відповіді (на прямих ногах)
+      PUZZLED: {
+        kneeBend: 0,          // 0 = абсолютно прямі ноги!
+        torsoTiltDeg: -3,
+        headTiltDeg: -10,
+        shoulderDrop: 0,
+        boxX: 162,
+        boxY: -68,
+        boxRotDeg: 0,
+        handsOnBox: false,
+        frontHandX: 44,
+        frontHandY: -220,
+        backHandX: 56,
+        backHandY: -215,
+        mood: 'puzzled'
+      }
+    };
+
+    function blendPoses(a, b, t) {
+      return {
+        kneeBend: lerp(a.kneeBend, b.kneeBend, t),
+        torsoTiltDeg: lerp(a.torsoTiltDeg, b.torsoTiltDeg, t),
+        headTiltDeg: lerp(a.headTiltDeg, b.headTiltDeg, t),
+        shoulderDrop: lerp(a.shoulderDrop, b.shoulderDrop, t),
+        boxX: lerp(a.boxX, b.boxX, t),
+        boxY: lerp(a.boxY, b.boxY, t),
+        boxRotDeg: lerp(a.boxRotDeg, b.boxRotDeg, t),
+        handsOnBox: t > 0.15 ? b.handsOnBox : a.handsOnBox,
+        frontHandX: lerp(a.frontHandX, b.frontHandX, t),
+        frontHandY: lerp(a.frontHandY, b.frontHandY, t),
+        backHandX: lerp(a.backHandX, b.backHandX, t),
+        backHandY: lerp(a.backHandY, b.backHandY, t),
+        mood: t > 0.4 ? b.mood : a.mood
+      };
+    }
+
+    // 2-Bone IK виключно для рук (щоб лікоть згинався природно назад/вниз)
+    function solveArmIK(sx, sy, hx, hy, L1, L2) {
+      let dx = hx - sx;
+      let dy = hy - sy;
+      let d = Math.hypot(dx, dy);
+      const maxReach = L1 + L2 - 0.5;
+      const minReach = Math.abs(L1 - L2) + 0.5;
+      if (d > maxReach) {
+        dx = (dx / d) * maxReach;
+        dy = (dy / d) * maxReach;
+        d = maxReach;
+      } else if (d < minReach) {
+        d = minReach;
+      }
+      const baseAngle = Math.atan2(dy, dx);
+      const cosA = Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+      const angleA = Math.acos(cosA);
+      // bendDir = +1 згинає лікоть природно вниз/назад
+      const elbowAngle = baseAngle + angleA;
+      return {
+        ex: sx + Math.cos(elbowAngle) * L1,
+        ey: sy + Math.sin(elbowAngle) * L1,
+        hx: sx + dx,
+        hy: sy + dy
+      };
+    }
+
+    /* ============================================================================
+       4. ХУДОЖНЄ ВІДМАЛЬОВУВАННЯ СЦЕНИ, ПЕРСОНАЖІВ ТА 3D-КОРОБОК НА CANVAS
+       ============================================================================ */
+    const canvas = document.getElementById('scene-canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Віртуальна система координат 1600 x 900, яка масштабується без обрізання важливих зон
+    const VW = 1600;
+    const VH = 900;
+
+    let girlPose = { ...KEY_POSES.IDLE };
+    let boyPose = { ...KEY_POSES.IDLE };
+    let girlBlink = { timer: 120, closed: false };
+    let boyBlink = { timer: 170, closed: false };
+    let activeSequence = null;
+
+    // Атмосферні елементи живої сцени
+    const clouds = [
+      { x: 180, y: 88, scale: 1.0, speed: 9 },
+      { x: 740, y: 62, scale: 0.82, speed: 6.5 },
+      { x: 1290, y: 102, scale: 0.92, speed: 7.5 }
+    ];
+
+    const butterflies = [
+      { x: 460, y: 470, vx: 0.7, vy: 0.2, phase: 0.4, color1: '#ffb703', color2: '#fb8500' },
+      { x: 1140, y: 450, vx: -0.65, vy: 0.25, phase: 2.1, color1: '#90e0ef', color2: '#00b4d8' }
+    ];
+
+    const floatingLeaves = Array.from({ length: 12 }, () => ({
+      x: Math.random() * VW,
+      y: Math.random() * VH,
+      vx: 0.4 + Math.random() * 0.5,
+      vy: 0.45 + Math.random() * 0.45,
+      size: 7 + Math.random() * 5,
+      rot: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.03,
+      color: ['#8cb33e', '#d9a738', '#c96f32', '#6fa336'][Math.floor(Math.random() * 4)]
+    }));
+
+    const dynamicParticles = [];
+
+    function spawnDustPuff(wx, wy) {
+      for (let i = 0; i < 16; i++) {
+        const offset = (Math.random() - 0.5) * 140;
+        dynamicParticles.push({
+          type: 'dust',
+          x: wx + offset,
+          y: wy + (Math.random() - 0.5) * 10,
+          vx: offset * 0.025 + (Math.random() - 0.5) * 1.5,
+          vy: -0.5 - Math.random() * 1.3,
+          r: 8 + Math.random() * 12,
+          alpha: 0.55,
+          decay: 0.015 + Math.random() * 0.008
+        });
+      }
+    }
+
+    function spawnVictoryStars(wx, wy) {
+      const palette = ['#ffd166', '#f49727', '#80ed99', '#ff6b6b', '#fff3b0'];
+      for (let i = 0; i < 30; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2.2 + Math.random() * 5.2;
+        dynamicParticles.push({
+          type: 'star',
+          x: wx + (Math.random() - 0.5) * 90,
+          y: wy + (Math.random() - 0.5) * 70,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 1.6,
+          size: 6 + Math.random() * 6,
+          rot: Math.random() * Math.PI * 2,
+          vRot: (Math.random() - 0.5) * 0.14,
+          color: palette[i % palette.length],
+          alpha: 1,
+          decay: 0.016 + Math.random() * 0.008
+        });
+      }
+    }
+
+    function spawnSighCloud(wx, wy, dirX) {
+      for (let i = 0; i < 6; i++) {
+        dynamicParticles.push({
+          type: 'sigh',
+          x: wx,
+          y: wy,
+          vx: dirX * (1.1 + Math.random() * 1.2),
+          vy: -0.25 + (Math.random() - 0.5) * 0.5,
+          r: 5 + i * 2.2,
+          alpha: 0.5,
+          decay: 0.012
+        });
+      }
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Допоміжна функція малювання округленого прямокутника
+    function roundRectPath(c, x, y, w, h, r) {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.lineTo(x + w - r, y);
+      c.quadraticCurveTo(x + w, y, x + w, y + r);
+      c.lineTo(x + w, y + h - r);
+      c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      c.lineTo(x + r, y + h);
+      c.quadraticCurveTo(x, y + h, x, y + h - r);
+      c.lineTo(x, y + r);
+      c.quadraticCurveTo(x, y, x + r, y);
+      c.closePath();
+    }
+
+    // Малювання кінцівки (капсула між двома точками)
+    function drawLimbSegment(c, x1, y1, x2, y2, r1, r2, fillStyle, strokeStyle) {
+      const ang = Math.atan2(y2 - y1, x2 - x1);
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      c.save();
+      c.translate(x1, y1);
+      c.rotate(ang);
+      c.beginPath();
+      c.arc(0, 0, r1, Math.PI * 0.5, Math.PI * 1.5);
+      c.lineTo(len, -r2);
+      c.arc(len, 0, r2, -Math.PI * 0.5, Math.PI * 0.5);
+      c.closePath();
+      c.fillStyle = fillStyle;
+      c.fill();
+      if (strokeStyle) {
+        c.lineWidth = 2.2;
+        c.strokeStyle = strokeStyle;
+        c.stroke();
+      }
+      c.restore();
+    }
+
+    // 1. Малювання живого фону: сонячне небо, дерева, кам'яний мур і дерев'яна тераса
+    function drawBackgroundScene(c, timeSec) {
+      // Небо
+      const skyGrad = c.createLinearGradient(0, 0, 0, 610);
+      skyGrad.addColorStop(0, '#62b3e6');
+      skyGrad.addColorStop(0.45, '#a8def2');
+      skyGrad.addColorStop(0.82, '#f7e4b2');
+      skyGrad.addColorStop(1, '#f4c879');
+      c.fillStyle = skyGrad;
+      c.fillRect(-300, -200, VW + 600, 810);
+
+      // М'яке сонячне сяйво
+      const sunGrad = c.createRadialGradient(1180, 110, 15, 1180, 110, 420);
+      sunGrad.addColorStop(0, 'rgba(255, 252, 225, 0.92)');
+      sunGrad.addColorStop(0.35, 'rgba(255, 228, 140, 0.45)');
+      sunGrad.addColorStop(1, 'rgba(255, 200, 90, 0)');
+      c.fillStyle = sunGrad;
+      c.beginPath();
+      c.arc(1180, 110, 420, 0, Math.PI * 2);
+      c.fill();
+
+      // Хмаринки
+      c.fillStyle = 'rgba(255, 250, 238, 0.82)';
+      clouds.forEach((cl) => {
+        const cx = ((cl.x + timeSec * cl.speed) % (VW + 360)) - 180;
+        c.save();
+        c.translate(cx, cl.y);
+        c.scale(cl.scale, cl.scale);
+        c.beginPath();
+        c.arc(0, 20, 28, 0, Math.PI * 2);
+        c.arc(36, 10, 38, 0, Math.PI * 2);
+        c.arc(82, 12, 34, 0, Math.PI * 2);
+        c.arc(118, 22, 26, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      });
+
+      // Далекі сонячні пагорби
+      const hill1 = c.createLinearGradient(0, 370, 0, 560);
+      hill1.addColorStop(0, '#88b87e');
+      hill1.addColorStop(1, '#588752');
+      c.fillStyle = hill1;
+      c.beginPath();
+      c.moveTo(-250, 560);
+      c.quadraticCurveTo(260, 355, 680, 445);
+      c.quadraticCurveTo(1140, 520, 1480, 395);
+      c.lineTo(1850, 445);
+      c.lineTo(1850, 580);
+      c.lineTo(-250, 580);
+      c.closePath();
+      c.fill();
+
+      const hill2 = c.createLinearGradient(0, 420, 0, 560);
+      hill2.addColorStop(0, '#72a858');
+      hill2.addColorStop(1, '#416c35');
+      c.fillStyle = hill2;
+      c.beginPath();
+      c.moveTo(-250, 560);
+      c.quadraticCurveTo(180, 420, 540, 475);
+      c.quadraticCurveTo(960, 535, 1320, 435);
+      c.quadraticCurveTo(1560, 395, 1850, 470);
+      c.lineTo(1850, 580);
+      c.lineTo(-250, 580);
+      c.closePath();
+      c.fill();
+
+      // Розлогі дерева по боках (гойдаються на вітрі)
+      drawGardenTree(c, 105, 520, Math.sin(timeSec * 1.1) * 0.025, 1.05);
+      drawGardenTree(c, 1500, 520, Math.cos(timeSec * 1.0) * 0.025, 1.1);
+
+      // Квітучі кущі вздовж кам'яного муру
+      const bushPositions = [60, 165, 280, 395, 515, 1085, 1205, 1325, 1440, 1545];
+      bushPositions.forEach((bx, idx) => {
+        c.fillStyle = idx % 2 === 0 ? '#447827' : '#558e32';
+        c.beginPath();
+        c.arc(bx, 518, 56 + (idx % 3) * 8, 0, Math.PI * 2);
+        c.fill();
+        // Квіточки
+        c.fillStyle = idx % 2 === 0 ? '#ff8573' : '#ffd166';
+        c.beginPath();
+        c.arc(bx - 16, 492, 6.5, 0, Math.PI * 2);
+        c.arc(bx + 18, 484, 5.5, 0, Math.PI * 2);
+        c.fill();
+      });
+
+      // Кам'яний садовий парапет
+      const wallGrad = c.createLinearGradient(0, 515, 0, 598);
+      wallGrad.addColorStop(0, '#d8c8ae');
+      wallGrad.addColorStop(0.5, '#baa689');
+      wallGrad.addColorStop(1, '#8c785c');
+      c.fillStyle = wallGrad;
+      c.fillRect(-250, 515, VW + 500, 83);
+
+      // Кам'яна кладка парапету
+      c.strokeStyle = 'rgba(95, 76, 52, 0.5)';
+      c.lineWidth = 2;
+      for (let row = 0; row < 2; row++) {
+        const ry = 528 + row * 32;
+        const offset = row * 55;
+        for (let sx = -180 + offset; sx < VW + 180; sx += 110) {
+          roundRectPath(c, sx, ry, 100, 26, 6);
+          c.stroke();
+        }
+      }
+
+      // Верхній карниз парапету
+      const capGrad = c.createLinearGradient(0, 503, 0, 520);
+      capGrad.addColorStop(0, '#efe2ce');
+      capGrad.addColorStop(1, '#b5a082');
+      c.fillStyle = capGrad;
+      c.fillRect(-250, 504, VW + 500, 15);
+      c.strokeStyle = '#736046';
+      c.lineWidth = 2;
+      c.strokeRect(-250, 504, VW + 500, 15);
+
+      // Дерев'яна тераса (Патіо) з теплими дубовими дошками у перспективі
+      const plankColors = [
+        ['#ba7e4a', '#9e6332'],
+        ['#a86c3a', '#8c5324'],
+        ['#b57845', '#965c2c'],
+        ['#9c602f', '#80491c'],
+        ['#ab6f3c', '#8c5323'],
+        ['#8f5424', '#703d14'],
+        ['#7d461a', '#5e310c']
+      ];
+      let curY = 595;
+      plankColors.forEach((pair, i) => {
+        const h = 34 + i * 6;
+        const pg = c.createLinearGradient(0, curY, 0, curY + h);
+        pg.addColorStop(0, pair[0]);
+        pg.addColorStop(1, pair[1]);
+        c.fillStyle = pg;
+        c.fillRect(-300, curY, VW + 600, h);
+
+        // Міждошковий шов
+        c.strokeStyle = '#472409';
+        c.lineWidth = 2.2;
+        c.beginPath();
+        c.moveTo(-300, curY);
+        c.lineTo(VW + 300, curY);
+        c.stroke();
+
+        curY += h;
+      });
+
+      // Перспективні лінії стиків дощок на терасі
+      c.strokeStyle = 'rgba(65, 32, 8, 0.45)';
+      c.lineWidth = 2.2;
+      const deckSeams = [220, 510, 800, 1090, 1380];
+      deckSeams.forEach((topX) => {
+        const botX = 800 + (topX - 800) * 1.38;
+        c.beginPath();
+        c.moveTo(topX, 595);
+        c.lineTo(botX, 960);
+        c.stroke();
+      });
+
+      // Сонячні промені, що падають на терасу
+      c.save();
+      const rayGrad = c.createLinearGradient(1150, 0, 650, 750);
+      rayGrad.addColorStop(0, 'rgba(255, 250, 210, 0.22)');
+      rayGrad.addColorStop(1, 'rgba(255, 250, 210, 0)');
+      c.fillStyle = rayGrad;
+      c.beginPath();
+      c.moveTo(1020, -50);
+      c.lineTo(1280, -50);
+      c.lineTo(920, 780);
+      c.lineTo(540, 780);
+      c.closePath();
+      c.fill();
+      c.restore();
+    }
+
+    function drawGardenTree(c, baseX, baseY, swayRad, scale) {
+      c.save();
+      c.translate(baseX, baseY);
+      c.scale(scale, scale);
+      c.rotate(swayRad);
+
+      // Стовбур
+      const trunkGrad = c.createLinearGradient(-28, 0, 28, 0);
+      trunkGrad.addColorStop(0, '#734c2f');
+      trunkGrad.addColorStop(0.55, '#54351e');
+      trunkGrad.addColorStop(1, '#362010');
+      c.fillStyle = trunkGrad;
+      c.beginPath();
+      c.moveTo(-28, 10);
+      c.quadraticCurveTo(-18, -110, -24, -220);
+      c.lineTo(18, -220);
+      c.quadraticCurveTo(20, -110, 32, 10);
+      c.closePath();
+      c.fill();
+
+      // Пишна крона
+      const puffs = [
+        { x: -95, y: -245, r: 92, c1: '#a2d458', c2: '#4d8228' },
+        { x: 85,  y: -255, r: 98, c1: '#d4c94e', c2: '#638f29' },
+        { x: -8,  y: -295, r: 118, c1: '#a8d95e', c2: '#437522' },
+        { x: -55, y: -195, r: 82, c1: '#c7c248', c2: '#558225' },
+        { x: 48,  y: -198, r: 84, c1: '#9ccf53', c2: '#3f6e1e' }
+      ];
+      puffs.forEach((p) => {
+        const fg = c.createRadialGradient(p.x - p.r * 0.25, p.y - p.r * 0.25, 10, p.x, p.y, p.r);
+        fg.addColorStop(0, p.c1);
+        fg.addColorStop(1, p.c2);
+        c.fillStyle = fg;
+        c.beginPath();
+        c.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        c.fill();
+      });
+
+      c.restore();
+    }
+
+    // 2. Малювання реалістичної 3D картонної коробки з прикладом
+    function drawCardboardBox(c, isBoySide, exprText) {
+      // Коробка має ширину 168, висоту 136 (від y = -68 до y = +68 відносно центру коробки)
+      const w = 168;
+      const h = 136;
+      const x = -w / 2;
+      const y = -h / 2;
+
+      c.save();
+      // Якщо це сторона хлопчика (віддзеркалена система координат), розвертаємо коробку, щоб текст читався зліва направо!
+      if (isBoySide) {
+        c.scale(-1, 1);
+      }
+
+      // 3D бічна грань коробки (з боку персонажа, за яку він береться руками)
+      const sideX = isBoySide ? w / 2 : -w / 2;
+      const sideDir = isBoySide ? 1 : -1;
+
+      // Верхня 3D кришка коробки (перспектива)
+      c.fillStyle = '#e8b67b';
+      c.strokeStyle = '#6b3e14';
+      c.lineWidth = 2.5;
+      c.beginPath();
+      if (!isBoySide) {
+        c.moveTo(x - 24, y);
+        c.lineTo(x, y - 22);
+        c.lineTo(x + w, y - 22);
+        c.lineTo(x + w - 18, y);
+      } else {
+        c.moveTo(x + 18, y);
+        c.lineTo(x, y - 22);
+        c.lineTo(x + w, y - 22);
+        c.lineTo(x + w + 24, y);
+      }
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      // Смужка пакувального скотчу зверху
+      c.fillStyle = 'rgba(247, 232, 198, 0.82)';
+      c.beginPath();
+      c.rect(x + 12, y - 15, w - 24, 7);
+      c.fill();
+
+      // Бічна 3D грань (з отвором-ручкою для рук персонажа)
+      const sideGrad = c.createLinearGradient(0, y, 0, y + h);
+      sideGrad.addColorStop(0, '#b5793b');
+      sideGrad.addColorStop(1, '#87531d');
+      c.fillStyle = sideGrad;
+      c.beginPath();
+      c.moveTo(sideX, y - 22);
+      c.lineTo(sideX + sideDir * 24, y);
+      c.lineTo(sideX + sideDir * 24, y + h);
+      c.lineTo(sideX, y + h - 18);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      // Прорізна ручка на бічній грані
+      c.fillStyle = '#4a2909';
+      c.beginPath();
+      c.ellipse(sideX + sideDir * 12, y + 48, 5, 13, sideDir * 0.35, 0, Math.PI * 2);
+      c.fill();
+
+      // Передня основна грань коробки
+      const frontGrad = c.createLinearGradient(0, y, 0, y + h);
+      frontGrad.addColorStop(0, '#dfa769');
+      frontGrad.addColorStop(0.55, '#c78c4c');
+      frontGrad.addColorStop(1, '#a66b2e');
+      c.fillStyle = frontGrad;
+      roundRectPath(c, x, y, w, h, 4);
+      c.fill();
+      c.stroke();
+
+      // Верхня смужка скотчу на передній грані
+      c.fillStyle = 'rgba(245, 228, 192, 0.8)';
+      c.fillRect(x + 2, y, w - 4, 9);
+
+      // Графічні позначки посилки (стрілочки вгору та штрихкод — без слів)
+      c.strokeStyle = 'rgba(105, 58, 16, 0.65)';
+      c.lineWidth = 2;
+      const stampX = isBoySide ? x + 22 : x + w - 22;
+      c.beginPath();
+      c.moveTo(stampX - 5, y + h - 12);
+      c.lineTo(stampX - 5, y + h - 26);
+      c.moveTo(stampX - 9, y + h - 21);
+      c.lineTo(stampX - 5, y + h - 27);
+      c.lineTo(stampX - 1, y + h - 21);
+
+      c.moveTo(stampX + 5, y + h - 12);
+      c.lineTo(stampX + 5, y + h - 26);
+      c.moveTo(stampX + 1, y + h - 21);
+      c.lineTo(stampX + 5, y + h - 27);
+      c.lineTo(stampX + 9, y + h - 21);
+      c.stroke();
+
+      // Латунно-пергаментна табличка з прикладом прямо на коробці
+      const pw = 136;
+      const ph = 78;
+      const px = -pw / 2;
+      const py = -ph / 2 + 2;
+
+      const brassGrad = c.createLinearGradient(px, py, px + pw, py + ph);
+      brassGrad.addColorStop(0, '#fbe18d');
+      brassGrad.addColorStop(0.5, '#cf942c');
+      brassGrad.addColorStop(1, '#966211');
+      c.fillStyle = brassGrad;
+      roundRectPath(c, px, py, pw, ph, 11);
+      c.fill();
+      c.strokeStyle = '#573607';
+      c.lineWidth = 2.2;
+      c.stroke();
+
+      const plateGrad = c.createLinearGradient(0, py + 5, 0, py + ph - 5);
+      plateGrad.addColorStop(0, '#fbf0d9');
+      plateGrad.addColorStop(1, '#e3c38d');
+      c.fillStyle = plateGrad;
+      roundRectPath(c, px + 6, py + 6, pw - 12, ph - 12, 7);
+      c.fill();
+      c.strokeStyle = '#875715';
+      c.lineWidth = 1.5;
+      c.stroke();
+
+      // Текст прикладу на коробці
+      c.fillStyle = '#331604';
+      c.font = '700 34px "Fredoka", "Trebuchet MS", sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(exprText, 0, py + ph / 2 + 2);
+
+      c.restore();
+    }
+
+    // 3. Повне малювання персонажа (Дівчинка або Хлопчик) з ПРЯМИМИ ногами та 3D-шарами рук навколо коробки
+    function drawCharacterAndBox(c, isBoy, baseX, baseY, pose, exprText, timeSec, blinkState) {
+      c.save();
+      c.translate(baseX, baseY);
+      if (isBoy) {
+        c.scale(-1, 1);
+      }
+
+      // Природне дихання у стані стоячи
+      const breath = Math.sin(timeSec * 2.5 + (isBoy ? 1.4 : 0)) * 2.0;
+
+      // КІНЕМАТИКА ПРЯМИХ НІГ:
+      // Коли kneeBend === 0 (IDLE, HOLD_PROUD, SAD_STANDING, PUZZLED):
+      // Стегно (86px) + гомілка (86px) стоять СТРОГО ВЕРТИКАЛЬНО на одній прямій лінії!
+      const legLength = 172; // 86 + 86
+      const kneeBend = pose.kneeBend; // 0.0 у всіх стоячих позах!
+
+      // Переднє та заднє положення щиколоток (стопи міцно на терасі)
+      const fAnkle = { x: 0, y: -15 };
+      const bAnkle = { x: 22, y: -19 };
+
+      // При kneeBend = 0: коліно знаходиться рівно посередині на вертикальній лінії (x = 0),
+      // а кульшовий суглоб (hip) — строго над щиколоткою (x = 0, y = -15 - 172 = -187).
+      const fKnee = {
+        x: fAnkle.x + kneeBend * 38,
+        y: fAnkle.y - 86 + kneeBend * 14
+      };
+      const bKnee = {
+        x: bAnkle.x + kneeBend * 36,
+        y: bAnkle.y - 86 + kneeBend * 14
+      };
+
+      const hip = {
+        x: fAnkle.x + kneeBend * 16,
+        y: fAnkle.y - legLength + kneeBend * 38 + (kneeBend === 0 ? breath * 0.4 : 0)
+      };
+      const backHip = {
+        x: hip.x + 20,
+        y: hip.y - 4
+      };
+
+      // Кут нахилу тулуба (у радіанах)
+      const torsoRad = (pose.torsoTiltDeg * Math.PI) / 180;
+      const torsoLen = 114;
+
+      // Координати плечового вузла та основи шиї
+      const neckBase = {
+        x: hip.x + Math.sin(torsoRad) * torsoLen,
+        y: hip.y - Math.cos(torsoRad) * torsoLen + breath * 0.7 + pose.shoulderDrop
+      };
+
+      const frontShoulder = {
+        x: neckBase.x - Math.cos(torsoRad) * 6,
+        y: neckBase.y - Math.sin(torsoRad) * 6 + 10
+      };
+      const backShoulder = {
+        x: neckBase.x + Math.cos(torsoRad) * 14,
+        y: neckBase.y + Math.sin(torsoRad) * 14 + 8
+      };
+
+      // Цільові координати кистей рук
+      let fHandTarget = { x: pose.frontHandX, y: pose.frontHandY + breath };
+      let bHandTarget = { x: pose.backHandX, y: pose.backHandY + breath };
+
+      if (pose.handsOnBox) {
+        // Передня рука охоплює ближній бік/низ коробки, задня рука підтримує ззаду/знизу
+        fHandTarget = { x: pose.boxX - 24, y: pose.boxY + 26 };
+        bHandTarget = { x: pose.boxX + 18, y: pose.boxY + 12 };
+      }
+
+      const frontArmIK = solveArmIK(frontShoulder.x, frontShoulder.y, fHandTarget.x, fHandTarget.y, 76, 74);
+      const backArmIK = solveArmIK(backShoulder.x, backShoulder.y, bHandTarget.x, bHandTarget.y, 76, 74);
+
+      // Тіні на дерев'яній терасі під персонажем та під коробкою
+      c.save();
+      c.fillStyle = 'rgba(32, 14, 3, 0.36)';
+      c.beginPath();
+      c.ellipse(12, 2, 62, 15, 0, 0, Math.PI * 2);
+      c.fill();
+
+      const liftHeight = Math.max(0, -68 - pose.boxY);
+      const boxShadowScale = Math.max(0.48, 1 - liftHeight / 230);
+      c.fillStyle = `rgba(32, 14, 3, ${0.42 * boxShadowScale})`;
+      c.beginPath();
+      c.ellipse(pose.boxX, 4, 98 * boxShadowScale, 20 * boxShadowScale, 0, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+
+      // Кольорова палітра одягу та шкіри (Дівчинка vs Хлопчик)
+      const skinFill = isBoy ? '#f4bd97' : '#f9c6a7';
+      const skinStroke = isBoy ? '#ad6c45' : '#b87452';
+      const sleeveBackFill = isBoy ? '#1e5869' : '#b83528';
+      const sleeveFrontFill = isBoy ? '#2b788f' : '#e04b3c';
+      const sleeveStroke = isBoy ? '#103540' : '#781c13';
+      const pantsBackFill = isBoy ? '#59442b' : '#2a4a6e';
+      const pantsFrontFill = isBoy ? '#735839' : '#3b6491';
+      const pantsStroke = isBoy ? '#362614' : '#1b334d';
+
+      /* ---------------- ШАР 1: ЗАДНЯ РУКА (ПОЗАДУ ТУЛУБА ТА КОРОБКИ) ---------------- */
+      drawLimbSegment(c, backShoulder.x, backShoulder.y, backArmIK.ex, backArmIK.ey, 13, 11, sleeveBackFill, sleeveStroke);
+      drawLimbSegment(c, backArmIK.ex, backArmIK.ey, backArmIK.hx, backArmIK.hy, 10.5, 8.5, skinFill, skinStroke);
+      // Кисть задньої руки
+      c.fillStyle = skinFill;
+      c.strokeStyle = skinStroke;
+      c.lineWidth = 2;
+      c.beginPath();
+      c.ellipse(backArmIK.hx + 3, backArmIK.hy + 2, 10, 8, 0.2, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      /* ---------------- ШАР 2: ПРЯМІ НОГИ ТА КРОСІВКИ ---------------- */
+      // Задня нога (стегно + гомілка)
+      drawLimbSegment(c, backHip.x, backHip.y, bKnee.x, bKnee.y, 16, 13.5, pantsBackFill, pantsStroke);
+      drawLimbSegment(c, bKnee.x, bKnee.y, bAnkle.x, bAnkle.y, 13, 11, pantsBackFill, pantsStroke);
+      // Задній кросівок
+      drawSneaker(c, bAnkle.x, bAnkle.y, isBoy ? '#1d3557' : '#a32920', '#f2e8d5');
+
+      // Передня нога (стегно + гомілка)
+      drawLimbSegment(c, hip.x, hip.y, fKnee.x, fKnee.y, 17, 14, pantsFrontFill, pantsStroke);
+      drawLimbSegment(c, fKnee.x, fKnee.y, fAnkle.x, fAnkle.y, 13.5, 11.5, pantsFrontFill, pantsStroke);
+      // Підворот штанів внизу гомілки
+      c.fillStyle = isBoy ? '#523d26' : '#7ea6d4';
+      c.strokeStyle = pantsStroke;
+      c.lineWidth = 2;
+      roundRectPath(c, fAnkle.x - 13, fAnkle.y - 16, 26, 10, 3);
+      c.fill();
+      c.stroke();
+      // Передній кросівок
+      drawSneaker(c, fAnkle.x, fAnkle.y, isBoy ? '#274c77' : '#d94136', '#fff6e8', isBoy ? '#f4b942' : '#ffffff');
+
+      /* ---------------- ШАР 3: ТУЛУБ ТА ГОЛОВА ---------------- */
+      c.save();
+      c.translate(hip.x, hip.y);
+      c.rotate(torsoRad);
+
+      // Таз / основа штанів
+      c.fillStyle = pantsFrontFill;
+      c.strokeStyle = pantsStroke;
+      c.lineWidth = 2.2;
+      c.beginPath();
+      c.ellipse(4, 2, 24, 17, 0, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      if (!isBoy) {
+        // ДІВЧИНКА: теплий кораловий светр + джинсовий комбінезон з латунними ґудзиками
+        const swGrad = c.createLinearGradient(-24, -115, 26, 0);
+        swGrad.addColorStop(0, '#f57162');
+        swGrad.addColorStop(1, '#c93b2b');
+        c.fillStyle = swGrad;
+        c.strokeStyle = '#781c13';
+        c.lineWidth = 2.2;
+        roundRectPath(c, -23, -114, 48, 114, 18);
+        c.fill();
+        c.stroke();
+
+        // Джинсовий комбінезон поверх светра
+        c.fillStyle = '#3b6491';
+        c.strokeStyle = '#1b334d';
+        roundRectPath(c, -22, -66, 46, 68, 8);
+        c.fill();
+        c.stroke();
+
+        // Лямки комбінезона та золоті ґудзики
+        c.fillRect(-13, -113, 9, 50);
+        c.strokeRect(-13, -113, 9, 50);
+        c.fillRect(9, -113, 9, 50);
+        c.strokeRect(9, -113, 9, 50);
+
+        c.fillStyle = '#f7cb57';
+        c.beginPath();
+        c.arc(-8.5, -59, 4, 0, Math.PI * 2);
+        c.arc(13.5, -59, 4, 0, Math.PI * 2);
+        c.fill();
+      } else {
+        // ХЛОПЧИК: бірюзове худі + стьобана гірчично-жовта жилетка
+        c.fillStyle = '#2b788f';
+        c.strokeStyle = '#103540';
+        c.lineWidth = 2.2;
+        roundRectPath(c, -24, -114, 50, 114, 18);
+        c.fill();
+        c.stroke();
+
+        const vestGrad = c.createLinearGradient(-22, -112, 24, 0);
+        vestGrad.addColorStop(0, '#f5be49');
+        vestGrad.addColorStop(1, '#cf8915');
+        c.fillStyle = vestGrad;
+        c.strokeStyle = '#6e4404';
+        roundRectPath(c, -22, -110, 46, 110, 14);
+        c.fill();
+        c.stroke();
+
+        // Прострочка жилетки
+        c.strokeStyle = 'rgba(110, 68, 4, 0.55)';
+        c.beginPath();
+        c.moveTo(-21, -38); c.lineTo(23, -38);
+        c.moveTo(-21, -74); c.lineTo(23, -74);
+        c.stroke();
+
+        // Капюшон худі ззаду шиї
+        c.fillStyle = '#2b788f';
+        c.strokeStyle = '#103540';
+        c.beginPath();
+        c.moveTo(-20, -110);
+        c.quadraticCurveTo(-34, -122, -20, -132);
+        c.quadraticCurveTo(-4, -130, 8, -112);
+        c.closePath();
+        c.fill();
+        c.stroke();
+      }
+
+      // ГОЛОВА ТА ОБЛИЧЧЯ
+      c.save();
+      c.translate(4, -120);
+      const headRad = (pose.headTiltDeg * Math.PI) / 180;
+      c.rotate(headRad);
+
+      // Хвостик дівчинки ззаду голови (гойдається від руху)
+      if (!isBoy) {
+        c.save();
+        const tailSway = Math.sin(timeSec * 3.1) * 0.08 - torsoRad * 0.4;
+        c.translate(-26, -42);
+        c.rotate(tailSway);
+        c.fillStyle = '#7d2e14';
+        c.strokeStyle = '#3d1305';
+        c.lineWidth = 2.2;
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.bezierCurveTo(-32, -16, -56, 8, -50, 38);
+        c.bezierCurveTo(-45, 58, -20, 64, -10, 46);
+        c.bezierCurveTo(-16, 28, -10, 12, 0, 0);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        // Жовта резинка для волосся
+        c.fillStyle = '#ffd166';
+        c.beginPath();
+        c.ellipse(-2, 2, 6, 9, -0.3, 0, Math.PI * 2);
+        c.fill();
+        c.stroke();
+        c.restore();
+      }
+
+      // Шия
+      c.fillStyle = skinFill;
+      c.strokeStyle = skinStroke;
+      c.lineWidth = 2;
+      roundRectPath(c, -7, -14, 15, 22, 7);
+      c.fill();
+      c.stroke();
+
+      // Задня частина зачіски
+      c.fillStyle = isBoy ? '#543518' : '#7d2e14';
+      c.strokeStyle = isBoy ? '#291707' : '#3d1305';
+      c.beginPath();
+      c.arc(-4, -42, 34, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      // Голова / обличчя (3/4 профіль, повернутий до центру сцени)
+      c.fillStyle = skinFill;
+      c.strokeStyle = skinStroke;
+      c.lineWidth = 2.2;
+      c.beginPath();
+      c.moveTo(-23, -42);
+      c.bezierCurveTo(-23, -66, 28, -66, 30, -40);
+      c.bezierCurveTo(32, -20, 27, -5, 11, -4);
+      c.bezierCurveTo(-6, -2, -23, -14, -23, -42);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      // Вушко
+      c.beginPath();
+      c.ellipse(-19, -32, 6.5, 9.5, 0, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      // Теплий рум'янець на щічках
+      c.fillStyle = 'rgba(242, 112, 104, 0.35)';
+      c.beginPath();
+      c.ellipse(4, -24, 7.5, 4.5, 0, 0, Math.PI * 2);
+      c.ellipse(24, -25, 5.5, 4, 0, 0, Math.PI * 2);
+      c.fill();
+
+      // Очі (з природним кліпанням)
+      const eyePositions = [
+        { x: 5, y: -36, rx: 6, ry: 6.8 },
+        { x: 21, y: -37, rx: 5.2, ry: 6.0 }
+      ];
+      eyePositions.forEach((ep) => {
+        if (blinkState.closed) {
+          c.strokeStyle = '#3d1f10';
+          c.lineWidth = 2.5;
+          c.beginPath();
+          c.moveTo(ep.x - ep.rx, ep.y);
+          c.quadraticCurveTo(ep.x, ep.y + 3, ep.x + ep.rx, ep.y);
+          c.stroke();
+        } else {
+          c.fillStyle = '#ffffff';
+          c.strokeStyle = '#4a2916';
+          c.lineWidth = 1.6;
+          c.beginPath();
+          c.ellipse(ep.x, ep.y, ep.rx, ep.ry, 0, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+
+          // Райдужка та зіниця
+          const lookY = pose.mood === 'sad' ? 1.8 : 0.4;
+          c.fillStyle = isBoy ? '#7d4916' : '#2d6e3e';
+          c.beginPath();
+          c.arc(ep.x + 1.4, ep.y + lookY, ep.rx * 0.65, 0, Math.PI * 2);
+          c.fill();
+
+          c.fillStyle = '#17120e';
+          c.beginPath();
+          c.arc(ep.x + 1.6, ep.y + lookY, ep.rx * 0.34, 0, Math.PI * 2);
+          c.fill();
+
+          // Блік в оці
+          c.fillStyle = '#ffffff';
+          c.beginPath();
+          c.arc(ep.x + 0.3, ep.y - 1.6 + lookY * 0.5, 1.4, 0, Math.PI * 2);
+          c.fill();
+        }
+      });
+
+      // Брови залежно від емоції
+      c.strokeStyle = isBoy ? '#291707' : '#3d1305';
+      c.lineWidth = 2.8;
+      c.lineCap = 'round';
+      c.beginPath();
+      if (pose.mood === 'sad') {
+        c.moveTo(-2, -45); c.quadraticCurveTo(4, -49, 10, -51);
+        c.moveTo(16, -51); c.quadraticCurveTo(22, -49, 27, -45);
+      } else if (pose.mood === 'effort') {
+        c.moveTo(-2, -49); c.lineTo(10, -45);
+        c.moveTo(16, -45); c.lineTo(27, -49);
+      } else if (pose.mood === 'happy') {
+        c.moveTo(-2, -49); c.quadraticCurveTo(4, -54, 10, -49);
+        c.moveTo(16, -49); c.quadraticCurveTo(22, -54, 27, -48);
+      } else {
+        c.moveTo(-2, -47); c.quadraticCurveTo(4, -51, 10, -48);
+        c.moveTo(16, -48); c.quadraticCurveTo(22, -51, 27, -47);
+      }
+      c.stroke();
+
+      // Акуратний носик
+      c.strokeStyle = skinStroke;
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(15, -34);
+      c.quadraticCurveTo(21, -28, 16, -24);
+      c.stroke();
+
+      // Рот залежно від емоції
+      c.strokeStyle = '#7d261c';
+      c.lineWidth = 2.6;
+      c.beginPath();
+      if (pose.mood === 'happy') {
+        c.fillStyle = '#b83227';
+        c.moveTo(6, -17);
+        c.quadraticCurveTo(15, -6, 23, -16);
+        c.closePath();
+        c.fill();
+        c.stroke();
+      } else if (pose.mood === 'sad') {
+        c.moveTo(8, -11);
+        c.quadraticCurveTo(15, -18, 22, -11);
+        c.stroke();
+      } else if (pose.mood === 'effort') {
+        c.moveTo(8, -14);
+        c.lineTo(21, -15);
+        c.stroke();
+      } else if (pose.mood === 'puzzled') {
+        c.fillStyle = '#7d261c';
+        c.arc(15, -14, 3.5, 0, Math.PI * 2);
+        c.fill();
+      } else {
+        c.moveTo(8, -16);
+        c.quadraticCurveTo(15, -11, 22, -16);
+        c.stroke();
+      }
+
+      // Передня частина зачіски (чубчик)
+      c.fillStyle = isBoy ? '#543518' : '#7d2e14';
+      c.strokeStyle = isBoy ? '#291707' : '#3d1305';
+      c.lineWidth = 2;
+      c.beginPath();
+      if (!isBoy) {
+        c.moveTo(-25, -42);
+        c.bezierCurveTo(-24, -68, 8, -75, 28, -55);
+        c.bezierCurveTo(18, -53, 6, -48, -4, -52);
+        c.bezierCurveTo(-10, -40, -18, -36, -25, -42);
+      } else {
+        c.moveTo(-26, -40);
+        c.bezierCurveTo(-28, -64, -4, -77, 18, -71);
+        c.bezierCurveTo(28, -74, 38, -64, 32, -52);
+        c.bezierCurveTo(22, -55, 8, -54, -6, -48);
+        c.bezierCurveTo(-14, -40, -20, -36, -26, -40);
+      }
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      c.restore(); // кінець голови
+      c.restore(); // кінець тулуба
+
+      /* ---------------- ШАР 4: 3D-КОРОБКА (МІЖ ЗАДНЬОЮ І ПЕРЕДНЬОЮ РУКОЮ!) ---------------- */
+      c.save();
+      c.translate(pose.boxX, pose.boxY);
+      c.rotate((pose.boxRotDeg * Math.PI) / 180);
+      drawCardboardBox(c, isBoy, exprText);
+      c.restore();
+
+      /* ---------------- ШАР 5: ПЕРЕДНЯ РУКА (ПОВЕРХ КОРОБКИ — СПРАВЖНІЙ 3D ОБХВАТ) ---------------- */
+      drawLimbSegment(c, frontShoulder.x, frontShoulder.y, frontArmIK.ex, frontArmIK.ey, 13.5, 11.5, sleeveFrontFill, sleeveStroke);
+      // Половина передпліччя в рукаві + відкрита кисть
+      const midX = lerp(frontArmIK.ex, frontArmIK.hx, 0.52);
+      const midY = lerp(frontArmIK.ey, frontArmIK.hy, 0.52);
+      drawLimbSegment(c, frontArmIK.ex, frontArmIK.ey, midX, midY, 11, 10, sleeveFrontFill, sleeveStroke);
+      drawLimbSegment(c, midX, midY, frontArmIK.hx, frontArmIK.hy, 9.5, 8.5, skinFill, skinStroke);
+
+      // Долоня та пальці передньої руки, що тримають коробку
+      c.fillStyle = skinFill;
+      c.strokeStyle = skinStroke;
+      c.lineWidth = 2;
+      c.beginPath();
+      c.ellipse(frontArmIK.hx + 3, frontArmIK.hy + 2, 10.5, 8.5, 0.2, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      c.restore();
+    }
+
+    function drawSneaker(c, ankleX, ankleY, mainColor, soleColor, stripeColor) {
+      c.save();
+      c.translate(ankleX, ankleY);
+      c.fillStyle = mainColor;
+      c.strokeStyle = '#261107';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(-15, -4);
+      c.lineTo(27, -1);
+      c.quadraticCurveTo(43, 0, 44, 12);
+      c.lineTo(-17, 12);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      // Світлий носок кросівка
+      c.fillStyle = soleColor;
+      c.beginPath();
+      c.moveTo(24, -1);
+      c.quadraticCurveTo(42, 0, 44, 12);
+      c.lineTo(22, 12);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      if (stripeColor) {
+        c.fillStyle = stripeColor;
+        c.beginPath();
+        c.arc(2, 4, 4, 0, Math.PI * 2);
+        c.fill();
+      }
+
+      // Підошва
+      c.fillStyle = soleColor;
+      roundRectPath(c, -18, 10, 63, 6.5, 3);
+      c.fill();
+      c.stroke();
+      c.restore();
+    }
+
+    /* ============================================================================
+       5. СЦЕНАРІЇ АНІМАЦІЇ ПІСЛЯ ВИБОРУ ЗНАКА
+       ============================================================================ */
+    function startVictorySequence(winner) {
+      // winner: 'girl' | 'boy' | 'both'
+      const t0 = performance.now();
+      let liftSoundDone = false;
+      let winSoundDone = false;
+      let thudSoundDone = false;
+
+      // Позиції коробок у світових координатах для частинок:
+      // Дівчинка стоїть на X = 300, її коробка на X = 300 + 162 = 462, Y = 770
+      // Хлопчик стоїть на X = 1300, його коробка на X = 1300 - 162 = 1138, Y = 770
+      activeSequence = (now) => {
+        const dt = (now - t0) / 1000;
+
+        const evalWinnerPose = (s) => {
+          if (s < 0.52) {
+            // Плавно нахиляється вперед за коробкою та охоплює її руками
+            return blendPoses(KEY_POSES.IDLE, KEY_POSES.REACH_BOX, easeInOutCubic(s / 0.52));
+          } else if (s < 0.85) {
+            if (!liftSoundDone) {
+              liftSoundDone = true;
+              SoundFX.playLiftEffort();
+              if (winner === 'girl' || winner === 'both') spawnDustPuff(462, 770);
+              if (winner === 'boy' || winner === 'both') spawnDustPuff(1138, 770);
+            }
+            return blendPoses(KEY_POSES.REACH_BOX, KEY_POSES.LIFT_PASSING, easeInOutCubic((s - 0.52) / 0.33));
+          } else if (s < 1.22) {
+            // Випрямляє ноги на 100% і піднімає коробку на рівень грудей/пояса
+            const p = Math.min(1, easeOutBack((s - 0.85) / 0.37));
+            return blendPoses(KEY_POSES.LIFT_PASSING, KEY_POSES.HOLD_PROUD, p);
+          } else if (s < 2.55) {
+            if (!winSoundDone) {
+              winSoundDone = true;
+              SoundFX.playVictoryAndSigh(winner === 'both');
+              if (winner === 'girl' || winner === 'both') spawnVictoryStars(430, 560);
+              if (winner === 'boy' || winner === 'both') spawnVictoryStars(1170, 560);
+              if (winner === 'girl') spawnSighCloud(1250, 560, -1);
+              if (winner === 'boy') spawnSighCloud(350, 560, 1);
+            }
+            // Стоїть на ПОВНІСТЮ ПРЯМИХ ногах (kneeBend: 0) і радісно тримає коробку
+            const bob = Math.sin((s - 1.22) * 5.2) * 3.5;
+            return {
+              ...KEY_POSES.HOLD_PROUD,
+              kneeBend: 0,
+              boxY: KEY_POSES.HOLD_PROUD.boxY + bob
+            };
+          } else if (s < 3.12) {
+            // Нахиляється, щоб поставити коробку назад на дерев'яну терасу
+            return blendPoses(KEY_POSES.HOLD_PROUD, KEY_POSES.REACH_BOX, easeInOutCubic((s - 2.55) / 0.57));
+          } else if (s < 3.60) {
+            if (!thudSoundDone) {
+              thudSoundDone = true;
+              SoundFX.playWoodenThud();
+              if (winner === 'girl' || winner === 'both') spawnDustPuff(462, 770);
+              if (winner === 'boy' || winner === 'both') spawnDustPuff(1138, 770);
+            }
+            // Випрямляється назад у стоячу позу з прямими ногами
+            return blendPoses(KEY_POSES.REACH_BOX, KEY_POSES.IDLE, easeInOutCubic((s - 3.12) / 0.48));
+          }
+          return KEY_POSES.IDLE;
+        };
+
+        const evalLoserPose = (s) => {
+          if (s < 0.65) {
+            return KEY_POSES.IDLE;
+          } else if (s < 1.20) {
+            return blendPoses(KEY_POSES.IDLE, KEY_POSES.SAD_STANDING, easeInOutCubic((s - 0.65) / 0.55));
+          } else if (s < 2.95) {
+            const sighWave = Math.sin((s - 1.20) * 3.4) * 2.5;
+            return {
+              ...KEY_POSES.SAD_STANDING,
+              kneeBend: 0,
+              headTiltDeg: KEY_POSES.SAD_STANDING.headTiltDeg + sighWave
+            };
+          } else if (s < 3.60) {
+            return blendPoses(KEY_POSES.SAD_STANDING, KEY_POSES.IDLE, easeInOutCubic((s - 2.95) / 0.65));
+          }
+          return KEY_POSES.IDLE;
+        };
+
+        if (winner === 'girl') {
+          girlPose = evalWinnerPose(dt);
+          boyPose = evalLoserPose(dt);
+        } else if (winner === 'boy') {
+          girlPose = evalLoserPose(dt);
+          boyPose = evalWinnerPose(dt);
+        } else {
+          girlPose = evalWinnerPose(dt);
+          boyPose = evalWinnerPose(dt);
+        }
+
+        if (dt >= 3.62) {
+          activeSequence = null;
+          girlPose = { ...KEY_POSES.IDLE };
+          boyPose = { ...KEY_POSES.IDLE };
+          advanceToNextProblem();
+        }
+      };
+    }
+
+    function startWrongSequence(clickedBtn) {
+      const t0 = performance.now();
+      SoundFX.playWoodenBonk();
+      if (clickedBtn) {
+        clickedBtn.classList.remove('wobble-error');
+        void clickedBtn.offsetWidth;
+        clickedBtn.classList.add('wobble-error');
+      }
+
+      activeSequence = (now) => {
+        const dt = (now - t0) / 1000;
+        if (dt < 0.22) {
+          const p = dt / 0.22;
+          girlPose = blendPoses(KEY_POSES.IDLE, KEY_POSES.PUZZLED, p);
+          boyPose = blendPoses(KEY_POSES.IDLE, KEY_POSES.PUZZLED, p);
+        } else if (dt < 0.58) {
+          girlPose = { ...KEY_POSES.PUZZLED };
+          boyPose = { ...KEY_POSES.PUZZLED };
+        } else if (dt < 0.82) {
+          const p = (dt - 0.58) / 0.24;
+          girlPose = blendPoses(KEY_POSES.PUZZLED, KEY_POSES.IDLE, p);
+          boyPose = blendPoses(KEY_POSES.PUZZLED, KEY_POSES.IDLE, p);
+        } else {
+          hideSlotSign();
+          girlPose = { ...KEY_POSES.IDLE };
+          boyPose = { ...KEY_POSES.IDLE };
+          activeSequence = null;
+          isBusy = false;
+        }
+      };
+    }
+
+    /* ============================================================================
+       6. ПРИВ'ЯЗКА СТАБІЛЬНИХ DOM-КНОПОК ТА ПЕРЕМИКАННЯ ЗАВДАНЬ
+       ============================================================================ */
+    const leftExprDom = document.getElementById('left-expr-dom');
+    const rightExprDom = document.getElementById('right-expr-dom');
+    const leftPlaque = document.getElementById('left-plaque');
+    const rightPlaque = document.getElementById('right-plaque');
+    const slotSignSvg = document.getElementById('slot-sign-svg');
+    const slotSignPath = document.getElementById('slot-sign-path');
+
+    function showSlotSign(sign) {
+      if (sign === '<') {
+        slotSignPath.setAttribute('d', 'M38,14 L18,30 L38,46');
+      } else if (sign === '>') {
+        slotSignPath.setAttribute('d', 'M22,14 L42,30 L22,46');
+      } else {
+        slotSignPath.setAttribute('d', 'M16,22 L44,22 M16,38 L44,38');
+      }
+      slotSignSvg.classList.add('visible');
+    }
+
+    function hideSlotSign() {
+      slotSignSvg.classList.remove('visible');
+    }
+
+    function onSelectSign(chosenSign, btnEl) {
+      if (isBusy) return;
+      isBusy = true;
+      SoundFX.playClick();
+      showSlotSign(chosenSign);
+
+      if (chosenSign === currentProblem.sign) {
+        const winner =
+          currentProblem.sign === '>' ? 'girl' :
+          currentProblem.sign === '<' ? 'boy' : 'both';
+        startVictorySequence(winner);
+      } else {
+        startWrongSequence(btnEl);
+      }
+    }
+
+    function advanceToNextProblem() {
+      hideSlotSign();
+      currentProblem = getNextProblem();
+
+      leftPlaque.style.transform = 'scale(0.9)';
+      rightPlaque.style.transform = 'scale(0.9)';
+
+      setTimeout(() => {
+        leftExprDom.textContent = currentProblem.leftText;
+        rightExprDom.textContent = currentProblem.rightText;
+        leftPlaque.style.transform = 'scale(1)';
+        rightPlaque.style.transform = 'scale(1)';
+        isBusy = false;
+      }, 160);
+    }
+
+    const btnLess = document.getElementById('btn-less');
+    const btnEqual = document.getElementById('btn-equal');
+    const btnGreater = document.getElementById('btn-greater');
+    const btnSkip = document.getElementById('skip-next-btn');
+
+    [btnLess, btnEqual, btnGreater, btnSkip].forEach((b) => {
+      b.addEventListener('mouseenter', () => SoundFX.playHover());
+    });
+
+    btnLess.addEventListener('click', () => onSelectSign('<', btnLess));
+    btnEqual.addEventListener('click', () => onSelectSign('=', btnEqual));
+    btnGreater.addEventListener('click', () => onSelectSign('>', btnGreater));
+
+    btnSkip.addEventListener('click', () => {
+      SoundFX.playClick();
+      activeSequence = null;
+      girlPose = { ...KEY_POSES.IDLE };
+      boyPose = { ...KEY_POSES.IDLE };
+      advanceToNextProblem();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === '<' || e.key === ',') {
+        onSelectSign('<', btnLess);
+      } else if (e.key === 'ArrowDown' || e.key === '=' || e.key === 'Enter') {
+        onSelectSign('=', btnEqual);
+      } else if (e.key === 'ArrowRight' || e.key === '>' || e.key === '.') {
+        onSelectSign('>', btnGreater);
+      }
+    });
+
+    /* ============================================================================
+       7. ГОЛОВНИЙ ЦИКЛ ВІДМАЛЬОВУВАННЯ (60 FPS)
+       ============================================================================ */
+    function updateBlink(blinkObj) {
+      blinkObj.timer--;
+      if (blinkObj.timer <= 0) {
+        blinkObj.closed = true;
+        if (blinkObj.timer <= -8) {
+          blinkObj.closed = false;
+          blinkObj.timer = 110 + Math.floor(Math.random() * 160);
+        }
+      }
+    }
+
+    function drawButterfliesAndParticles(c, timeSec) {
+      // Метелики в сонячному саду
+      butterflies.forEach((b) => {
+        b.x += b.vx;
+        b.y += Math.sin(timeSec * 3.5 + b.phase) * 0.65;
+        if (b.x < 180 || b.x > 1420) b.vx *= -1;
+
+        const wingScale = 0.35 + Math.abs(Math.sin(timeSec * 11 + b.phase)) * 0.65;
+        c.save();
+        c.translate(b.x, b.y);
+        c.rotate(b.vx > 0 ? 0.2 : -0.2);
+        c.scale(1, wingScale);
+
+        c.fillStyle = b.color1;
+        c.beginPath();
+        c.ellipse(-5, -4, 9, 6, -0.4, 0, Math.PI * 2);
+        c.ellipse(5, -4, 9, 6, 0.4, 0, Math.PI * 2);
+        c.fill();
+
+        c.fillStyle = b.color2;
+        c.beginPath();
+        c.ellipse(-4, 4, 6, 4.5, 0.3, 0, Math.PI * 2);
+        c.ellipse(4, 4, 6, 4.5, -0.3, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      });
+
+      // Листячко, що кружляє
+      floatingLeaves.forEach((lf) => {
+        lf.x += lf.vx + Math.sin(timeSec + lf.rot) * 0.25;
+        lf.y += lf.vy;
+        lf.rot += lf.vRot;
+        if (lf.y > VH + 30) {
+          lf.y = -20;
+          lf.x = Math.random() * VW;
+        }
+        if (lf.x > VW + 40) lf.x = -30;
+
+        c.save();
+        c.translate(lf.x, lf.y);
+        c.rotate(lf.rot);
+        c.fillStyle = lf.color;
+        c.beginPath();
+        c.ellipse(0, 0, lf.size, lf.size * 0.48, 0, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      });
+
+      // Динамічні ефекти (хмаринки пилу, зітхання, зірочки перемоги)
+      for (let i = dynamicParticles.length - 1; i >= 0; i--) {
+        const p = dynamicParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= p.decay;
+        if (p.alpha <= 0) {
+          dynamicParticles.splice(i, 1);
+          continue;
+        }
+
+        c.save();
+        c.globalAlpha = Math.max(0, p.alpha);
+        if (p.type === 'dust' || p.type === 'sigh') {
+          p.r += 0.24;
+          c.fillStyle = p.type === 'dust' ? '#d8be98' : '#e6f4f8';
+          c.beginPath();
+          c.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          c.fill();
+        } else if (p.type === 'star') {
+          p.vy += 0.13;
+          p.rot += p.vRot;
+          c.translate(p.x, p.y);
+          c.rotate(p.rot);
+          c.fillStyle = p.color;
+          const s = p.size;
+          c.beginPath();
+          c.moveTo(0, -s);
+          c.lineTo(s * 0.35, -s * 0.35);
+          c.lineTo(s, 0);
+          c.lineTo(s * 0.35, s * 0.35);
+          c.lineTo(0, s);
+          c.lineTo(-s * 0.35, s * 0.35);
+          c.lineTo(-s, 0);
+          c.lineTo(-s * 0.35, -s * 0.35);
+          c.closePath();
+          c.fill();
+        }
+        c.restore();
+      }
+    }
+
+    function renderLoop(now) {
+      const timeSec = now / 1000;
+
+      if (activeSequence) {
+        activeSequence(now);
+      }
+
+      updateBlink(girlBlink);
+      updateBlink(boyBlink);
+
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Адаптивне масштабування так, щоб уся висота (від верхніх табличок до стоп персонажів)
+      // завжди на 100% поміщалася у вікно браузера без обрізання знизу!
+      const scaleX = canvas.width / VW;
+      const scaleY = canvas.height / VH;
+      const scale = Math.min(scaleX, scaleY);
+      const offsetX = (canvas.width - VW * scale) / 2;
+      const offsetY = (canvas.height - VH * scale) / 2;
+
+      ctx.translate(offsetX, offsetY);
+      ctx.scale(scale, scale);
+
+      // 1. Живий фон
+      drawBackgroundScene(ctx, timeSec);
+
+      // 2. Дівчинка ліворуч (стоїть на X = 300, Y = 770) та Хлопчик праворуч (X = 1300, Y = 770)
+      drawCharacterAndBox(ctx, false, 300, 770, girlPose, currentProblem.leftText, timeSec, girlBlink);
+      drawCharacterAndBox(ctx, true, 1300, 770, boyPose, currentProblem.rightText, timeSec, boyBlink);
+
+      // 3. Метелики, листя та частинки
+      drawButterfliesAndParticles(ctx, timeSec);
+
+      ctx.restore();
+      requestAnimationFrame(renderLoop);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      currentProblem = getNextProblem();
+      leftExprDom.textContent = currentProblem.leftText;
+      rightExprDom.textContent = currentProblem.rightText;
+      requestAnimationFrame(renderLoop);
+    });
+  </script>
+</body>
+</html>
