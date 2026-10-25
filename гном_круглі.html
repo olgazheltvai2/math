@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dwarf Cave Hammer Chain</title>
+<style>
+  /* ================= ОСНОВНІ СТИЛІ ТА СКИДАННЯ ================= */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #0b0711;
+    font-family: 'Georgia', 'Trebuchet MS', serif;
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+  }
+
+  /* Головна SVG-сцена печери */
+  #cave-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    transition: transform 0.08s ease;
+  }
+
+  /* Ефект струсу печери під час удару молотом */
+  .cave-impact-shake {
+    animation: caveQuake 0.32s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+
+  @keyframes caveQuake {
+    0%, 100% { transform: translate(0, 0); }
+    20% { transform: translate(-7px, 6px); }
+    40% { transform: translate(7px, -5px); }
+    60% { transform: translate(-5px, -4px); }
+    80% { transform: translate(4px, 5px); }
+  }
+
+  /* ================= ВЕРХНЯ ПАНЕЛЬ НАВІГАЦІЇ ТА ТАЙМЕРА ================= */
+  .top-hud {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 22px;
+    pointer-events: none;
+  }
+
+  .nav-controls {
+    display: flex;
+    gap: 12px;
+    pointer-events: auto;
+  }
+
+  .stone-btn {
+    width: 54px;
+    height: 50px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.7));
+  }
+
+  .stone-btn:hover {
+    transform: translateY(-2px) scale(1.07);
+    filter: drop-shadow(0 6px 12px rgba(255, 190, 70, 0.45)) brightness(1.14);
+  }
+
+  .stone-btn:active {
+    transform: translateY(2px) scale(0.95);
+  }
+
+  .stone-btn:disabled {
+    opacity: 0.38;
+    cursor: default;
+    transform: none;
+    filter: grayscale(0.7) drop-shadow(0 3px 5px rgba(0,0,0,0.5));
+  }
+
+  /* Бронзовий хронометр */
+  .timer-housing {
+    pointer-events: auto;
+    position: relative;
+    width: 215px;
+    height: 70px;
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.85));
+    transition: transform 0.3s ease;
+  }
+
+  .timer-housing.victory-timer {
+    transform: scale(1.12);
+    filter: drop-shadow(0 0 24px rgba(255, 215, 70, 0.9));
+  }
+
+  /* ================= НИЖНЯ КАМ'ЯНА КЛАВІАТУРА З ЧИСЛАМИ ================= */
+  .keypad-ledge {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    padding: 8px 16px 14px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: clamp(6px, 0.95vw, 13px);
+    flex-wrap: wrap;
+    background: linear-gradient(180deg, rgba(14, 9, 22, 0) 0%, rgba(12, 8, 18, 0.9) 38%, #08050d 100%);
+  }
+
+  .num-stone {
+    position: relative;
+    width: clamp(62px, 7.5vw, 94px);
+    height: clamp(56px, 7vh, 74px);
+    border: none;
+    background: none;
+    cursor: pointer;
+    transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.16s;
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.8));
+  }
+
+  .num-stone:hover {
+    transform: translateY(-5px) scale(1.07);
+    filter: drop-shadow(0 10px 14px rgba(255, 190, 70, 0.45)) brightness(1.15);
+  }
+
+  .num-stone:active {
+    transform: translateY(2px) scale(0.95);
+  }
+
+  .num-stone svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .num-stone.wrong-shake {
+    animation: stoneShake 0.42s ease;
+  }
+
+  @keyframes stoneShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px) rotate(-4deg); }
+    40% { transform: translateX(8px) rotate(4deg); }
+    60% { transform: translateX(-6px) rotate(-2deg); }
+    80% { transform: translateX(6px) rotate(2deg); }
+  }
+
+  /* ================= АНІМАЦІЇ ПЕЧЕРИ, ЗАВАЛІВ ТА ГНОМА ================= */
+  .lantern-glow {
+    animation: flickerGlow 3.2s infinite ease-in-out alternate;
+    transform-origin: center;
+  }
+
+  @keyframes flickerGlow {
+    0% { opacity: 0.76; transform: scale(0.96); }
+    50% { opacity: 0.96; transform: scale(1.04); }
+    100% { opacity: 0.82; transform: scale(0.99); }
+  }
+
+  /* Завали з породи */
+  .obstacle-group {
+    cursor: pointer;
+    transition: filter 0.25s ease;
+  }
+
+  .obstacle-group.active-target .rockfall-pile {
+    filter: url(#activeRockGlow);
+  }
+
+  .obstacle-group:hover .rockfall-pile {
+    filter: brightness(1.14);
+  }
+
+  /* Стан розбитого завалу: купа каміння розлітається, відкриваючи прохід */
+  .obstacle-group.smashed .rockfall-pile {
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.15);
+    transition: opacity 0.18s ease, transform 0.22s ease;
+  }
+
+  .obstacle-group.smashed .cleared-pass-remnant {
+    opacity: 1;
+  }
+
+  .cleared-pass-remnant {
+    opacity: 0;
+    transition: opacity 0.28s ease;
+  }
+
+  /* Фінальний самоцвіт */
+  #final-gem-group {
+    cursor: pointer;
+    transition: transform 0.3s ease, filter 0.3s ease;
+  }
+
+  #final-gem-group:hover {
+    filter: brightness(1.18) drop-shadow(0 0 18px rgba(255, 215, 0, 0.75));
+  }
+
+  #final-gem-group.active-target {
+    filter: drop-shadow(0 0 24px rgba(255, 220, 80, 0.98));
+  }
+
+  /* Дихання гнома у спокої */
+  #dwarf-idle-breathe {
+    animation: dwarfBreathe 2.1s infinite ease-in-out;
+    transform-origin: 0px 45px;
+  }
+
+  @keyframes dwarfBreathe {
+    0%, 100% { transform: scaleY(1) translateY(0); }
+    50% { transform: scaleY(1.025) translateY(-2px); }
+  }
+
+  /* Анімація бігу ніг гнома під час переходу */
+  .dwarf-walking #leg-back {
+    animation: legStepBack 0.22s infinite alternate ease-in-out;
+    transform-origin: -8px 36px;
+  }
+  .dwarf-walking #leg-front {
+    animation: legStepFront 0.22s infinite alternate ease-in-out;
+    transform-origin: 10px 36px;
+  }
+
+  @keyframes legStepBack {
+    from { transform: rotate(-22deg); }
+    to { transform: rotate(22deg); }
+  }
+  @keyframes legStepFront {
+    from { transform: rotate(22deg); }
+    to { transform: rotate(-22deg); }
+  }
+
+  /* Повноцінний замах корпусом і потужний удар дворучним молотом */
+  .hammer-strike-anim #dwarf-upper-body {
+    animation: torsoHammerSmash 0.48s cubic-bezier(0.22, 0.61, 0.36, 1);
+    transform-origin: 0px 25px;
+  }
+
+  .hammer-strike-anim #dwarf-hammer-rig {
+    animation: armsHammerSmash 0.48s cubic-bezier(0.22, 0.61, 0.36, 1);
+    transform-origin: 6px -6px;
+  }
+
+  @keyframes torsoHammerSmash {
+    0%   { transform: rotate(0deg) translateY(0); }
+    42%  { transform: rotate(-26deg) translateY(-6px); } /* Сильний замах назад */
+    68%  { transform: rotate(22deg) translateY(5px); }   /* Різкий випад уперед у скелю */
+    85%  { transform: rotate(12deg) translateY(2px); }
+    100% { transform: rotate(0deg) translateY(0); }
+  }
+
+  @keyframes armsHammerSmash {
+    0%   { transform: rotate(0deg); }
+    42%  { transform: rotate(-112deg); } /* Молот високо за головою */
+    68%  { transform: rotate(52deg); }   /* Удар бойком молота в каміння */
+    82%  { transform: rotate(38deg); }
+    100% { transform: rotate(0deg); }
+  }
+
+  /* Стрибок радості */
+  .dwarf-victory-jump {
+    animation: victoryJump 0.55s ease infinite alternate;
+  }
+
+  @keyframes victoryJump {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-22px); }
+  }
+
+  /* Хитання при помилці */
+  .dwarf-sad-shake {
+    animation: sadShake 0.45s ease;
+  }
+
+  @keyframes sadShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-10px) rotate(-4deg); }
+    40% { transform: translateX(10px) rotate(4deg); }
+    60% { transform: translateX(-7px) rotate(-3deg); }
+    80% { transform: translateX(7px) rotate(3deg); }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+
+  <!-- ================= ВЕРХНЯ ПАНЕЛЬ: КНОПКИ НАЗАД / ДАЛІ ТА ТАЙМЕР ================= -->
+  <div class="top-hud">
+    <div class="nav-controls">
+      <!-- Кнопка "Попередній рівень" -->
+      <button class="stone-btn" id="btn-prev" title="Попередній рівень">
+        <svg viewBox="0 0 60 54">
+          <defs>
+            <linearGradient id="btnRockGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#635873"/>
+              <stop offset="55%" stop-color="#3f364b"/>
+              <stop offset="100%" stop-color="#221c29"/>
+            </linearGradient>
+            <linearGradient id="goldArrowGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffe57f"/>
+              <stop offset="50%" stop-color="#ffb300"/>
+              <stop offset="100%" stop-color="#c67c00"/>
+            </linearGradient>
+          </defs>
+          <polygon points="8,8 52,5 57,26 50,48 12,50 4,29" fill="url(#btnRockGrad)" stroke="#9c7e54" stroke-width="2.5"/>
+          <polygon points="12,11 48,9 52,26 46,44 15,45 9,28" fill="none" stroke="#ffffff22" stroke-width="1.5"/>
+          <path d="M36,15 L20,27 L36,39 L33,27 Z" fill="url(#goldArrowGrad)" stroke="#5c3800" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      <!-- Кнопка "Далі" (одразу перехід на наступний рівень) -->
+      <button class="stone-btn" id="btn-next" title="Наступний рівень">
+        <svg viewBox="0 0 60 54">
+          <polygon points="6,6 50,8 56,28 48,49 10,47 4,25" fill="url(#btnRockGrad)" stroke="#9c7e54" stroke-width="2.5"/>
+          <polygon points="10,10 47,12 51,28 44,44 14,43 9,25" fill="none" stroke="#ffffff22" stroke-width="1.5"/>
+          <path d="M24,15 L40,27 L24,39 L27,27 Z" fill="url(#goldArrowGrad)" stroke="#5c3800" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      <!-- Кнопка звуку -->
+      <button class="stone-btn" id="btn-sound" title="Звук">
+        <svg viewBox="0 0 60 54">
+          <polygon points="7,7 53,6 56,29 49,48 11,49 5,27" fill="url(#btnRockGrad)" stroke="#9c7e54" stroke-width="2.5"/>
+          <path id="sound-icon-path" d="M18,22 L25,22 L33,14 L33,40 L25,32 L18,32 Z M38,19 C42,23 42,31 38,35 M42,14 C48,21 48,33 42,40"
+                fill="url(#goldArrowGrad)" stroke="#ffe57f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Бронзовий печерний хронометр -->
+    <div class="timer-housing" id="timer-box">
+      <svg viewBox="0 0 240 82" width="100%" height="100%">
+        <defs>
+          <linearGradient id="brassRim" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#f7d070"/>
+            <stop offset="35%" stop-color="#b87d28"/>
+            <stop offset="70%" stop-color="#6e430c"/>
+            <stop offset="100%" stop-color="#d49b3b"/>
+          </linearGradient>
+          <linearGradient id="crystalScreen" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#192836"/>
+            <stop offset="50%" stop-color="#0d1722"/>
+            <stop offset="100%" stop-color="#1c3144"/>
+          </linearGradient>
+        </defs>
+        <line x1="48" y1="0" x2="48" y2="16" stroke="#8a6229" stroke-width="5"/>
+        <line x1="192" y1="0" x2="192" y2="16" stroke="#8a6229" stroke-width="5"/>
+        <g id="timer-gear" transform="translate(32, 43)">
+          <circle r="22" fill="#8c5a19" stroke="#f5cb6c" stroke-width="2"/>
+          <circle r="14" fill="#3a2307"/>
+          <path d="M-4,-25 L4,-25 L5,-19 L-5,-19 Z M-4,25 L4,25 L5,19 L-5,19 Z M-25,-4 L-25,4 L-19,5 L-19,-5 Z M25,-4 L25,4 L19,5 L19,-5 Z" fill="#d9a143"/>
+        </g>
+        <polygon points="34,14 208,11 226,42 206,72 32,74 16,44" fill="url(#brassRim)" stroke="#3b2104" stroke-width="3"/>
+        <polygon points="42,20 200,18 214,42 199,65 40,67 27,44" fill="url(#crystalScreen)" stroke="#f9d87c" stroke-width="1.8"/>
+        <polygon points="45,22 195,20 180,35 38,38" fill="#ffffff" opacity="0.07"/>
+        <g transform="translate(52, 43)">
+          <polygon points="-10,-12 10,-12 2,0 10,12 -10,12 -2,0" fill="#ffca4b" stroke="#784b08" stroke-width="1.5"/>
+          <circle cx="0" cy="0" r="3.5" fill="#fff3b0"/>
+        </g>
+        <text id="timer-text" x="136" y="53" text-anchor="middle" fill="#ffe885"
+              font-family="'Courier New', monospace" font-weight="bold" font-size="31"
+              style="filter: drop-shadow(0 0 6px rgba(255, 200, 50, 0.75));">00:00.0</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ================= ГОЛОВНА SVG-СЦЕНА ПЕЧЕРИ ================= -->
+  <svg id="cave-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Глибокий фон печери, який сподобався -->
+      <radialGradient id="caveDepthGrad" cx="55%" cy="44%" r="72%">
+        <stop offset="0%" stop-color="#372650"/>
+        <stop offset="45%" stop-color="#1f1530"/>
+        <stop offset="80%" stop-color="#120c1c"/>
+        <stop offset="100%" stop-color="#08050d"/>
+      </radialGradient>
+
+      <radialGradient id="lanternLightGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffefc2" stop-opacity="0.95"/>
+        <stop offset="26%" stop-color="#ffae33" stop-opacity="0.52"/>
+        <stop offset="62%" stop-color="#d45b12" stop-opacity="0.16"/>
+        <stop offset="100%" stop-color="#d45b12" stop-opacity="0"/>
+      </radialGradient>
+
+      <radialGradient id="gemAuraGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff8b8" stop-opacity="0.95"/>
+        <stop offset="35%" stop-color="#ffd026" stop-opacity="0.55"/>
+        <stop offset="70%" stop-color="#ff6f00" stop-opacity="0.2"/>
+        <stop offset="100%" stop-color="#ff6f00" stop-opacity="0"/>
+      </radialGradient>
+
+      <linearGradient id="backWallGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1b1326"/>
+        <stop offset="50%" stop-color="#2a1f3d"/>
+        <stop offset="100%" stop-color="#140e1e"/>
+      </linearGradient>
+
+      <linearGradient id="midRockGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#3c2d54"/>
+        <stop offset="50%" stop-color="#271d38"/>
+        <stop offset="100%" stop-color="#161021"/>
+      </linearGradient>
+
+      <!-- Верхня скельна тераса для кам'яних завалів -->
+      <linearGradient id="upperGalleryGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#574769"/>
+        <stop offset="18%" stop-color="#413352"/>
+        <stop offset="55%" stop-color="#291f36"/>
+        <stop offset="100%" stop-color="#171120"/>
+      </linearGradient>
+
+      <!-- Нижня тропа, по якій біжить сам гном (щоб ніколи не закривати знаки) -->
+      <linearGradient id="dwarfWalkwayGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#6b577d"/>
+        <stop offset="22%" stop-color="#4c3d5c"/>
+        <stop offset="65%" stop-color="#2b2136"/>
+        <stop offset="100%" stop-color="#120d18"/>
+      </linearGradient>
+
+      <!-- Реалістичні градієнти граніту, базальту та сланцю для завалів -->
+      <linearGradient id="graniteLight" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#8f8499"/>
+        <stop offset="50%" stop-color="#655a70"/>
+        <stop offset="100%" stop-color="#3f3747"/>
+      </linearGradient>
+
+      <linearGradient id="graniteMid" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#6e6378"/>
+        <stop offset="55%" stop-color="#4c4354"/>
+        <stop offset="100%" stop-color="#2b2530"/>
+      </linearGradient>
+
+      <linearGradient id="basaltDark" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#52485c"/>
+        <stop offset="50%" stop-color="#352e3d"/>
+        <stop offset="100%" stop-color="#1c1821"/>
+      </linearGradient>
+
+      <linearGradient id="warmSandstone" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#8c7667"/>
+        <stop offset="50%" stop-color="#614f43"/>
+        <stop offset="100%" stop-color="#382c25"/>
+      </linearGradient>
+
+      <!-- Градієнт кованого молота гнома -->
+      <linearGradient id="hammerSteelGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#e0e7ee"/>
+        <stop offset="35%" stop-color="#92a0ad"/>
+        <stop offset="70%" stop-color="#515c66"/>
+        <stop offset="100%" stop-color="#2b3238"/>
+      </linearGradient>
+
+      <!-- Золотий самоцвіт -->
+      <linearGradient id="goldGemOuter" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#fff394"/>
+        <stop offset="30%" stop-color="#ffd02b"/>
+        <stop offset="70%" stop-color="#f08c00"/>
+        <stop offset="100%" stop-color="#9c4700"/>
+      </linearGradient>
+
+      <linearGradient id="goldGemInner" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0%" stop-color="#ffae00"/>
+        <stop offset="50%" stop-color="#ffe761"/>
+        <stop offset="100%" stop-color="#ffffff"/>
+      </linearGradient>
+
+      <!-- Підсвічування поточного завалу -->
+      <filter id="activeRockGlow" x="-25%" y="-25%" width="150%" height="150%">
+        <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#ffcf40" flood-opacity="0.9"/>
+      </filter>
+
+      <filter id="deepShadow" x="-20%" y="-20%" width="140%" height="150%">
+        <feDropShadow dx="0" dy="9" stdDeviation="6" flood-color="#05020a" flood-opacity="0.82"/>
+      </filter>
+    </defs>
+
+    <!-- 1. ГЛИБОКИЙ ФОН ПЕЧЕРИ -->
+    <rect width="1600" height="900" fill="url(#caveDepthGrad)"/>
+
+    <path d="M0,110 L180,60 L370,120 L590,50 L820,105 L1060,45 L1290,110 L1470,65 L1600,100 L1600,900 L0,900 Z"
+          fill="url(#backWallGrad)" opacity="0.85"/>
+
+    <!-- Світні рудні жили у далеких скелях -->
+    <g opacity="0.38" stroke-linecap="round" fill="none">
+      <path d="M210,165 L245,225 L230,280 L270,320" stroke="#4ef2d2" stroke-width="3"/>
+      <path d="M245,225 L285,240" stroke="#4ef2d2" stroke-width="2"/>
+      <path d="M780,140 L750,205 L790,260 L770,310" stroke="#d96bff" stroke-width="3.5"/>
+      <path d="M1240,150 L1280,210 L1255,275" stroke="#5ce1ff" stroke-width="3"/>
+    </g>
+
+    <!-- 2. СЕРЕДНІЙ ПЛАН: СКЕЛЬНІ КОЛОНИ ТА КРИСТАЛИ -->
+    <path d="M-20,900 L-20,240 L90,290 L135,440 L200,590 L290,900 Z" fill="url(#midRockGrad)"/>
+    <path d="M1620,900 L1620,190 L1495,260 L1445,430 L1355,610 L1280,900 Z" fill="url(#midRockGrad)"/>
+
+    <!-- Фонова група кристалів -->
+    <g id="background-crystals">
+      <g transform="translate(95, 455) rotate(-12)">
+        <polygon points="0,0 -13,-62 0,-80 13,-62" fill="#b74fff" opacity="0.85"/>
+        <polygon points="0,0 0,-80 13,-62" fill="#e29eff" opacity="0.7"/>
+        <polygon points="11,4 8,-44 20,-56 25,-38" fill="#9226db" opacity="0.9"/>
+      </g>
+      <g transform="translate(615, 470) rotate(8)">
+        <polygon points="0,0 -10,-48 0,-64 10,-48" fill="#1de9b6" opacity="0.8"/>
+        <polygon points="0,0 0,-64 10,-48" fill="#84ffff" opacity="0.65"/>
+      </g>
+      <g transform="translate(1485, 450) rotate(-16)">
+        <polygon points="0,0 -14,-68 0,-88 14,-68" fill="#ff2a6d" opacity="0.85"/>
+        <polygon points="0,0 0,-88 14,-68" fill="#ff85a9" opacity="0.75"/>
+      </g>
+    </g>
+
+    <!-- 3. ПІДВІСНІ ПЕЧЕРНІ ЛІХТАРІ -->
+    <g id="cave-lanterns">
+      <g transform="translate(340, 82)">
+        <line x1="0" y1="-82" x2="0" y2="32" stroke="#4a3928" stroke-width="5"/>
+        <circle class="lantern-glow" cx="0" cy="58" r="145" fill="url(#lanternLightGrad)"/>
+        <polygon points="-15,32 15,32 20,42 -20,42" fill="#4f3822" stroke="#8f6840" stroke-width="2"/>
+        <polygon points="-17,42 17,42 12,76 -12,76" fill="#ffae2b" opacity="0.85" stroke="#3b2816" stroke-width="3"/>
+        <circle cx="0" cy="59" r="7.5" fill="#fff9d6"/>
+        <polygon points="-14,76 14,76 8,85 -8,85" fill="#3b2816"/>
+      </g>
+      <g transform="translate(860, 98)">
+        <line x1="0" y1="-98" x2="0" y2="32" stroke="#4a3928" stroke-width="5"/>
+        <circle class="lantern-glow" cx="0" cy="58" r="160" fill="url(#lanternLightGrad)"/>
+        <polygon points="-15,32 15,32 20,42 -20,42" fill="#4f3822" stroke="#8f6840" stroke-width="2"/>
+        <polygon points="-17,42 17,42 12,76 -12,76" fill="#ffae2b" opacity="0.85" stroke="#3b2816" stroke-width="3"/>
+        <circle cx="0" cy="59" r="7.5" fill="#fff9d6"/>
+        <polygon points="-14,76 14,76 8,85 -8,85" fill="#3b2816"/>
+      </g>
+      <g transform="translate(1315, 74)">
+        <line x1="0" y1="-74" x2="0" y2="32" stroke="#4a3928" stroke-width="5"/>
+        <circle class="lantern-glow" cx="0" cy="58" r="150" fill="url(#lanternLightGrad)"/>
+        <polygon points="-15,32 15,32 20,42 -20,42" fill="#4f3822" stroke="#8f6840" stroke-width="2"/>
+        <polygon points="-17,42 17,42 12,76 -12,76" fill="#ffae2b" opacity="0.85" stroke="#3b2816" stroke-width="3"/>
+        <circle cx="0" cy="59" r="7.5" fill="#fff9d6"/>
+        <polygon points="-14,76 14,76 8,85 -8,85" fill="#3b2816"/>
+      </g>
+    </g>
+
+    <!-- 4. ВЕРХНЄ СКЛЕПІННЯ ЗІ СТАЛАКТИТАМИ -->
+    <g filter="url(#deepShadow)">
+      <path d="M0,0 L1600,0 L1600,115
+               L1535,175 L1495,105 L1440,215 L1390,98 L1325,150 L1265,88
+               L1210,195 L1155,95 L1090,165 L1035,88 L970,225 L915,98
+               L855,155 L795,80 L735,205 L680,95 L615,160 L555,88
+               L490,215 L435,102 L380,155 L315,85 L255,190 L195,95
+               L135,165 L75,90 L25,150 L0,110 Z"
+            fill="#160f24" stroke="#2e2145" stroke-width="2"/>
+      <polygon points="255,190 230,90 265,90" fill="#291d3d"/>
+      <polygon points="490,215 465,95 505,95" fill="#291d3d"/>
+      <polygon points="735,205 710,88 750,88" fill="#291d3d"/>
+      <polygon points="970,225 945,92 985,92" fill="#291d3d"/>
+      <polygon points="1210,195 1185,90 1225,90" fill="#291d3d"/>
+      <polygon points="1440,215 1415,92 1455,92" fill="#291d3d"/>
+    </g>
+
+    <!-- Світлячки та пил у повітрі печери -->
+    <g id="cave-particles"></g>
+
+    <!-- 5. ДВОРІВНЕВИЙ КАМ'ЯНИЙ РЕЛЬЄФ:
+         ЯРУС 1 (вище) — скельний карниз із завалами та знаками (ніколи не перекривається гномом)
+         ЯРУС 2 (нижче) — широка кам'яна тропа, по якій бігає і б'є молотом гном -->
+    <g id="cave-trail-layer" filter="url(#deepShadow)">
+      <!-- Верхня скельна полиця під завалами -->
+      <path d="M-20,445
+               C130,455 220,400 350,412
+               C480,425 565,475 705,450
+               C845,425 925,375 1065,398
+               C1205,422 1295,468 1435,428
+               L1620,410 L1620,900 L-20,900 Z"
+            fill="url(#upperGalleryGrad)" stroke="#6d5882" stroke-width="3.5"/>
+
+      <!-- Об'ємні вертикальні уступи скельної полиці -->
+      <path d="M80,450 L95,555 M310,415 L295,540 M515,455 L530,575 M700,452 L685,565 M890,405 L905,535 M1080,405 L1065,550 M1265,450 L1280,570"
+            stroke="#1b1326" stroke-width="5" opacity="0.65" stroke-linecap="round"/>
+
+      <!-- Золота рудна жила на скелі, що з'єднує ланцюжок прикладів -->
+      <path id="chain-connector-line" d="" fill="none" stroke="#bda070" stroke-width="7" stroke-linecap="round" opacity="0.85"/>
+      <path id="chain-connector-glow" d="" fill="none" stroke="#ffe57f" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+
+      <!-- Нижня пішохідна тропа гнома (відокремлена нижче, щоб гном не закривав жоден знак!) -->
+      <path d="M-20,615
+               C150,625 260,585 410,598
+               C560,612 670,648 820,625
+               C970,602 1080,572 1230,595
+               C1360,615 1470,605 1620,590
+               L1620,920 L-20,920 Z"
+            fill="url(#dwarfWalkwayGrad)" stroke="#826b96" stroke-width="4"/>
+
+      <!-- Кам'яні брили та тріщини вздовж нижньої тропи -->
+      <path d="M45,675 L210,655 L390,645 L565,685 L765,680 L955,640 L1145,635 L1335,675 L1540,650"
+            fill="none" stroke="#181122" stroke-width="5" opacity="0.75"/>
+    </g>
+
+    <!-- 6. ШАР ЗАВАЛІВ ПОРОДИ, РОМБІВ ДІЙ ТА САМОЦВІТУ -->
+    <g id="chain-nodes-layer"></g>
+
+    <!-- 7. ЖИВИЙ ГНОМ-РУДОКОП У ПІВОБЕРТІ З ВЕЛИКИМ ДВОРУЧНИМ МОЛОТОМ -->
+    <g id="dwarf-character" transform="translate(115, 590)" filter="url(#deepShadow)">
+      <g id="dwarf-motion-wrapper">
+        <g id="dwarf-idle-breathe">
+          <!-- Тінь під чоботами на нижній тропі -->
+          <ellipse cx="4" cy="52" rx="40" ry="11" fill="#06030a" opacity="0.72"/>
+
+          <!-- Задня нога в кованому чоботі (крокує) -->
+          <g id="leg-back">
+            <path d="M-16,22 L-18,44 L4,44 L2,22 Z" fill="#203142" stroke="#101924" stroke-width="2"/>
+            <path d="M-20,38 L8,38 C12,38 16,44 15,50 L-22,50 Z" fill="#3b2313" stroke="#1a0e06" stroke-width="2"/>
+            <path d="M0,40 C8,40 14,44 15,50 L-2,50 Z" fill="#7c8791"/>
+          </g>
+
+          <!-- Передня нога в кованому чоботі (крокує) -->
+          <g id="leg-front">
+            <path d="M2,22 L0,46 L22,46 L20,22 Z" fill="#293f54" stroke="#101924" stroke-width="2"/>
+            <path d="M-2,40 L26,40 C31,40 35,46 33,52 L-4,52 Z" fill="#4a2c18" stroke="#1a0e06" stroke-width="2"/>
+            <path d="M18,42 C26,42 32,46 33,52 L16,52 Z" fill="#919da8"/>
+          </g>
+
+          <!-- Верхня частина корпусу гнома (відхиляється назад при замаху і кидається вперед при ударі) -->
+          <g id="dwarf-upper-body">
+            <!-- Задня рука (підтримує держак молота) -->
+            <path d="M-12,-14 C-4,-6 8,2 18,4" fill="none" stroke="#7a1c1d" stroke-width="13" stroke-linecap="round"/>
+
+            <!-- Могутній торс у шкіряному жилеті та куртці рудокопа -->
+            <path d="M-28,-22 C-32,2 -28,22 -22,28 L24,28 C30,20 32,0 26,-22 Z"
+                  fill="#9e2a2b" stroke="#4f1011" stroke-width="2.2"/>
+            <!-- Шкіряний нагрудний ремінь -->
+            <path d="M-20,-20 L16,22 M-12,-22 L22,18" stroke="#3d2314" stroke-width="5"/>
+
+            <!-- Широкий пояс із золотою пряжкою -->
+            <rect x="-27" y="14" width="54" height="11" rx="4" fill="#3b2213" stroke="#1a0d06" stroke-width="1.8"/>
+            <rect x="2" y="11" width="18" height="16" rx="2.5" fill="#ffca3a" stroke="#8a5a00" stroke-width="2"/>
+            <rect x="7" y="15" width="8" height="8" rx="1" fill="#3b2213"/>
+
+            <!-- Пишна руда борода (спрямована трохи вперед у бік руху) -->
+            <g id="dwarf-beard">
+              <path d="M-20,-26 C-30,-6 -24,22 -6,36 C4,44 12,48 18,46 C26,38 36,16 32,-6 C30,-18 22,-26 10,-26 Z"
+                    fill="#d95d24" stroke="#7d2c08" stroke-width="2.2"/>
+              <path d="M-8,-14 C-10,8 -2,24 8,36 M6,-12 C8,8 14,24 20,36 M18,-14 C24,2 24,18 24,28"
+                    fill="none" stroke="#a63e11" stroke-width="2.2" stroke-linecap="round"/>
+              <!-- Золоті обручі в косах бороди -->
+              <rect x="-2" y="22" width="9" height="5" rx="2" transform="rotate(12 2 24)" fill="#ffd147" stroke="#7a5200" stroke-width="1.2"/>
+              <rect x="14" y="20" width="9" height="5" rx="2" transform="rotate(-14 18 22)" fill="#ffd147" stroke="#7a5200" stroke-width="1.2"/>
+              <!-- Пишні вуса -->
+              <path d="M6,-20 C-4,-22 -16,-16 -22,-8 C-12,-6 -2,-10 8,-15 C16,-10 26,-6 34,-9 C28,-17 16,-22 6,-20 Z"
+                    fill="#eb6b2f" stroke="#7d2c08" stroke-width="1.8"/>
+            </g>
+
+            <!-- Голова гнома у профілі 3/4 (дивиться вперед на завали!) -->
+            <path d="M-18,-44 C-20,-28 -12,-16 6,-16 C22,-16 28,-28 24,-44 Z" fill="#f7bc9e" stroke="#bf7e60" stroke-width="1.8"/>
+            <ellipse cx="-6" cy="-26" rx="5" ry="3.5" fill="#eb6b7e" opacity="0.55"/>
+
+            <!-- Очі гнома (спрямовані вправо на каміння) -->
+            <g id="dwarf-eyes" transform="translate(6, -33)">
+              <ellipse class="eye-open" cx="-8" cy="0" rx="5" ry="5.8" fill="#ffffff" stroke="#4a2c1d" stroke-width="1.5"/>
+              <ellipse class="eye-open" cx="8" cy="0" rx="5" ry="5.8" fill="#ffffff" stroke="#4a2c1d" stroke-width="1.5"/>
+              <g id="dwarf-pupils">
+                <circle class="eye-open" cx="-6" cy="0" r="3" fill="#2b1d14"/>
+                <circle class="eye-open" cx="-5" cy="-1.5" r="1.1" fill="#ffffff"/>
+                <circle class="eye-open" cx="10" cy="0" r="3" fill="#2b1d14"/>
+                <circle class="eye-open" cx="11" cy="-1.5" r="1.1" fill="#ffffff"/>
+              </g>
+              <path class="eye-happy" d="M-13,1 Q-8,-6 -3,1 M3,1 Q8,-6 13,1" fill="none" stroke="#3d2210" stroke-width="2.6" stroke-linecap="round" opacity="0"/>
+            </g>
+
+            <!-- Густі руді брови -->
+            <g id="dwarf-brows" transform="translate(6, -41)">
+              <path id="brow-left" d="M-14,2 Q-8,-4 -2,1" fill="none" stroke="#9e3608" stroke-width="3.6" stroke-linecap="round"/>
+              <path id="brow-right" d="M2,1 Q8,-4 14,2" fill="none" stroke="#9e3608" stroke-width="3.6" stroke-linecap="round"/>
+            </g>
+
+            <!-- Картоплистий ніс -->
+            <ellipse cx="11" cy="-23" rx="7.5" ry="5.8" fill="#eda080" stroke="#b5674a" stroke-width="1.8"/>
+            <ellipse cx="9" cy="-25" rx="2.5" ry="1.5" fill="#ffd2bd" opacity="0.7"/>
+
+            <!-- Кований шахтарський шолом із ліхтарем -->
+            <g id="dwarf-helmet" transform="translate(2, -44)">
+              <path d="M-25,4 C-26,-17 -12,-27 2,-27 C16,-27 28,-17 27,4 Z" fill="#5c6773" stroke="#282f36" stroke-width="2.2"/>
+              <path d="M-28,2 Q2,8 30,2 L28,8 Q2,14 -26,8 Z" fill="#d49b3b" stroke="#5e3d08" stroke-width="1.8"/>
+              <circle cx="-14" cy="5" r="2" fill="#fff0b3"/>
+              <circle cx="16" cy="5" r="2" fill="#fff0b3"/>
+              <!-- Налобний ліхтар (світить уперед на каміння) -->
+              <circle cx="10" cy="-9" r="24" fill="url(#lanternLightGrad)" class="lantern-glow"/>
+              <circle cx="8" cy="-9" r="8.5" fill="#b87d28" stroke="#4f3205" stroke-width="2"/>
+              <circle cx="9" cy="-9" r="5.8" fill="#fff59d"/>
+              <circle cx="7" cy="-11" r="2.2" fill="#ffffff"/>
+            </g>
+
+            <!-- РУКИ ТА ВАЖКИЙ ДВОРУЧНИЙ КОВАНИЙ МОЛОТ РУДОКОПА (анімуються при замаху й ударі) -->
+            <g id="dwarf-hammer-rig" transform="translate(6, -6)">
+              <!-- Довгий міцний ясеневий держак молота -->
+              <rect x="-6" y="-68" width="9" height="82" rx="4" transform="rotate(24)" fill="#8c5327" stroke="#3d200a" stroke-width="2.2"/>
+              <!-- Обмотка шкірою на рукояті -->
+              <rect x="-6" y="-22" width="9" height="22" rx="2" transform="rotate(24)" fill="#4a2c18" stroke="#241308" stroke-width="1.5"/>
+
+              <!-- Масивне сталеве навершя бойового шахтарського молота (кувалда) -->
+              <g transform="translate(24, -54) rotate(24)">
+                <!-- Центральна бронзова втулка з заклепками -->
+                <rect x="-11" y="-15" width="22" height="30" rx="3" fill="#d49b3b" stroke="#523305" stroke-width="2"/>
+                <!-- Ліва та права ударні частини кувалди зі скошеними гранями -->
+                <polygon points="-32,-18 -10,-13 -10,13 -32,18 -37,10 -37,-10"
+                         fill="url(#hammerSteelGrad)" stroke="#262e36" stroke-width="2.2"/>
+                <polygon points="10,-13 34,-20 40,-11 40,11 34,20 10,13"
+                         fill="url(#hammerSteelGrad)" stroke="#262e36" stroke-width="2.2"/>
+                <!-- Світлі металеві фаски та золоті руни на молоті -->
+                <polygon points="-31,-15 -12,-11 -12,-5 -34,-8" fill="#ffffff" opacity="0.45"/>
+                <polygon points="12,-11 33,-17 36,-9 12,-5" fill="#ffffff" opacity="0.5"/>
+                <circle cx="0" cy="0" r="4.5" fill="#ffe082" stroke="#6e470b" stroke-width="1.5"/>
+              </g>
+
+              <!-- Передня рука гнома, що міцно стискає молот -->
+              <path d="M-16,-6 C-8,-12 4,-6 10,4 C4,12 -8,10 -16,2 Z" fill="#b02e30" stroke="#541112" stroke-width="2"/>
+              <!-- Обидва кулаки на держаку -->
+              <circle cx="10" cy="-4" r="7.5" fill="#e8a484" stroke="#a6674b" stroke-width="1.8"/>
+              <circle cx="4" cy="5" r="8.2" fill="#f7bc9e" stroke="#b57659" stroke-width="1.8"/>
+            </g>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <!-- 8. ШАР СПЕЦЕФЕКТІВ: УДАРНА ХВИЛЯ МОЛОТА, ІСКРИ ТА УЛАМКИ ГІРСЬКОЇ ПОРОДИ -->
+    <g id="fx-layer" pointer-events="none"></g>
+
+    <!-- 9. ПЕРЕДНІЙ ПЛАН: СИЛУЕТНІ СКЕЛІ В КУТАХ -->
+    <g pointer-events="none">
+      <polygon points="-10,910 -10,745 60,790 125,910" fill="#08050d"/>
+      <polygon points="1610,910 1610,735 1530,785 1470,910" fill="#08050d"/>
+    </g>
+  </svg>
+
+  <!-- ================= НИЖНЯ КАМ'ЯНА КЛАВІАТУРА З ЧИСЛАМИ ================= -->
+  <div class="keypad-ledge" id="number-keypad"></div>
+</div>
+
+<script>
+/* ============================================================================
+   НАЛАШТУВАННЯ ГРИ
+   ============================================================================ */
+const CONFIG = {
+  OBSTACLES_COUNT: 6,       // 6 перешкод-завалів на шляху до самоцвіту
+  MIN_VALUE: 0,             // Ніколи не менше 0
+  MAX_VALUE: 100,           // Ніколи не більше 100
+  KEYPAD_NUMBERS: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+};
+
+/* Координати асиметричного ланцюжка на верхній скельній полиці (y: 315..395).
+   Гном рухається нижньою тропою (y: 575..605), тому ЖОДЕН знак чи камінь ніколи не закривається! */
+const TRAIL_COORDS = {
+  startStone: { x: 118, y: 375, rot: -4 },
+  obstacles: [
+    { signX: 218, signY: 350, rockX: 316, rockY: 332, rot: -4, ore: 0 },
+    { signX: 416, signY: 358, rockX: 512, rockY: 382, rot: 5,  ore: 1 },
+    { signX: 610, signY: 392, rockX: 706, rockY: 368, rot: -3, ore: 2 },
+    { signX: 804, signY: 338, rockX: 898, rockY: 318, rot: -5, ore: 3 },
+    { signX: 994, signY: 336, rockX: 1088, rockY: 372, rot: 6, ore: 4 },
+    { signX: 1182, signY: 386, rockX: 1276, rockY: 352, rot: -4, ore: 5 }
+  ],
+  equalSign: { x: 1378, y: 342, rot: 4 },
+  finalGem:  { x: 1485, y: 325, rot: 7 }
+};
+
+/* Палітри рудних жил та кристалів, вкраплених у реалістичну сіро-базальтову породу */
+const ORE_THEMES = [
+  { vein: '#ff6090', rim: '#ff94b8', badgeFill: '#4a2538', text: '#fff0f5' }, // Рубінова жила
+  { vein: '#76ff03', rim: '#b2ff59', badgeFill: '#293d1e', text: '#f4ffe8' }, // Смарагдова жила
+  { vein: '#00e5ff', rim: '#84ffff', badgeFill: '#1b3b4a', text: '#e8fbff' }, // Аквамаринова жила
+  { vein: '#ff9100', rim: '#ffd180', badgeFill: '#4a2c18', text: '#fff5e6' }, // Бурштинова мідь
+  { vein: '#ffd740', rim: '#ffe57f', badgeFill: '#453616', text: '#fffde6' }, // Золота руда
+  { vein: '#1de9b6', rim: '#a7ffeb', badgeFill: '#193d35', text: '#e6fff9' }  // Малахітова жила
+];
+
+/* ============================================================================
+   СТАН ГРИ ТА ТАЙМЕРА
+   ============================================================================ */
+let levelHistory = [];
+let currentLevelIndex = -1;
+let currentStep = 0;
+let directGemMode = false;
+let isAnimating = false;
+
+let timerStartTime = 0;
+let timerInterval = null;
+let elapsedMs = 0;
+let timerRunning = false;
+
+let soundEnabled = true;
+let audioCtx = null;
+
+/* ============================================================================
+   ЗВУКОВИЙ РУШІЙ (Web Audio API: важкий удар молота, гуркіт обвалу, салют)
+   ============================================================================ */
+function initAudio() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContext();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+/* Звук замаху молота (свист повітря) */
+function playHammerWhooshSound() {
+  if (!soundEnabled) return;
+  initAudio();
+  const now = audioCtx.currentTime;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(190, now);
+  osc.frequency.exponentialRampToValueAtTime(85, now + 0.18);
+
+  gain.gain.setValueAtTime(0.18, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + 0.2);
+}
+
+/* Потужний звук удару кованого молота об скелю та обвалу породи */
+function playHammerCrushRockSound(stepIndex = 0) {
+  if (!soundEnabled) return;
+  initAudio();
+  const now = audioCtx.currentTime;
+
+  // 1. Низький басовий удар важкої кувалди
+  const punchOsc = audioCtx.createOscillator();
+  const punchGain = audioCtx.createGain();
+  punchOsc.type = 'sine';
+  punchOsc.frequency.setValueAtTime(150, now);
+  punchOsc.frequency.exponentialRampToValueAtTime(38, now + 0.24);
+  punchGain.gain.setValueAtTime(0.55, now);
+  punchGain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+  punchOsc.connect(punchGain);
+  punchGain.connect(audioCtx.destination);
+  punchOsc.start(now);
+  punchOsc.stop(now + 0.27);
+
+  // 2. Тріск та гуркіт розколу кам'яних брил (шумовий імпульс)
+  const bufferSize = audioCtx.sampleRate * 0.36;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.11));
+  }
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(290, now);
+
+  const noiseGain = audioCtx.createGain();
+  noiseGain.gain.setValueAtTime(0.52, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noise.start(now);
+
+  // 3. Металеве відлуння молота + кристалічний дзвін руди
+  const chimeOsc = audioCtx.createOscillator();
+  const chimeGain = audioCtx.createGain();
+  chimeOsc.type = 'triangle';
+  chimeOsc.frequency.setValueAtTime(580 + stepIndex * 65, now + 0.04);
+  chimeOsc.frequency.exponentialRampToValueAtTime(920 + stepIndex * 75, now + 0.28);
+  chimeGain.gain.setValueAtTime(0.22, now + 0.04);
+  chimeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+  chimeOsc.connect(chimeGain);
+  chimeGain.connect(audioCtx.destination);
+  chimeOsc.start(now + 0.04);
+  chimeOsc.stop(now + 0.35);
+}
+
+/* Глухий звук помилки */
+function playWrongRumbleSound() {
+  if (!soundEnabled) return;
+  initAudio();
+  const now = audioCtx.currentTime;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(135, now);
+  osc.frequency.linearRampToValueAtTime(85, now + 0.32);
+
+  gain.gain.setValueAtTime(0.24, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + 0.36);
+}
+
+/* Переможна фанфара здобуття самоцвіту */
+function playGemVictoryFanfare() {
+  if (!soundEnabled) return;
+  initAudio();
+  const now = audioCtx.currentTime;
+  const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98];
+
+  notes.forEach((freq, idx) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+    const startTime = now + idx * 0.085;
+    osc.frequency.setValueAtTime(freq, startTime);
+
+    gain.gain.setValueAtTime(0.25, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.65);
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + 0.66);
+  });
+}
+
+/* ============================================================================
+   БЕЗКІНЕЧНИЙ ГЕНЕРАТОР ЛАНЦЮЖКІВ (круглі двозначні, завжди в межах 0..100)
+   ============================================================================ */
+function generateChainLevel() {
+  const startOptions = [20, 30, 40, 50, 60, 70, 80, 90];
+  let currentVal = startOptions[Math.floor(Math.random() * startOptions.length)];
+  const startNumber = currentVal;
+
+  const steps = [];
+  let prevDelta = 0;
+
+  for (let i = 0; i < CONFIG.OBSTACLES_COUNT; i++) {
+    const candidates = [];
+
+    for (let operand = 10; operand <= 90; operand += 10) {
+      if (currentVal + operand <= CONFIG.MAX_VALUE) {
+        candidates.push({ op: '+', num: operand, delta: operand, result: currentVal + operand });
+      }
+      const minAllowed = (i < CONFIG.OBSTACLES_COUNT - 1) ? 10 : CONFIG.MIN_VALUE;
+      if (currentVal - operand >= minAllowed) {
+        candidates.push({ op: '−', num: operand, delta: -operand, result: currentVal - operand });
+      }
+    }
+
+    let filtered = candidates.filter(c => c.delta !== -prevDelta);
+    if (filtered.length === 0) filtered = candidates;
+
+    const chosen = filtered[Math.floor(Math.random() * filtered.length)];
+    currentVal = chosen.result;
+    prevDelta = chosen.delta;
+
+    steps.push({
+      op: chosen.op,
+      num: chosen.num,
+      targetResult: chosen.result
+    });
+  }
+
+  return {
+    startNumber,
+    steps,
+    finalAnswer: currentVal
+  };
+}
+
+/* ============================================================================
+   ТАЙМЕР
+   ============================================================================ */
+function startTimer() {
+  stopTimer();
+  elapsedMs = 0;
+  timerRunning = true;
+  timerStartTime = performance.now();
+  document.getElementById('timer-box').classList.remove('victory-timer');
+  updateTimerDisplay(0);
+  timerInterval = requestAnimationFrame(tickTimer);
+}
+
+function tickTimer(now) {
+  if (!timerRunning) return;
+  elapsedMs = now - timerStartTime;
+  updateTimerDisplay(elapsedMs);
+
+  const gear = document.getElementById('timer-gear');
+  if (gear) {
+    const angle = (elapsedMs * 0.06) % 360;
+    gear.setAttribute('transform', `translate(32, 43) rotate(${angle})`);
+  }
+  timerInterval = requestAnimationFrame(tickTimer);
+}
+
+function stopTimer(isVictory = false) {
+  timerRunning = false;
+  if (timerInterval) {
+    cancelAnimationFrame(timerInterval);
+    timerInterval = null;
+  }
+  if (isVictory) {
+    document.getElementById('timer-box').classList.add('victory-timer');
+  }
+}
+
+function updateTimerDisplay(ms) {
+  const totalTenths = Math.floor(ms / 100);
+  const tenths = totalTenths % 10;
+  const totalSeconds = Math.floor(totalTenths / 10);
+  const seconds = totalSeconds % 60;
+  const minutes = Math.floor(totalSeconds / 60);
+
+  const minStr = String(minutes).padStart(2, '0');
+  const secStr = String(seconds).padStart(2, '0');
+  const textEl = document.getElementById('timer-text');
+  if (textEl) {
+    textEl.textContent = `${minStr}:${secStr}.${tenths}`;
+  }
+}
+
+/* ============================================================================
+   ДЕТАЛІЗОВАНИЙ SVG-ГЕНЕРАТОР СПРАВЖНІХ ЗАВАЛІВ З КАМЕНІВ ТА ГІРСЬКОЇ ПОРОДИ
+   ============================================================================ */
+function buildRealisticRockfallMarkup(num, oreTheme, idx) {
+  // Кожен завал — це багатошарове нагромадження базальтових і гранітних валунів,
+  // гострих сколів, тіньових граней, рудних прожилок та дрібного каміння внизу
+  return `
+    <!-- Глибока тінь під обвалом породи -->
+    <ellipse cx="0" cy="44" rx="68" ry="16" fill="#09050f" opacity="0.8"/>
+
+    <!-- ЗАДНІЙ ШАР ПОРОДИ: темні гострі скельні уламки, що стирчать позаду -->
+    <polygon points="-58,28 -64,-18 -38,-46 -12,-32 -24,25" fill="url(#basaltDark)" stroke="#17121c" stroke-width="2"/>
+    <polygon points="18,-36 46,-48 66,-12 56,30 14,24" fill="url(#basaltDark)" stroke="#17121c" stroke-width="2"/>
+    <polygon points="-24,-38 4,-56 32,-38 12,-12 -20,-14" fill="#2c2533" stroke="#141019" stroke-width="2"/>
+
+    <!-- Рудні кристалічні прожилки, що світяться у глибині породи -->
+    <path d="M-46,-14 L-30,-28 L-18,-22 M34,-26 L48,-16 L40,4" fill="none" stroke="${oreTheme.vein}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+
+    <!-- СЕРЕДНІЙ ШАР ВАЛУНІВ: об'ємні 3D-грановані брили ліворуч та праворуч -->
+    <!-- Лівий гранітний валун із 3 гранями освітлення -->
+    <g>
+      <polygon points="-64,32 -56,-8 -28,-22 -14,8 -26,38" fill="url(#graniteMid)" stroke="#1c1624" stroke-width="2.2"/>
+      <polygon points="-56,-8 -28,-22 -20,-6 -46,4" fill="#998ea3" opacity="0.45"/>
+      <polygon points="-64,32 -56,-8 -46,4 -48,34" fill="#231c2b" opacity="0.6"/>
+    </g>
+
+    <!-- Правий базальтовий валун із 3 гранями освітлення -->
+    <g>
+      <polygon points="20,10 32,-20 60,-6 66,30 30,40" fill="url(#warmSandstone)" stroke="#1c1624" stroke-width="2.2"/>
+      <polygon points="32,-20 60,-6 48,6 26,-4" fill="#b59d8e" opacity="0.42"/>
+      <polygon points="48,6 60,-6 66,30 44,36" fill="#241b16" opacity="0.58"/>
+    </g>
+
+    <!-- Верхній нависаючий камінь завалу -->
+    <g>
+      <polygon points="-32,-24 -4,-44 28,-32 34,-12 -26,-10" fill="url(#graniteLight)" stroke="#1f1826" stroke-width="2"/>
+      <polygon points="-32,-24 -4,-44 16,-36 -14,-20" fill="#b8adc2" opacity="0.45"/>
+    </g>
+
+    <!-- ЦЕНТРАЛЬНА МАСИВНА СКЕЛЬНА БРИЛА З ВИТЕСАНИМ ЧИСЛОМ -->
+    <g class="boulder-main">
+      <!-- Основа центрального моноліту (багатогранний дикий камінь) -->
+      <polygon points="-44,-18 -18,-34 22,-32 46,-14 42,26 14,40 -26,38 -48,16"
+               fill="url(#graniteLight)" stroke="#1a1421" stroke-width="2.8"/>
+
+      <!-- Верхня освітлена скошена грань каменя (3D-об'єм) -->
+      <polygon points="-44,-18 -18,-34 22,-32 46,-14 32,-4 -20,-6 -34,-4"
+               fill="#b5a9bf" opacity="0.48"/>
+
+      <!-- Нижня та бічна тіньові грані каменя (3D-об'єм) -->
+      <polygon points="-48,16 -26,38 14,40 42,26 32,16 -28,18"
+               fill="#211a29" opacity="0.68"/>
+      <polygon points="32,-4 46,-14 42,26 32,16"
+               fill="#2a2233" opacity="0.55"/>
+
+      <!-- Внутрішня витесана площина з рудною жилою по контуру -->
+      <polygon points="-35,-12 -14,-23 18,-22 35,-10 32,18 10,27 -20,26 -37,10"
+               fill="${oreTheme.badgeFill}" stroke="${oreTheme.rim}" stroke-width="2.2" opacity="0.92"/>
+
+      <!-- Природні геологічні тріщини та сколи на породі -->
+      <path d="M-36,-10 L-22,-4 L-28,6 M28,-12 L18,-2 L26,8 M-8,27 L-2,18"
+            fill="none" stroke="#140e1a" stroke-width="2.2" stroke-linecap="round"/>
+
+      <!-- Чітке велике число на скельній породі -->
+      <text x="0" y="13" text-anchor="middle" fill="${oreTheme.text}"
+            font-family="Georgia, serif" font-weight="bold" font-size="37"
+            style="filter: drop-shadow(0 3px 4px rgba(0,0,0,0.95));">${num}</text>
+    </g>
+
+    <!-- ПЕРЕДНІЙ ШАР ОБВАЛУ: дрібне каміння, уламки породи та рудні кристали біля підніжжя -->
+    <polygon points="-56,38 -44,22 -24,28 -28,44" fill="#594e63" stroke="#18121f" stroke-width="1.8"/>
+    <polygon points="-44,22 -24,28 -32,32" fill="#8f829c" opacity="0.5"/>
+
+    <polygon points="16,32 36,20 54,34 42,46 18,44" fill="#4f4359" stroke="#18121f" stroke-width="1.8"/>
+    <polygon points="16,32 36,20 44,28" fill="#857791" opacity="0.45"/>
+
+    <polygon points="-14,34 4,26 18,38 2,46 -16,44" fill="#3d3447" stroke="#140f1a" stroke-width="1.8"/>
+
+    <!-- Невеликий самородний кристал руди, що пробивається крізь каміння -->
+    <polygon points="-42,-24 -52,-42 -40,-46 -32,-28" fill="${oreTheme.vein}" stroke="#1a1221" stroke-width="1.5"/>
+    <polygon points="-42,-24 -40,-46 -32,-28" fill="#ffffff" opacity="0.35"/>
+  `;
+}
+
+/* ============================================================================
+   РЕНДЕРИНГ УСЬОГО ЛАНЦЮЖКА НА СКЕЛЬНІЙ ТЕРАСІ
+   ============================================================================ */
+function renderChainScene(levelData) {
+  const container = document.getElementById('chain-nodes-layer');
+  container.innerHTML = '';
+
+  // 1. Хвиляста рудна жила між елементами ланцюжка
+  const points = [
+    { x: TRAIL_COORDS.startStone.x, y: TRAIL_COORDS.startStone.y }
+  ];
+  TRAIL_COORDS.obstacles.forEach(o => {
+    points.push({ x: o.signX, y: o.signY });
+    points.push({ x: o.rockX, y: o.rockY });
+  });
+  points.push({ x: TRAIL_COORDS.equalSign.x, y: TRAIL_COORDS.equalSign.y });
+  points.push({ x: TRAIL_COORDS.finalGem.x, y: TRAIL_COORDS.finalGem.y });
+
+  let pathD = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const midX = (prev.x + curr.x) / 2;
+    pathD += ` Q ${midX} ${prev.y}, ${curr.x} ${curr.y}`;
+  }
+  document.getElementById('chain-connector-line').setAttribute('d', pathD);
+  document.getElementById('chain-connector-glow').setAttribute('d', pathD);
+
+  // 2. Стартова скельна брила з кольоровими кристалічними жилами зліва (як на фото з підручника)
+  const startG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  startG.setAttribute('transform', `translate(${TRAIL_COORDS.startStone.x}, ${TRAIL_COORDS.startStone.y}) rotate(${TRAIL_COORDS.startStone.rot})`);
+  startG.innerHTML = `
+    <path d="M-48,2 C-68,-12 -82,-8 -92,-18" fill="none" stroke="#00e5ff" stroke-width="8" stroke-linecap="round"/>
+    <path d="M-48,6 C-66,18 -74,34 -82,46" fill="none" stroke="#aeea00" stroke-width="7" stroke-linecap="round"/>
+    <path d="M-46,8 C-58,22 -60,38 -64,52" fill="none" stroke="#ffab00" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="-46" cy="4" r="9" fill="#00e676" stroke="#1b5e20" stroke-width="2"/>
+
+    <!-- Кам'яна брила стартового числа -->
+    <polygon points="-48,-32 -16,-42 28,-38 50,-16 46,28 12,38 -34,36 -52,12"
+             fill="url(#graniteLight)" stroke="#1b1424" stroke-width="2.8" filter="url(#deepShadow)"/>
+    <polygon points="-48,-32 -16,-42 28,-38 50,-16 36,-6 -34,-8" fill="#b8adc2" opacity="0.45"/>
+    <polygon points="-38,-18 34,-20 38,18 -36,20" fill="#4f2642" stroke="#ff80ab" stroke-width="2.5"/>
+    <text x="0" y="12" text-anchor="middle" fill="#fff0f6"
+          font-family="Georgia, serif" font-weight="bold" font-size="36"
+          style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.9));">${levelData.startNumber}</text>
+  `;
+  container.appendChild(startG);
+
+  // 3. 6 реалістичних завалів із гірської породи та кам'яні ромби знаків ('+' / '−')
+  levelData.steps.forEach((step, idx) => {
+    const coord = TRAIL_COORDS.obstacles[idx];
+    const oreTheme = ORE_THEMES[coord.ore % ORE_THEMES.length];
+    const signTheme = ORE_THEMES[(coord.ore + 1) % ORE_THEMES.length];
+
+    const obsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    obsGroup.setAttribute('class', `obstacle-group ${idx === 0 ? 'active-target' : ''}`);
+    obsGroup.setAttribute('id', `obstacle-${idx}`);
+    obsGroup.dataset.index = idx;
+
+    obsGroup.addEventListener('click', () => handleDirectBoulderClick(idx));
+
+    obsGroup.innerHTML = `
+      <!-- Витесаний кам'яний ромб зі знаком '+' або '−' (чітко відкритий, гном його НЕ перекриває) -->
+      <g transform="translate(${coord.signX}, ${coord.signY}) rotate(${coord.rot * -0.8})" filter="url(#deepShadow)">
+        <polygon points="0,-33 33,0 0,33 -33,0" fill="url(#graniteMid)" stroke="#191321" stroke-width="2.5"/>
+        <polygon points="0,-33 33,0 24,0 0,-24 -24,0 -33,0" fill="#a89cb3" opacity="0.45"/>
+        <polygon points="0,-25 25,0 0,25 -25,0" fill="${signTheme.badgeFill}" stroke="${signTheme.rim}" stroke-width="2.5"/>
+        <text x="0" y="10" text-anchor="middle" fill="${signTheme.text}"
+              font-family="Georgia, serif" font-weight="bold" font-size="31"
+              style="filter: drop-shadow(0 2px 3px rgba(0,0,0,0.9));">${step.op}</text>
+      </g>
+
+      <!-- Розчищений прохід після удару молотом (залишається акуратна викарбувана позначка на скелі) -->
+      <g class="cleared-pass-remnant" transform="translate(${coord.rockX}, ${coord.rockY + 8})">
+        <polygon points="-44,18 -32,6 34,6 46,18 32,26 -30,26" fill="#231a2e" stroke="#4f4063" stroke-width="2"/>
+        <polygon points="-38,22 -48,14 -36,10 -28,18" fill="#463a54"/>
+        <polygon points="34,22 46,12 36,8 26,18" fill="#463a54"/>
+        <rect x="-32" y="-18" width="64" height="32" rx="6" fill="#1e1629" stroke="${oreTheme.rim}" stroke-width="2" stroke-dasharray="5 3"/>
+        <text x="0" y="6" text-anchor="middle" fill="${oreTheme.rim}" opacity="0.9"
+              font-family="Georgia, serif" font-weight="bold" font-size="25">${step.num}</text>
+      </g>
+
+      <!-- Справжній багатошаровий завал із каменів та породи -->
+      <g class="rockfall-pile" transform="translate(${coord.rockX}, ${coord.rockY}) rotate(${coord.rot})" filter="url(#deepShadow)">
+        ${buildRealisticRockfallMarkup(step.num, oreTheme, idx)}
+      </g>
+    `;
+
+    container.appendChild(obsGroup);
+  });
+
+  // 4. Кам'яний ромб зі знаком '='
+  const eqG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  eqG.setAttribute('transform', `translate(${TRAIL_COORDS.equalSign.x}, ${TRAIL_COORDS.equalSign.y}) rotate(${TRAIL_COORDS.equalSign.rot})`);
+  eqG.setAttribute('filter', 'url(#deepShadow)');
+  eqG.innerHTML = `
+    <polygon points="0,-32 32,0 0,32 -32,0" fill="url(#graniteMid)" stroke="#191321" stroke-width="2.5"/>
+    <polygon points="0,-24 24,0 0,24 -24,0" fill="#592c18" stroke="#ffab40" stroke-width="2.5"/>
+    <text x="0" y="10" text-anchor="middle" fill="#fff3e0"
+          font-family="Georgia, serif" font-weight="bold" font-size="30">=</text>
+  `;
+  container.appendChild(eqG);
+
+  // 5. Фінальний коштовний камінь у породі зі знаком '?'
+  const gemG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  gemG.setAttribute('id', 'final-gem-group');
+  gemG.setAttribute('transform', `translate(${TRAIL_COORDS.finalGem.x}, ${TRAIL_COORDS.finalGem.y}) rotate(${TRAIL_COORDS.finalGem.rot})`);
+
+  gemG.addEventListener('click', () => {
+    if (currentStep >= CONFIG.OBSTACLES_COUNT) {
+      goToNextLevel();
+      return;
+    }
+    directGemMode = true;
+    highlightActiveTarget();
+  });
+
+  gemG.innerHTML = `
+    <circle cx="0" cy="0" r="92" fill="url(#gemAuraGrad)" class="lantern-glow"/>
+    <!-- Кам'яне гніздо породи навколо самоцвіту -->
+    <polygon points="-68,28 -56,56 -18,66 28,64 62,48 68,18 42,42 -42,44" fill="url(#basaltDark)" stroke="#17121f" stroke-width="2.5"/>
+    <g filter="url(#deepShadow)">
+      <polygon points="0,-64 60,-16 45,54 -45,54 -60,-16"
+               fill="url(#goldGemOuter)" stroke="#fff3a1" stroke-width="3.5"/>
+      <polygon points="0,-64 60,-16 30,-6 -30,-6 -60,-16" fill="#ffffff" opacity="0.28"/>
+      <polygon points="-60,-16 -30,-6 -26,34 -45,54" fill="#b85d00" opacity="0.45"/>
+      <polygon points="60,-16 30,-6 26,34 45,54" fill="#ffae00" opacity="0.35"/>
+      <circle cx="0" cy="4" r="35" fill="url(#goldGemInner)" stroke="#c76b00" stroke-width="3"/>
+      <circle cx="0" cy="4" r="30" fill="#2b1903" opacity="0.84"/>
+      <text id="gem-answer-text" x="0" y="18" text-anchor="middle" fill="#ffe57f"
+            font-family="Georgia, serif" font-weight="bold" font-size="40"
+            style="filter: drop-shadow(0 0 8px rgba(255, 215, 64, 0.9));">?</text>
+      <g fill="#ffffff">
+        <polygon points="-36,-36 -32,-24 -20,-20 -32,-16 -36,-4 -40,-16 -52,-20 -40,-24"/>
+        <polygon points="40,-26 43,-18 51,-15 43,-12 40,-4 37,-12 29,-15 37,-18"/>
+      </g>
+    </g>
+  `;
+  container.appendChild(gemG);
+}
+
+/* ============================================================================
+   НИЖНЯ КАМ'ЯНА КЛАВІАТУРА З ЧИСЛАМИ (0, 10, 20 ... 100)
+   ============================================================================ */
+function buildStoneKeypad() {
+  const keypad = document.getElementById('number-keypad');
+  keypad.innerHTML = '';
+
+  CONFIG.KEYPAD_NUMBERS.forEach((num, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'num-stone';
+    btn.dataset.val = num;
+
+    const p1 = `${7 + (idx % 3) * 2},${8 + (idx % 2) * 2}`;
+    const p2 = `${93 - (idx % 2) * 3},${6 + (idx % 3) * 2}`;
+    const p3 = `${97 - (idx % 3)},${36 + (idx % 2) * 3}`;
+    const p4 = `${89 - (idx % 2) * 2},${68 - (idx % 3) * 2}`;
+    const p5 = `${11 + (idx % 3) * 2},${70 - (idx % 2) * 2}`;
+    const p6 = `${3 + (idx % 2)},${38 - (idx % 3) * 2}`;
+
+    const theme = ORE_THEMES[idx % ORE_THEMES.length];
+
+    btn.innerHTML = `
+      <svg viewBox="0 0 100 76">
+        <polygon points="${p1} ${p2} ${p3} ${p4} ${p5} ${p6}"
+                 fill="url(#graniteMid)" stroke="#1b1424" stroke-width="2.8"/>
+        <polygon points="${p1} ${p2} 84,22 16,22" fill="#a89cb5" opacity="0.38"/>
+        <polygon points="14,14 86,13 89,37 83,61 17,62 11,38"
+                 fill="${theme.badgeFill}" stroke="${theme.rim}" stroke-width="2.4"/>
+        <text x="50" y="48" text-anchor="middle" fill="${theme.text}"
+              font-family="Georgia, serif" font-weight="bold" font-size="31"
+              style="filter: drop-shadow(0 2px 3px rgba(0,0,0,0.9));">${num}</text>
+      </svg>
+    `;
+
+    btn.addEventListener('click', () => handleNumberPick(num, btn));
+    keypad.appendChild(btn);
+  });
+}
+
+/* ============================================================================
+   РУХ ГНОМА ПО НИЖНІЙ ТРОПІ ТА АНІМАЦІЯ ЗАМАХУ Й УДАРУ МОЛОТОМ ПО ЗАВАЛУ
+   ============================================================================ */
+/* Отримання координат очікування на нижній тропі (під попереднім каменем, не закриваючи жоден знак) */
+function getDwarfStandPosition(stepIdx) {
+  if (stepIdx === 0) {
+    return { x: TRAIL_COORDS.startStone.x - 10, y: 585 };
+  } else if (stepIdx < CONFIG.OBSTACLES_COUNT) {
+    const prevRock = TRAIL_COORDS.obstacles[stepIdx - 1];
+    return { x: prevRock.rockX - 18, y: 585 };
+  } else {
+    return { x: TRAIL_COORDS.finalGem.x - 95, y: 560 };
+  }
+}
+
+/* Переміщення гнома в точку очікування */
+function moveDwarfToStandby(stepIdx, instant = false) {
+  const dwarf = document.getElementById('dwarf-character');
+  const pos = getDwarfStandPosition(stepIdx);
+
+  if (!instant) {
+    dwarf.classList.add('dwarf-walking');
+    setTimeout(() => dwarf.classList.remove('dwarf-walking'), 360);
+  }
+
+  dwarf.style.transition = instant
+    ? 'none'
+    : 'transform 0.36s cubic-bezier(0.25, 0.9, 0.35, 1)';
+  dwarf.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
+}
+
+/* Підбігання гнома впритул до завалу, замах молотом і потужний удар! */
+function performDwarfHammerAttackOnObstacle(obsIndex, onComplete) {
+  const dwarf = document.getElementById('dwarf-character');
+  const coord = TRAIL_COORDS.obstacles[obsIndex];
+  const oreTheme = ORE_THEMES[coord.ore % ORE_THEMES.length];
+
+  // 1. Гном стрімко підбігає до підніжжя завалу зліва-знизу
+  const strikePosX = coord.rockX - 68;
+  const strikePosY = coord.rockY + 58;
+
+  dwarf.classList.add('dwarf-walking');
+  dwarf.style.transition = 'transform 0.24s cubic-bezier(0.25, 0.9, 0.35, 1)';
+  dwarf.setAttribute('transform', `translate(${strikePosX}, ${strikePosY})`);
+
+  setTimeout(() => {
+    dwarf.classList.remove('dwarf-walking');
+
+    // 2. Вмикаємо анімацію широкого замаху корпусом і удару дворучним молотом
+    dwarf.classList.remove('hammer-strike-anim');
+    void dwarf.offsetWidth;
+    dwarf.classList.add('hammer-strike-anim');
+    playHammerWhooshSound();
+
+    // 3. У момент контакту бойка молота з породою (через 270 мс після початку замаху)
+    setTimeout(() => {
+      playHammerCrushRockSound(obsIndex);
+      setDwarfEmotion('happy');
+
+      // Струс екрана печери від удару кувалди
+      const caveSvg = document.getElementById('cave-svg');
+      caveSvg.classList.remove('cave-impact-shake');
+      void caveSvg.offsetWidth;
+      caveSvg.classList.add('cave-impact-shake');
+
+      // Спалах ударної хвилі, золоті іскри та розліт кам'яних брил завалу
+      spawnHammerImpactShockwave(coord.rockX - 18, coord.rockY + 8);
+      spawnRockfallShatterFX(coord.rockX, coord.rockY, oreTheme.vein);
+
+      // Завал руйнується і відкриває прохід
+      const obsEl = document.getElementById(`obstacle-${obsIndex}`);
+      if (obsEl) {
+        obsEl.classList.remove('active-target');
+        obsEl.classList.add('smashed');
+      }
+
+      // 4. Після удару гном спускається на нижню тропу під щойно розбитим завалом
+      setTimeout(() => {
+        dwarf.classList.remove('hammer-strike-anim');
+        if (onComplete) onComplete();
+      }, 220);
+
+    }, 270);
+  }, 230);
+}
+
+/* Підсвічування поточної цілі */
+function highlightActiveTarget() {
+  document.querySelectorAll('.obstacle-group').forEach((el, idx) => {
+    el.classList.toggle('active-target', !directGemMode && idx === currentStep);
+  });
+  const gem = document.getElementById('final-gem-group');
+  if (gem) {
+    gem.classList.toggle('active-target', directGemMode || currentStep >= CONFIG.OBSTACLES_COUNT);
+  }
+}
+
+/* Обробка вибору числа на кам'яній клавіатурі */
+function handleNumberPick(pickedNumber, btnElement) {
+  if (isAnimating || currentStep >= CONFIG.OBSTACLES_COUNT) return;
+  initAudio();
+
+  const level = levelHistory[currentLevelIndex];
+
+  if (directGemMode) {
+    if (pickedNumber === level.finalAnswer) {
+      smashAllRemainingObstaclesToGem();
+    } else {
+      triggerWrongFeedback(btnElement);
+    }
+    return;
+  }
+
+  const expectedIntermediate = level.steps[currentStep].targetResult;
+
+  if (pickedNumber === expectedIntermediate) {
+    smashSingleObstacle(currentStep);
+  } else {
+    triggerWrongFeedback(btnElement);
+  }
+}
+
+/* Клік прямо по завалу породи (для усного рахунку) */
+function handleDirectBoulderClick(idx) {
+  if (isAnimating || idx !== currentStep || currentStep >= CONFIG.OBSTACLES_COUNT) return;
+  initAudio();
+
+  if (idx < CONFIG.OBSTACLES_COUNT - 1) {
+    smashSingleObstacle(idx);
+  } else {
+    directGemMode = true;
+    highlightActiveTarget();
+  }
+}
+
+/* Розбиття одного поточного завалу молотом */
+function smashSingleObstacle(obsIndex) {
+  isAnimating = true;
+
+  performDwarfHammerAttackOnObstacle(obsIndex, () => {
+    currentStep++;
+    moveDwarfToStandby(currentStep);
+
+    if (currentStep >= CONFIG.OBSTACLES_COUNT) {
+      completeLevelVictory();
+    } else {
+      highlightActiveTarget();
+      setTimeout(() => {
+        setDwarfEmotion('normal');
+        isAnimating = false;
+      }, 260);
+    }
+  });
+}
+
+/* Серія ударів молотом по всіх завалах підряд при прямій відповіді на самоцвіті */
+function smashAllRemainingObstaclesToGem() {
+  isAnimating = true;
+  directGemMode = false;
+
+  function strikeNext() {
+    if (currentStep >= CONFIG.OBSTACLES_COUNT) {
+      moveDwarfToStandby(currentStep);
+      completeLevelVictory();
+      return;
+    }
+    performDwarfHammerAttackOnObstacle(currentStep, () => {
+      currentStep++;
+      strikeNext();
+    });
+  }
+
+  strikeNext();
+}
+
+/* Переможний фінал біля самоцвіту */
+function completeLevelVictory() {
+  stopTimer(true);
+  const level = levelHistory[currentLevelIndex];
+
+  const gemText = document.getElementById('gem-answer-text');
+  if (gemText) {
+    gemText.textContent = level.finalAnswer;
+  }
+
+  playGemVictoryFanfare();
+  setDwarfEmotion('happy');
+  document.getElementById('dwarf-motion-wrapper').classList.add('dwarf-victory-jump');
+
+  spawnGemVictoryBurst(TRAIL_COORDS.finalGem.x, TRAIL_COORDS.finalGem.y);
+  setTimeout(() => {
+    spawnGemVictoryBurst(TRAIL_COORDS.finalGem.x - 35, TRAIL_COORDS.finalGem.y - 25);
+    isAnimating = false;
+  }, 350);
+}
+
+/* Реакція на помилку */
+function triggerWrongFeedback(btnElement) {
+  playWrongRumbleSound();
+
+  if (btnElement) {
+    btnElement.classList.remove('wrong-shake');
+    void btnElement.offsetWidth;
+    btnElement.classList.add('wrong-shake');
+  }
+
+  const motionWrapper = document.getElementById('dwarf-motion-wrapper');
+  motionWrapper.classList.remove('dwarf-sad-shake');
+  void motionWrapper.offsetWidth;
+  motionWrapper.classList.add('dwarf-sad-shake');
+
+  setDwarfEmotion('sad');
+  setTimeout(() => setDwarfEmotion('normal'), 650);
+}
+
+/* Емоції гнома */
+function setDwarfEmotion(state) {
+  const openEyes = document.querySelectorAll('#dwarf-eyes .eye-open');
+  const happyEyes = document.querySelector('#dwarf-eyes .eye-happy');
+  const browL = document.getElementById('brow-left');
+  const browR = document.getElementById('brow-right');
+
+  if (state === 'happy') {
+    openEyes.forEach(e => e.setAttribute('opacity', '0'));
+    happyEyes.setAttribute('opacity', '1');
+    browL.setAttribute('d', 'M-14,-1 Q-8,-8 -2,-1');
+    browR.setAttribute('d', 'M2,-1 Q8,-8 14,-1');
+  } else if (state === 'sad') {
+    openEyes.forEach(e => e.setAttribute('opacity', '1'));
+    happyEyes.setAttribute('opacity', '0');
+    browL.setAttribute('d', 'M-14,-3 Q-8,2 -2,4');
+    browR.setAttribute('d', 'M2,4 Q8,2 14,-3');
+  } else {
+    openEyes.forEach(e => e.setAttribute('opacity', '1'));
+    happyEyes.setAttribute('opacity', '0');
+    browL.setAttribute('d', 'M-14,2 Q-8,-4 -2,1');
+    browR.setAttribute('d', 'M2,1 Q8,-4 14,2');
+  }
+}
+
+/* Кліпання очима */
+setInterval(() => {
+  const happyEyes = document.querySelector('#dwarf-eyes .eye-happy');
+  if (happyEyes && happyEyes.getAttribute('opacity') === '1') return;
+  const openEyes = document.querySelectorAll('#dwarf-eyes .eye-open');
+  openEyes.forEach(e => e.style.transform = 'scaleY(0.1)');
+  setTimeout(() => {
+    openEyes.forEach(e => e.style.transform = 'scaleY(1)');
+  }, 140);
+}, 3600);
+
+/* ============================================================================
+   СПЕЦЕФЕКТИ УДАРУ МОЛОТА: УДАРНА ХВИЛЯ, ІСКРИ ТА ОБВАЛ КАМІННЯ
+   ============================================================================ */
+function spawnHammerImpactShockwave(x, y) {
+  const fxLayer = document.getElementById('fx-layer');
+
+  // Кільце ударної хвилі молота
+  const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  ring.setAttribute('cx', x);
+  ring.setAttribute('cy', y);
+  ring.setAttribute('r', '10');
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', '#ffe57f');
+  ring.setAttribute('stroke-width', '6');
+  fxLayer.appendChild(ring);
+
+  // Зірка спалаху в точці удару бойка
+  const flash = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  flash.setAttribute('points', '0,-28 7,-7 28,0 7,7 0,28 -7,7 -28,0 -7,-7');
+  flash.setAttribute('fill', '#ffffff');
+  flash.setAttribute('transform', `translate(${x}, ${y})`);
+  fxLayer.appendChild(flash);
+
+  let r = 10;
+  let opacity = 1;
+  function expandRing() {
+    r += 6.5;
+    opacity -= 0.08;
+    if (opacity <= 0) {
+      ring.remove();
+      flash.remove();
+      return;
+    }
+    ring.setAttribute('r', r);
+    ring.setAttribute('opacity', opacity);
+    ring.setAttribute('stroke-width', Math.max(1, 6 * opacity));
+    flash.setAttribute('opacity', opacity);
+    flash.setAttribute('transform', `translate(${x}, ${y}) scale(${1 + (1 - opacity)})`);
+    requestAnimationFrame(expandRing);
+  }
+  requestAnimationFrame(expandRing);
+}
+
+/* Реалістичний розліт багатогранних кам'яних брил та іскор при руйнуванні завалу */
+function spawnRockfallShatterFX(x, y, veinColor) {
+  const fxLayer = document.getElementById('fx-layer');
+  const rockShades = ['#7a6f85', '#574e61', '#3d3545', '#8c786a', '#4a3f54'];
+
+  for (let i = 0; i < 20; i++) {
+    const chunk = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    const isOreSpark = i % 4 === 0;
+
+    if (isOreSpark) {
+      chunk.setAttribute('points', '0,-9 6,0 0,9 -6,0');
+      chunk.setAttribute('fill', veinColor);
+    } else {
+      chunk.setAttribute('points', '-12,-8 4,-13 14,-3 9,11 -8,12 -15,2');
+      chunk.setAttribute('fill', rockShades[i % rockShades.length]);
+      chunk.setAttribute('stroke', '#17121f');
+      chunk.setAttribute('stroke-width', '1.8');
+    }
+    fxLayer.appendChild(chunk);
+
+    const angle = (Math.PI * 2 * i) / 20 + (Math.random() - 0.5) * 0.35;
+    const speed = 4.5 + Math.random() * 8.5;
+    let vx = Math.cos(angle) * speed;
+    let vy = Math.sin(angle) * speed - 5.5;
+    let px = x;
+    let py = y;
+    let rot = Math.random() * 360;
+    let scale = 0.7 + Math.random() * 0.65;
+
+    function animateChunk() {
+      px += vx;
+      py += vy;
+      vy += 0.48; // Важке падіння породи
+      rot += 11;
+      scale -= 0.028;
+
+      if (scale <= 0) {
+        chunk.remove();
+        return;
+      }
+      chunk.setAttribute('transform', `translate(${px}, ${py}) rotate(${rot}) scale(${scale})`);
+      requestAnimationFrame(animateChunk);
+    }
+    requestAnimationFrame(animateChunk);
+  }
+}
+
+/* Салют перемоги біля самоцвіту */
+function spawnGemVictoryBurst(x, y) {
+  const fxLayer = document.getElementById('fx-layer');
+  const gemColors = ['#ffe57f', '#ff4081', '#00e5ff', '#b2ff59', '#ffd740', '#ea80fc'];
+
+  for (let i = 0; i < 24; i++) {
+    const star = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    star.setAttribute('points', '0,-12 3,-3 12,0 3,3 0,12 -3,3 -12,0 -3,-3');
+    star.setAttribute('fill', gemColors[i % gemColors.length]);
+    fxLayer.appendChild(star);
+
+    const angle = (Math.PI * 2 * i) / 24;
+    const speed = 3 + Math.random() * 6.5;
+    let vx = Math.cos(angle) * speed;
+    let vy = Math.sin(angle) * speed - 2;
+    let px = x;
+    let py = y;
+    let scale = 1.3;
+    let rot = 0;
+
+    function animateStar() {
+      px += vx;
+      py += vy;
+      vy += 0.15;
+      rot += 8;
+      scale -= 0.022;
+
+      if (scale <= 0) {
+        star.remove();
+        return;
+      }
+      star.setAttribute('transform', `translate(${px}, ${py}) rotate(${rot}) scale(${scale})`);
+      requestAnimationFrame(animateStar);
+    }
+    requestAnimationFrame(animateStar);
+  }
+}
+
+/* Світлячки у повітрі печери */
+function createCaveAtmosphereParticles() {
+  const container = document.getElementById('cave-particles');
+  for (let i = 0; i < 22; i++) {
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    const cx = 80 + Math.random() * 1440;
+    const cy = 130 + Math.random() * 440;
+    const r = 1.5 + Math.random() * 2.6;
+    dot.setAttribute('cx', cx);
+    dot.setAttribute('cy', cy);
+    dot.setAttribute('r', r);
+    dot.setAttribute('fill', i % 3 === 0 ? '#80deea' : '#ffe082');
+    dot.setAttribute('opacity', 0.35 + Math.random() * 0.45);
+    container.appendChild(dot);
+
+    let phase = Math.random() * Math.PI * 2;
+    function floatDot() {
+      phase += 0.015;
+      dot.setAttribute('cx', cx + Math.sin(phase) * 18);
+      dot.setAttribute('cy', cy + Math.cos(phase * 0.8) * 12);
+      requestAnimationFrame(floatDot);
+    }
+    requestAnimationFrame(floatDot);
+  }
+}
+
+/* ============================================================================
+   КЕРУВАННЯ РІВНЯМИ (НАЗАД / ДАЛІ)
+   ============================================================================ */
+function loadLevel(index) {
+  currentLevelIndex = index;
+  currentStep = 0;
+  directGemMode = false;
+  isAnimating = false;
+
+  document.getElementById('dwarf-motion-wrapper').classList.remove('dwarf-victory-jump');
+
+  const levelData = levelHistory[currentLevelIndex];
+  renderChainScene(levelData);
+  setDwarfEmotion('normal');
+  moveDwarfToStandby(0, true);
+  highlightActiveTarget();
+
+  document.getElementById('btn-prev').disabled = (currentLevelIndex <= 0);
+  startTimer();
+}
+
+function goToNextLevel() {
+  if (currentLevelIndex < levelHistory.length - 1) {
+    loadLevel(currentLevelIndex + 1);
+  } else {
+    const newLevel = generateChainLevel();
+    levelHistory.push(newLevel);
+    loadLevel(levelHistory.length - 1);
+  }
+}
+
+function goToPrevLevel() {
+  if (currentLevelIndex > 0) {
+    loadLevel(currentLevelIndex - 1);
+  }
+}
+
+/* ============================================================================
+   ІНІЦІАЛІЗАЦІЯ ГРИ
+   ============================================================================ */
+document.getElementById('btn-next').addEventListener('click', () => {
+  initAudio();
+  goToNextLevel();
+});
+
+document.getElementById('btn-prev').addEventListener('click', () => {
+  initAudio();
+  goToPrevLevel();
+});
+
+document.getElementById('btn-sound').addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  const iconPath = document.getElementById('sound-icon-path');
+  if (soundEnabled) {
+    initAudio();
+    iconPath.setAttribute('d', 'M18,22 L25,22 L33,14 L33,40 L25,32 L18,32 Z M38,19 C42,23 42,31 38,35 M42,14 C48,21 48,33 42,40');
+    iconPath.setAttribute('opacity', '1');
+  } else {
+    iconPath.setAttribute('d', 'M18,22 L25,22 L33,14 L33,40 L25,32 L18,32 Z M38,21 L48,33 M48,21 L38,33');
+    iconPath.setAttribute('opacity', '0.6');
+  }
+});
+
+window.addEventListener('DOMContentLoaded', () => {
+  createCaveAtmosphereParticles();
+  buildStoneKeypad();
+
+  // Перший рівень — класичний ланцюжок (70 - 60 + 30 - 40 + 50 + 20 - 40 = 30), далі — безкінечний генератор
+  levelHistory.push({
+    startNumber: 70,
+    steps: [
+      { op: '−', num: 60, targetResult: 10 },
+      { op: '+', num: 30, targetResult: 40 },
+      { op: '−', num: 40, targetResult: 0  },
+      { op: '+', num: 50, targetResult: 50 },
+      { op: '+', num: 20, targetResult: 70 },
+      { op: '−', num: 40, targetResult: 30 }
+    ],
+    finalAnswer: 30
+  });
+
+  loadLevel(0);
+});
+</script>
+</body>
+</html>
