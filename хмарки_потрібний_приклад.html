@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дощова математика</title>
+    <style>
+        /* Базові налаштування сторінки без зайвих відступів */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #1a2a3a;
+        }
+
+        /* Головна сцена з реалістичним небом, яке змінює освітлення */
+        #game-scene {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #2c3e50 0%, #4ca1af 60%, #689f38 60.5%, #33691e 100%);
+            transition: filter 1.2s ease;
+        }
+
+        /* Кнопка перегенерації завдання */
+        #regenerate-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 50;
+            padding: 12px 24px;
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff8e7;
+            background: linear-gradient(180deg, #a46938, #693b16);
+            border: 3px solid #47260b;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 6px 0 #2b1706, 0 10px 15px rgba(0,0,0,0.4);
+            transition: transform 0.1s, box-shadow 0.1s, filter 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #regenerate-btn:hover {
+            filter: brightness(1.1);
+        }
+
+        #regenerate-btn:active {
+            transform: translateY(6px);
+            box-shadow: 0 0px 0 #2b1706, 0 2px 5px rgba(0,0,0,0.4);
+        }
+
+        /* Декоративна дерев'яна табличка для умови завдання */
+        #task-board {
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+            width: min(720px, 92vw);
+            height: 85px;
+            filter: drop-shadow(0 12px 15px rgba(0,0,0,0.45));
+            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* Контейнер для хмарок */
+        #clouds-layer {
+            position: absolute;
+            top: 110px;
+            left: 0;
+            width: 100%;
+            height: 45%;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        /* Стилізація окремої хмарки */
+        .cloud-wrapper {
+            position: absolute;
+            width: 190px;
+            height: 120px;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.3s ease, filter 0.3s ease;
+            animation: floatCloud 5s ease-in-out infinite alternate;
+        }
+
+        .cloud-wrapper:hover {
+            transform: scale(1.06) translateY(-4px);
+            filter: brightness(1.08) drop-shadow(0 8px 18px rgba(0, 20, 50, 0.35));
+        }
+
+        /* Анімація повільного танення правильної хмарки */
+        .cloud-melting {
+            pointer-events: none !important;
+            animation: meltAway 2.2s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+        }
+
+        @keyframes meltAway {
+            0% {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+                filter: blur(0px) brightness(1.2);
+            }
+            40% {
+                transform: scale(1.12, 0.82) translateY(15px);
+                opacity: 0.85;
+                filter: blur(3px) brightness(1.5);
+            }
+            100% {
+                transform: scale(1.45, 0.15) translateY(55px);
+                opacity: 0;
+                filter: blur(16px) brightness(2);
+            }
+        }
+
+        /* Анімація грозового тремтіння при помилці */
+        .cloud-error {
+            animation: thunderShake 0.55s ease-in-out !important;
+        }
+
+        @keyframes thunderShake {
+            0%, 100% { transform: translateX(0); filter: brightness(1); }
+            15% { transform: translateX(-12px) rotate(-3deg); filter: brightness(0.4) sepia(1) hue-rotate(190deg) saturate(3); }
+            30% { transform: translateX(12px) rotate(3deg); filter: brightness(2.2); }
+            45% { transform: translateX(-10px); filter: brightness(0.5); }
+            65% { transform: translateX(8px); filter: brightness(1.5); }
+            80% { transform: translateX(-4px); }
+        }
+
+        @keyframes floatCloud {
+            0% { transform: translateY(0px) translateX(0px); }
+            100% { transform: translateY(-9px) translateX(6px); }
+        }
+
+        /* Текст математичного виразу всередині хмарки */
+        .cloud-text {
+            font-size: 48px;
+            font-weight: 800;
+            fill: #102a43;
+            text-anchor: middle;
+            dominant-baseline: central;
+            filter: drop-shadow(0 1px 1px rgba(255,255,255,0.8));
+            pointer-events: none;
+        }
+
+        /* Canvas для реалістичного дощу та бризок у калюжах */
+        #rain-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        /* Контейнер для песика та калюжі */
+        #dog-container {
+            position: absolute;
+            bottom: 3%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(440px, 85vw);
+            height: 320px;
+            z-index: 18;
+            pointer-events: none;
+        }
+
+        /* Проміння сонця при перемозі в раунді */
+        #sun-rays {
+            position: absolute;
+            top: -150px;
+            right: -150px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(255,245,157,0.75) 0%, rgba(255,213,79,0.3) 40%, rgba(255,255,255,0) 70%);
+            opacity: 0;
+            transition: opacity 1.2s ease;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-scene">
+    <!-- Кнопка генерації нового завдання -->
+    <button id="regenerate-btn">
+        <span style="font-size: 22px;">↻</span> Нове завдання
+    </button>
+
+    <!-- Сонячне світло, яке з'являється, коли хмарки тануть -->
+    <div id="sun-rays"></div>
+
+    <!-- Деталізований пейзаж на фоні (SVG) -->
+    <svg id="landscape-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMax slice" style="position:absolute; width:100%; height:100%; z-index:2;">
+        <defs>
+            <!-- Градієнти неба, гір, трави та води -->
+            <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3a506b"/>
+                <stop offset="45%" stop-color="#5c7a99"/>
+                <stop offset="70%" stop-color="#8fa8be"/>
+            </linearGradient>
+            <linearGradient id="farHillGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3d5a45"/>
+                <stop offset="100%" stop-color="#2b4232"/>
+            </linearGradient>
+            <linearGradient id="midHillGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4a7846"/>
+                <stop offset="100%" stop-color="#2f5230"/>
+            </linearGradient>
+            <linearGradient id="meadowGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#558b2f"/>
+                <stop offset="40%" stop-color="#33691e"/>
+                <stop offset="100%" stop-color="#1b3b0e"/>
+            </linearGradient>
+            <radialGradient id="puddleGrad" cx="50%" cy="45%" r="55%">
+                <stop offset="0%" stop-color="#7fa1c3" stop-opacity="0.9"/>
+                <stop offset="65%" stop-color="#46698c" stop-opacity="0.92"/>
+                <stop offset="95%" stop-color="#243b53" stop-opacity="0.95"/>
+                <stop offset="100%" stop-color="#1b3022" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="woodGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#8d5524"/>
+                <stop offset="50%" stop-color="#6e3f16"/>
+                <stop offset="100%" stop-color="#4e2a0c"/>
+            </linearGradient>
+        </defs>
+
+        <!-- Небо -->
+        <rect width="1920" height="720" fill="url(#skyGrad)"/>
+
+        <!-- Далекі туманні пагорби та ліс -->
+        <path d="M0,670 Q280,550 580,620 T1220,590 T1920,640 L1920,750 L0,750 Z" fill="url(#farHillGrad)" opacity="0.85"/>
+        
+        <!-- Силуети далеких дерев -->
+        <g fill="#2d4736" opacity="0.8">
+            <path d="M120,630 C100,580 140,540 160,540 C180,540 210,590 190,630 Z"/>
+            <path d="M175,635 C160,595 190,560 215,560 C235,560 260,600 245,635 Z"/>
+            <path d="M1620,625 C1590,565 1640,515 1675,515 C1710,515 1745,575 1720,625 Z"/>
+            <path d="M1710,635 C1685,585 1730,545 1760,545 C1790,545 1820,590 1795,635 Z"/>
+        </g>
+
+        <!-- Середні пагорби -->
+        <path d="M0,685 Q420,610 920,670 T1920,655 L1920,760 L0,760 Z" fill="url(#midHillGrad)"/>
+
+        <!-- Передній план галявини -->
+        <path d="M0,700 Q960,665 1920,705 L1920,1080 L0,1080 Z" fill="url(#meadowGrad)"/>
+
+        <!-- Травинки та кущики навколо -->
+        <g stroke="#295218" stroke-width="3" fill="none" stroke-linecap="round">
+            <path d="M220,860 Q210,820 195,805 M225,860 Q225,815 235,795 M230,860 Q245,825 260,815"/>
+            <path d="M1650,890 Q1640,850 1625,835 M1655,890 Q1655,845 1665,825 M1660,890 Q1675,855 1690,845"/>
+            <path d="M480,960 Q465,920 450,905 M485,960 Q488,915 500,898"/>
+            <path d="M1420,975 Q1410,935 1395,920 M1425,975 Q1435,930 1450,915"/>
+        </g>
+
+        <!-- Велика реалістична калюжа під песиком та бічні калюжі -->
+        <ellipse cx="420" cy="940" rx="180" ry="38" fill="url(#puddleGrad)" opacity="0.8"/>
+        <ellipse cx="1510" cy="955" rx="195" ry="42" fill="url(#puddleGrad)" opacity="0.78"/>
+        <ellipse cx="960" cy="995" rx="370" ry="72" fill="url(#puddleGrad)"/>
+        <!-- Відблиски на воді -->
+        <ellipse cx="910" cy="985" rx="260" ry="35" fill="#b3d4f0" opacity="0.22"/>
+    </svg>
+
+    <!-- Дерев'яна дошка із завданням (без білих прямокутників) -->
+    <svg id="task-board" viewBox="0 0 800 110">
+        <defs>
+            <linearGradient id="plankGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#a46938"/>
+                <stop offset="50%" stop-color="#875125"/>
+                <stop offset="100%" stop-color="#693b16"/>
+            </linearGradient>
+            <filter id="innerShadow">
+                <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#2b1706" flood-opacity="0.7"/>
+            </filter>
+        </defs>
+        <!-- Металеві ланцюжки кріплення -->
+        <rect x="120" y="0" width="8" height="25" rx="4" fill="#4a5568"/>
+        <rect x="672" y="0" width="8" height="25" rx="4" fill="#4a5568"/>
+        <!-- Основа дерев'яної таблички з текстурою дерева -->
+        <path d="M30,20 Q400,12 770,20 Q790,58 770,96 Q400,104 30,96 Q10,58 30,20 Z" fill="url(#plankGrad)" stroke="#47260b" stroke-width="4"/>
+        <!-- Візерунок волокон дерева -->
+        <path d="M45,36 Q260,28 450,38 T755,34" stroke="#613613" stroke-width="2" fill="none" opacity="0.6"/>
+        <path d="M40,80 Q310,88 550,76 T750,82" stroke="#522c0d" stroke-width="2.5" fill="none" opacity="0.6"/>
+        <!-- Золотаві заклепки по кутах -->
+        <circle cx="52" cy="38" r="5" fill="#d69e2e" stroke="#744210" stroke-width="1.5"/>
+        <circle cx="748" cy="38" r="5" fill="#d69e2e" stroke="#744210" stroke-width="1.5"/>
+        <circle cx="52" cy="78" r="5" fill="#d69e2e" stroke="#744210" stroke-width="1.5"/>
+        <circle cx="748" cy="78" r="5" fill="#d69e2e" stroke="#744210" stroke-width="1.5"/>
+        <!-- Текст умови завдання (оновлюється динамічно) -->
+        <text id="task-text" x="400" y="60" text-anchor="middle" dominant-baseline="central"
+              fill="#fff8e7" font-size="32" font-weight="800" filter="url(#innerShadow)">
+            Знайди вирази, значення яких менше від 5
+        </text>
+    </svg>
+
+    <!-- Шар для дощу та кіл на воді -->
+    <canvas id="rain-canvas"></canvas>
+
+    <!-- Шар для інтерактивних хмарок -->
+    <div id="clouds-layer"></div>
+
+    <!-- Деталізований SVG-песик у калюжі, який змінює емоції та стежить очима за хмарами -->
+    <div id="dog-container">
+        <svg id="dog-svg" viewBox="0 0 400 320" width="100%" height="100%">
+            <defs>
+                <!-- Реалістичні градієнти шерсті песика -->
+                <radialGradient id="furMain" cx="45%" cy="35%" r="65%">
+                    <stop offset="0%" stop-color="#e6a95c"/>
+                    <stop offset="55%" stop-color="#c88236"/>
+                    <stop offset="100%" stop-color="#8c5218"/>
+                </radialGradient>
+                <linearGradient id="furChest" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#fae1be"/>
+                    <stop offset="100%" stop-color="#d49b56"/>
+                </linearGradient>
+                <linearGradient id="earGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#9e5b20"/>
+                    <stop offset="50%" stop-color="#6e3a0c"/>
+                    <stop offset="100%" stop-color="#472304"/>
+                </linearGradient>
+                <radialGradient id="noseGrad" cx="35%" cy="30%" r="70%">
+                    <stop offset="0%" stop-color="#5a4d4c"/>
+                    <stop offset="40%" stop-color="#292020"/>
+                    <stop offset="100%" stop-color="#0f0a0a"/>
+                </radialGradient>
+            </defs>
+
+            <!-- Тінь та відбиття песика у воді -->
+            <ellipse cx="200" cy="285" rx="115" ry="22" fill="#1e354d" opacity="0.55"/>
+
+            <!-- Хвостик (рухається залежно від настрою) -->
+            <g id="dog-tail" style="transform-origin: 265px 255px; transition: transform 0.4s ease;">
+                <path d="M260,255 Q315,245 330,210 Q338,195 318,198 Q290,210 255,240 Z" fill="url(#earGrad)"/>
+            </g>
+
+            <!-- Тулуб песика (дихає) -->
+            <g id="dog-body" style="transform-origin: 200px 260px;">
+                <!-- Задні лапки в калюжі -->
+                <ellipse cx="135" cy="262" rx="34" ry="24" fill="url(#furMain)"/>
+                <ellipse cx="265" cy="262" rx="34" ry="24" fill="url(#furMain)"/>
+                <!-- Основний тулуб -->
+                <path d="M135,275 C125,205 150,165 200,165 C250,165 275,205 265,275 Z" fill="url(#furMain)"/>
+                <!-- Пухнаста світла грудка -->
+                <path d="M162,265 C158,215 175,185 200,185 C225,185 242,215 238,265 Q200,275 162,265 Z" fill="url(#furChest)"/>
+                <!-- Передні лапки -->
+                <path d="M155,215 C148,245 148,275 152,284 C162,290 180,290 184,282 C186,265 182,230 178,215 Z" fill="url(#furMain)"/>
+                <path d="M245,215 C252,245 252,275 248,284 C238,290 220,290 216,282 C214,265 218,230 222,215 Z" fill="url(#furMain)"/>
+                <!-- Пальчики на лапках -->
+                <ellipse cx="166" cy="283" rx="19" ry="10" fill="#e6b170"/>
+                <ellipse cx="234" cy="283" rx="19" ry="10" fill="#e6b170"/>
+                <line x1="160" y1="278" x2="160" y2="290" stroke="#784414" stroke-width="2"/>
+                <line x1="172" y1="278" x2="172" y2="290" stroke="#784414" stroke-width="2"/>
+                <line x1="228" y1="278" x2="228" y2="290" stroke="#784414" stroke-width="2"/>
+                <line x1="240" y1="278" x2="240" y2="290" stroke="#784414" stroke-width="2"/>
+            </g>
+
+            <!-- Голова песика (нахиляється та повертається до хмар) -->
+            <g id="dog-head" style="transform-origin: 200px 160px; transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1);">
+                <!-- Ліве та праве обвислі вушка -->
+                <path id="ear-left" d="M138,95 C105,100 92,155 104,192 C112,212 135,205 140,175 C145,145 142,115 138,95 Z" fill="url(#earGrad)" style="transform-origin: 135px 100px; transition: transform 0.5s ease;"/>
+                <path id="ear-right" d="M262,95 C295,100 308,155 296,192 C288,212 265,205 260,175 C255,145 258,115 262,95 Z" fill="url(#earGrad)" style="transform-origin: 265px 100px; transition: transform 0.5s ease;"/>
+
+                <!-- Контур голови з чубчиком -->
+                <path d="M130,130 C125,80 160,62 200,62 C240,62 275,80 270,130 C276,162 252,188 200,188 C148,188 124,162 130,130 Z" fill="url(#furMain)"/>
+                <!-- Пухнастий чубчик зверху -->
+                <path d="M185,64 Q195,48 202,60 Q212,48 218,64" fill="url(#furMain)"/>
+
+                <!-- Світлі щічки та мордочка -->
+                <ellipse cx="178" cy="155" rx="30" ry="23" fill="url(#furChest)"/>
+                <ellipse cx="222" cy="155" rx="30" ry="23" fill="url(#furChest)"/>
+
+                <!-- Очі песика -->
+                <g id="eyes-group">
+                    <!-- Білки очей -->
+                    <ellipse cx="168" cy="122" rx="16" ry="18" fill="#ffffff" stroke="#593310" stroke-width="2"/>
+                    <ellipse cx="232" cy="122" rx="16" ry="18" fill="#ffffff" stroke="#593310" stroke-width="2"/>
+
+                    <!-- Зіниці (рухаються, дивлячись на хмари або вперед) -->
+                    <g id="pupils" style="transition: transform 0.45s ease;">
+                        <circle cx="168" cy="122" r="10.5" fill="#2b1704"/>
+                        <circle cx="168" cy="122" r="6" fill="#0d0702"/>
+                        <circle cx="164" cy="117" r="3.5" fill="#ffffff"/>
+                        <circle cx="172" cy="126" r="1.5" fill="#ffffff" opacity="0.8"/>
+
+                        <circle cx="232" cy="122" r="10.5" fill="#2b1704"/>
+                        <circle cx="232" cy="122" r="6" fill="#0d0702"/>
+                        <circle cx="228" cy="117" r="3.5" fill="#ffffff"/>
+                        <circle cx="236" cy="126" r="1.5" fill="#ffffff" opacity="0.8"/>
+                    </g>
+
+                    <!-- Повіки для моргання -->
+                    <ellipse class="eyelid" cx="168" cy="122" rx="17" ry="19" fill="#c88236" style="transform: scaleY(0); transform-origin: 168px 104px; transition: transform 0.12s;"/>
+                    <ellipse class="eyelid" cx="232" cy="122" rx="17" ry="19" fill="#c88236" style="transform: scaleY(0); transform-origin: 232px 104px; transition: transform 0.12s;"/>
+                </g>
+
+                <!-- Рухливі брови для зміни емоцій -->
+                <path id="brow-left" d="M148,100 Q168,92 184,104" stroke="#61340b" stroke-width="5.5" stroke-linecap="round" fill="none" style="transition: d 0.4s ease;"/>
+                <path id="brow-right" d="M252,100 Q232,92 216,104" stroke="#61340b" stroke-width="5.5" stroke-linecap="round" fill="none" style="transition: d 0.4s ease;"/>
+
+                <!-- Ротик та язичок (змінюється між сумним, здивованим та радісним) -->
+                <path id="dog-tongue" d="M192,168 Q200,192 208,168 Z" fill="#ff758f" stroke="#c9184a" stroke-width="1.5" opacity="0" style="transition: opacity 0.3s ease;"/>
+                <path id="dog-mouth" d="M178,170 Q200,156 222,170" stroke="#3d2106" stroke-width="4" stroke-linecap="round" fill="none" style="transition: d 0.4s ease;"/>
+
+                <!-- Реалістичний носик -->
+                <path d="M184,142 Q200,136 216,142 Q218,156 200,160 Q182,156 184,142 Z" fill="url(#noseGrad)"/>
+                <ellipse cx="195" cy="144" rx="5" ry="2.5" fill="#ffffff" opacity="0.45"/>
+
+                <!-- Крапельки води на голові песика -->
+                <path d="M155,86 Q155,94 159,94 Q163,94 159,86 Z" fill="#a3daff" opacity="0.85"/>
+                <path d="M238,92 Q238,100 242,100 Q246,100 242,92 Z" fill="#a3daff" opacity="0.85"/>
+            </g>
+
+            <!-- Хвильки калюжі навколо лапок песика -->
+            <ellipse cx="200" cy="286" rx="95" ry="12" fill="none" stroke="#d0ebff" stroke-width="2" opacity="0.55" stroke-dasharray="18 12"/>
+        </svg>
+    </div>
+</div>
+
+<script>
+    // =========================================================================
+    // 1. ЗВУКОВИЙ РУШІЙ (Web Audio API) — активні звукові ефекти без слів
+    // =========================================================================
+    class SoundEngine {
+        constructor() {
+            this.ctx = null;
+            this.rainGain = null;
+            this.isMuted = false;
+        }
+
+        init() {
+            if (this.ctx) return;
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioCtx();
+            this.startAmbientRainSound();
+        }
+
+        startAmbientRainSound() {
+            if (!this.ctx) return;
+            const bufferSize = 2 * this.ctx.sampleRate;
+            const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+
+            const whiteNoise = this.ctx.createBufferSource();
+            whiteNoise.buffer = noiseBuffer;
+            whiteNoise.loop = true;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.value = 950;
+            filter.Q.value = 0.7;
+
+            this.rainGain = this.ctx.createGain();
+            this.rainGain.gain.value = 0.04;
+
+            whiteNoise.connect(filter);
+            filter.connect(this.rainGain);
+            this.rainGain.connect(this.ctx.destination);
+            whiteNoise.start(0);
+        }
+
+        setRainIntensity(ratio) {
+            if (this.rainGain && this.ctx) {
+                this.rainGain.gain.setTargetAtTime(0.01 + ratio * 0.05, this.ctx.currentTime, 0.4);
+            }
+        }
+
+        playMeltSound() {
+            this.init();
+            const now = this.ctx.currentTime;
+            const notes = [523.25, 659.25, 783.99, 1046.50];
+            notes.forEach((freq, idx) => {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.15, now + idx * 0.09 + 0.45);
+
+                gain.gain.setValueAtTime(0.001, now + idx * 0.09);
+                gain.gain.linearRampToValueAtTime(0.14, now + idx * 0.09 + 0.04);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.55);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now + idx * 0.09);
+                osc.stop(now + idx * 0.09 + 0.6);
+            });
+        }
+
+        playThunderError() {
+            this.init();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(130, now);
+            osc.frequency.exponentialRampToValueAtTime(42, now + 0.45);
+
+            gain.gain.setValueAtTime(0.18, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.52);
+        }
+
+        playDogSound(type) {
+            if (!this.ctx) return;
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            if (type === 'whimper') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(480, now);
+                osc.frequency.linearRampToValueAtTime(340, now + 0.35);
+                gain.gain.setValueAtTime(0.06, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.4);
+            } else if (type === 'happy') {
+                [0, 0.18].forEach(offset => {
+                    const bOsc = this.ctx.createOscillator();
+                    const bGain = this.ctx.createGain();
+                    bOsc.type = 'triangle';
+                    bOsc.frequency.setValueAtTime(320, now + offset);
+                    bOsc.frequency.exponentialRampToValueAtTime(580, now + offset + 0.08);
+                    bOsc.frequency.exponentialRampToValueAtTime(220, now + offset + 0.14);
+
+                    bGain.gain.setValueAtTime(0.15, now + offset);
+                    bGain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.15);
+
+                    bOsc.connect(bGain);
+                    bGain.connect(this.ctx.destination);
+                    bOsc.start(now + offset);
+                    bOsc.stop(now + offset + 0.16);
+                });
+            }
+        }
+    }
+
+    const sound = new SoundEngine();
+
+    // =========================================================================
+    // 2. АНІМАЦІЯ ПЕСИКА — рандомна зміна емоцій та погляд на хмари
+    // =========================================================================
+    const dogHead = document.getElementById('dog-head');
+    const pupils = document.getElementById('pupils');
+    const browLeft = document.getElementById('brow-left');
+    const browRight = document.getElementById('brow-right');
+    const dogMouth = document.getElementById('dog-mouth');
+    const dogTongue = document.getElementById('dog-tongue');
+    const dogTail = document.getElementById('dog-tail');
+    const earLeft = document.getElementById('ear-left');
+    const earRight = document.getElementById('ear-right');
+    const eyelids = document.querySelectorAll('.eyelid');
+
+    let isCelebrating = false;
+    let roundTimeout = null; // Для збереження таймера переходу на новий раунд
+
+    function setDogEmotion(emotion) {
+        if (isCelebrating && emotion !== 'happy') return;
+
+        if (emotion === 'sad') {
+            browLeft.setAttribute('d', 'M146,105 Q168,90 185,96');
+            browRight.setAttribute('d', 'M254,105 Q232,90 215,96');
+            dogMouth.setAttribute('d', 'M178,172 Q200,156 222,172');
+            dogTongue.style.opacity = '0';
+            earLeft.style.transform = 'rotate(4deg)';
+            earRight.style.transform = 'rotate(-4deg)';
+            dogTail.style.transform = 'rotate(12deg)';
+        } else if (emotion === 'worried') {
+            browLeft.setAttribute('d', 'M146,102 Q168,84 185,92');
+            browRight.setAttribute('d', 'M254,102 Q232,84 215,92');
+            dogMouth.setAttribute('d', 'M188,168 Q200,160 212,168');
+            dogTongue.style.opacity = '0';
+            earLeft.style.transform = 'rotate(-6deg)';
+            earRight.style.transform = 'rotate(6deg)';
+            dogTail.style.transform = 'rotate(5deg)';
+        } else if (emotion === 'shiver') {
+            browLeft.setAttribute('d', 'M148,108 Q168,98 184,102');
+            browRight.setAttribute('d', 'M252,108 Q232,98 216,102');
+            dogMouth.setAttribute('d', 'M176,171 Q190,162 200,170 Q210,162 224,171');
+            dogTongue.style.opacity = '0';
+            earLeft.style.transform = 'rotate(10deg)';
+            earRight.style.transform = 'rotate(-10deg)';
+            dogHead.style.transform = 'translateY(8px) scale(0.97)';
+        } else if (emotion === 'happy') {
+            browLeft.setAttribute('d', 'M148,92 Q168,82 184,94');
+            browRight.setAttribute('d', 'M252,92 Q232,82 216,94');
+            dogMouth.setAttribute('d', 'M172,158 Q200,182 228,158');
+            dogTongue.style.opacity = '1';
+            earLeft.style.transform = 'rotate(-14deg)';
+            earRight.style.transform = 'rotate(14deg)';
+            dogHead.style.transform = 'translateY(-6px) rotate(3deg)';
+            pupils.style.transform = 'translate(0px, 0px)';
+        }
+    }
+
+    setInterval(() => {
+        eyelids.forEach(el => el.style.transform = 'scaleY(1)');
+        setTimeout(() => {
+            eyelids.forEach(el => el.style.transform = 'scaleY(0)');
+        }, 140);
+    }, 3400);
+
+    setInterval(() => {
+        if (isCelebrating) return;
+        const action = Math.random();
+
+        if (action < 0.45) {
+            const lookX = (Math.random() - 0.5) * 12;
+            const lookY = -7 - Math.random() * 4;
+            pupils.style.transform = `translate(${lookX}px, ${lookY}px)`;
+            dogHead.style.transform = `rotate(${lookX * 0.9}deg) translateY(-3px)`;
+            setDogEmotion('worried');
+        } else if (action < 0.78) {
+            const lookX = (Math.random() - 0.5) * 6;
+            pupils.style.transform = `translate(${lookX}px, 3px)`;
+            dogHead.style.transform = `rotate(${lookX * 0.5}deg) translateY(3px)`;
+            setDogEmotion('sad');
+        } else {
+            pupils.style.transform = `translate(0px, -2px)`;
+            setDogEmotion('shiver');
+            sound.playDogSound('whimper');
+        }
+    }, 2300);
+
+    let tailToggle = false;
+    setInterval(() => {
+        if (isCelebrating) {
+            tailToggle = !tailToggle;
+            dogTail.style.transform = tailToggle ? 'rotate(-18deg)' : 'rotate(14deg)';
+        }
+    }, 220);
+
+    // =========================================================================
+    // 3. СИСТЕМА ДОЩУ ТА КІЛ НА ВОДІ (Canvas)
+    // =========================================================================
+    const canvas = document.getElementById('rain-canvas');
+    const ctx = canvas.getContext('2d');
+    let raindrops = [];
+    let ripples = [];
+    let vaporParticles = [];
+    let activeCloudsData = [];
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function updateRainAndParticles() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        activeCloudsData.forEach(cloud => {
+            if (!cloud.melting && Math.random() < 0.65) {
+                const rect = cloud.element.getBoundingClientRect();
+                const dropX = rect.left + 25 + Math.random() * (rect.width - 50);
+                const dropY = rect.bottom - 20;
+                raindrops.push({
+                    x: dropX,
+                    y: dropY,
+                    vx: -1.2 + Math.random() * 0.5,
+                    vy: 9 + Math.random() * 5,
+                    len: 14 + Math.random() * 10,
+                    targetY: canvas.height * (0.83 + Math.random() * 0.14)
+                });
+            }
+        });
+
+        ctx.strokeStyle = 'rgba(190, 228, 255, 0.65)';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+
+        for (let i = raindrops.length - 1; i >= 0; i--) {
+            const d = raindrops[i];
+            ctx.beginPath();
+            ctx.moveTo(d.x, d.y);
+            ctx.lineTo(d.x + d.vx * 1.5, d.y + d.len);
+            ctx.stroke();
+
+            d.x += d.vx;
+            d.y += d.vy;
+
+            if (d.y >= d.targetY) {
+                ripples.push({
+                    x: d.x,
+                    y: d.targetY,
+                    rx: 2,
+                    ry: 0.6,
+                    maxRx: 18 + Math.random() * 16,
+                    alpha: 0.75
+                });
+                raindrops.splice(i, 1);
+            }
+        }
+
+        for (let i = ripples.length - 1; i >= 0; i--) {
+            const r = ripples[i];
+            ctx.beginPath();
+            ctx.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(215, 240, 255, ${r.alpha})`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            r.rx += 0.6;
+            r.ry += 0.15;
+            r.alpha -= 0.022;
+
+            if (r.alpha <= 0 || r.rx >= r.maxRx) {
+                ripples.splice(i, 1);
+            }
+        }
+
+        for (let i = vaporParticles.length - 1; i >= 0; i--) {
+            const p = vaporParticles[i];
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha})`;
+            ctx.fill();
+
+            p.x += p.vx;
+            p.y += p.vy;
+            p.r += 0.25;
+            p.alpha -= 0.015;
+
+            if (p.alpha <= 0) {
+                vaporParticles.splice(i, 1);
+            }
+        }
+
+        requestAnimationFrame(updateRainAndParticles);
+    }
+    requestAnimationFrame(updateRainAndParticles);
+
+    // =========================================================================
+    // 4. ГЕНЕРАТОР ЗАВДАНЬ ТА ХМАРОК
+    // =========================================================================
+    const cloudsLayer = document.getElementById('clouds-layer');
+    const taskText = document.getElementById('task-text');
+    const gameScene = document.getElementById('game-scene');
+    const sunRays = document.getElementById('sun-rays');
+
+    const cloudPositions = [
+        { left: '4%',  top: '45%' },
+        { left: '17%', top: '8%'  },
+        { left: '30%', top: '42%' },
+        { left: '44%', top: '6%'  },
+        { left: '57%', top: '42%' },
+        { left: '70%', top: '10%' },
+        { left: '82%', top: '38%' }
+    ];
+
+    let remainingTargets = 0;
+
+    function createExpressionWithValue(val) {
+        const isAddition = Math.random() < 0.5;
+        if (isAddition) {
+            const a = Math.floor(Math.random() * (val + 1));
+            const b = val - a;
+            return `${a} + ${b}`;
+        } else {
+            const maxB = 10 - val;
+            const b = Math.floor(Math.random() * (maxB + 1));
+            const a = val + b;
+            return `${a} − ${b}`;
+        }
+    }
+
+    function createCloudSVG(expressionText, uniqueId) {
+        return `
+        <svg viewBox="0 0 220 140" width="100%" height="100%">
+            <defs>
+                <radialGradient id="cloudBody_${uniqueId}" cx="45%" cy="30%" r="70%">
+                    <stop offset="0%" stop-color="#f0f9ff"/>
+                    <stop offset="45%" stop-color="#bae6fd"/>
+                    <stop offset="80%" stop-color="#7dd3fc"/>
+                    <stop offset="100%" stop-color="#38bdf8"/>
+                </radialGradient>
+                <linearGradient id="cloudShade_${uniqueId}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ffffff" stop-opacity="0.7"/>
+                    <stop offset="60%" stop-color="#7dd3fc" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="#0284c7" stop-opacity="0.55"/>
+                </linearGradient>
+                <filter id="cloudShadow_${uniqueId}" x="-10%" y="-10%" width="120%" height="125%">
+                    <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#0f2942" flood-opacity="0.38"/>
+                </filter>
+            </defs>
+            <g filter="url(#cloudShadow_${uniqueId})">
+                <path d="M 32,88
+                         C 12,88 12,68 30,68
+                         C 26,52 44,40 58,48
+                         C 65,26 95,22 110,36
+                         C 128,16 162,22 168,45
+                         C 188,40 202,58 190,74
+                         C 208,82 202,106 180,104
+                         C 182,122 154,128 140,114
+                         C 124,132 90,130 82,112
+                         C 60,124 34,110 42,92
+                         Z"
+                      fill="url(#cloudBody_${uniqueId})"
+                      stroke="#0369a1"
+                      stroke-width="2.2"
+                      stroke-linejoin="round"/>
+                <path d="M 48,68 C 55,48 85,45 98,58 C 115,42 148,45 156,66 C 175,65 182,88 165,98 C 145,112 75,112 48,92 Z"
+                      fill="url(#cloudShade_${uniqueId})"/>
+                <ellipse cx="92" cy="52" rx="24" ry="12" fill="#ffffff" opacity="0.55"/>
+                <ellipse cx="140" cy="56" rx="26" ry="14" fill="#ffffff" opacity="0.5"/>
+            </g>
+            <text x="114" y="76" class="cloud-text">${expressionText}</text>
+        </svg>`;
+    }
+
+    function generateNewRound() {
+        // Скидаємо таймер, якщо він був активний
+        if (roundTimeout) {
+            clearTimeout(roundTimeout);
+            roundTimeout = null;
+        }
+
+        isCelebrating = false;
+        setDogEmotion('sad');
+        sunRays.style.opacity = '0';
+        gameScene.style.filter = 'brightness(0.95)';
+
+        cloudsLayer.innerHTML = '';
+        activeCloudsData = [];
+
+        const mode = Math.random() < 0.5 ? 'less' : 'greater';
+        const targetNumber = Math.floor(Math.random() * 5) + 3;
+
+        if (mode === 'less') {
+            taskText.textContent = `Знайди вирази, значення яких менше від ${targetNumber}`;
+        } else {
+            taskText.textContent = `Знайди вирази, значення яких більше від ${targetNumber}`;
+        }
+
+        const board = document.getElementById('task-board');
+        board.style.transform = 'translateX(-50%) scale(1.05)';
+        setTimeout(() => board.style.transform = 'translateX(-50%) scale(1)', 350);
+
+        const totalClouds = 7;
+        const correctCount = Math.floor(Math.random() * 2) + 3;
+        remainingTargets = correctCount;
+
+        const flags = Array(totalClouds).fill(false);
+        for (let i = 0; i < correctCount; i++) flags[i] = true;
+        flags.sort(() => Math.random() - 0.5);
+
+        flags.forEach((isTarget, index) => {
+            let value;
+            if (mode === 'less') {
+                if (isTarget) {
+                    value = Math.floor(Math.random() * targetNumber);
+                } else {
+                    value = targetNumber + Math.floor(Math.random() * (11 - targetNumber));
+                }
+            } else {
+                if (isTarget) {
+                    value = targetNumber + 1 + Math.floor(Math.random() * (10 - targetNumber));
+                } else {
+                    value = Math.floor(Math.random() * (targetNumber + 1));
+                }
+            }
+
+            const expr = createExpressionWithValue(value);
+            const cloudEl = document.createElement('div');
+            cloudEl.className = 'cloud-wrapper';
+            cloudEl.style.left = cloudPositions[index].left;
+            cloudEl.style.top = cloudPositions[index].top;
+            cloudEl.style.animationDelay = `${index * 0.4}s`;
+            cloudEl.innerHTML = createCloudSVG(expr, index);
+
+            const cloudObj = {
+                element: cloudEl,
+                isCorrect: isTarget,
+                melting: false
+            };
+            activeCloudsData.push(cloudObj);
+
+            cloudEl.addEventListener('click', () => handleCloudClick(cloudObj));
+            cloudsLayer.appendChild(cloudEl);
+        });
+
+        sound.setRainIntensity(1);
+    }
+
+    function handleCloudClick(cloudObj) {
+        if (cloudObj.melting) return;
+
+        const rect = cloudObj.element.getBoundingClientRect();
+        const centerX = window.innerWidth / 2;
+        const offsetX = Math.max(-10, Math.min(10, (rect.left - centerX) / 60));
+        pupils.style.transform = `translate(${offsetX}px, -8px)`;
+
+        if (cloudObj.isCorrect) {
+            cloudObj.melting = true;
+            cloudObj.element.classList.add('cloud-melting');
+            sound.playMeltSound();
+
+            for (let i = 0; i < 18; i++) {
+                vaporParticles.push({
+                    x: rect.left + rect.width * (0.2 + Math.random() * 0.6),
+                    y: rect.top + rect.height * (0.3 + Math.random() * 0.4),
+                    vx: (Math.random() - 0.5) * 1.8,
+                    vy: -0.8 - Math.random() * 1.5,
+                    r: 8 + Math.random() * 14,
+                    alpha: 0.65
+                });
+            }
+
+            remainingTargets--;
+            const activeRatio = remainingTargets / 4;
+            sound.setRainIntensity(Math.max(0, activeRatio));
+
+            if (remainingTargets === 0) {
+                isCelebrating = true;
+                setDogEmotion('happy');
+                sound.playDogSound('happy');
+                sunRays.style.opacity = '1';
+                gameScene.style.filter = 'brightness(1.12) saturate(1.15)';
+
+                activeCloudsData.forEach(c => {
+                    c.melting = true;
+                    c.element.style.transition = 'opacity 1.2s ease, transform 1.2s ease';
+                    c.element.style.opacity = '0';
+                    c.element.style.transform = 'translateY(-35px) scale(0.9)';
+                });
+
+                // Зберігаємо ID таймера, щоб можна було скасувати, якщо натиснути кнопку
+                roundTimeout = setTimeout(() => {
+                    generateNewRound();
+                }, 2600);
+            }
+        } else {
+            sound.playThunderError();
+            sound.playDogSound('whimper');
+            setDogEmotion('shiver');
+
+            cloudObj.element.classList.remove('cloud-error');
+            void cloudObj.element.offsetWidth;
+            cloudObj.element.classList.add('cloud-error');
+        }
+    }
+
+    // Обробник кнопки перегенерації
+    document.getElementById('regenerate-btn').addEventListener('click', () => {
+        sound.init(); // Ініціалізуємо аудіо, якщо це був перший клік на сторінці
+        generateNewRound();
+    });
+
+    // Запуск першого раунду при завантаженні
+    generateNewRound();
+</script>
+
+</body>
+</html>
