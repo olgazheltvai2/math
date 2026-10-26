@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Склад числа та взаємозв'язок дій</title>
+  <style>
+    /* ==========================================================================
+       ОСНОВНІ СТИЛІ ТА СКИДАННЯ
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+      background: #1d3c1e;
+    }
+
+    #game-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #scene-svg {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* ==========================================================================
+       АНІМАЦІЇ ОТОЧЕННЯ ТА ПЕРСОНАЖІВ
+       ========================================================================== */
+    @keyframes floatCloudSlow {
+      0% { transform: translateX(-25px); }
+      50% { transform: translateX(35px); }
+      100% { transform: translateX(-25px); }
+    }
+    @keyframes floatCloudFast {
+      0% { transform: translateX(30px); }
+      50% { transform: translateX(-35px); }
+      100% { transform: translateX(30px); }
+    }
+
+    .cloud-slow { animation: floatCloudSlow 22s ease-in-out infinite; }
+    .cloud-fast { animation: floatCloudFast 16s ease-in-out infinite; }
+
+    @keyframes gentleSway {
+      0%, 100% { transform: rotate(-0.8deg); }
+      50% { transform: rotate(0.8deg); }
+    }
+    .flower-sway {
+      transform-origin: 430px 790px;
+      animation: gentleSway 6s ease-in-out infinite;
+    }
+
+    @keyframes beetleIdle {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-4px) rotate(0.8deg); }
+    }
+    @keyframes antennaWiggle {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(6deg); }
+      75% { transform: rotate(-5deg); }
+    }
+    .beetle-body-group {
+      transform-origin: 170px 720px;
+      animation: beetleIdle 3.2s ease-in-out infinite;
+    }
+    .beetle-antenna-l {
+      transform-origin: 215px 682px;
+      animation: antennaWiggle 2.4s ease-in-out infinite;
+    }
+    .beetle-antenna-r {
+      transform-origin: 228px 682px;
+      animation: antennaWiggle 2.4s ease-in-out infinite reverse;
+    }
+
+    @keyframes snailIdle {
+      0%, 100% { transform: scale(1, 1) translateY(0px); }
+      50% { transform: scale(1.02, 0.98) translateY(-3px); }
+    }
+    @keyframes stalkSway {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(-5deg); }
+    }
+    .snail-body-group {
+      transform-origin: 690px 710px;
+      animation: snailIdle 3.8s ease-in-out infinite;
+    }
+    .snail-stalk-l {
+      transform-origin: 642px 625px;
+      animation: stalkSway 2.8s ease-in-out infinite;
+    }
+    .snail-stalk-r {
+      transform-origin: 655px 625px;
+      animation: stalkSway 2.8s ease-in-out infinite reverse;
+    }
+
+    @keyframes happyJump {
+      0%, 100% { transform: translateY(0) scale(1); }
+      30% { transform: translateY(-38px) scale(1.08) rotate(-5deg); }
+      60% { transform: translateY(-12px) scale(1.03) rotate(5deg); }
+      80% { transform: translateY(-26px) scale(1.06) rotate(-3deg); }
+    }
+    .char-happy {
+      animation: happyJump 0.75s cubic-bezier(0.25, 1, 0.5, 1) !important;
+    }
+
+    @keyframes sadShake {
+      0%, 100% { transform: translateX(0) rotate(0deg); }
+      20% { transform: translateX(-12px) rotate(-4deg); }
+      40% { transform: translateX(12px) rotate(4deg); }
+      60% { transform: translateX(-9px) rotate(-2deg); }
+      80% { transform: translateX(9px) rotate(2deg); }
+    }
+    .char-sad {
+      animation: sadShake 0.55s ease-in-out !important;
+    }
+
+    .slot-interactive {
+      cursor: pointer;
+      transition: filter 0.2s ease, transform 0.2s ease;
+    }
+    .slot-interactive:hover {
+      filter: brightness(1.12) drop-shadow(0 0 10px rgba(255, 238, 120, 0.65));
+    }
+
+    @keyframes activePulse {
+      0%, 100% { filter: drop-shadow(0 0 6px #ffd54f) drop-shadow(0 0 14px #ff9800); }
+      50% { filter: drop-shadow(0 0 14px #fff176) drop-shadow(0 0 24px #ffc107); }
+    }
+    .slot-selected {
+      animation: activePulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes slotErrorShake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-10px); }
+      40% { transform: translateX(10px); }
+      60% { transform: translateX(-7px); }
+      80% { transform: translateX(7px); }
+    }
+    .slot-error {
+      animation: slotErrorShake 0.45s ease-in-out;
+    }
+
+    /* Кнопки навігації та клавіатури-камінців.
+       transform-box + transform-origin потрібні, щоб scale() працював
+       навколо центру елемента, а не viewBox SVG. */
+    .nav-btn, .numpad-stone, .flower-core-btn {
+      cursor: pointer;
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.18s ease;
+    }
+    .nav-btn:hover, .numpad-stone:hover, .flower-core-btn:hover {
+      filter: brightness(1.12) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.35));
+      transform: translateY(-4px) scale(1.05);
+    }
+    .nav-btn:active, .numpad-stone:active, .flower-core-btn:active {
+      transform: translateY(2px) scale(0.95);
+    }
+
+    @keyframes flowerCelebrate {
+      0%, 100% { filter: drop-shadow(0 0 0px rgba(255, 215, 0, 0)); }
+      50% { filter: drop-shadow(0 0 32px rgba(255, 230, 80, 0.95)); }
+    }
+    .flower-win {
+      animation: flowerCelebrate 1.5s ease-in-out 2;
+    }
+  </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#6ec6ff" />
+        <stop offset="48%" stop-color="#b3e5fc" />
+        <stop offset="85%" stop-color="#e1f5fe" />
+        <stop offset="100%" stop-color="#c8e6c9" />
+      </linearGradient>
+
+      <radialGradient id="sunGlow" cx="15%" cy="12%" r="55%">
+        <stop offset="0%" stop-color="#fffde7" stop-opacity="0.95" />
+        <stop offset="35%" stop-color="#fff59d" stop-opacity="0.45" />
+        <stop offset="100%" stop-color="#fff59d" stop-opacity="0" />
+      </radialGradient>
+
+      <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="55%" stop-color="#d7ecff" />
+        <stop offset="100%" stop-color="#92bce8" />
+      </linearGradient>
+
+      <linearGradient id="distantHill1" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#9ccc65" />
+        <stop offset="100%" stop-color="#558b2f" />
+      </linearGradient>
+
+      <linearGradient id="distantHill2" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#7cb342" />
+        <stop offset="100%" stop-color="#33691e" />
+      </linearGradient>
+
+      <radialGradient id="moundGrad" cx="45%" cy="25%" r="75%">
+        <stop offset="0%" stop-color="#aee571" />
+        <stop offset="55%" stop-color="#689f38" />
+        <stop offset="100%" stop-color="#2e5718" />
+      </radialGradient>
+
+      <linearGradient id="stemGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#33691e" />
+        <stop offset="40%" stop-color="#8bc34a" />
+        <stop offset="70%" stop-color="#689f38" />
+        <stop offset="100%" stop-color="#2e5718" />
+      </linearGradient>
+
+      <linearGradient id="leafGradLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#b9f6ca" />
+        <stop offset="25%" stop-color="#8bc34a" />
+        <stop offset="75%" stop-color="#558b2f" />
+        <stop offset="100%" stop-color="#2e5718" />
+      </linearGradient>
+
+      <linearGradient id="leafGradRight" x1="100%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#b9f6ca" />
+        <stop offset="25%" stop-color="#8bc34a" />
+        <stop offset="75%" stop-color="#558b2f" />
+        <stop offset="100%" stop-color="#2e5718" />
+      </linearGradient>
+
+      <radialGradient id="petalGrad" cx="50%" cy="50%" r="55%">
+        <stop offset="0%" stop-color="#fff59d" />
+        <stop offset="55%" stop-color="#ffeb3b" />
+        <stop offset="88%" stop-color="#fbc02d" />
+        <stop offset="100%" stop-color="#f57f17" />
+      </radialGradient>
+
+      <radialGradient id="flowerCenterGrad" cx="38%" cy="32%" r="65%">
+        <stop offset="0%" stop-color="#fffef5" />
+        <stop offset="65%" stop-color="#fff3cd" />
+        <stop offset="100%" stop-color="#ffd54f" />
+      </radialGradient>
+
+      <linearGradient id="orangeRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffb300" />
+        <stop offset="50%" stop-color="#fb8c00" />
+        <stop offset="100%" stop-color="#e65100" />
+      </linearGradient>
+
+      <radialGradient id="leafSlotStaticGrad" cx="35%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="55%" stop-color="#f1f8e9" />
+        <stop offset="88%" stop-color="#c5e1a5" />
+        <stop offset="100%" stop-color="#7cb342" />
+      </radialGradient>
+
+      <radialGradient id="dewdropEmptyGrad" cx="35%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="35%" stop-color="#e0f7fa" />
+        <stop offset="80%" stop-color="#80deea" />
+        <stop offset="100%" stop-color="#0097a7" />
+      </radialGradient>
+
+      <radialGradient id="slotActiveGrad" cx="35%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="40%" stop-color="#fff9c4" />
+        <stop offset="85%" stop-color="#ffd54f" />
+        <stop offset="100%" stop-color="#ff8f00" />
+      </radialGradient>
+
+      <radialGradient id="slotCorrectGrad" cx="35%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#ffffff" />
+        <stop offset="45%" stop-color="#dcedc8" />
+        <stop offset="85%" stop-color="#8bc34a" />
+        <stop offset="100%" stop-color="#33691e" />
+      </radialGradient>
+
+      <radialGradient id="slotErrorGrad" cx="35%" cy="28%" r="72%">
+        <stop offset="0%" stop-color="#ffebee" />
+        <stop offset="50%" stop-color="#ff8a80" />
+        <stop offset="100%" stop-color="#c62828" />
+      </radialGradient>
+
+      <linearGradient id="crystalBoxGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#e0f7fa" />
+        <stop offset="50%" stop-color="#b2ebf2" />
+        <stop offset="100%" stop-color="#4dd0e1" />
+      </linearGradient>
+
+      <linearGradient id="woodPlaqueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#ffecb3" />
+        <stop offset="15%" stop-color="#ffe082" />
+        <stop offset="50%" stop-color="#ffd54f" />
+        <stop offset="85%" stop-color="#ffca28" />
+        <stop offset="100%" stop-color="#ffb300" />
+      </linearGradient>
+
+      <linearGradient id="woodBorderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#8d6e63" />
+        <stop offset="50%" stop-color="#5d4037" />
+        <stop offset="100%" stop-color="#3e2723" />
+      </linearGradient>
+
+      <radialGradient id="beetleShellGrad" cx="38%" cy="30%" r="68%">
+        <stop offset="0%" stop-color="#82b1ff" />
+        <stop offset="35%" stop-color="#2962ff" />
+        <stop offset="78%" stop-color="#0d47a1" />
+        <stop offset="100%" stop-color="#051c42" />
+      </radialGradient>
+
+      <radialGradient id="beetleHeadGrad" cx="40%" cy="35%" r="65%">
+        <stop offset="0%" stop-color="#ffd180" />
+        <stop offset="55%" stop-color="#ff9100" />
+        <stop offset="100%" stop-color="#bf360c" />
+      </radialGradient>
+
+      <linearGradient id="snailBodyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#ffCDD2" />
+        <stop offset="45%" stop-color="#ef9a9a" />
+        <stop offset="80%" stop-color="#d36b6b" />
+        <stop offset="100%" stop-color="#8c3b3b" />
+      </linearGradient>
+
+      <radialGradient id="snailShellGrad" cx="42%" cy="38%" r="62%">
+        <stop offset="0%" stop-color="#bcaaa4" />
+        <stop offset="35%" stop-color="#8d6e63" />
+        <stop offset="75%" stop-color="#5d4037" />
+        <stop offset="100%" stop-color="#271815" />
+      </radialGradient>
+
+      <radialGradient id="stoneGrad" cx="38%" cy="30%" r="68%">
+        <stop offset="0%" stop-color="#fff8e1" />
+        <stop offset="50%" stop-color="#ffe082" />
+        <stop offset="88%" stop-color="#ffb300" />
+        <stop offset="100%" stop-color="#e65100" />
+      </radialGradient>
+
+      <filter id="dropShadow" x="-15%" y="-15%" width="135%" height="140%">
+        <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#1a330a" flood-opacity="0.38" />
+      </filter>
+
+      <filter id="softShadow" x="-10%" y="-10%" width="125%" height="125%">
+        <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#0d2606" flood-opacity="0.28" />
+      </filter>
+    </defs>
+
+    <!-- ==========================================================================
+         1. ЖИВИЙ СЮЖЕТНИЙ ФОН
+         ========================================================================== -->
+    <g id="background-layer">
+      <rect width="1920" height="1080" fill="url(#skyGrad)" />
+      <rect width="1920" height="1080" fill="url(#sunGlow)" />
+
+      <g opacity="0.22" fill="#fffde7">
+        <polygon points="180,0 450,1080 650,1080 280,0" />
+        <polygon points="320,0 880,1080 1120,1080 440,0" />
+        <polygon points="500,0 1380,1080 1620,1080 620,0" />
+      </g>
+
+      <g class="cloud-slow" filter="url(#softShadow)">
+        <path d="M 95,215 Q 65,215 65,190 Q 65,165 95,165 Q 110,145 140,152 Q 165,135 195,152 Q 225,145 245,165 Q 275,165 275,190 Q 275,215 245,215 Q 225,232 195,222 Q 170,242 145,222 Q 120,232 95,215 Z" fill="url(#cloudGrad)" />
+        <path d="M 305,195 Q 285,195 285,180 Q 285,165 305,165 Q 320,152 340,162 Q 360,152 375,165 Q 395,165 395,180 Q 395,195 375,195 Z" fill="url(#cloudGrad)" />
+        <path d="M 655,218 Q 625,218 625,192 Q 625,168 655,168 Q 675,148 705,158 Q 735,142 765,158 Q 795,148 815,168 Q 845,168 845,192 Q 845,218 815,218 Q 790,234 760,224 Q 735,244 705,224 Q 680,234 655,218 Z" fill="url(#cloudGrad)" />
+      </g>
+
+      <g class="cloud-fast" filter="url(#softShadow)">
+        <path d="M 210,275 Q 190,275 190,258 Q 190,242 212,242 Q 228,228 250,238 Q 272,226 292,240 Q 315,240 315,258 Q 315,275 292,275 Q 270,288 250,278 Q 230,288 210,275 Z" fill="url(#cloudGrad)" opacity="0.92" />
+        <path d="M 555,265 Q 535,265 535,248 Q 535,232 558,232 Q 574,218 596,228 Q 618,216 638,230 Q 660,230 660,248 Q 660,265 638,265 Q 616,278 596,268 Q 576,278 555,265 Z" fill="url(#cloudGrad)" opacity="0.92" />
+        <path d="M 1350,155 Q 1320,155 1320,132 Q 1320,110 1350,110 Q 1375,90 1410,102 Q 1445,88 1475,105 Q 1508,105 1508,132 Q 1508,155 1475,155 Z" fill="url(#cloudGrad)" opacity="0.75" />
+      </g>
+
+      <path d="M 0,740 Q 380,620 820,710 T 1620,680 L 1920,720 L 1920,1080 L 0,1080 Z" fill="url(#distantHill1)" opacity="0.7" />
+      <path d="M 0,790 Q 520,690 1050,760 T 1920,730 L 1920,1080 L 0,1080 Z" fill="url(#distantHill2)" opacity="0.88" />
+
+      <g stroke="#2e5718" stroke-width="3" fill="none" opacity="0.45">
+        <path d="M 80,790 Q 70,740 55,720" />
+        <path d="M 92,795 Q 100,735 118,715" />
+        <path d="M 830,780 Q 820,730 805,705" />
+        <path d="M 842,785 Q 855,730 875,710" />
+        <path d="M 1810,770 Q 1795,715 1775,695" />
+        <path d="M 1825,775 Q 1840,720 1860,690" />
+      </g>
+    </g>
+
+    <!-- ==========================================================================
+         2. ЛІВА СЦЕНА: ПАГОРБИ, КВІТКА, ЖУЧОК ТА РАВЛИК
+         ========================================================================== -->
+    <g id="meadow-stage">
+      <g filter="url(#dropShadow)">
+        <path d="M 45,825 Q 175,685 305,825 Z" fill="url(#moundGrad)" />
+        <path d="M 90,818 Q 82,785 68,775 M 102,820 Q 108,788 120,778 M 255,818 Q 265,786 280,775" stroke="#8bc34a" stroke-width="4" stroke-linecap="round" fill="none" />
+      </g>
+
+      <g filter="url(#dropShadow)">
+        <path d="M 555,825 Q 685,685 815,825 Z" fill="url(#moundGrad)" />
+        <path d="M 595,818 Q 585,785 572,775 M 755,818 Q 765,785 780,775 M 740,820 Q 735,790 725,780" stroke="#8bc34a" stroke-width="4" stroke-linecap="round" fill="none" />
+      </g>
+
+      <g id="flower-container" class="flower-sway" filter="url(#dropShadow)">
+        <path d="M 430,285 L 430,825" stroke="url(#stemGrad)" stroke-width="16" stroke-linecap="round" />
+        <path d="M 427,295 L 427,820" stroke="#dcedc8" stroke-width="3" stroke-linecap="round" opacity="0.65" />
+
+        <g stroke="url(#stemGrad)" stroke-width="9" fill="none" stroke-linecap="round">
+          <path d="M 430,445 Q 405,435 385,405" />
+          <path d="M 430,445 Q 455,435 475,405" />
+          <path d="M 430,595 Q 405,585 385,555" />
+          <path d="M 430,595 Q 455,585 475,555" />
+          <path d="M 430,745 Q 405,735 385,705" />
+          <path d="M 430,745 Q 455,735 475,705" />
+        </g>
+
+        <g id="leaf-pair-0">
+          <path d="M 412,422 C 385,325 295,332 252,422 C 308,440 370,438 412,422 Z" fill="url(#leafGradLeft)" stroke="#33691e" stroke-width="3" />
+          <path d="M 405,418 Q 330,392 262,418" stroke="#dcedc8" stroke-width="2.5" fill="none" opacity="0.55" />
+          <path d="M 448,422 C 475,325 565,332 608,422 C 552,440 490,438 448,422 Z" fill="url(#leafGradRight)" stroke="#33691e" stroke-width="3" />
+          <path d="M 455,418 Q 530,392 598,418" stroke="#dcedc8" stroke-width="2.5" fill="none" opacity="0.55" />
+        </g>
+
+        <g id="leaf-pair-1">
+          <path d="M 412,572 C 385,475 295,482 252,572 C 308,590 370,588 412,572 Z" fill="url(#leafGradLeft)" stroke="#33691e" stroke-width="3" />
+          <path d="M 405,568 Q 330,542 262,568" stroke="#dcedc8" stroke-width="2.5" fill="none" opacity="0.55" />
+          <path d="M 448,572 C 475,475 565,482 608,572 C 552,590 490,588 448,572 Z" fill="url(#leafGradRight)" stroke="#33691e" stroke-width="3" />
+          <path d="M 455,568 Q 530,542 598,568" stroke="#dcedc8" stroke-width="2.5" fill="none" opacity="0.55" />
+        </g>
+
+        <g id="leaf-pair-2">
+          <path d="M 412,722 C 385,625 295,632 252,722 C 308,740 370,738 412,722 Z" fill="url(#leafGradLeft)" stroke="#33691e" stroke-width="3" />
+          <path d="M 405,718 Q 330,692 262,718" stroke="#dcedc8" stroke-width="2.5" fill="none" opacity="0.55" />
+          <path d="M 448,722 C 475,625 565,632 608,722 C 552,740 490,738 448,722 Z" fill="url(#leafGradRight)" stroke="#33691e" stroke-width="3" />
+          <path d="M 455,718 Q 530,692 598,718" stroke="#dcedc8" stroke-width="2.5" fill="none" opacity="0.55" />
+        </g>
+
+        <g id="flower-slots-layer"></g>
+
+        <!-- ГОЛІВКА КВІТКИ: зовнішній <g> позиціонує, внутрішній — анімується -->
+        <g transform="translate(430, 235)">
+          <g id="flower-head" class="flower-core-btn">
+            <g fill="#fbc02d" stroke="#f57f17" stroke-width="2">
+              <circle cx="0" cy="-78" r="36" />
+              <circle cx="55" cy="-55" r="36" />
+              <circle cx="78" cy="0" r="36" />
+              <circle cx="55" cy="55" r="36" />
+              <circle cx="0" cy="78" r="36" />
+              <circle cx="-55" cy="55" r="36" />
+              <circle cx="-78" cy="0" r="36" />
+              <circle cx="-55" cy="-55" r="36" />
+            </g>
+            <g fill="url(#petalGrad)" stroke="#f9a825" stroke-width="2.5">
+              <circle cx="30" cy="-72" r="35" />
+              <circle cx="72" cy="-30" r="35" />
+              <circle cx="72" cy="30" r="35" />
+              <circle cx="30" cy="72" r="35" />
+              <circle cx="-30" cy="72" r="35" />
+              <circle cx="-72" cy="30" r="35" />
+              <circle cx="-72" cy="-30" r="35" />
+              <circle cx="-30" cy="-72" r="35" />
+            </g>
+            <circle cx="0" cy="0" r="68" fill="url(#petalGrad)" />
+            <circle cx="0" cy="0" r="54" fill="url(#orangeRingGrad)" stroke="#e65100" stroke-width="3" />
+            <circle cx="0" cy="0" r="43" fill="url(#flowerCenterGrad)" />
+            <ellipse cx="-12" cy="-16" rx="18" ry="10" fill="#ffffff" opacity="0.65" transform="rotate(-25 -12 -16)" />
+            <text id="target-number-text" x="0" y="21" text-anchor="middle" font-size="62" font-weight="900" fill="#2b2b2b">7</text>
+          </g>
+        </g>
+      </g>
+
+      <g id="beetle-char" class="beetle-body-group" filter="url(#dropShadow)">
+        <ellipse cx="172" cy="742" rx="62" ry="14" fill="#1b3b0c" opacity="0.45" />
+        <g stroke="#263238" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="M 135,712 L 112,728 L 105,744" />
+          <path d="M 168,716 L 158,734 L 154,748" />
+          <path d="M 200,712 L 212,732 L 222,745" />
+        </g>
+        <path d="M 108,708 C 102,642 195,635 215,695 C 218,712 195,722 152,720 C 122,718 110,715 108,708 Z" fill="url(#beetleShellGrad)" stroke="#051c42" stroke-width="3" />
+        <path d="M 118,672 Q 162,670 206,696" stroke="#051c42" stroke-width="2.5" fill="none" opacity="0.7" />
+        <ellipse cx="152" cy="666" rx="28" ry="11" fill="#ffffff" opacity="0.38" transform="rotate(-12 152 666)" />
+        <ellipse cx="212" cy="698" rx="24" ry="22" fill="url(#beetleHeadGrad)" stroke="#4e1d04" stroke-width="3" />
+        <g class="beetle-antenna-l">
+          <path d="M 214,680 Q 210,645 232,640" stroke="#4e1d04" stroke-width="4.5" stroke-linecap="round" fill="none" />
+          <circle cx="233" cy="640" r="6" fill="#ff9100" stroke="#4e1d04" stroke-width="2" />
+        </g>
+        <g class="beetle-antenna-r">
+          <path d="M 226,683 Q 238,650 256,650" stroke="#4e1d04" stroke-width="4.5" stroke-linecap="round" fill="none" />
+          <circle cx="257" cy="650" r="6" fill="#ff9100" stroke="#4e1d04" stroke-width="2" />
+        </g>
+        <g id="beetle-eyes">
+          <circle cx="216" cy="692" r="7.5" fill="#ffffff" stroke="#3e2723" stroke-width="2" />
+          <circle class="pupil" cx="218" cy="692" r="4" fill="#1a1a1a" />
+          <circle cx="219.5" cy="690" r="1.6" fill="#ffffff" />
+          <circle cx="231" cy="695" r="7" fill="#ffffff" stroke="#3e2723" stroke-width="2" />
+          <circle class="pupil" cx="233" cy="695" r="3.8" fill="#1a1a1a" />
+          <circle cx="234.5" cy="693" r="1.5" fill="#ffffff" />
+        </g>
+        <path id="beetle-mouth" d="M 218,707 Q 226,714 233,707" stroke="#3e2723" stroke-width="2.8" stroke-linecap="round" fill="none" />
+        <g stroke="#1a2327" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="M 128,716 L 116,735 L 108,748" />
+          <path d="M 182,718 L 178,738 L 184,750" />
+        </g>
+      </g>
+
+      <g id="snail-char" class="snail-body-group" filter="url(#dropShadow)">
+        <ellipse cx="692" cy="738" rx="72" ry="15" fill="#1b3b0c" opacity="0.45" />
+        <g transform="translate(715, 672)">
+          <circle cx="0" cy="0" r="56" fill="url(#snailShellGrad)" stroke="#271815" stroke-width="3.5" />
+          <path d="M -15,35 C -48,20 -48,-32 -10,-42 C 25,-50 45,-18 35,12 C 28,34 -2,38 -16,20 C -28,5 -18,-18 0,-20 C 14,-22 20,-8 12,4 C 6,12 -4,8 -4,0"
+                fill="none" stroke="#271815" stroke-width="4.5" stroke-linecap="round" />
+          <path d="M -28,-22 A 38,38 0 0 1 18,-36" stroke="#efebe9" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.42" />
+        </g>
+        <path d="M 608,690 Q 622,682 630,665 C 632,638 634,622 648,622 C 664,622 668,648 668,678 C 672,700 715,710 762,724 C 774,728 776,738 758,738 C 725,738 695,734 662,732 C 635,730 618,718 622,702 C 612,702 602,696 608,690 Z"
+              fill="url(#snailBodyGrad)" stroke="#5c2323" stroke-width="3" stroke-linejoin="round" />
+        <g class="snail-stalk-l">
+          <path d="M 640,626 Q 632,592 624,580" stroke="#8c3b3b" stroke-width="6" stroke-linecap="round" fill="none" />
+          <circle cx="623" cy="578" r="9" fill="url(#snailBodyGrad)" stroke="#5c2323" stroke-width="2.5" />
+          <circle cx="621" cy="578" r="5" fill="#ffffff" />
+          <circle class="pupil" cx="620" cy="578" r="2.6" fill="#1a1a1a" />
+        </g>
+        <g class="snail-stalk-r">
+          <path d="M 654,626 Q 656,592 664,580" stroke="#8c3b3b" stroke-width="6" stroke-linecap="round" fill="none" />
+          <circle cx="665" cy="578" r="9" fill="url(#snailBodyGrad)" stroke="#5c2323" stroke-width="2.5" />
+          <circle cx="663" cy="578" r="5" fill="#ffffff" />
+          <circle class="pupil" cx="662" cy="578" r="2.6" fill="#1a1a1a" />
+        </g>
+        <ellipse cx="652" cy="656" rx="7" ry="4.5" fill="#ff8a80" opacity="0.65" />
+        <path id="snail-mouth" d="M 634,650 Q 642,660 652,650" stroke="#5c2323" stroke-width="2.8" stroke-linecap="round" fill="none" />
+      </g>
+    </g>
+
+    <!-- ==========================================================================
+         3. ПРАВА СЦЕНА: ДЕРЕВ'ЯНІ ДОЩЕЧКИ З ПРИКЛАДАМИ
+         ========================================================================== -->
+    <g id="equations-stage"></g>
+
+    <!-- ==========================================================================
+         4. ІНТЕРАКТИВНА КЛАВІАТУРА-КАМІНЦІ (піднято вище, щоб вміщалася в екран)
+         ========================================================================== -->
+    <g id="numpad-layer" transform="translate(960, 900)"></g>
+
+    <!-- ==========================================================================
+         5. ШАР ЧАСТИНОК
+         ========================================================================== -->
+    <g id="particles-layer" pointer-events="none"></g>
+
+    <!-- ==========================================================================
+         6. КНОПКИ НАВІГАЦІЇ (опущено нижче, щоб повністю вміщалися в екран).
+            Зовнішній <g> задає позицію, внутрішній .nav-btn — анімується.
+         ========================================================================== -->
+    <g id="navigation-layer" transform="translate(1745, 150)">
+      <g transform="translate(-130, 0)" filter="url(#softShadow)">
+        <g id="btn-prev" class="nav-btn">
+          <circle cx="0" cy="0" r="38" fill="url(#leafGradLeft)" stroke="#ffd54f" stroke-width="4" />
+          <circle cx="0" cy="0" r="31" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.45" />
+          <path d="M 8,-16 L -10,0 L 8,16" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </g>
+      </g>
+
+      <g transform="translate(-35, 0)" filter="url(#softShadow)">
+        <g id="btn-regen" class="nav-btn">
+          <circle cx="0" cy="0" r="38" fill="url(#orangeRingGrad)" stroke="#fff59d" stroke-width="4" />
+          <path d="M -14,-6 A 16,16 0 1 1 -10,13 M -16,-16 L -15,-4 L -3,-6" stroke="#ffffff" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </g>
+      </g>
+
+      <g transform="translate(60, 0)" filter="url(#softShadow)">
+        <g id="btn-next" class="nav-btn">
+          <circle cx="0" cy="0" r="38" fill="url(#leafGradRight)" stroke="#ffd54f" stroke-width="4" />
+          <circle cx="0" cy="0" r="31" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.45" />
+          <path d="M -8,-16 L 10,0 L -8,16" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+        </g>
+      </g>
+    </g>
+  </svg>
+</div>
+
+<script>
+  /* ==========================================================================
+     НАЛАШТУВАННЯ ГРИ
+     ========================================================================== */
+  const CONFIG = {
+    defaultTarget: 7,
+    // Доступні числа для тренування складу числа (мінімум 4, бо для 3 рядків
+    // листків потрібно 3 різні пари доданків).
+    availableTargets: [4, 5, 6, 7, 8, 9, 10],
+    // Стартуємо з випадкового числа, а не з фіксованого рівня "як на фото".
+    startWithExactPhotoLevel: false
+  };
+
+  /* ==========================================================================
+     ЗВУКОВИЙ РУШІЙ
+     ========================================================================== */
+  class SoundEngine {
+    constructor() { this.ctx = null; }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    }
+
+    playSelect() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(980, now + 0.09);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    }
+
+    playCorrect() {
+      this.init();
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, idx) => {
+        const now = this.ctx.currentTime + idx * 0.055;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      });
+    }
+
+    playWrong() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.linearRampToValueAtTime(135, now + 0.28);
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.34);
+    }
+
+    playVictory() {
+      this.init();
+      const melody = [
+        { f: 523.25, t: 0.0, d: 0.18 },
+        { f: 659.25, t: 0.11, d: 0.18 },
+        { f: 783.99, t: 0.22, d: 0.18 },
+        { f: 1046.5, t: 0.33, d: 0.35 },
+        { f: 880.0,  t: 0.50, d: 0.18 },
+        { f: 1046.5, t: 0.64, d: 0.55 }
+      ];
+      melody.forEach(n => {
+        const now = this.ctx.currentTime + n.t;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(n.f, now);
+        gain.gain.setValueAtTime(0.24, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.d);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + n.d + 0.05);
+      });
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  /* ==========================================================================
+     СТАН ГРИ
+     ========================================================================== */
+  const state = {
+    currentTarget: CONFIG.defaultTarget,
+    history: [],
+    historyIndex: -1,
+    activeSlotId: null,
+    slots: {}
+  };
+
+  const svgNS = "http://www.w3.org/2000/svg";
+
+  /* ==========================================================================
+     ГЕНЕРАЦІЯ РІВНЯ
+     ========================================================================== */
+  function createPhotoExactLevel() {
+    return {
+      target: 7,
+      leafRows: [
+        { leftKnown: true,  leftVal: 4, rightVal: 3 },
+        { leftKnown: false, leftVal: 5, rightVal: 2 },
+        { leftKnown: true,  leftVal: 6, rightVal: 1 }
+      ],
+      equations: [
+        { minuend: 7, subtrahend: 6, diff: 1 },
+        { minuend: 7, subtrahend: 4, diff: 3 },
+        { minuend: 7, subtrahend: 5, diff: 2 }
+      ]
+    };
+  }
+
+  function createRandomLevel(targetNum) {
+    const possibleSubtrahends = [];
+    for (let i = 1; i < targetNum; i++) possibleSubtrahends.push(i);
+
+    for (let i = possibleSubtrahends.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [possibleSubtrahends[i], possibleSubtrahends[j]] = [possibleSubtrahends[j], possibleSubtrahends[i]];
+    }
+
+    const chosen = possibleSubtrahends.slice(0, 3);
+
+    const leafRows = chosen.map(knownVal => {
+      const missingVal = targetNum - knownVal;
+      const leftKnown = Math.random() > 0.5;
+      return {
+        leftKnown,
+        leftVal: leftKnown ? knownVal : missingVal,
+        rightVal: leftKnown ? missingVal : knownVal
+      };
+    });
+
+    const eqOrder = [...chosen].sort(() => Math.random() - 0.5);
+    const equations = eqOrder.map(sub => ({
+      minuend: targetNum,
+      subtrahend: sub,
+      diff: targetNum - sub
+    }));
+
+    return { target: targetNum, leafRows, equations };
+  }
+
+  /* ==========================================================================
+     ВІДМАЛЬОВКА РІВНЯ
+     ========================================================================== */
+  function renderLevel(levelData) {
+    state.slots = {};
+    state.activeSlotId = null;
+
+    document.getElementById('target-number-text').textContent = levelData.target;
+
+    const flowerSlotsLayer = document.getElementById('flower-slots-layer');
+    flowerSlotsLayer.innerHTML = '';
+
+    const rowYPositions = [392, 542, 692];
+    const leftX = 342;
+    const rightX = 518;
+
+    levelData.leafRows.forEach((row, rowIdx) => {
+      const cy = rowYPositions[rowIdx];
+
+      if (row.leftKnown) {
+        flowerSlotsLayer.appendChild(createStaticLeafMedallion(leftX, cy, row.leftVal));
+      } else {
+        const slotId = `leaf_${rowIdx}_L`;
+        flowerSlotsLayer.appendChild(createInteractiveLeafDroplet(slotId, leftX, cy, row.leftVal));
+      }
+
+      if (!row.leftKnown) {
+        flowerSlotsLayer.appendChild(createStaticLeafMedallion(rightX, cy, row.rightVal));
+      } else {
+        const slotId = `leaf_${rowIdx}_R`;
+        flowerSlotsLayer.appendChild(createInteractiveLeafDroplet(slotId, rightX, cy, row.rightVal));
+      }
+    });
+
+    const eqStage = document.getElementById('equations-stage');
+    eqStage.innerHTML = '';
+
+    const eqRowY = [285, 515, 745];
+    levelData.equations.forEach((eq, idx) => {
+      eqStage.appendChild(createEquationPlaque(eq, idx, 930, eqRowY[idx]));
+    });
+
+    selectFirstEmptySlot();
+  }
+
+  function createStaticLeafMedallion(cx, cy, value) {
+    const g = document.createElementNS(svgNS, 'g');
+
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('cx', cx);
+    circle.setAttribute('cy', cy);
+    circle.setAttribute('r', 36);
+    circle.setAttribute('fill', 'url(#leafSlotStaticGrad)');
+    circle.setAttribute('stroke', '#33691e');
+    circle.setAttribute('stroke-width', '3.5');
+    g.appendChild(circle);
+
+    const shine = document.createElementNS(svgNS, 'ellipse');
+    shine.setAttribute('cx', cx - 10);
+    shine.setAttribute('cy', cy - 14);
+    shine.setAttribute('rx', 13);
+    shine.setAttribute('ry', 7);
+    shine.setAttribute('fill', '#ffffff');
+    shine.setAttribute('opacity', '0.7');
+    shine.setAttribute('transform', `rotate(-25 ${cx - 10} ${cy - 14})`);
+    g.appendChild(shine);
+
+    const txt = document.createElementNS(svgNS, 'text');
+    txt.setAttribute('x', cx);
+    txt.setAttribute('y', cy + 16);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('font-size', '46');
+    txt.setAttribute('font-weight', '800');
+    txt.setAttribute('fill', '#1b3b0c');
+    txt.textContent = value;
+    g.appendChild(txt);
+
+    return g;
+  }
+
+  function createInteractiveLeafDroplet(slotId, cx, cy, expectedValue) {
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('class', 'slot-interactive');
+    g.setAttribute('id', `group_${slotId}`);
+
+    const circle = document.createElementNS(svgNS, 'circle');
+    circle.setAttribute('id', `bg_${slotId}`);
+    circle.setAttribute('cx', cx);
+    circle.setAttribute('cy', cy);
+    circle.setAttribute('r', 36);
+    circle.setAttribute('fill', 'url(#dewdropEmptyGrad)');
+    circle.setAttribute('stroke', '#00838f');
+    circle.setAttribute('stroke-width', '3.5');
+    g.appendChild(circle);
+
+    const shine = document.createElementNS(svgNS, 'ellipse');
+    shine.setAttribute('cx', cx - 10);
+    shine.setAttribute('cy', cy - 14);
+    shine.setAttribute('rx', 13);
+    shine.setAttribute('ry', 7);
+    shine.setAttribute('fill', '#ffffff');
+    shine.setAttribute('opacity', '0.8');
+    shine.setAttribute('transform', `rotate(-25 ${cx - 10} ${cy - 14})`);
+    g.appendChild(shine);
+
+    const txt = document.createElementNS(svgNS, 'text');
+    txt.setAttribute('id', `txt_${slotId}`);
+    txt.setAttribute('x', cx);
+    txt.setAttribute('y', cy + 16);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('font-size', '46');
+    txt.setAttribute('font-weight', '900');
+    txt.setAttribute('fill', '#1b3b0c');
+    txt.textContent = '';
+    g.appendChild(txt);
+
+    state.slots[slotId] = { id: slotId, type: 'circle', expected: expectedValue, solved: false, cx, cy };
+
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectSlot(slotId);
+    });
+
+    return g;
+  }
+
+  function createEquationPlaque(eq, rowIdx, x, y) {
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('transform', `translate(${x}, ${y})`);
+    g.setAttribute('filter', 'url(#dropShadow)');
+
+    const outerBoard = document.createElementNS(svgNS, 'rect');
+    outerBoard.setAttribute('x', 0);
+    outerBoard.setAttribute('y', -78);
+    outerBoard.setAttribute('width', 915);
+    outerBoard.setAttribute('height', 165);
+    outerBoard.setAttribute('rx', 34);
+    outerBoard.setAttribute('fill', 'url(#woodBorderGrad)');
+    g.appendChild(outerBoard);
+
+    const innerBoard = document.createElementNS(svgNS, 'rect');
+    innerBoard.setAttribute('x', 10);
+    innerBoard.setAttribute('y', -68);
+    innerBoard.setAttribute('width', 895);
+    innerBoard.setAttribute('height', 145);
+    innerBoard.setAttribute('rx', 26);
+    innerBoard.setAttribute('fill', 'url(#woodPlaqueGrad)');
+    innerBoard.setAttribute('stroke', '#ffa000');
+    innerBoard.setAttribute('stroke-width', '2.5');
+    g.appendChild(innerBoard);
+
+    const grain = document.createElementNS(svgNS, 'path');
+    grain.setAttribute('d', 'M 35,-45 Q 260,-58 520,-42 T 875,-48 M 45,52 Q 340,65 620,48 T 870,55');
+    grain.setAttribute('stroke', '#f57f17');
+    grain.setAttribute('stroke-width', '2');
+    grain.setAttribute('fill', 'none');
+    grain.setAttribute('opacity', '0.28');
+    g.appendChild(grain);
+
+    const cornerLeaf = document.createElementNS(svgNS, 'path');
+    cornerLeaf.setAttribute('d', 'M 12,-58 C -10,-78 18,-98 38,-68 Z M 902,-58 C 924,-78 896,-98 876,-68 Z');
+    cornerLeaf.setAttribute('fill', '#7cb342');
+    cornerLeaf.setAttribute('stroke', '#33691e');
+    cornerLeaf.setAttribute('stroke-width', '2.5');
+    g.appendChild(cornerLeaf);
+
+    g.appendChild(createSvgText(58, 12, eq.minuend, 56, '#d81b60', '900'));
+    g.appendChild(createSvgText(108, 10, '−', 54, '#2b2b2b', '800'));
+    g.appendChild(createSvgText(158, 12, eq.subtrahend, 56, '#2b2b2b', '900'));
+    g.appendChild(createSvgText(208, 10, '=', 52, '#2b2b2b', '800'));
+
+    const diffSlotId = `eq_${rowIdx}_diff`;
+    g.appendChild(createInteractiveCrystalBox(diffSlotId, 240, -38, 72, 72, eq.diff, x + 276, y));
+
+    g.appendChild(createSvgText(324, 18, ',', 52, '#2b2b2b', '800'));
+
+    const arrowGroup = document.createElementNS(svgNS, 'g');
+    const curve = document.createElementNS(svgNS, 'path');
+    curve.setAttribute('d', 'M 276,42 Q 216,80 158,42');
+    curve.setAttribute('fill', 'none');
+    curve.setAttribute('stroke', '#3e2723');
+    curve.setAttribute('stroke-width', '4');
+    curve.setAttribute('stroke-linecap', 'round');
+    arrowGroup.appendChild(curve);
+
+    const arrowHead = document.createElementNS(svgNS, 'polygon');
+    arrowHead.setAttribute('points', '154,36 172,41 161,54');
+    arrowHead.setAttribute('fill', '#3e2723');
+    arrowGroup.appendChild(arrowHead);
+
+    arrowGroup.appendChild(createSvgText(217, 55, '+', 38, '#3e2723', '900'));
+    g.appendChild(arrowGroup);
+
+    g.appendChild(createSvgText(462, 10, 'тому що', 44, '#3e2723', '800'));
+
+    const addSlotId = `eq_${rowIdx}_add`;
+    g.appendChild(createInteractiveCrystalBox(addSlotId, 588, -38, 72, 72, eq.diff, x + 624, y));
+
+    g.appendChild(createSvgText(696, 10, '+', 52, '#2b2b2b', '800'));
+    g.appendChild(createSvgText(748, 12, eq.subtrahend, 56, '#2b2b2b', '900'));
+    g.appendChild(createSvgText(798, 10, '=', 52, '#2b2b2b', '800'));
+    g.appendChild(createSvgText(848, 12, eq.minuend, 56, '#d81b60', '900'));
+
+    return g;
+  }
+
+  function createSvgText(x, y, content, fontSize, color, weight = '800') {
+    const t = document.createElementNS(svgNS, 'text');
+    t.setAttribute('x', x);
+    t.setAttribute('y', y);
+    t.setAttribute('text-anchor', 'middle');
+    t.setAttribute('font-size', fontSize);
+    t.setAttribute('font-weight', weight);
+    t.setAttribute('fill', color);
+    t.textContent = content;
+    return t;
+  }
+
+  function createInteractiveCrystalBox(slotId, x, y, w, h, expectedValue, absX, absY) {
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('class', 'slot-interactive');
+    g.setAttribute('id', `group_${slotId}`);
+
+    const rect = document.createElementNS(svgNS, 'rect');
+    rect.setAttribute('id', `bg_${slotId}`);
+    rect.setAttribute('x', x);
+    rect.setAttribute('y', y);
+    rect.setAttribute('width', w);
+    rect.setAttribute('height', h);
+    rect.setAttribute('rx', 16);
+    rect.setAttribute('fill', 'url(#crystalBoxGrad)');
+    rect.setAttribute('stroke', '#0097a7');
+    rect.setAttribute('stroke-width', '3.5');
+    g.appendChild(rect);
+
+    const highlight = document.createElementNS(svgNS, 'path');
+    highlight.setAttribute('d', `M ${x + 8},${y + 18} L ${x + 8},${y + 8} L ${x + 28},${y + 8}`);
+    highlight.setAttribute('stroke', '#ffffff');
+    highlight.setAttribute('stroke-width', '4');
+    highlight.setAttribute('stroke-linecap', 'round');
+    highlight.setAttribute('fill', 'none');
+    highlight.setAttribute('opacity', '0.85');
+    g.appendChild(highlight);
+
+    const txt = document.createElementNS(svgNS, 'text');
+    txt.setAttribute('id', `txt_${slotId}`);
+    txt.setAttribute('x', x + w / 2);
+    txt.setAttribute('y', y + h / 2 + 18);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('font-size', '48');
+    txt.setAttribute('font-weight', '900');
+    txt.setAttribute('fill', '#1b3b0c');
+    txt.textContent = '';
+    g.appendChild(txt);
+
+    state.slots[slotId] = { id: slotId, type: 'rect', expected: expectedValue, solved: false, cx: absX, cy: absY };
+
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectSlot(slotId);
+    });
+
+    return g;
+  }
+
+  /* ==========================================================================
+     КЛАВІАТУРА-КАМІНЦІ (0–10)
+     Кожен камінець: зовнішній <g> з позицією (SVG transform) +
+     внутрішній <g class="numpad-stone"> з hover-анімацією. Це запобігає
+     "втіканню" кнопок, бо CSS transform більше не перезаписує SVG-атрибут.
+     ========================================================================== */
+  function buildNumpad() {
+    const layer = document.getElementById('numpad-layer');
+    layer.innerHTML = '';
+
+    const numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const spacing = 108;
+    const startX = -((numbers.length - 1) * spacing) / 2;
+
+    numbers.forEach((num, idx) => {
+      const cx = startX + idx * spacing;
+
+      const outer = document.createElementNS(svgNS, 'g');
+      outer.setAttribute('transform', `translate(${cx}, 0)`);
+      outer.setAttribute('filter', 'url(#softShadow)');
+
+      const g = document.createElementNS(svgNS, 'g');
+      g.setAttribute('class', 'numpad-stone');
+
+      const stone = document.createElementNS(svgNS, 'ellipse');
+      stone.setAttribute('cx', 0);
+      stone.setAttribute('cy', 0);
+      stone.setAttribute('rx', 44);
+      stone.setAttribute('ry', 36);
+      stone.setAttribute('fill', 'url(#stoneGrad)');
+      stone.setAttribute('stroke', '#5d4037');
+      stone.setAttribute('stroke-width', '3.5');
+      g.appendChild(stone);
+
+      const shine = document.createElementNS(svgNS, 'ellipse');
+      shine.setAttribute('cx', -10);
+      shine.setAttribute('cy', -14);
+      shine.setAttribute('rx', 18);
+      shine.setAttribute('ry', 8);
+      shine.setAttribute('fill', '#ffffff');
+      shine.setAttribute('opacity', '0.6');
+      g.appendChild(shine);
+
+      const txt = document.createElementNS(svgNS, 'text');
+      txt.setAttribute('x', 0);
+      txt.setAttribute('y', 15);
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('font-size', '42');
+      txt.setAttribute('font-weight', '900');
+      txt.setAttribute('fill', '#3e2723');
+      txt.textContent = num;
+      g.appendChild(txt);
+
+      outer.appendChild(g);
+      layer.appendChild(outer);
+
+      outer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleNumberInput(num);
+      });
+    });
+  }
+
+  /* ==========================================================================
+     ЛОГІКА ВИБОРУ КОМІРКИ ТА ПЕРЕВІРКИ
+     ========================================================================== */
+  function selectSlot(slotId) {
+    const slot = state.slots[slotId];
+    if (!slot || slot.solved) return;
+
+    sound.playSelect();
+
+    if (state.activeSlotId && state.slots[state.activeSlotId] && !state.slots[state.activeSlotId].solved) {
+      const prevId = state.activeSlotId;
+      const prevGroup = document.getElementById(`group_${prevId}`);
+      const prevBg = document.getElementById(`bg_${prevId}`);
+      if (prevGroup && prevBg) {
+        prevGroup.classList.remove('slot-selected');
+        prevBg.setAttribute('fill', state.slots[prevId].type === 'circle' ? 'url(#dewdropEmptyGrad)' : 'url(#crystalBoxGrad)');
+      }
+    }
+
+    state.activeSlotId = slotId;
+    const group = document.getElementById(`group_${slotId}`);
+    const bg = document.getElementById(`bg_${slotId}`);
+    if (group && bg) {
+      group.classList.add('slot-selected');
+      bg.setAttribute('fill', 'url(#slotActiveGrad)');
+    }
+
+    lookAtPoint(slot.cx, slot.cy);
+  }
+
+  function selectFirstEmptySlot() {
+    const emptySlot = Object.values(state.slots).find(s => !s.solved);
+    if (emptySlot) selectSlot(emptySlot.id);
+  }
+
+  function handleNumberInput(num) {
+    if (!state.activeSlotId) {
+      selectFirstEmptySlot();
+      if (!state.activeSlotId) return;
+    }
+
+    const slot = state.slots[state.activeSlotId];
+    if (!slot || slot.solved) return;
+
+    const group = document.getElementById(`group_${slot.id}`);
+    const bg = document.getElementById(`bg_${slot.id}`);
+    const txt = document.getElementById(`txt_${slot.id}`);
+
+    txt.textContent = num;
+
+    if (num === slot.expected) {
+      slot.solved = true;
+      group.classList.remove('slot-selected');
+      bg.setAttribute('fill', 'url(#slotCorrectGrad)');
+      bg.setAttribute('stroke', '#33691e');
+
+      sound.playCorrect();
+      spawnSparkles(slot.cx, slot.cy, 16);
+      triggerCharacterReaction(true);
+
+      const allSolved = Object.values(state.slots).every(s => s.solved);
+      if (allSolved) {
+        setTimeout(() => celebrateLevelComplete(), 250);
+      } else {
+        setTimeout(() => selectFirstEmptySlot(), 180);
+      }
+    } else {
+      sound.playWrong();
+      group.classList.remove('slot-error');
+      void group.offsetWidth;
+      group.classList.add('slot-error');
+      bg.setAttribute('fill', 'url(#slotErrorGrad)');
+
+      triggerCharacterReaction(false);
+
+      setTimeout(() => {
+        if (!slot.solved) {
+          txt.textContent = '';
+          bg.setAttribute('fill', state.activeSlotId === slot.id ? 'url(#slotActiveGrad)' : (slot.type === 'circle' ? 'url(#dewdropEmptyGrad)' : 'url(#crystalBoxGrad)'));
+        }
+      }, 550);
+    }
+  }
+
+  /* ==========================================================================
+     РЕАКЦІЇ ПЕРСОНАЖІВ ТА ЧАСТИНКИ
+     ========================================================================== */
+  function lookAtPoint(targetX, targetY) {
+    const pupils = document.querySelectorAll('.pupil');
+    const dx = Math.max(-2.5, Math.min(2.5, (targetX - 550) / 350));
+    const dy = Math.max(-2, Math.min(2, (targetY - 600) / 300));
+    pupils.forEach(p => {
+      p.style.transform = `translate(${dx}px, ${dy}px)`;
+    });
+  }
+
+  function triggerCharacterReaction(isHappy) {
+    const beetle = document.getElementById('beetle-char');
+    const snail = document.getElementById('snail-char');
+    const beetleMouth = document.getElementById('beetle-mouth');
+    const snailMouth = document.getElementById('snail-mouth');
+
+    beetle.classList.remove('char-happy', 'char-sad');
+    snail.classList.remove('char-happy', 'char-sad');
+    void beetle.offsetWidth;
+
+    if (isHappy) {
+      beetle.classList.add('char-happy');
+      snail.classList.add('char-happy');
+      beetleMouth.setAttribute('d', 'M 216,705 Q 226,718 235,705');
+      snailMouth.setAttribute('d', 'M 632,648 Q 642,664 654,648');
+    } else {
+      beetle.classList.add('char-sad');
+      snail.classList.add('char-sad');
+      beetleMouth.setAttribute('d', 'M 218,712 Q 226,704 233,712');
+      snailMouth.setAttribute('d', 'M 634,655 Q 642,646 652,655');
+    }
+
+    setTimeout(() => {
+      beetle.classList.remove('char-happy', 'char-sad');
+      snail.classList.remove('char-happy', 'char-sad');
+      beetleMouth.setAttribute('d', 'M 218,707 Q 226,714 233,707');
+      snailMouth.setAttribute('d', 'M 634,650 Q 642,660 652,650');
+    }, 800);
+  }
+
+  function spawnSparkles(x, y, count = 18) {
+    const layer = document.getElementById('particles-layer');
+    const colors = ['#fff59d', '#ffd54f', '#b9f6ca', '#80deea', '#ff80ab'];
+
+    for (let i = 0; i < count; i++) {
+      const star = document.createElementNS(svgNS, 'circle');
+      const r = 4 + Math.random() * 6;
+      star.setAttribute('cx', x);
+      star.setAttribute('cy', y);
+      star.setAttribute('r', r);
+      star.setAttribute('fill', colors[i % colors.length]);
+      layer.appendChild(star);
+
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+      const dist = 45 + Math.random() * 85;
+      const tx = Math.cos(angle) * dist;
+      const ty = Math.sin(angle) * dist - 20;
+
+      star.animate([
+        { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+        { transform: `translate(${tx}px, ${ty}px) scale(0)`, opacity: 0 }
+      ], {
+        duration: 650 + Math.random() * 350,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+      }).onfinish = () => star.remove();
+    }
+  }
+
+  function celebrateLevelComplete() {
+    sound.playVictory();
+    const flower = document.getElementById('flower-container');
+    flower.classList.add('flower-win');
+    setTimeout(() => flower.classList.remove('flower-win'), 3000);
+
+    triggerCharacterReaction(true);
+    spawnSparkles(430, 235, 36);
+    spawnSparkles(175, 680, 22);
+    spawnSparkles(690, 650, 22);
+  }
+
+  /* ==========================================================================
+     НАВІГАЦІЯ ТА ГЕНЕРАЦІЯ РІВНІВ
+     ========================================================================== */
+  function pickRandomTarget() {
+    const arr = CONFIG.availableTargets;
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  function startNewLevel(useExactPhoto = false, overrideTarget = null) {
+    if (!useExactPhoto) {
+      state.currentTarget = (overrideTarget !== null) ? overrideTarget : pickRandomTarget();
+    }
+
+    const levelData = useExactPhoto
+      ? createPhotoExactLevel()
+      : createRandomLevel(state.currentTarget);
+
+    state.history = state.history.slice(0, state.historyIndex + 1);
+    state.history.push(levelData);
+    state.historyIndex = state.history.length - 1;
+
+    renderLevel(levelData);
+    spawnSparkles(430, 235, 14);
+  }
+
+  function goPrevLevel() {
+    sound.playSelect();
+    if (state.historyIndex > 0) {
+      state.historyIndex--;
+      const prevData = state.history[state.historyIndex];
+      state.currentTarget = prevData.target;
+      renderLevel(prevData);
+    } else {
+      renderLevel(state.history[0]);
+    }
+  }
+
+  function goNextLevel() {
+    sound.playSelect();
+    if (state.historyIndex < state.history.length - 1) {
+      state.historyIndex++;
+      const nextData = state.history[state.historyIndex];
+      state.currentTarget = nextData.target;
+      renderLevel(nextData);
+    } else {
+      startNewLevel(false);
+    }
+  }
+
+  /* ==========================================================================
+     ПІДКЛЮЧЕННЯ ПОДІЙ
+     ========================================================================== */
+  document.getElementById('btn-prev').addEventListener('click', goPrevLevel);
+
+  document.getElementById('btn-regen').addEventListener('click', () => {
+    sound.playSelect();
+    startNewLevel(false);
+  });
+
+  document.getElementById('btn-next').addEventListener('click', goNextLevel);
+
+  // Клік по центру квітки циклічно перемикає цільове число
+  document.getElementById('flower-head').addEventListener('click', () => {
+    sound.playSelect();
+    const idx = CONFIG.availableTargets.indexOf(state.currentTarget);
+    const nextTarget = CONFIG.availableTargets[(idx + 1) % CONFIG.availableTargets.length];
+    startNewLevel(false, nextTarget);
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key >= '0' && e.key <= '9') {
+      handleNumberInput(parseInt(e.key, 10));
+    } else if (e.key === 'ArrowRight') {
+      goNextLevel();
+    } else if (e.key === 'ArrowLeft') {
+      goPrevLevel();
+    }
+  });
+
+  // Старт гри — з випадкового числа (оскільки startWithExactPhotoLevel: false)
+  buildNumpad();
+  startNewLevel(CONFIG.startWithExactPhotoLevel);
+</script>
+</body>
+</html>
