@@ -1,0 +1,2202 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Графи: Брати і Сестри</title>
+<style>
+  /* Скидання базових стилів та заборона виділення тексту для зручної роботи мишкою або стилусом */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Georgia', 'Palatino Linotype', serif;
+    background: #1a110b;
+  }
+
+  /* Головний контейнер сцени 16:9, який адаптивно вписується в екран */
+  #stage-wrapper {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #3a2314 0%, #150c06 100%);
+  }
+
+  #game-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: 177.78vh; /* Співвідношення 16:9 */
+    max-height: 56.25vw;
+    overflow: hidden;
+    box-shadow: 0 25px 70px rgba(0,0,0,0.85);
+    border-radius: 12px;
+  }
+
+  /* Головне SVG-полотно гри */
+  #main-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+
+  /* Інтерактивні кнопки БЕЗ CSS transform, щоб SVG-елементи ніколи не тікали від курсора */
+  .interactive-btn {
+    cursor: pointer;
+    pointer-events: all;
+    transition: filter 0.15s ease;
+  }
+  .interactive-btn:hover {
+    filter: brightness(1.15) drop-shadow(0 0 10px rgba(255, 225, 145, 0.6));
+  }
+  .interactive-btn:active {
+    filter: brightness(0.9);
+  }
+
+  .graph-node {
+    cursor: pointer;
+    pointer-events: all;
+    transition: filter 0.15s ease;
+  }
+  .graph-node:hover {
+    filter: brightness(1.15) drop-shadow(0 0 14px rgba(255, 225, 150, 0.8));
+  }
+
+  .user-edge-hit {
+    cursor: pointer;
+    pointer-events: stroke;
+  }
+
+  /* Малопомітний перемикач мов у правому нижньому кутку на дерев'яній рамі */
+  #lang-switcher {
+    position: absolute;
+    bottom: 1.4%;
+    right: 1.8%;
+    display: flex;
+    gap: 5px;
+    background: rgba(32, 18, 9, 0.5);
+    border: 1px solid rgba(180, 135, 85, 0.28);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-family: sans-serif;
+    font-size: 13px;
+    color: rgba(215, 185, 145, 0.5);
+    z-index: 20;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  #lang-switcher:hover {
+    color: rgba(245, 220, 185, 0.9);
+    border-color: rgba(210, 165, 110, 0.6);
+  }
+  .lang-opt {
+    cursor: pointer;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+  .lang-opt.active {
+    color: #e6c387;
+    background: rgba(140, 90, 45, 0.4);
+  }
+</style>
+</head>
+<body>
+
+<div id="stage-wrapper">
+  <div id="game-scene">
+    <!-- Малопомітний перемикач мов (UA / RU) -->
+    <div id="lang-switcher" title="Мова / Язык">
+      <span class="lang-opt active" id="lang-ua">UA</span>
+      <span style="opacity:0.35">|</span>
+      <span class="lang-opt" id="lang-ru">RU</span>
+    </div>
+
+    <!-- Уся графіка, анімації, дошка, персонаж та інтерактивні графи рендеряться у високодеталізованому SVG -->
+    <svg id="main-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <!-- ================= ТЕКСТУРИ ТА ГРАДІЄНТИ РЕАЛІСТИЧНОЇ ВІТАЛЬНІ ================= -->
+        <radialGradient id="wallLight" cx="25%" cy="22%" r="80%">
+          <stop offset="0%" stop-color="#6e472b"/>
+          <stop offset="45%" stop-color="#3f2616"/>
+          <stop offset="100%" stop-color="#1d1008"/>
+        </radialGradient>
+
+        <!-- Візерунок класичних шпалер дамаск -->
+        <pattern id="wallpaperPattern" width="80" height="80" patternUnits="userSpaceOnUse">
+          <path d="M40 8 C52 22, 52 34, 40 48 C28 34, 28 22, 40 8 Z" fill="none" stroke="#855835" stroke-width="1.2" opacity="0.18"/>
+          <path d="M40 48 C52 62, 52 74, 40 88 C28 74, 28 62, 40 48 Z" fill="none" stroke="#855835" stroke-width="1.2" opacity="0.18"/>
+          <circle cx="40" cy="40" r="3" fill="#9c6b43" opacity="0.15"/>
+          <circle cx="0" cy="40" r="2.5" fill="#9c6b43" opacity="0.15"/>
+          <circle cx="80" cy="40" r="2.5" fill="#9c6b43" opacity="0.15"/>
+        </pattern>
+
+        <!-- Червоне дерево (махагоні) для столу -->
+        <linearGradient id="mahoganyDesk" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#5c2c16"/>
+          <stop offset="25%" stop-color="#47200e"/>
+          <stop offset="70%" stop-color="#331508"/>
+          <stop offset="100%" stop-color="#1f0b03"/>
+        </linearGradient>
+
+        <!-- Текстура волокон дерева -->
+        <pattern id="woodGrain" width="220" height="60" patternUnits="userSpaceOnUse">
+          <path d="M0 15 Q 55 8, 110 16 T 220 14" fill="none" stroke="#240d04" stroke-width="1.6" opacity="0.35"/>
+          <path d="M0 32 Q 70 40, 140 29 T 220 34" fill="none" stroke="#753b1e" stroke-width="1.2" opacity="0.25"/>
+          <path d="M0 48 Q 60 42, 125 51 T 220 47" fill="none" stroke="#1c0902" stroke-width="1.4" opacity="0.35"/>
+        </pattern>
+
+        <!-- Рама старовинної сімейної дошки (горіх + бронза) -->
+        <linearGradient id="boardWoodFrame" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#7c4722"/>
+          <stop offset="30%" stop-color="#5a3115"/>
+          <stop offset="70%" stop-color="#44230d"/>
+          <stop offset="100%" stop-color="#2a1406"/>
+        </linearGradient>
+
+        <!-- Латунний/золотий кант -->
+        <linearGradient id="brassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fff0b8"/>
+          <stop offset="25%" stop-color="#e0b252"/>
+          <stop offset="50%" stop-color="#9c6d1e"/>
+          <stop offset="75%" stop-color="#e8c36b"/>
+          <stop offset="100%" stop-color="#6e490d"/>
+        </linearGradient>
+
+        <!-- Полотно дошки (теплий фактурний льон/пергамент без білих прямокутників) -->
+        <radialGradient id="parchmentCanvas" cx="50%" cy="48%" r="65%">
+          <stop offset="0%" stop-color="#f5e6c8"/>
+          <stop offset="65%" stop-color="#e7cfa3"/>
+          <stop offset="92%" stop-color="#d4b27b"/>
+          <stop offset="100%" stop-color="#b89058"/>
+        </radialGradient>
+
+        <!-- Текстура плетіння полотна на дошці -->
+        <pattern id="linenTexture" width="16" height="16" patternUnits="userSpaceOnUse">
+          <path d="M0 4 H16 M0 12 H16 M4 0 V16 M12 0 V16" stroke="#b58d53" stroke-width="0.6" opacity="0.16"/>
+          <circle cx="4" cy="4" r="0.8" fill="#8f6832" opacity="0.12"/>
+          <circle cx="12" cy="12" r="0.8" fill="#8f6832" opacity="0.12"/>
+        </pattern>
+
+        <!-- Плашка для умови та легенди (різьблена деревина з бурштиновим відтінком) -->
+        <linearGradient id="plaqueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ecd3a8"/>
+          <stop offset="50%" stop-color="#dfb980"/>
+          <stop offset="100%" stop-color="#c69858"/>
+        </linearGradient>
+
+        <!-- ================= 3D ФІШКИ ВЕРШИН ГРАФА ================= -->
+        <!-- Нерозфарбована різьблена дерев'яна фішка (невідома стать) -->
+        <radialGradient id="nodeNeutral" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#fbf0d9"/>
+          <stop offset="45%" stop-color="#dec396"/>
+          <stop offset="85%" stop-color="#ab844f"/>
+          <stop offset="100%" stop-color="#6e4e26"/>
+        </radialGradient>
+
+        <!-- Синя сапфірова 3D-фішка (Хлопчик) -->
+        <radialGradient id="nodeBoy" cx="32%" cy="28%" r="70%">
+          <stop offset="0%" stop-color="#99e2ff"/>
+          <stop offset="30%" stop-color="#2b8eff"/>
+          <stop offset="75%" stop-color="#0d47a1"/>
+          <stop offset="100%" stop-color="#051f4d"/>
+        </radialGradient>
+
+        <!-- Червона рубінова 3D-фішка (Дівчинка) -->
+        <radialGradient id="nodeGirl" cx="32%" cy="28%" r="70%">
+          <stop offset="0%" stop-color="#ffb2c1"/>
+          <stop offset="30%" stop-color="#ff3355"/>
+          <stop offset="75%" stop-color="#b70926"/>
+          <stop offset="100%" stop-color="#590210"/>
+        </radialGradient>
+
+        <!-- Градієнт хутра рудого Котика-Дослідника -->
+        <radialGradient id="catFurMain" cx="40%" cy="35%" r="70%">
+          <stop offset="0%" stop-color="#f7943c"/>
+          <stop offset="55%" stop-color="#d96b1b"/>
+          <stop offset="90%" stop-color="#9e3f06"/>
+          <stop offset="100%" stop-color="#6e2802"/>
+        </radialGradient>
+
+        <linearGradient id="catChestFur" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#fff3dc"/>
+          <stop offset="65%" stop-color="#f2d5a7"/>
+          <stop offset="100%" stop-color="#cfa36b"/>
+        </linearGradient>
+
+        <radialGradient id="catEyeGreen" cx="38%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#b4f56c"/>
+          <stop offset="50%" stop-color="#48a828"/>
+          <stop offset="90%" stop-color="#165207"/>
+          <stop offset="100%" stop-color="#092902"/>
+        </radialGradient>
+
+        <!-- Світло настільної лампи -->
+        <radialGradient id="lampGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="rgba(255, 220, 130, 0.55)"/>
+          <stop offset="45%" stop-color="rgba(255, 190, 80, 0.18)"/>
+          <stop offset="100%" stop-color="rgba(255, 180, 60, 0)"/>
+        </radialGradient>
+
+        <!-- Тіні для об'ємних елементів -->
+        <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#120802" flood-opacity="0.65"/>
+        </filter>
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#2b1708" flood-opacity="0.42"/>
+        </filter>
+
+        <!-- ================= МАРКЕРИ СТРІЛОК ГРАФА ================= -->
+        <marker id="arrowGivenSolid" viewBox="0 0 12 12" refX="9.5" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0.5 1.5 L 11 6 L 0.5 10.5 L 3 6 Z" fill="#2b180a"/>
+        </marker>
+        <marker id="arrowGivenDashed" viewBox="0 0 12 12" refX="9.5" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0.5 1.5 L 11 6 L 0.5 10.5 L 3 6 Z" fill="#2b180a"/>
+        </marker>
+
+        <!-- Користувацькі стрілки (темно-синя для брата, темно-рубінова для сестри) -->
+        <marker id="arrowUserBrother" viewBox="0 0 12 12" refX="9.5" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0.5 1.5 L 11 6 L 0.5 10.5 L 3 6 Z" fill="#0d47a1"/>
+        </marker>
+        <marker id="arrowUserSister" viewBox="0 0 12 12" refX="9.5" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0.5 1.5 L 11 6 L 0.5 10.5 L 3 6 Z" fill="#b70926"/>
+        </marker>
+
+        <!-- Маркери для легенди -->
+        <marker id="arrowLegendBoy" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="6.5" markerHeight="6.5" orient="auto">
+          <path d="M 0.5 1.5 L 11 6 L 0.5 10.5 L 3 6 Z" fill="#1d3b78"/>
+        </marker>
+        <marker id="arrowLegendGirl" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="6.5" markerHeight="6.5" orient="auto">
+          <path d="M 0.5 1.5 L 11 6 L 0.5 10.5 L 3 6 Z" fill="#8f1529"/>
+        </marker>
+      </defs>
+
+      <!-- ================= 1. ФОН РЕАЛІСТИЧНОЇ ЗАТИШНОЇ КІМНАТИ ================= -->
+      <g id="room-background">
+        <!-- Стіна зі шпалерами -->
+        <rect x="0" y="0" width="1600" height="900" fill="url(#wallLight)"/>
+        <rect x="0" y="0" width="1600" height="900" fill="url(#wallpaperPattern)"/>
+
+        <!-- Вікно з надвечірнім садом зліва -->
+        <g transform="translate(45, 50)" filter="url(#dropShadow)">
+          <rect x="0" y="0" width="210" height="360" rx="8" fill="#1b2b38" stroke="url(#boardWoodFrame)" stroke-width="14"/>
+          <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#f29f58"/>
+            <stop offset="45%" stop-color="#d46b4e"/>
+            <stop offset="100%" stop-color="#48365c"/>
+          </linearGradient>
+          <rect x="7" y="7" width="196" height="346" fill="url(#skyGrad)"/>
+          <circle cx="65" cy="95" r="32" fill="#ffe699" opacity="0.75"/>
+          <g id="window-trees">
+            <path d="M7 353 L7 230 Q45 190 95 225 Q145 180 203 220 L203 353 Z" fill="#233824" opacity="0.85"/>
+            <path d="M7 353 L7 270 Q65 235 120 265 Q165 240 203 275 L203 353 Z" fill="#152416"/>
+          </g>
+          <line x1="105" y1="0" x2="105" y2="360" stroke="#44230d" stroke-width="10"/>
+          <line x1="0" y1="180" x2="210" y2="180" stroke="#44230d" stroke-width="10"/>
+          <polygon points="18,18 85,18 35,165 18,165" fill="rgba(255,255,255,0.12)"/>
+        </g>
+
+        <!-- Старовинний настінний годинник із живим маятником справа вгорі -->
+        <g transform="translate(1435, 65)" filter="url(#dropShadow)">
+          <path d="M-55 0 L55 0 L68 250 L-68 250 Z" fill="url(#boardWoodFrame)" stroke="#241105" stroke-width="4"/>
+          <rect x="-42" y="110" width="84" height="122" rx="6" fill="#1c0d04" stroke="url(#brassGrad)" stroke-width="2"/>
+          <g id="clock-pendulum" transform="translate(0, 115)">
+            <line x1="0" y1="0" x2="0" y2="82" stroke="url(#brassGrad)" stroke-width="3"/>
+            <circle cx="0" cy="88" r="16" fill="url(#brassGrad)" stroke="#5c3b09" stroke-width="1.5"/>
+          </g>
+          <circle cx="0" cy="60" r="44" fill="#f7ead2" stroke="url(#brassGrad)" stroke-width="6"/>
+          <circle cx="0" cy="60" r="3" fill="#2b180a"/>
+          <line id="clock-hand-hour" x1="0" y1="60" x2="16" y2="46" stroke="#2b180a" stroke-width="3.5" stroke-linecap="round"/>
+          <line id="clock-hand-min" x1="0" y1="60" x2="-4" y2="28" stroke="#2b180a" stroke-width="2.2" stroke-linecap="round"/>
+        </g>
+
+        <!-- Кімнатна рослина біля вікна -->
+        <g id="room-plant" transform="translate(275, 420)" filter="url(#softShadow)">
+          <path d="M0 0 C-45 -65, -95 -80, -120 -45 C-85 -25, -45 -10, 0 0 Z" fill="#2d5a27"/>
+          <path d="M5 -10 C-20 -95, -55 -135, -30 -165 C5 -125, 15 -65, 5 -10 Z" fill="#3a7033"/>
+          <path d="M12 -5 C45 -85, 95 -110, 115 -75 C85 -40, 45 -20, 12 -5 Z" fill="#254d20"/>
+        </g>
+
+        <!-- Поверхня масивного дерев'яного столу -->
+        <g transform="translate(0, 685)">
+          <polygon points="0,0 1600,0 1600,215 0,215" fill="url(#mahoganyDesk)"/>
+          <rect x="0" y="0" width="1600" height="215" fill="url(#woodGrain)"/>
+          <line x1="0" y1="3" x2="1600" y2="3" stroke="#854826" stroke-width="4" opacity="0.6"/>
+          <line x1="0" y1="12" x2="1600" y2="12" stroke="#1a0903" stroke-width="3" opacity="0.7"/>
+        </g>
+
+        <!-- Настільна вінтажна лампа зі смарагдовим абажуром зліва -->
+        <g transform="translate(105, 495)" filter="url(#dropShadow)">
+          <circle cx="45" cy="40" r="240" fill="url(#lampGlow)" pointer-events="none"/>
+          <ellipse cx="45" cy="215" rx="48" ry="14" fill="url(#brassGrad)"/>
+          <path d="M35 210 L40 60 L50 60 L55 210 Z" fill="url(#brassGrad)"/>
+          <path d="M-25 70 C-15 10, 105 10, 115 70 Z" fill="#17693a" stroke="url(#brassGrad)" stroke-width="4"/>
+          <path d="M-8 62 C2 24, 88 24, 98 62 Z" fill="#299c5a" opacity="0.65"/>
+        </g>
+
+        <!-- Анімовані сонячні пилинки в повітрі -->
+        <g id="dust-motes" pointer-events="none"></g>
+      </g>
+
+      <!-- ================= 2. ЖИВИЙ ПЕРСОНАЖ: РУДИЙ КОТИК-ДОСЛІДНИК (ЗЛІВА) ================= -->
+      <g id="character-cat" transform="translate(215, 585)" filter="url(#dropShadow)">
+        <!-- Пухнастий хвіст, що плавно погойдується -->
+        <g id="cat-tail-group" transform="translate(-58, 95)">
+          <path id="cat-tail" d="M0 0 C-65 -10, -95 -75, -55 -115 C-35 -135, -15 -110, -30 -85 C-45 -60, -25 -25, 8 -10 Z" fill="url(#catFurMain)" stroke="#592002" stroke-width="2"/>
+          <path d="M-66 -68 Q-52 -65 -44 -74" stroke="#6e2802" stroke-width="5" stroke-linecap="round" fill="none"/>
+          <path d="M-62 -92 Q-46 -88 -38 -96" stroke="#6e2802" stroke-width="5" stroke-linecap="round" fill="none"/>
+        </g>
+
+        <!-- Тулуб котика (дихає) -->
+        <g id="cat-body-group">
+          <ellipse cx="0" cy="68" rx="68" ry="78" fill="url(#catFurMain)" stroke="#592002" stroke-width="2"/>
+          <path d="M-36 22 C-42 65, -28 115, 0 122 C28 115, 42 65, 36 22 C20 32, -20 32, -36 22 Z" fill="url(#catChestFur)"/>
+          <!-- Стильний метелик-краватка дослідника -->
+          <g transform="translate(0, 24)">
+            <polygon points="-24,-10 0,0 -24,12" fill="#8f1529" stroke="#4a0611" stroke-width="1.5"/>
+            <polygon points="24,-10 0,0 24,12" fill="#8f1529" stroke="#4a0611" stroke-width="1.5"/>
+            <circle cx="0" cy="1" r="6.5" fill="url(#brassGrad)"/>
+          </g>
+          <!-- Передні лапки на столі -->
+          <ellipse cx="-34" cy="134" rx="22" ry="15" fill="url(#catFurMain)" stroke="#592002" stroke-width="2"/>
+          <ellipse cx="-34" cy="137" rx="14" ry="9" fill="#fff3dc"/>
+          <ellipse cx="34" cy="134" rx="22" ry="15" fill="url(#catFurMain)" stroke="#592002" stroke-width="2"/>
+          <ellipse cx="34" cy="137" rx="14" ry="9" fill="#fff3dc"/>
+        </g>
+
+        <!-- Голова котика -->
+        <g id="cat-head-group" transform="translate(0, -34)">
+          <g id="cat-ear-left" transform="translate(-42, -36)">
+            <path d="M-18 18 L-28 -36 L18 -8 Z" fill="url(#catFurMain)" stroke="#592002" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M-12 10 L-20 -24 L10 -6 Z" fill="#e89587"/>
+          </g>
+          <g id="cat-ear-right" transform="translate(42, -36)">
+            <path d="M18 18 L28 -36 L-18 -8 Z" fill="url(#catFurMain)" stroke="#592002" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M12 10 L20 -24 L-10 -6 Z" fill="#e89587"/>
+          </g>
+
+          <path d="M-58 4 C-68 -36, -35 -56, 0 -56 C35 -56, 68 -36, 58 4 C72 22, 56 52, 0 54 C-56 52, -72 22, -58 4 Z" fill="url(#catFurMain)" stroke="#592002" stroke-width="2"/>
+
+          <path d="M-20 -42 L-10 -28 L0 -38 L10 -28 L20 -42" fill="none" stroke="#6e2802" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M-54 8 Q-40 12 -32 6" fill="none" stroke="#6e2802" stroke-width="3.5" stroke-linecap="round"/>
+          <path d="M54 8 Q40 12 32 6" fill="none" stroke="#6e2802" stroke-width="3.5" stroke-linecap="round"/>
+
+          <!-- Очі зі смарагдовою райдужкою та рухомими зіницями -->
+          <g id="cat-eyes">
+            <ellipse cx="-24" cy="-6" rx="14.5" ry="15.5" fill="#1a0d04"/>
+            <ellipse cx="-24" cy="-6" rx="13" ry="14" fill="url(#catEyeGreen)"/>
+            <g id="cat-pupil-left">
+              <ellipse cx="-24" cy="-6" rx="5.5" ry="11" fill="#091405"/>
+              <circle cx="-27" cy="-11" r="3.5" fill="#ffffff"/>
+              <circle cx="-20" cy="-1" r="1.6" fill="#ffffff" opacity="0.8"/>
+            </g>
+            <ellipse cx="24" cy="-6" rx="14.5" ry="15.5" fill="#1a0d04"/>
+            <ellipse cx="24" cy="-6" rx="13" ry="14" fill="url(#catEyeGreen)"/>
+            <g id="cat-pupil-right">
+              <ellipse cx="24" cy="-6" rx="5.5" ry="11" fill="#091405"/>
+              <circle cx="21" cy="-11" r="3.5" fill="#ffffff"/>
+              <circle cx="28" cy="-1" r="1.6" fill="#ffffff" opacity="0.8"/>
+            </g>
+            <path id="cat-eyelid-left" d="M-39 -6 Q-24 -24 -9 -6" fill="url(#catFurMain)" stroke="#592002" stroke-width="2" opacity="0"/>
+            <path id="cat-eyelid-right" d="M9 -6 Q24 -24 39 -6" fill="url(#catFurMain)" stroke="#592002" stroke-width="2" opacity="0"/>
+          </g>
+
+          <ellipse cx="-13" cy="20" rx="16" ry="12" fill="#fff3dc"/>
+          <ellipse cx="13" cy="20" rx="16" ry="12" fill="#fff3dc"/>
+          <polygon points="-8,11 8,11 0,20" fill="#e06c78" stroke="#591c24" stroke-width="1.2"/>
+          <path id="cat-mouth" d="M-12 26 Q-6 32 0 22 Q6 32 12 26" fill="none" stroke="#4a1c05" stroke-width="2.5" stroke-linecap="round"/>
+
+          <!-- Вуса -->
+          <g stroke="#fff8eb" stroke-width="1.8" stroke-linecap="round" opacity="0.9">
+            <line x1="-24" y1="18" x2="-68" y2="12"/>
+            <line x1="-26" y1="22" x2="-72" y2="23"/>
+            <line x1="-24" y1="26" x2="-65" y2="34"/>
+            <line x1="24" y1="18" x2="68" y2="12"/>
+            <line x1="26" y1="22" x2="72" y2="23"/>
+            <line x1="24" y1="26" x2="65" y2="34"/>
+          </g>
+        </g>
+      </g>
+
+      <!-- ================= 3. ГОЛОВНА ІГРОВА ДОШКА РОДИННИХ ГРАФІВ ================= -->
+      <g id="board-container" transform="translate(365, 26)">
+        <!-- Закладки вибору типу завдань (4.1 - 4.6) зверху дошки (фіксовані, не стрибають) -->
+        <g id="mode-tabs" transform="translate(45, -14)"></g>
+
+        <!-- Зовнішня дерев'яна різьблена рама -->
+        <rect x="0" y="26" width="1180" height="822" rx="26" fill="url(#boardWoodFrame)" stroke="#1d0c04" stroke-width="5" filter="url(#dropShadow)"/>
+        <rect x="12" y="38" width="1156" height="798" rx="20" fill="none" stroke="url(#brassGrad)" stroke-width="3.5"/>
+
+        <!-- Внутрішнє лляно-пергаментне полотно (без жодного білого прямокутника) -->
+        <rect x="22" y="48" width="1136" height="778" rx="16" fill="url(#parchmentCanvas)" stroke="#5c3818" stroke-width="3"/>
+        <rect x="22" y="48" width="1136" height="778" rx="16" fill="url(#linenTexture)"/>
+
+        <!-- Декоративні латунні кутики полотна -->
+        <g fill="url(#brassGrad)" stroke="#4f3308" stroke-width="1.2">
+          <path d="M22 68 L22 48 L42 48 L52 58 L32 78 Z"/>
+          <path d="M1158 68 L1158 48 L1138 48 L1128 58 L1148 78 Z"/>
+          <path d="M22 806 L22 826 L42 826 L52 816 L32 796 Z"/>
+          <path d="M1158 806 L1158 826 L1138 826 L1128 816 L1148 796 Z"/>
+        </g>
+
+        <!-- ================= ВЕРХНЯ ПАНЕЛЬ: ЛЕГЕНДА («Ти мій брат» / «Ти моя сестра») — ЗБІЛЬШЕНИЙ ШРИФТ ================= -->
+        <g id="legend-panel" transform="translate(50, 62)" filter="url(#softShadow)">
+          <rect x="0" y="0" width="1080" height="94" rx="14" fill="url(#plaqueGrad)" stroke="#7a5126" stroke-width="2.5"/>
+          <rect x="5" y="5" width="1070" height="84" rx="10" fill="none" stroke="url(#brassGrad)" stroke-width="1.2" opacity="0.7"/>
+
+          <!-- Ліва половина легенди: Суцільна стрілка -> Синя фішка (Ти мій брат) -->
+          <g transform="translate(55, 47)">
+            <path d="M0 8 Q 55 -28 112 2" fill="none" stroke="#1d3b78" stroke-width="5" stroke-linecap="round" marker-end="url(#arrowLegendBoy)"/>
+            <circle cx="134" cy="6" r="20" fill="url(#nodeBoy)" stroke="url(#brassGrad)" stroke-width="2.5"/>
+            <circle cx="128" cy="0" r="5.5" fill="rgba(255,255,255,0.45)"/>
+            <text id="legend-text-brother" x="172" y="15" fill="#231206" font-size="33" font-weight="bold">Ти мій брат</text>
+          </g>
+
+          <!-- Розділювач -->
+          <line x1="540" y1="14" x2="540" y2="80" stroke="#8c6234" stroke-width="2" stroke-dasharray="6,4"/>
+
+          <!-- Права половина легенди: Пунктирна стрілка -> Червона фішка (Ти моя сестра) -->
+          <g transform="translate(585, 47)">
+            <path d="M0 8 Q 55 -28 112 2" fill="none" stroke="#8f1529" stroke-width="5" stroke-dasharray="10,8" stroke-linecap="round" marker-end="url(#arrowLegendGirl)"/>
+            <circle cx="134" cy="6" r="20" fill="url(#nodeGirl)" stroke="url(#brassGrad)" stroke-width="2.5"/>
+            <circle cx="128" cy="0" r="5.5" fill="rgba(255,255,255,0.45)"/>
+            <text id="legend-text-sister" x="172" y="15" fill="#231206" font-size="33" font-weight="bold">Ти моя сестра</text>
+          </g>
+        </g>
+
+        <!-- ================= ПЛАШКА ТЕКСТОВОЇ УМОВИ ЗАВДАННЯ — ЗБІЛЬШЕНИЙ ШРИФТ ================= -->
+        <g id="prompt-panel" transform="translate(50, 166)" filter="url(#softShadow)">
+          <rect x="0" y="0" width="1080" height="104" rx="14" fill="#e6ca9a" stroke="#8a5e2f" stroke-width="2.5"/>
+          <text id="task-prompt-line1" x="540" y="43" text-anchor="middle" fill="#241103" font-size="28" font-weight="bold"></text>
+          <text id="task-prompt-line2" x="540" y="83" text-anchor="middle" fill="#3b1d08" font-size="26" font-weight="bold"></text>
+        </g>
+
+        <!-- ================= РОБОЧА ЗОНА ГРАФА ================= -->
+        <g id="graph-workspace" transform="translate(50, 276)">
+          <!-- Декоративний медальйон-компас на тлі полотна -->
+          <g transform="translate(540, 210)" opacity="0.11" pointer-events="none">
+            <circle cx="0" cy="0" r="170" fill="none" stroke="#6e4720" stroke-width="2"/>
+            <circle cx="0" cy="0" r="155" fill="none" stroke="#6e4720" stroke-width="1" stroke-dasharray="8,6"/>
+            <path d="M0 -170 L18 -18 L170 0 L18 18 L0 170 L-18 18 L-170 0 L-18 -18 Z" fill="#6e4720"/>
+          </g>
+
+          <!-- Шар підказок-орієнтирів для малювання стрілок -->
+          <g id="edges-guide-layer"></g>
+          <!-- Шар намальованих дитиною стрілок -->
+          <g id="edges-user-layer"></g>
+          <!-- Шар заданих умовою стрілок -->
+          <g id="edges-given-layer"></g>
+          <!-- Тимчасова лінія під час перетягування стрілки мишкою/пальцем -->
+          <path id="drag-preview-line" d="" fill="none" stroke="#1d3b78" stroke-width="5" stroke-linecap="round" pointer-events="none" opacity="0"/>
+          <!-- Шар кружечків (вершин графа) -->
+          <g id="nodes-layer"></g>
+        </g>
+
+        <!-- ================= НИЖНЯ ПАНЕЛЬ: ПАЛІТРА ІНСТРУМЕНТІВ ТА НАВІГАЦІЯ (БЕЗ ЗСУВУ ПРИ КЛІКУ) ================= -->
+        <g id="bottom-controls" transform="translate(50, 720)">
+          <!-- Кнопка «НАЗАД» (попередній рівень) -->
+          <g id="btn-prev" class="interactive-btn" transform="translate(0, 8)" filter="url(#softShadow)">
+            <rect x="0" y="0" width="80" height="70" rx="16" fill="url(#boardWoodFrame)" stroke="url(#brassGrad)" stroke-width="3.5"/>
+            <path d="M50 18 L24 35 L50 52 Z" fill="url(#brassGrad)"/>
+          </g>
+
+          <!-- Кнопка «НОВИЙ ГЕНЕРАТОР» (кубик для миттєвої генерації нового варіанту поточного виду) -->
+          <g id="btn-generate" class="interactive-btn" transform="translate(92, 8)" filter="url(#softShadow)">
+            <rect x="0" y="0" width="80" height="70" rx="16" fill="url(#boardWoodFrame)" stroke="url(#brassGrad)" stroke-width="3.5"/>
+            <rect x="21" y="16" width="38" height="38" rx="8" fill="url(#plaqueGrad)" stroke="#4f3308" stroke-width="2"/>
+            <circle cx="31" cy="26" r="3.8" fill="#2b1606"/>
+            <circle cx="49" cy="26" r="3.8" fill="#2b1606"/>
+            <circle cx="40" cy="35" r="3.8" fill="#8f1529"/>
+            <circle cx="31" cy="44" r="3.8" fill="#2b1606"/>
+            <circle cx="49" cy="44" r="3.8" fill="#2b1606"/>
+          </g>
+
+          <!-- Центральна дерев'яна палітра інструментів -->
+          <g id="tools-palette" transform="translate(188, 0)" filter="url(#softShadow)">
+            <rect x="0" y="0" width="704" height="86" rx="20" fill="url(#boardWoodFrame)" stroke="url(#brassGrad)" stroke-width="3.5"/>
+
+            <!-- Інструмент 1: Синя фішка (Хлопчик) -->
+            <g id="tool-boy" class="interactive-btn" transform="translate(75, 43)">
+              <circle cx="0" cy="0" r="36" fill="transparent"/>
+              <circle id="sel-ring-boy" cx="0" cy="0" r="34" fill="none" stroke="#ffe484" stroke-width="4.5" opacity="1"/>
+              <circle cx="0" cy="0" r="27" fill="url(#nodeBoy)" stroke="url(#brassGrad)" stroke-width="2.5"/>
+              <circle cx="0" cy="-6" r="7.5" fill="#d9f2ff"/>
+              <path d="M-12 13 C-12 3, 12 3, 12 13 Z" fill="#d9f2ff"/>
+            </g>
+
+            <!-- Інструмент 2: Червона фішка (Дівчинка) -->
+            <g id="tool-girl" class="interactive-btn" transform="translate(175, 43)">
+              <circle cx="0" cy="0" r="36" fill="transparent"/>
+              <circle id="sel-ring-girl" cx="0" cy="0" r="34" fill="none" stroke="#ffe484" stroke-width="4.5" opacity="0"/>
+              <circle cx="0" cy="0" r="27" fill="url(#nodeGirl)" stroke="url(#brassGrad)" stroke-width="2.5"/>
+              <circle cx="0" cy="-6" r="7.5" fill="#ffe0e6"/>
+              <polygon points="-13,-10 -6,-6 -13,-2" fill="#ffe0e6"/>
+              <polygon points="13,-10 6,-6 13,-2" fill="#ffe0e6"/>
+              <path d="M-13 14 L-6 2 L6 2 L13 14 Z" fill="#ffe0e6"/>
+            </g>
+
+            <!-- Група інструментів малювання стрілок (активна у завданнях 4.2, 4.3, 4.4, 4.5) -->
+            <g id="arrow-tools-group" transform="translate(262, 0)">
+              <line x1="0" y1="14" x2="0" y2="72" stroke="url(#brassGrad)" stroke-width="2" opacity="0.5"/>
+
+              <!-- Інструмент 3: Суцільна стрілка («Ти мій брат») -->
+              <g id="tool-arrow-brother" class="interactive-btn" transform="translate(80, 43)">
+                <rect id="sel-ring-brother" x="-58" y="-30" width="116" height="60" rx="14" fill="rgba(255,228,132,0.2)" stroke="#ffe484" stroke-width="4" opacity="0"/>
+                <rect x="-52" y="-25" width="104" height="50" rx="12" fill="url(#plaqueGrad)" stroke="#5c3818" stroke-width="2"/>
+                <path d="M-36 6 Q 0 -18 28 2" fill="none" stroke="#0d47a1" stroke-width="4.5" stroke-linecap="round" marker-end="url(#arrowUserBrother)"/>
+              </g>
+
+              <!-- Інструмент 4: Пунктирна стрілка («Ти моя сестра») -->
+              <g id="tool-arrow-sister" class="interactive-btn" transform="translate(214, 43)">
+                <rect id="sel-ring-sister" x="-58" y="-30" width="116" height="60" rx="14" fill="rgba(255,228,132,0.2)" stroke="#ffe484" stroke-width="4" opacity="0"/>
+                <rect x="-52" y="-25" width="104" height="50" rx="12" fill="url(#plaqueGrad)" stroke="#5c3818" stroke-width="2"/>
+                <path d="M-36 6 Q 0 -18 28 2" fill="none" stroke="#b70926" stroke-width="4.5" stroke-dasharray="8,6" stroke-linecap="round" marker-end="url(#arrowUserSister)"/>
+              </g>
+
+              <!-- Інструмент 5: Гумка / Очищення помилкової стрілки чи кольору -->
+              <g id="tool-eraser" class="interactive-btn" transform="translate(324, 43)">
+                <circle cx="0" cy="0" r="34" fill="transparent"/>
+                <circle id="sel-ring-eraser" cx="0" cy="0" r="31" fill="none" stroke="#ffe484" stroke-width="4" opacity="0"/>
+                <circle cx="0" cy="0" r="25" fill="url(#plaqueGrad)" stroke="#5c3818" stroke-width="2"/>
+                <path d="M-10 4 L2 -10 L13 1 L1 13 Z" fill="#d96b6b" stroke="#5c1f1f" stroke-width="1.8"/>
+                <path d="M-10 4 L-3 11 L1 13 L-6 6 Z" fill="#f2d5a7"/>
+              </g>
+            </g>
+
+            <!-- Кнопка перевірки (зелена кругла печатка з галочкою) -->
+            <g id="btn-check" class="interactive-btn" transform="translate(652, 43)">
+              <circle cx="0" cy="0" r="34" fill="transparent"/>
+              <circle cx="0" cy="0" r="29" fill="#2b7a28" stroke="url(#brassGrad)" stroke-width="3.5"/>
+              <path d="M-12 0 L-3 10 L14 -9" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            </g>
+          </g>
+
+          <!-- Кнопка «ДАЛІ» (миттєвий перехід на наступне завдання без обов'язкового проходження) -->
+          <g id="btn-next" class="interactive-btn" transform="translate(1000, 8)" filter="url(#softShadow)">
+            <rect x="0" y="0" width="80" height="70" rx="16" fill="url(#boardWoodFrame)" stroke="url(#brassGrad)" stroke-width="3.5"/>
+            <path d="M30 18 L56 35 L30 52 Z" fill="url(#brassGrad)"/>
+          </g>
+        </g>
+      </g>
+
+      <!-- ================= 4. ШАР ЯСКРАВИХ ЧАСТИНОК ТА ЕФЕКТІВ ФІДБЕКУ ================= -->
+      <g id="particles-layer" pointer-events="none"></g>
+    </svg>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   ЛОГІКА ГРИ «ГРАФИ: БРАТИ І СЕСТРИ»
+   Усі коментарі написані українською мовою для зручного редагування.
+   ============================================================================ */
+
+// Поточна мова інтерфейсу ('ua' або 'ru')
+let currentLang = 'ua';
+
+// Текстові словники для двох мов (умови завдань із фото у збільшеному зручному форматі)
+const I18N = {
+  ua: {
+    brotherLegend: 'Ти мій брат',
+    sisterLegend: 'Ти моя сестра',
+    prompts: {
+      '4.1': [
+        '4.1. Визначте, хто чий брат і де хлопчики, а де — дівчатка.',
+        'Розфарбуйте кружечки (синій — хлопчик, червоний — дівчинка).'
+      ],
+      '4.2': [
+        '', // Динамічно генерується з іменами
+        'Розфарбуйте кружечки та намалюйте стрілочками, як таке може бути.'
+      ],
+      '4.3': [
+        '4.3. Визначте, де тут хлопчики, а де — дівчатка.',
+        'Розфарбуйте кружечки і домалюйте всі стрілочки між ними.'
+      ],
+      '4.4': [
+        '', // Динамічно генерується з іменами
+        'Розфарбуйте кружечки та намалюйте стрілочками, як таке може бути.'
+      ],
+      '4.5': [
+        '4.5. Визначте, хто чий брат і де хлопчики, а де — дівчатка.',
+        'Розфарбуйте кружечки і домалюйте всі стрілочки.'
+      ],
+      '4.6': [
+        '4.6. Визначте, хто чий брат і де тут хлопчики,',
+        'а де — дівчатка. Розфарбуйте всі кружечки.'
+      ]
+    },
+    names: ['Саша', 'Валя', 'Женя', 'Слава', 'Паша']
+  },
+  ru: {
+    brotherLegend: 'Ты мой брат',
+    sisterLegend: 'Ты моя сестра',
+    prompts: {
+      '4.1': [
+        '4.1. Определите, кто чей брат и где мальчики, а где — девочки.',
+        'Раскрасьте кружочки (синий — мальчик, красный — девочка).'
+      ],
+      '4.2': [
+        '',
+        'Раскрасьте кружочки и нарисуйте стрелочками, как такое может быть.'
+      ],
+      '4.3': [
+        '4.3. Определите, где тут мальчики, а где — девочки.',
+        'Раскрасьте кружочки и дорисуйте все стрелочки между ними.'
+      ],
+      '4.4': [
+        '',
+        'Раскрасьте кружочки и нарисуйте стрелочками, как такое может быть.'
+      ],
+      '4.5': [
+        '4.5. Определите, кто чей брат и где мальчики, а где — девочки.',
+        'Раскрасьте кружочки и дорисуйте все стрелочки.'
+      ],
+      '4.6': [
+        '4.6. Определите, кто чей брат и где тут мальчики,',
+        'а где — девочки. Раскрасьте все кружочки.'
+      ]
+    },
+    names: ['Саша', 'Валя', 'Женя', 'Слава', 'Паша']
+  }
+};
+
+// ============================================================================
+// СИНТЕЗАТОР БАГАТОГОЛОСИХ ЗВУКІВ (Web Audio API — без зовнішніх аудіофайлів)
+// ============================================================================
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Звук вибору інструмента або кліку по дерев'яній кнопці
+  playWoodClick(freq = 360) {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 0.45, now + 0.075);
+    gain.gain.setValueAtTime(0.22, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
+  // Звук розфарбовування фішки (кришталевий дзвін)
+  playPaintToken(gender) {
+    this.init();
+    const now = this.ctx.currentTime;
+    const baseFreq = gender === 'M' ? 523.25 : gender === 'F' ? 659.25 : 330;
+    [1, 1.5].forEach((mult, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(baseFreq * mult, now + idx * 0.03);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * mult * 1.12, now + 0.16 + idx * 0.03);
+      gain.gain.setValueAtTime(0.16, now + idx * 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18 + idx * 0.03);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + idx * 0.03);
+      osc.stop(now + 0.19 + idx * 0.03);
+    });
+  }
+
+  // Звук проведення стрілки
+  playDrawArrow(isSolid) {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = isSolid ? 'sine' : 'triangle';
+    const startF = isSolid ? 392 : 440;
+    const endF = isSolid ? 587.33 : 659.25;
+    osc.frequency.setValueAtTime(startF, now);
+    osc.frequency.exponentialRampToValueAtTime(endF, now + 0.14);
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.16);
+  }
+
+  // Переможна музикальна фанфара + муркотіння котика (без слів)
+  playVictoryFanfare() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+    notes.forEach((freq, i) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.075);
+      gain.gain.setValueAtTime(0.22, now + i * 0.075);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.075 + 0.45);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now + i * 0.075);
+      osc.stop(now + i * 0.075 + 0.46);
+    });
+
+    // Ніжне котяче «мрр-мяу»
+    const meow = this.ctx.createOscillator();
+    const meowGain = this.ctx.createGain();
+    meow.type = 'sine';
+    meow.frequency.setValueAtTime(480, now + 0.25);
+    meow.frequency.exponentialRampToValueAtTime(760, now + 0.42);
+    meow.frequency.exponentialRampToValueAtTime(620, now + 0.62);
+    meowGain.gain.setValueAtTime(0.01, now + 0.25);
+    meowGain.gain.linearRampToValueAtTime(0.16, now + 0.35);
+    meowGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+    meow.connect(meowGain);
+    meowGain.connect(this.ctx.destination);
+    meow.start(now + 0.25);
+    meow.stop(now + 0.66);
+  }
+
+  // М'який кумедний звук помилки
+  playErrorSound() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(310, now);
+    osc.frequency.linearRampToValueAtTime(215, now + 0.26);
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.29);
+  }
+}
+
+const sound = new SoundEngine();
+
+// ============================================================================
+// БАЗА КАНОНІЧНИХ ЗАВДАНЬ З ФОТО ТА НЕСКІНЧЕННИХ ГЕНЕРАТОРІВ ДЛЯ КОЖНОГО ТИПУ
+// ============================================================================
+const TASK_TYPES = ['4.1', '4.2', '4.3', '4.4', '4.5', '4.6'];
+
+const PRESET_LEVELS = [
+  // -------------------- 4.1 (а, б, в) --------------------
+  {
+    type: '4.1',
+    subLabel: 'а)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 350, y: 205, gender: 'M' },
+      { id: 1, x: 730, y: 205, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'solid', curve: -75 },
+      { from: 1, to: 0, type: 'solid', curve: -75 }
+    ],
+    requiredPairs: []
+  },
+  {
+    type: '4.1',
+    subLabel: 'б)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 350, y: 205, gender: 'F' },
+      { id: 1, x: 730, y: 205, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'solid', curve: -75 },
+      { from: 1, to: 0, type: 'dashed', curve: -75 }
+    ],
+    requiredPairs: []
+  },
+  {
+    type: '4.1',
+    subLabel: 'в)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 350, y: 205, gender: 'F' },
+      { id: 1, x: 730, y: 205, gender: 'F' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'dashed', curve: -75 },
+      { from: 1, to: 0, type: 'dashed', curve: -75 }
+    ],
+    requiredPairs: []
+  },
+
+  // -------------------- 4.2 (Текстова задача: Саша і Валя) --------------------
+  {
+    type: '4.2',
+    subLabel: '',
+    needUserArrows: true,
+    customPromptUk: '4.2. Саша — брат Валі, але Валя не брат Саші.',
+    customPromptRu: '4.2. Саша — брат Вали, но Валя не брат Саши.',
+    nodes: [
+      { id: 0, x: 350, y: 205, gender: 'M', nameUk: 'Саша', nameRu: 'Саша' },
+      { id: 1, x: 730, y: 205, gender: 'F', nameUk: 'Валя', nameRu: 'Валя' }
+    ],
+    givenEdges: [],
+    requiredPairs: [[0, 1], [1, 0]]
+  },
+
+  // -------------------- 4.3 (а, б, в — 3 вершини, домалювати всі стрілки) --------------------
+  {
+    type: '4.3',
+    subLabel: 'а)',
+    needUserArrows: true,
+    nodes: [
+      { id: 0, x: 250, y: 215, gender: 'M' },
+      { id: 1, x: 540, y: 215, gender: 'M' },
+      { id: 2, x: 830, y: 215, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'solid', curve: -65 },
+      { from: 0, to: 2, type: 'solid', curve: -155 },
+      { from: 2, to: 0, type: 'solid', curve: -155 }
+    ],
+    requiredPairs: [[0,1],[1,0],[1,2],[2,1],[0,2],[2,0]]
+  },
+  {
+    type: '4.3',
+    subLabel: 'б)',
+    needUserArrows: true,
+    nodes: [
+      { id: 0, x: 250, y: 215, gender: 'F' },
+      { id: 1, x: 540, y: 215, gender: 'M' },
+      { id: 2, x: 830, y: 215, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'solid', curve: -65 },
+      { from: 1, to: 0, type: 'dashed', curve: -65 },
+      { from: 1, to: 2, type: 'solid', curve: -65 }
+    ],
+    requiredPairs: [[0,1],[1,0],[1,2],[2,1],[0,2],[2,0]]
+  },
+  {
+    type: '4.3',
+    subLabel: 'в)',
+    needUserArrows: true,
+    nodes: [
+      { id: 0, x: 250, y: 215, gender: 'M' },
+      { id: 1, x: 540, y: 215, gender: 'F' },
+      { id: 2, x: 830, y: 215, gender: 'F' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'dashed', curve: -65 },
+      { from: 0, to: 2, type: 'dashed', curve: -155 },
+      { from: 2, to: 0, type: 'solid', curve: -155 }
+    ],
+    requiredPairs: [[0,1],[1,0],[1,2],[2,1],[0,2],[2,0]]
+  },
+
+  // -------------------- 4.4 (Текстова задача: Саша, Валя, Женя) --------------------
+  {
+    type: '4.4',
+    subLabel: '',
+    needUserArrows: true,
+    customPromptUk: '4.4. У Саші є брат і сестра — Валя і Женя. У Валі дві сестри.',
+    customPromptRu: '4.4. У Саши есть брат и сестра — Валя и Женя. У Вали две сестры.',
+    nodes: [
+      { id: 0, x: 260, y: 225, gender: 'F', nameUk: 'Саша', nameRu: 'Саша' },
+      { id: 1, x: 540, y: 135, gender: 'M', nameUk: 'Валя', nameRu: 'Валя' },
+      { id: 2, x: 820, y: 225, gender: 'F', nameUk: 'Женя', nameRu: 'Женя' }
+    ],
+    givenEdges: [],
+    requiredPairs: [[0,1],[1,0],[1,2],[2,1],[0,2],[2,0]]
+  },
+
+  // -------------------- 4.5 (а, б, в, г — 4 вершини в ряд, домалювати стрілки) --------------------
+  {
+    type: '4.5',
+    subLabel: 'а)',
+    needUserArrows: true,
+    nodes: [
+      { id: 0, x: 180, y: 210, gender: 'M' },
+      { id: 1, x: 420, y: 210, gender: 'M' },
+      { id: 2, x: 660, y: 210, gender: 'M' },
+      { id: 3, x: 900, y: 210, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'solid', curve: 65 },
+      { from: 2, to: 0, type: 'solid', curve: -135 },
+      { from: 2, to: 3, type: 'solid', curve: -65 },
+      { from: 1, to: 3, type: 'solid', curve: 135 }
+    ],
+    requiredPairs: [[0,1],[1,0],[2,0],[0,2],[2,3],[3,2],[1,3],[3,1]]
+  },
+  {
+    type: '4.5',
+    subLabel: 'б)',
+    needUserArrows: true,
+    nodes: [
+      { id: 0, x: 180, y: 210, gender: 'M' },
+      { id: 1, x: 420, y: 210, gender: 'F' },
+      { id: 2, x: 660, y: 210, gender: 'M' },
+      { id: 3, x: 900, y: 210, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 1, to: 0, type: 'solid', curve: -65 },
+      { from: 1, to: 2, type: 'solid', curve: -65 },
+      { from: 2, to: 1, type: 'dashed', curve: -65 },
+      { from: 2, to: 3, type: 'solid', curve: 65 }
+    ],
+    requiredPairs: [[0,1],[1,0],[1,2],[2,1],[2,3],[3,2]]
+  },
+  {
+    type: '4.5',
+    subLabel: 'в)',
+    needUserArrows: true,
+    nodes: [
+      { id: 0, x: 180, y: 210, gender: 'M' },
+      { id: 1, x: 420, y: 210, gender: 'F' },
+      { id: 2, x: 660, y: 210, gender: 'M' },
+      { id: 3, x: 900, y: 210, gender: 'F' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'dashed', curve: 65 },
+      { from: 1, to: 2, type: 'solid', curve: -65 },
+      { from: 2, to: 3, type: 'dashed', curve: 65 },
+      { from: 3, to: 0, type: 'solid', curve: 165 }
+    ],
+    requiredPairs: [[0,1],[1,0],[1,2],[2,1],[2,3],[3,2],[3,0],[0,3]]
+  },
+  {
+    type: '4.5',
+    subLabel: 'г)',
+    needUserArrows: true,
+    nodes: [
+      { id: 0, x: 180, y: 210, gender: 'F' },
+      { id: 1, x: 420, y: 210, gender: 'F' },
+      { id: 2, x: 660, y: 210, gender: 'M' },
+      { id: 3, x: 900, y: 210, gender: 'F' }
+    ],
+    givenEdges: [
+      { from: 0, to: 1, type: 'dashed', curve: 65 },
+      { from: 0, to: 2, type: 'solid', curve: 120 },
+      { from: 0, to: 3, type: 'dashed', curve: -165 },
+      { from: 3, to: 0, type: 'dashed', curve: 165 }
+    ],
+    requiredPairs: [[0,1],[1,0],[0,2],[2,0],[0,3],[3,0]]
+  },
+
+  // -------------------- 4.6 (а, б, в, г, д — 5 вершин хрестом) --------------------
+  {
+    type: '4.6',
+    subLabel: 'а)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 280, y: 80,  gender: 'M' },
+      { id: 1, x: 800, y: 80,  gender: 'M' },
+      { id: 2, x: 540, y: 210, gender: 'M' },
+      { id: 3, x: 280, y: 340, gender: 'M' },
+      { id: 4, x: 800, y: 340, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 1, to: 0, type: 'solid', curve: -45 },
+      { from: 0, to: 2, type: 'solid', curve: 25 },
+      { from: 2, to: 1, type: 'solid', curve: -25 },
+      { from: 2, to: 3, type: 'solid', curve: -25 },
+      { from: 2, to: 4, type: 'solid', curve: 25 }
+    ],
+    requiredPairs: []
+  },
+  {
+    type: '4.6',
+    subLabel: 'б)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 280, y: 80,  gender: 'M' },
+      { id: 1, x: 800, y: 80,  gender: 'F' },
+      { id: 2, x: 540, y: 210, gender: 'M' },
+      { id: 3, x: 280, y: 340, gender: 'M' },
+      { id: 4, x: 800, y: 340, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 3, to: 0, type: 'solid', curve: -40 },
+      { from: 1, to: 2, type: 'solid', curve: -25 },
+      { from: 1, to: 3, type: 'solid', curve: 35 },
+      { from: 3, to: 4, type: 'solid', curve: 40 },
+      { from: 4, to: 1, type: 'dashed', curve: -40 }
+    ],
+    requiredPairs: []
+  },
+  {
+    type: '4.6',
+    subLabel: 'в)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 280, y: 80,  gender: 'M' },
+      { id: 1, x: 800, y: 80,  gender: 'F' },
+      { id: 2, x: 540, y: 210, gender: 'M' },
+      { id: 3, x: 280, y: 340, gender: 'F' },
+      { id: 4, x: 800, y: 340, gender: 'M' }
+    ],
+    givenEdges: [
+      { from: 3, to: 0, type: 'solid', curve: -40 },
+      { from: 0, to: 1, type: 'dashed', curve: 40 },
+      { from: 1, to: 4, type: 'solid', curve: 40 },
+      { from: 4, to: 3, type: 'dashed', curve: 40 },
+      { from: 0, to: 2, type: 'solid', curve: 20 },
+      { from: 1, to: 2, type: 'solid', curve: -20 },
+      { from: 3, to: 2, type: 'solid', curve: -20 },
+      { from: 4, to: 2, type: 'solid', curve: 20 }
+    ],
+    requiredPairs: []
+  },
+  {
+    type: '4.6',
+    subLabel: 'г)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 280, y: 80,  gender: 'M' },
+      { id: 1, x: 800, y: 80,  gender: 'F' },
+      { id: 2, x: 540, y: 210, gender: 'M' },
+      { id: 3, x: 280, y: 340, gender: 'F' },
+      { id: 4, x: 800, y: 340, gender: 'F' }
+    ],
+    givenEdges: [
+      { from: 3, to: 0, type: 'solid', curve: -40 },
+      { from: 2, to: 3, type: 'dashed', curve: -25 },
+      { from: 2, to: 1, type: 'dashed', curve: 25 },
+      { from: 2, to: 4, type: 'dashed', curve: 35 },
+      { from: 4, to: 2, type: 'solid', curve: 35 }
+    ],
+    requiredPairs: []
+  },
+  {
+    type: '4.6',
+    subLabel: 'д)',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 280, y: 80,  gender: 'M' },
+      { id: 1, x: 800, y: 80,  gender: 'F' },
+      { id: 2, x: 540, y: 210, gender: 'F' },
+      { id: 3, x: 280, y: 340, gender: 'F' },
+      { id: 4, x: 800, y: 340, gender: 'F' }
+    ],
+    givenEdges: [
+      { from: 3, to: 0, type: 'solid', curve: -40 },
+      { from: 2, to: 3, type: 'dashed', curve: -30 },
+      { from: 3, to: 2, type: 'dashed', curve: -30 },
+      { from: 2, to: 1, type: 'dashed', curve: 25 },
+      { from: 1, to: 4, type: 'dashed', curve: 40 },
+      { from: 4, to: 2, type: 'dashed', curve: -25 }
+    ],
+    requiredPairs: []
+  }
+];
+
+// ============================================================================
+// НЕСКІНЧЕННИЙ ГЕНЕРАТОР ЗАВДАНЬ ДЛЯ КОЖНОГО ТИПУ (4.1 — 4.6)
+// ============================================================================
+function randChoice(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function generateInfiniteLevel(type) {
+  const edgeTypeForGender = (g) => (g === 'M' ? 'solid' : 'dashed');
+
+  if (type === '4.1') {
+    const g0 = Math.random() < 0.5 ? 'M' : 'F';
+    const g1 = Math.random() < 0.5 ? 'M' : 'F';
+    return {
+      type: '4.1',
+      subLabel: '∞',
+      needUserArrows: false,
+      nodes: [
+        { id: 0, x: 350, y: 205, gender: g0 },
+        { id: 1, x: 730, y: 205, gender: g1 }
+      ],
+      givenEdges: [
+        { from: 0, to: 1, type: edgeTypeForGender(g1), curve: -75 },
+        { from: 1, to: 0, type: edgeTypeForGender(g0), curve: -75 }
+      ],
+      requiredPairs: []
+    };
+  }
+
+  if (type === '4.2') {
+    const idxPair = shuffleArray([0, 1, 2, 3, 4]).slice(0, 2);
+    const n0Uk = I18N.ua.names[idxPair[0]], n1Uk = I18N.ua.names[idxPair[1]];
+    const n0Ru = I18N.ru.names[idxPair[0]], n1Ru = I18N.ru.names[idxPair[1]];
+    const variant = Math.floor(Math.random() * 4);
+    let g0 = 'M', g1 = 'F', promptUk = '', promptRu = '';
+
+    if (variant === 0) {
+      g0 = 'M'; g1 = 'F';
+      promptUk = `4.2. ${n0Uk} — брат для ${n1Uk}, але ${n1Uk} — сестра для ${n0Uk}.`;
+      promptRu = `4.2. ${n0Ru} — брат для ${n1Ru}, но ${n1Ru} — сестра для ${n0Ru}.`;
+    } else if (variant === 1) {
+      g0 = 'F'; g1 = 'M';
+      promptUk = `4.2. ${n0Uk} — сестра для ${n1Uk}, але ${n1Uk} — брат для ${n0Uk}.`;
+      promptRu = `4.2. ${n0Ru} — сестра для ${n1Ru}, но ${n1Ru} — брат для ${n0Ru}.`;
+    } else if (variant === 2) {
+      g0 = 'M'; g1 = 'M';
+      promptUk = `4.2. ${n0Uk} та ${n1Uk} — рідні брати один одному.`;
+      promptRu = `4.2. ${n0Ru} и ${n1Ru} — родные братья друг другу.`;
+    } else {
+      g0 = 'F'; g1 = 'F';
+      promptUk = `4.2. ${n0Uk} та ${n1Uk} — рідні сестри одна одній.`;
+      promptRu = `4.2. ${n0Ru} и ${n1Ru} — родные сёстры друг другу.`;
+    }
+
+    return {
+      type: '4.2',
+      subLabel: '∞',
+      needUserArrows: true,
+      customPromptUk: promptUk,
+      customPromptRu: promptRu,
+      nodes: [
+        { id: 0, x: 350, y: 205, gender: g0, nameUk: n0Uk, nameRu: n0Ru },
+        { id: 1, x: 730, y: 205, gender: g1, nameUk: n1Uk, nameRu: n1Ru }
+      ],
+      givenEdges: [],
+      requiredPairs: [[0, 1], [1, 0]]
+    };
+  }
+
+  if (type === '4.3') {
+    const genders = [0, 1, 2].map(() => (Math.random() < 0.5 ? 'M' : 'F'));
+    const givenEdges = [];
+    const perm = shuffleArray([0, 1, 2]);
+    for (let i = 0; i < 3; i++) {
+      const target = perm[i];
+      const source = perm[(i + 1) % 3];
+      const isOuter = Math.abs(source - target) === 2;
+      givenEdges.push({
+        from: source,
+        to: target,
+        type: edgeTypeForGender(genders[target]),
+        curve: isOuter ? -155 : -65
+      });
+    }
+    return {
+      type: '4.3',
+      subLabel: '∞',
+      needUserArrows: true,
+      nodes: [
+        { id: 0, x: 250, y: 215, gender: genders[0] },
+        { id: 1, x: 540, y: 215, gender: genders[1] },
+        { id: 2, x: 830, y: 215, gender: genders[2] }
+      ],
+      givenEdges,
+      requiredPairs: [[0,1],[1,0],[1,2],[2,1],[0,2],[2,0]]
+    };
+  }
+
+  if (type === '4.4') {
+    const idxs = shuffleArray([0, 1, 2, 3, 4]).slice(0, 3);
+    const nUk = idxs.map(i => I18N.ua.names[i]);
+    const nRu = idxs.map(i => I18N.ru.names[i]);
+    const scenario = Math.floor(Math.random() * 4);
+    let genders = ['F', 'M', 'F'];
+    let promptUk = '', promptRu = '';
+
+    if (scenario === 0) {
+      genders = ['F', 'M', 'F'];
+      promptUk = `4.4. У ${nUk[0]} є брат і сестра (${nUk[1]} та ${nUk[2]}). У ${nUk[1]} дві сестри.`;
+      promptRu = `4.4. У ${nRu[0]} есть брат и сестра (${nRu[1]} и ${nRu[2]}). У ${nRu[1]} две сестры.`;
+    } else if (scenario === 1) {
+      genders = ['M', 'F', 'M'];
+      promptUk = `4.4. У ${nUk[0]} є брат і сестра (${nUk[1]} та ${nUk[2]}). У ${nUk[1]} два брати.`;
+      promptRu = `4.4. У ${nRu[0]} есть брат и сестра (${nRu[1]} и ${nRu[2]}). У ${nRu[1]} два брата.`;
+    } else if (scenario === 2) {
+      genders = ['M', 'F', 'F'];
+      promptUk = `4.4. У ${nUk[0]} дві сестри (${nUk[1]} та ${nUk[2]}), а у ${nUk[1]} є брат і сестра.`;
+      promptRu = `4.4. У ${nRu[0]} две сестры (${nRu[1]} и ${nRu[2]}), а у ${nRu[1]} есть брат и сестра.`;
+    } else {
+      genders = ['M', 'M', 'F'];
+      promptUk = `4.4. У ${nUk[2]} два брати (${nUk[0]} та ${nUk[1]}), а у ${nUk[0]} є брат і сестра.`;
+      promptRu = `4.4. У ${nRu[2]} два брата (${nRu[0]} и ${nRu[1]}), а у ${nRu[0]} есть брат и сестра.`;
+    }
+
+    return {
+      type: '4.4',
+      subLabel: '∞',
+      needUserArrows: true,
+      customPromptUk: promptUk,
+      customPromptRu: promptRu,
+      nodes: [
+        { id: 0, x: 260, y: 225, gender: genders[0], nameUk: nUk[0], nameRu: nRu[0] },
+        { id: 1, x: 540, y: 135, gender: genders[1], nameUk: nUk[1], nameRu: nRu[1] },
+        { id: 2, x: 820, y: 225, gender: genders[2], nameUk: nUk[2], nameRu: nRu[2] }
+      ],
+      givenEdges: [],
+      requiredPairs: [[0,1],[1,0],[1,2],[2,1],[0,2],[2,0]]
+    };
+  }
+
+  if (type === '4.5') {
+    const genders = [0, 1, 2, 3].map(() => (Math.random() < 0.5 ? 'M' : 'F'));
+    const order = shuffleArray([0, 1, 2, 3]);
+    const givenEdges = [];
+    const requiredPairs = [];
+
+    for (let i = 0; i < 4; i++) {
+      const u = order[i];
+      const v = order[(i + 1) % 4];
+      const dist = Math.abs(u - v);
+      const curveMag = dist === 1 ? 65 : dist === 2 ? 125 : 165;
+      const sign = (i % 2 === 0) ? -1 : 1;
+      givenEdges.push({
+        from: u,
+        to: v,
+        type: edgeTypeForGender(genders[v]),
+        curve: curveMag * sign
+      });
+      requiredPairs.push([u, v], [v, u]);
+    }
+
+    return {
+      type: '4.5',
+      subLabel: '∞',
+      needUserArrows: true,
+      nodes: [
+        { id: 0, x: 180, y: 210, gender: genders[0] },
+        { id: 1, x: 420, y: 210, gender: genders[1] },
+        { id: 2, x: 660, y: 210, gender: genders[2] },
+        { id: 3, x: 900, y: 210, gender: genders[3] }
+      ],
+      givenEdges,
+      requiredPairs
+    };
+  }
+
+  const genders = [0, 1, 2, 3, 4].map(() => (Math.random() < 0.5 ? 'M' : 'F'));
+  const candidatePairs = [
+    [0, 1, 40], [1, 0, -40],
+    [1, 4, 40], [4, 1, -40],
+    [4, 3, 40], [3, 4, -40],
+    [3, 0, -40], [0, 3, 40],
+    [0, 2, 25], [2, 0, -25],
+    [1, 2, -25], [2, 1, 25],
+    [3, 2, -25], [2, 3, 25],
+    [4, 2, 25], [2, 4, -25]
+  ];
+  const givenEdges = [];
+  const usedPairs = new Set();
+
+  for (let target = 0; target < 5; target++) {
+    const incoming = candidatePairs.filter(p => p[1] === target);
+    const chosen = randChoice(incoming);
+    const key = `${chosen[0]}->${chosen[1]}`;
+    usedPairs.add(key);
+    givenEdges.push({
+      from: chosen[0],
+      to: chosen[1],
+      type: edgeTypeForGender(genders[target]),
+      curve: chosen[2]
+    });
+  }
+  shuffleArray(candidatePairs).slice(0, 2).forEach(ch => {
+    const key = `${ch[0]}->${ch[1]}`;
+    const revKey = `${ch[1]}->${ch[0]}`;
+    if (!usedPairs.has(key) && !usedPairs.has(revKey)) {
+      usedPairs.add(key);
+      givenEdges.push({
+        from: ch[0],
+        to: ch[1],
+        type: edgeTypeForGender(genders[ch[1]]),
+        curve: ch[2]
+      });
+    }
+  });
+
+  return {
+    type: '4.6',
+    subLabel: '∞',
+    needUserArrows: false,
+    nodes: [
+      { id: 0, x: 280, y: 80,  gender: genders[0] },
+      { id: 1, x: 800, y: 80,  gender: genders[1] },
+      { id: 2, x: 540, y: 210, gender: genders[2] },
+      { id: 3, x: 280, y: 340, gender: genders[3] },
+      { id: 4, x: 800, y: 340, gender: genders[4] }
+    ],
+    givenEdges,
+    requiredPairs: []
+  };
+}
+
+// ============================================================================
+// СТАН ГРИ ТА КЕРУВАННЯ РІВНЯМИ
+// ============================================================================
+let levelHistory = [...PRESET_LEVELS];
+let currentLevelIndex = 0;
+let currentLevel = null;
+
+// Вибраний інструмент: 'boy' | 'girl' | 'brother' | 'sister' | 'eraser'
+let activeTool = 'boy';
+
+// Стан гравця на поточному рівні
+let userNodeColors = {}; // { nodeId: null | 'M' | 'F' }
+let userEdges = [];      // [{ from, to, type: 'solid' | 'dashed', curve }]
+let dragSourceNode = null;
+let isSolved = false;
+
+// Елементи DOM
+const svg = document.getElementById('main-svg');
+const modeTabsGroup = document.getElementById('mode-tabs');
+const edgesGuideLayer = document.getElementById('edges-guide-layer');
+const edgesUserLayer = document.getElementById('edges-user-layer');
+const edgesGivenLayer = document.getElementById('edges-given-layer');
+const nodesLayer = document.getElementById('nodes-layer');
+const dragPreviewLine = document.getElementById('drag-preview-line');
+const particlesLayer = document.getElementById('particles-layer');
+
+// ============================================================================
+// ПОБУДОВА ЗАКЛАДОК ТИПІВ ЗАВДАНЬ (4.1 - 4.6) — ФІКСОВАНІ КООРДИНАТИ ТА ВЕЛИКИЙ ШРИФТ
+// ============================================================================
+function renderModeTabs() {
+  modeTabsGroup.innerHTML = '';
+  const activeType = currentLevel ? currentLevel.type : '4.1';
+
+  TASK_TYPES.forEach((type, idx) => {
+    const isSelected = type === activeType;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'interactive-btn');
+    // Фіксована позиція без вертикальних стрибків, щоб кнопка ніколи не тікала від мишки
+    g.setAttribute('transform', `translate(${idx * 145}, 0)`);
+
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', '0');
+    rect.setAttribute('y', '0');
+    rect.setAttribute('width', '130');
+    rect.setAttribute('height', '48');
+    rect.setAttribute('rx', '12');
+    rect.setAttribute('fill', isSelected ? 'url(#plaqueGrad)' : 'url(#boardWoodFrame)');
+    rect.setAttribute('stroke', isSelected ? '#ffe484' : 'url(#brassGrad)');
+    rect.setAttribute('stroke-width', isSelected ? '3.5' : '2');
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', '65');
+    text.setAttribute('y', '32');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', isSelected ? '#2b1405' : '#f2d9b1');
+    text.setAttribute('font-size', '26');
+    text.setAttribute('font-weight', 'bold');
+    text.textContent = type;
+
+    g.appendChild(rect);
+    g.appendChild(text);
+
+    g.addEventListener('click', () => {
+      sound.playWoodClick(420);
+      const presetIdx = levelHistory.findIndex(l => l.type === type);
+      if (presetIdx !== -1 && currentLevel.type !== type) {
+        currentLevelIndex = presetIdx;
+        loadLevel(levelHistory[currentLevelIndex]);
+      } else {
+        const gen = generateInfiniteLevel(type);
+        levelHistory.push(gen);
+        currentLevelIndex = levelHistory.length - 1;
+        loadLevel(gen);
+      }
+    });
+
+    modeTabsGroup.appendChild(g);
+  });
+}
+
+// ============================================================================
+// ЗАВАНТАЖЕННЯ ТА ВІДМАЛЬОВКА РІВНЯ
+// ============================================================================
+function loadLevel(levelData) {
+  currentLevel = levelData;
+  isSolved = false;
+  userNodeColors = {};
+  userEdges = [];
+  levelData.nodes.forEach(n => {
+    userNodeColors[n.id] = null;
+  });
+
+  const arrowGroup = document.getElementById('arrow-tools-group');
+  if (levelData.needUserArrows) {
+    arrowGroup.setAttribute('opacity', '1');
+    arrowGroup.style.pointerEvents = 'auto';
+  } else {
+    arrowGroup.setAttribute('opacity', '0.22');
+    arrowGroup.style.pointerEvents = 'none';
+    if (activeTool === 'brother' || activeTool === 'sister') {
+      selectTool('boy');
+    }
+  }
+
+  updateLanguageTexts();
+  renderModeTabs();
+  renderGraph();
+  setCatEmotion('curious');
+}
+
+function updateLanguageTexts() {
+  const dict = I18N[currentLang];
+  document.getElementById('legend-text-brother').textContent = dict.brotherLegend;
+  document.getElementById('legend-text-sister').textContent = dict.sisterLegend;
+
+  const line1El = document.getElementById('task-prompt-line1');
+  const line2El = document.getElementById('task-prompt-line2');
+
+  if (!currentLevel) return;
+  const basePrompts = dict.prompts[currentLevel.type];
+  const sub = currentLevel.subLabel ? ` ${currentLevel.subLabel}` : '';
+
+  if (currentLevel.customPromptUk && currentLevel.customPromptRu) {
+    line1El.textContent = currentLang === 'ua' ? currentLevel.customPromptUk : currentLevel.customPromptRu;
+    line2El.textContent = basePrompts[1];
+  } else {
+    const p1 = basePrompts[0].replace(currentLevel.type + '.', `${currentLevel.type}${sub}`);
+    line1El.textContent = p1;
+    line2El.textContent = basePrompts[1];
+  }
+
+  renderNodes();
+}
+
+// ============================================================================
+// ГЕОМЕТРІЯ КРИВИХ СТРІЛОК МІЖ ВЕРШИНАМИ ГРАФА
+// ============================================================================
+const NODE_RADIUS = 38;
+
+function computeEdgePath(n1, n2, curveOffset = -65) {
+  const dx = n2.x - n1.x;
+  const dy = n2.y - n1.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  const ux = dx / dist;
+  const uy = dy / dist;
+  const nx = -uy;
+  const ny = ux;
+
+  const mx = (n1.x + n2.x) / 2 + nx * curveOffset;
+  const my = (n1.y + n2.y) / 2 + ny * curveOffset;
+
+  const startAngle = Math.atan2(my - n1.y, mx - n1.x);
+  const endAngle = Math.atan2(n2.y - my, n2.x - mx);
+
+  const sx = n1.x + Math.cos(startAngle) * (NODE_RADIUS + 4);
+  const sy = n1.y + Math.sin(startAngle) * (NODE_RADIUS + 4);
+  const ex = n2.x - Math.cos(endAngle) * (NODE_RADIUS + 9);
+  const ey = n2.y - Math.sin(endAngle) * (NODE_RADIUS + 9);
+
+  return {
+    d: `M ${sx.toFixed(1)} ${sy.toFixed(1)} Q ${mx.toFixed(1)} ${my.toFixed(1)} ${ex.toFixed(1)} ${ey.toFixed(1)}`,
+    mx,
+    my
+  };
+}
+
+function getPreferredCurveForUserEdge(fromId, toId) {
+  const existingGiven = currentLevel.givenEdges.find(e => e.from === toId && e.to === fromId);
+  if (existingGiven) {
+    return Math.abs(existingGiven.curve) > 100 ? -Math.abs(existingGiven.curve) : -65;
+  }
+  const n1 = currentLevel.nodes.find(n => n.id === fromId);
+  const n2 = currentLevel.nodes.find(n => n.id === toId);
+  const dist = Math.hypot(n2.x - n1.x, n2.y - n1.y);
+  return dist > 480 ? -145 : -65;
+}
+
+// ============================================================================
+// ВІДМАЛЬОВКА СТРІЛОК ТА КРУЖЕЧКІВ ГРАФА
+// ============================================================================
+function renderGraph() {
+  renderEdges();
+  renderNodes();
+}
+
+function renderEdges() {
+  edgesGuideLayer.innerHTML = '';
+  edgesGivenLayer.innerHTML = '';
+  edgesUserLayer.innerHTML = '';
+
+  if (!currentLevel) return;
+
+  // 1. Пунктирні доріжки-орієнтири для малювання стрілок
+  if (currentLevel.needUserArrows) {
+    currentLevel.requiredPairs.forEach(([u, v]) => {
+      const hasGiven = currentLevel.givenEdges.some(e => e.from === u && e.to === v);
+      const hasUser = userEdges.some(e => e.from === u && e.to === v);
+      if (!hasGiven && !hasUser) {
+        const n1 = currentLevel.nodes.find(n => n.id === u);
+        const n2 = currentLevel.nodes.find(n => n.id === v);
+        const curve = getPreferredCurveForUserEdge(u, v);
+        const { d } = computeEdgePath(n1, n2, curve);
+
+        const ghost = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        ghost.setAttribute('d', d);
+        ghost.setAttribute('fill', 'none');
+        ghost.setAttribute('stroke', 'rgba(110, 72, 32, 0.25)');
+        ghost.setAttribute('stroke-width', '3.5');
+        ghost.setAttribute('stroke-dasharray', '5,8');
+        ghost.setAttribute('pointer-events', 'none');
+
+        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hit.setAttribute('d', d);
+        hit.setAttribute('fill', 'none');
+        hit.setAttribute('stroke', 'transparent');
+        hit.setAttribute('stroke-width', '28');
+        hit.setAttribute('class', 'user-edge-hit');
+        hit.addEventListener('click', () => {
+          const type = activeTool === 'sister' ? 'dashed' : 'solid';
+          addOrCycleUserEdge(u, v, type);
+        });
+
+        edgesGuideLayer.appendChild(ghost);
+        edgesGuideLayer.appendChild(hit);
+      }
+    });
+  }
+
+  // 2. Задані умовою стрілки
+  currentLevel.givenEdges.forEach(edge => {
+    const n1 = currentLevel.nodes.find(n => n.id === edge.from);
+    const n2 = currentLevel.nodes.find(n => n.id === edge.to);
+    const { d } = computeEdgePath(n1, n2, edge.curve);
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#2b180a');
+    path.setAttribute('stroke-width', '5');
+    path.setAttribute('stroke-linecap', 'round');
+    if (edge.type === 'dashed') {
+      path.setAttribute('stroke-dasharray', '13,9');
+      path.setAttribute('marker-end', 'url(#arrowGivenDashed)');
+    } else {
+      path.setAttribute('marker-end', 'url(#arrowGivenSolid)');
+    }
+    edgesGivenLayer.appendChild(path);
+  });
+
+  // 3. Намальовані дитиною стрілки
+  userEdges.forEach((edge, idx) => {
+    const n1 = currentLevel.nodes.find(n => n.id === edge.from);
+    const n2 = currentLevel.nodes.find(n => n.id === edge.to);
+    const { d } = computeEdgePath(n1, n2, edge.curve);
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'user-edge-hit');
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', edge.type === 'solid' ? '#0d47a1' : '#b70926');
+    path.setAttribute('stroke-width', '5.5');
+    path.setAttribute('stroke-linecap', 'round');
+    if (edge.type === 'dashed') {
+      path.setAttribute('stroke-dasharray', '13,9');
+      path.setAttribute('marker-end', 'url(#arrowUserSister)');
+    } else {
+      path.setAttribute('marker-end', 'url(#arrowUserBrother)');
+    }
+
+    const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    hit.setAttribute('d', d);
+    hit.setAttribute('fill', 'none');
+    hit.setAttribute('stroke', 'transparent');
+    hit.setAttribute('stroke-width', '28');
+
+    g.appendChild(path);
+    g.appendChild(hit);
+
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (activeTool === 'eraser') {
+        userEdges.splice(idx, 1);
+        sound.playWoodClick(260);
+      } else if (edge.type === 'solid') {
+        edge.type = 'dashed';
+        sound.playDrawArrow(false);
+      } else {
+        userEdges.splice(idx, 1);
+        sound.playWoodClick(260);
+      }
+      renderEdges();
+      checkAutoSolve();
+    });
+
+    edgesUserLayer.appendChild(g);
+  });
+}
+
+function addOrCycleUserEdge(fromId, toId, preferredType = 'solid') {
+  if (fromId === toId) return;
+  if (currentLevel.givenEdges.some(e => e.from === fromId && e.to === toId)) return;
+
+  const existingIdx = userEdges.findIndex(e => e.from === fromId && e.to === toId);
+  if (existingIdx !== -1) {
+    if (activeTool === 'eraser') {
+      userEdges.splice(existingIdx, 1);
+      sound.playWoodClick(260);
+    } else {
+      userEdges[existingIdx].type = userEdges[existingIdx].type === 'solid' ? 'dashed' : 'solid';
+      sound.playDrawArrow(userEdges[existingIdx].type === 'solid');
+    }
+  } else {
+    const curve = getPreferredCurveForUserEdge(fromId, toId);
+    userEdges.push({
+      from: fromId,
+      to: toId,
+      type: preferredType,
+      curve
+    });
+    sound.playDrawArrow(preferredType === 'solid');
+  }
+  renderEdges();
+  checkAutoSolve();
+}
+
+function renderNodes() {
+  nodesLayer.innerHTML = '';
+  if (!currentLevel) return;
+
+  currentLevel.nodes.forEach(node => {
+    const colorState = userNodeColors[node.id]; // null | 'M' | 'F'
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'graph-node');
+    g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+    g.setAttribute('data-node-id', node.id);
+
+    // Зовнішнє латунне кільце
+    const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    outerRing.setAttribute('cx', '0');
+    outerRing.setAttribute('cy', '0');
+    outerRing.setAttribute('r', NODE_RADIUS);
+    outerRing.setAttribute('fill', 'url(#brassGrad)');
+    outerRing.setAttribute('filter', 'url(#softShadow)');
+    g.appendChild(outerRing);
+
+    // Основна 3D-фішка
+    const mainCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    mainCircle.setAttribute('cx', '0');
+    mainCircle.setAttribute('cy', '0');
+    mainCircle.setAttribute('r', NODE_RADIUS - 4);
+    const fillUrl = colorState === 'M' ? 'url(#nodeBoy)' : colorState === 'F' ? 'url(#nodeGirl)' : 'url(#nodeNeutral)';
+    mainCircle.setAttribute('fill', fillUrl);
+    mainCircle.setAttribute('stroke', '#3b210c');
+    mainCircle.setAttribute('stroke-width', '1.5');
+    g.appendChild(mainCircle);
+
+    // Деталізований силует всередині фішки
+    if (colorState === 'M') {
+      const head = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      head.setAttribute('cx', '0');
+      head.setAttribute('cy', '-8');
+      head.setAttribute('r', '9.5');
+      head.setAttribute('fill', 'rgba(225, 245, 255, 0.92)');
+      const body = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      body.setAttribute('d', 'M-16 17 C-16 3, 16 3, 16 17 Z');
+      body.setAttribute('fill', 'rgba(225, 245, 255, 0.92)');
+      g.appendChild(head);
+      g.appendChild(body);
+    } else if (colorState === 'F') {
+      const head = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      head.setAttribute('cx', '0');
+      head.setAttribute('cy', '-8');
+      head.setAttribute('r', '9');
+      head.setAttribute('fill', 'rgba(255, 230, 236, 0.92)');
+      const bowL = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      bowL.setAttribute('points', '-17,-12 -8,-8 -17,-3');
+      bowL.setAttribute('fill', 'rgba(255, 230, 236, 0.92)');
+      const bowR = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      bowR.setAttribute('points', '17,-12 8,-8 17,-3');
+      bowR.setAttribute('fill', 'rgba(255, 230, 236, 0.92)');
+      const dress = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      dress.setAttribute('d', 'M-16 17 L-7 2 L7 2 L16 17 Z');
+      dress.setAttribute('fill', 'rgba(255, 230, 236, 0.92)');
+      g.appendChild(head);
+      g.appendChild(bowL);
+      g.appendChild(bowR);
+      g.appendChild(dress);
+    } else {
+      // Збільшений знак питання на різьбленій фішці
+      const qMark = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      qMark.setAttribute('x', '0');
+      qMark.setAttribute('y', '12');
+      qMark.setAttribute('text-anchor', 'middle');
+      qMark.setAttribute('fill', '#6e4a23');
+      qMark.setAttribute('font-size', '35');
+      qMark.setAttribute('font-weight', 'bold');
+      qMark.setAttribute('opacity', '0.7');
+      qMark.textContent = '?';
+      g.appendChild(qMark);
+    }
+
+    // Скляний блік на фішці
+    const highlight = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+    highlight.setAttribute('cx', '-11');
+    highlight.setAttribute('cy', '-13');
+    highlight.setAttribute('rx', '11');
+    highlight.setAttribute('ry', '6');
+    highlight.setAttribute('transform', 'rotate(-30 -11 -13)');
+    highlight.setAttribute('fill', 'rgba(255,255,255,0.38)');
+    g.appendChild(highlight);
+
+    // Табличка з ім'ям під кружечком (збільшений шрифт)
+    const nameText = currentLang === 'ua' ? node.nameUk : node.nameRu;
+    if (nameText) {
+      const badge = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      badge.setAttribute('x', '-66');
+      badge.setAttribute('y', '45');
+      badge.setAttribute('width', '132');
+      badge.setAttribute('height', '40');
+      badge.setAttribute('rx', '10');
+      badge.setAttribute('fill', 'url(#plaqueGrad)');
+      badge.setAttribute('stroke', '#5c3818');
+      badge.setAttribute('stroke-width', '2.5');
+
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', '0');
+      label.setAttribute('y', '73');
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('fill', '#2b1405');
+      label.setAttribute('font-size', '27');
+      label.setAttribute('font-weight', 'bold');
+      label.textContent = nameText;
+
+      g.appendChild(badge);
+      g.appendChild(label);
+    }
+
+    g.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      if (currentLevel.needUserArrows) {
+        dragSourceNode = node;
+      }
+    });
+
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      let nextColor = null;
+      if (activeTool === 'eraser') {
+        nextColor = null;
+      } else if (activeTool === 'boy') {
+        nextColor = userNodeColors[node.id] === 'M' ? 'F' : 'M';
+      } else if (activeTool === 'girl') {
+        nextColor = userNodeColors[node.id] === 'F' ? 'M' : 'F';
+      } else {
+        nextColor = userNodeColors[node.id] === 'M' ? 'F' : 'M';
+      }
+      userNodeColors[node.id] = nextColor;
+      sound.playPaintToken(nextColor);
+      spawnMiniSparkles(node.x + 415, node.y + 302, nextColor === 'M' ? '#4dabff' : '#ff5277');
+      renderNodes();
+      checkAutoSolve();
+    });
+
+    nodesLayer.appendChild(g);
+  });
+}
+
+// ============================================================================
+// ПЕРЕТЯГУВАННЯ СТРІЛОК МІЖ ВЕРШИНАМИ (DRAG & DROP)
+// ============================================================================
+function getWorkspaceCoords(evt) {
+  const pt = svg.createSVGPoint();
+  pt.x = evt.clientX;
+  pt.y = evt.clientY;
+  const ctm = document.getElementById('graph-workspace').getScreenCTM();
+  return pt.matrixTransform(ctm.inverse());
+}
+
+svg.addEventListener('pointermove', (e) => {
+  updateCatEyeTracking(e.clientX, e.clientY);
+
+  if (!dragSourceNode || !currentLevel || !currentLevel.needUserArrows) return;
+  const pos = getWorkspaceCoords(e);
+  const dist = Math.hypot(pos.x - dragSourceNode.x, pos.y - dragSourceNode.y);
+
+  if (dist > NODE_RADIUS + 8) {
+    dragPreviewLine.setAttribute('opacity', '0.85');
+    const isSisterArrow = activeTool === 'sister';
+    dragPreviewLine.setAttribute('stroke', isSisterArrow ? '#b70926' : '#0d47a1');
+    if (isSisterArrow) {
+      dragPreviewLine.setAttribute('stroke-dasharray', '10,8');
+      dragPreviewLine.setAttribute('marker-end', 'url(#arrowUserSister)');
+    } else {
+      dragPreviewLine.removeAttribute('stroke-dasharray');
+      dragPreviewLine.setAttribute('marker-end', 'url(#arrowUserBrother)');
+    }
+    const mx = (dragSourceNode.x + pos.x) / 2;
+    const my = (dragSourceNode.y + pos.y) / 2 - 45;
+    dragPreviewLine.setAttribute('d', `M ${dragSourceNode.x} ${dragSourceNode.y} Q ${mx} ${my} ${pos.x} ${pos.y}`);
+  } else {
+    dragPreviewLine.setAttribute('opacity', '0');
+  }
+});
+
+svg.addEventListener('pointerup', (e) => {
+  if (!dragSourceNode) return;
+  dragPreviewLine.setAttribute('opacity', '0');
+
+  if (currentLevel && currentLevel.needUserArrows) {
+    const pos = getWorkspaceCoords(e);
+    const targetNode = currentLevel.nodes.find(n => Math.hypot(n.x - pos.x, n.y - pos.y) <= NODE_RADIUS + 16);
+    if (targetNode && targetNode.id !== dragSourceNode.id) {
+      const arrowType = activeTool === 'sister' ? 'dashed' : 'solid';
+      addOrCycleUserEdge(dragSourceNode.id, targetNode.id, arrowType);
+    }
+  }
+  dragSourceNode = null;
+});
+
+// ============================================================================
+// ПЕРЕВІРКА ПРАВИЛЬНОСТІ РОЗВ'ЯЗАННЯ ЗАВДАННЯ
+// ============================================================================
+function evaluateCurrentSolution() {
+  if (!currentLevel) return { complete: false, valid: false };
+
+  for (const node of currentLevel.nodes) {
+    if (!userNodeColors[node.id]) {
+      return { complete: false, valid: false };
+    }
+  }
+
+  for (const node of currentLevel.nodes) {
+    if (userNodeColors[node.id] !== node.gender) {
+      return { complete: true, valid: false };
+    }
+  }
+
+  if (currentLevel.needUserArrows) {
+    const allEdges = [...currentLevel.givenEdges, ...userEdges];
+
+    for (const [u, v] of currentLevel.requiredPairs) {
+      const found = allEdges.find(e => e.from === u && e.to === v);
+      if (!found) {
+        return { complete: false, valid: false };
+      }
+    }
+
+    for (const edge of allEdges) {
+      const targetColor = userNodeColors[edge.to];
+      const expectedType = targetColor === 'M' ? 'solid' : 'dashed';
+      if (edge.type !== expectedType) {
+        return { complete: true, valid: false };
+      }
+    }
+  }
+
+  return { complete: true, valid: true };
+}
+
+function checkAutoSolve() {
+  if (isSolved) return;
+  const res = evaluateCurrentSolution();
+  if (res.complete && res.valid) {
+    triggerVictory();
+  }
+}
+
+function triggerVictory() {
+  isSolved = true;
+  sound.playVictoryFanfare();
+  setCatEmotion('happy');
+  spawnCelebrationBurst();
+}
+
+function triggerMistakeFeedback() {
+  sound.playErrorSound();
+  setCatEmotion('surprised');
+  const board = document.getElementById('graph-workspace');
+  let step = 0;
+  const shake = setInterval(() => {
+    step++;
+    const dx = step % 2 === 0 ? 7 : -7;
+    board.setAttribute('transform', `translate(${50 + dx}, 276)`);
+    if (step >= 6) {
+      clearInterval(shake);
+      board.setAttribute('transform', 'translate(50, 276)');
+    }
+  }, 55);
+}
+
+// ============================================================================
+// ПАНЕЛЬ ІНСТРУМЕНТІВ ТА КНОПКИ НАВІГАЦІЇ («НАЗАД», «ДАЛІ», «ГЕНЕРАТОР»)
+// ============================================================================
+function selectTool(toolName) {
+  activeTool = toolName;
+  sound.playWoodClick(440);
+  document.getElementById('sel-ring-boy').setAttribute('opacity', toolName === 'boy' ? '1' : '0');
+  document.getElementById('sel-ring-girl').setAttribute('opacity', toolName === 'girl' ? '1' : '0');
+  document.getElementById('sel-ring-brother').setAttribute('opacity', toolName === 'brother' ? '1' : '0');
+  document.getElementById('sel-ring-sister').setAttribute('opacity', toolName === 'sister' ? '1' : '0');
+  document.getElementById('sel-ring-eraser').setAttribute('opacity', toolName === 'eraser' ? '1' : '0');
+}
+
+document.getElementById('tool-boy').addEventListener('click', () => selectTool('boy'));
+document.getElementById('tool-girl').addEventListener('click', () => selectTool('girl'));
+document.getElementById('tool-arrow-brother').addEventListener('click', () => selectTool('brother'));
+document.getElementById('tool-arrow-sister').addEventListener('click', () => selectTool('sister'));
+document.getElementById('tool-eraser').addEventListener('click', () => selectTool('eraser'));
+
+document.getElementById('btn-check').addEventListener('click', () => {
+  const res = evaluateCurrentSolution();
+  if (res.complete && res.valid) {
+    triggerVictory();
+  } else {
+    triggerMistakeFeedback();
+  }
+});
+
+// Мінімалістична кнопка «НАЗАД» (попередній рівень)
+document.getElementById('btn-prev').addEventListener('click', () => {
+  sound.playWoodClick(320);
+  if (currentLevelIndex > 0) {
+    currentLevelIndex--;
+    loadLevel(levelHistory[currentLevelIndex]);
+  } else {
+    const gen = generateInfiniteLevel(currentLevel.type);
+    loadLevel(gen);
+  }
+});
+
+// Мінімалістична кнопка «ДАЛІ» (миттєвий перехід на наступне завдання без проходження)
+document.getElementById('btn-next').addEventListener('click', () => {
+  sound.playWoodClick(480);
+  if (currentLevelIndex < levelHistory.length - 1) {
+    currentLevelIndex++;
+    loadLevel(levelHistory[currentLevelIndex]);
+  } else {
+    const nextTypeIdx = (TASK_TYPES.indexOf(currentLevel.type) + 1) % TASK_TYPES.length;
+    const gen = generateInfiniteLevel(TASK_TYPES[nextTypeIdx]);
+    levelHistory.push(gen);
+    currentLevelIndex = levelHistory.length - 1;
+    loadLevel(gen);
+  }
+});
+
+// Кнопка кубика — миттєвий нескінченний генератор для ВІДПРАЦЮВАННЯ ПОТОЧНОГО виду питання
+document.getElementById('btn-generate').addEventListener('click', () => {
+  sound.playWoodClick(540);
+  const gen = generateInfiniteLevel(currentLevel ? currentLevel.type : '4.1');
+  levelHistory.push(gen);
+  currentLevelIndex = levelHistory.length - 1;
+  loadLevel(gen);
+});
+
+// Перемикач мов (UA / RU)
+document.getElementById('lang-ua').addEventListener('click', () => {
+  currentLang = 'ua';
+  document.getElementById('lang-ua').classList.add('active');
+  document.getElementById('lang-ru').classList.remove('active');
+  updateLanguageTexts();
+});
+document.getElementById('lang-ru').addEventListener('click', () => {
+  currentLang = 'ru';
+  document.getElementById('lang-ru').classList.add('active');
+  document.getElementById('lang-ua').classList.remove('active');
+  updateLanguageTexts();
+});
+
+// ============================================================================
+// ЖИВИЙ ПЕРСОНАЖ (РУДИЙ КОТИК) ТА СЮЖЕТНІ АНІМАЦІЇ КІМНАТИ
+// ============================================================================
+let catEmotion = 'curious';
+let catEmotionTimer = null;
+
+function setCatEmotion(emotion) {
+  catEmotion = emotion;
+  const mouth = document.getElementById('cat-mouth');
+  const lidL = document.getElementById('cat-eyelid-left');
+  const lidR = document.getElementById('cat-eyelid-right');
+
+  if (catEmotionTimer) clearTimeout(catEmotionTimer);
+
+  if (emotion === 'happy') {
+    mouth.setAttribute('d', 'M-15 24 Q0 38 15 24');
+    lidL.setAttribute('opacity', '1');
+    lidR.setAttribute('opacity', '1');
+    catEmotionTimer = setTimeout(() => setCatEmotion('curious'), 2600);
+  } else if (emotion === 'surprised') {
+    mouth.setAttribute('d', 'M-7 29 Q0 21 7 29');
+    lidL.setAttribute('opacity', '0');
+    lidR.setAttribute('opacity', '0');
+    catEmotionTimer = setTimeout(() => setCatEmotion('curious'), 1500);
+  } else {
+    mouth.setAttribute('d', 'M-12 26 Q-6 32 0 22 Q6 32 12 26');
+    lidL.setAttribute('opacity', '0');
+    lidR.setAttribute('opacity', '0');
+  }
+}
+
+function updateCatEyeTracking(clientX, clientY) {
+  const rect = svg.getBoundingClientRect();
+  const normX = ((clientX - rect.left) / rect.width) - 0.2;
+  const normY = ((clientY - rect.top) / rect.height) - 0.6;
+  const dx = Math.max(-5, Math.min(6, normX * 10));
+  const dy = Math.max(-4, Math.min(4, normY * 8));
+
+  document.getElementById('cat-pupil-left').setAttribute('transform', `translate(${dx.toFixed(1)}, ${dy.toFixed(1)})`);
+  document.getElementById('cat-pupil-right').setAttribute('transform', `translate(${dx.toFixed(1)}, ${dy.toFixed(1)})`);
+}
+
+// Сонячні пилинки в кімнаті
+const dustParticles = [];
+const dustContainer = document.getElementById('dust-motes');
+for (let i = 0; i < 24; i++) {
+  const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  const r = 1.2 + Math.random() * 2.2;
+  c.setAttribute('r', r);
+  c.setAttribute('fill', '#ffe8a3');
+  dustContainer.appendChild(c);
+  dustParticles.push({
+    el: c,
+    x: 40 + Math.random() * 340,
+    y: 80 + Math.random() * 580,
+    vx: (Math.random() - 0.5) * 0.25,
+    vy: -0.15 - Math.random() * 0.25,
+    phase: Math.random() * Math.PI * 2
+  });
+}
+
+// Іскри та зірочки при розфарбовуванні та перемозі
+const activeSparkles = [];
+
+function spawnMiniSparkles(x, y, color) {
+  for (let i = 0; i < 12; i++) {
+    const angle = (Math.PI * 2 * i) / 12 + Math.random() * 0.3;
+    const speed = 2.5 + Math.random() * 4.5;
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    el.setAttribute('r', 4 + Math.random() * 3);
+    el.setAttribute('fill', i % 2 === 0 ? '#ffe680' : color);
+    particlesLayer.appendChild(el);
+    activeSparkles.push({
+      el,
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1.5,
+      life: 1.0,
+      decay: 0.032
+    });
+  }
+}
+
+function spawnCelebrationBurst() {
+  const colors = ['#ffd700', '#ff4d6d', '#38b6ff', '#7bf1a8', '#ff9f1c'];
+  for (let b = 0; b < 3; b++) {
+    const cx = 650 + b * 240;
+    const cy = 360 + (b % 2) * 90;
+    for (let i = 0; i < 28; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 3 + Math.random() * 9;
+      const star = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      star.setAttribute('points', '0,-9 2.6,-2.6 9,-2.6 4,1.6 6,8 0,4 -6,8 -4,1.6 -9,-2.6 -2.6,-2.6');
+      star.setAttribute('fill', randChoice(colors));
+      particlesLayer.appendChild(star);
+      activeSparkles.push({
+        el: star,
+        x: cx,
+        y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 3,
+        rot: Math.random() * 360,
+        vRot: (Math.random() - 0.5) * 14,
+        life: 1.0,
+        decay: 0.016
+      });
+    }
+  }
+}
+
+// Головний цикл анімації (60 FPS)
+let startTime = performance.now();
+function animateScene(now) {
+  const t = (now - startTime) * 0.001;
+
+  const pendAngle = Math.sin(t * 2.8) * 14;
+  document.getElementById('clock-pendulum').setAttribute('transform', `translate(0, 115) rotate(${pendAngle.toFixed(2)})`);
+
+  const plantSway = Math.sin(t * 1.4) * 2.2;
+  document.getElementById('room-plant').setAttribute('transform', `translate(275, 420) rotate(${plantSway.toFixed(2)})`);
+
+  const tailAngle = Math.sin(t * (catEmotion === 'happy' ? 7.5 : 2.1)) * (catEmotion === 'happy' ? 22 : 11);
+  document.getElementById('cat-tail-group').setAttribute('transform', `translate(-58, 95) rotate(${tailAngle.toFixed(2)})`);
+
+  const breathScaleY = 1 + Math.sin(t * 2.6) * 0.022;
+  const jumpY = catEmotion === 'happy' ? -Math.abs(Math.sin(t * 8.5)) * 26 : 0;
+  document.getElementById('cat-body-group').setAttribute('transform', `translate(0, ${jumpY.toFixed(1)}) scale(1, ${breathScaleY.toFixed(3)})`);
+
+  const headTilt = catEmotion === 'surprised'
+    ? Math.sin(t * 14) * 10
+    : Math.sin(t * 1.5) * 3.5;
+  document.getElementById('cat-head-group').setAttribute('transform', `translate(0, ${(-34 + jumpY * 1.1).toFixed(1)}) rotate(${headTilt.toFixed(2)})`);
+
+  if (catEmotion === 'curious') {
+    const blinkCycle = t % 4.6;
+    const isBlinking = blinkCycle > 4.42;
+    document.getElementById('cat-eyelid-left').setAttribute('opacity', isBlinking ? '1' : '0');
+    document.getElementById('cat-eyelid-right').setAttribute('opacity', isBlinking ? '1' : '0');
+  }
+
+  dustParticles.forEach(p => {
+    p.x += p.vx + Math.sin(t + p.phase) * 0.15;
+    p.y += p.vy;
+    if (p.y < 60) p.y = 640;
+    const alpha = 0.2 + 0.35 * Math.sin(t * 2 + p.phase);
+    p.el.setAttribute('cx', p.x.toFixed(1));
+    p.el.setAttribute('cy', p.y.toFixed(1));
+    p.el.setAttribute('opacity', Math.max(0.05, alpha).toFixed(2));
+  });
+
+  for (let i = activeSparkles.length - 1; i >= 0; i--) {
+    const sp = activeSparkles[i];
+    sp.x += sp.vx;
+    sp.y += sp.vy;
+    sp.vy += 0.18;
+    sp.life -= sp.decay;
+    if (sp.rot !== undefined) sp.rot += sp.vRot;
+
+    if (sp.life <= 0) {
+      sp.el.remove();
+      activeSparkles.splice(i, 1);
+    } else {
+      const rotStr = sp.rot !== undefined ? ` rotate(${sp.rot.toFixed(1)})` : '';
+      sp.el.setAttribute('transform', `translate(${sp.x.toFixed(1)}, ${sp.y.toFixed(1)})${rotStr} scale(${sp.life.toFixed(2)})`);
+      sp.el.setAttribute('opacity', sp.life.toFixed(2));
+    }
+  }
+
+  requestAnimationFrame(animateScene);
+}
+
+loadLevel(levelHistory[0]);
+requestAnimationFrame(animateScene);
+</script>
+</body>
+</html>
