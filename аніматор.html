@@ -104,12 +104,15 @@
         }
         button.action:hover { opacity: 0.92; }
         button.action:active { transform: scale(0.96); }
+        button.action:disabled { cursor: not-allowed; opacity: 0.55; transform: none; }
         
-        #clearBtn { background: #dc3545; }
-        #animateBtn { background: #28a745; }
+        #clearBtn  { background: #dc3545; }
+        #undoBtn   { background: #6c757d; }
+        #undoBtn:disabled { background: #ced4da; color: #6c757d; }
+        #animateBtn{ background: #28a745; }
         #nextDanceBtn { background: #6f42c1; }
-        #muteBtn { background: #fd7e14; }
-        #drawBtn { background: #007bff; }
+        #muteBtn   { background: #fd7e14; }
+        #drawBtn   { background: #007bff; }
         
         .instruction { 
             font-size: 13px; color: #555; text-align: center; 
@@ -203,6 +206,7 @@
         <canvas id="gameCanvas" width="400" height="480" style="margin-top: 10px;"></canvas>
         
         <div class="controls">
+            <button class="action" id="undoBtn" disabled>↩️ Скасувати (0/10)</button>
             <button class="action" id="clearBtn">Очистити</button>
             <button class="action" id="animateBtn">Оживити! 🕺🎵</button>
             <button class="action" id="nextDanceBtn" style="display:none;">Інший танець 🎲</button>
@@ -237,6 +241,41 @@
     let bodyParts = {};
     let joints = {};
 
+    // =========================================================================
+    // ІСТОРІЯ ДЛЯ СКАСУВАННЯ (undo до 10 кроків)
+    // =========================================================================
+    const MAX_HISTORY = 10;
+    let drawingHistory = [];   // масив ImageData — стани ПЕРЕД кожним штрихом
+
+    function updateUndoButton() {
+        const btn = document.getElementById('undoBtn');
+        if (!btn) return;
+        btn.textContent = `↩️ Скасувати (${drawingHistory.length}/${MAX_HISTORY})`;
+        btn.disabled = drawingHistory.length === 0;
+    }
+
+    function pushHistorySnapshot() {
+        // Зберігаємо стан полотна ДО початку нового штриха
+        drawingHistory.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        if (drawingHistory.length > MAX_HISTORY) {
+            drawingHistory.shift();
+        }
+        updateUndoButton();
+    }
+
+    function clearHistory() {
+        drawingHistory = [];
+        updateUndoButton();
+    }
+
+    document.getElementById('undoBtn').addEventListener('click', () => {
+        if (isAnimating || drawingHistory.length === 0) return;
+        const prev = drawingHistory.pop();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.putImageData(prev, 0, 0);
+        updateUndoButton();
+    });
+
     const DANCE_NAMES = [
         "1. Веселий марш 🚶",
         "2. Стрибки радості 🙌",
@@ -261,11 +300,9 @@
     let currentSong = null;
     let currentStep = 0;
 
-    // Маршрутизація для Zoom
     let mediaDest = null;
     let audioEl = null;
 
-    // Планувальник (lookahead)
     let nextNoteTime = 0;
     const LOOKAHEAD_MS = 25;
     const SCHEDULE_AHEAD_S = 0.15;
@@ -296,7 +333,6 @@
         return 440 * Math.pow(2, (midi - 69) / 12);
     }
 
-    // Створюємо прихований <audio>, що програє той самий стрім, що йде в систему.
     function initAudioRouting() {
         if (mediaDest) return;
         mediaDest = audioCtx.createMediaStreamDestination();
@@ -361,7 +397,6 @@
         return { preset, scale, rootMidi, tempo, prog, melodyDegrees };
     }
 
-    // when — точний час у audioCtx.currentTime, коли має стартувати нота
     function playSynthTone(freq, duration, waveType, volume, slide = false, when = null) {
         if (!audioCtx || isMuted || !mediaDest) return;
         const start = (typeof when === 'number' && when > 0) ? when : audioCtx.currentTime;
@@ -382,7 +417,7 @@
         gain.gain.exponentialRampToValueAtTime(0.0008, start + duration);
 
         osc.connect(gain);
-        gain.connect(mediaDest);   // ← було audioCtx.destination
+        gain.connect(mediaDest);
 
         osc.start(start);
         osc.stop(start + duration + 0.02);
@@ -401,7 +436,7 @@
             gain.gain.setValueAtTime(0.28, start);
             gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
             osc.connect(gain);
-            gain.connect(mediaDest);   // ← було audioCtx.destination
+            gain.connect(mediaDest);
             osc.start(start);
             osc.stop(start + 0.15);
         } 
@@ -424,7 +459,7 @@
 
             noise.connect(filter);
             filter.connect(gain);
-            gain.connect(mediaDest);   // ← було audioCtx.destination
+            gain.connect(mediaDest);
             noise.start(start);
         } 
         else if (type === 'hat') {
@@ -446,13 +481,11 @@
 
             noise.connect(filter);
             filter.connect(gain);
-            gain.connect(mediaDest);   // ← було audioCtx.destination
+            gain.connect(mediaDest);
             noise.start(start);
         }
     }
 
-    // Планує ВСІ ноти одного 1/16-кроку на конкретний час `when`.
-    // Не грає зараз — просто ставить у чергу Web Audio.
     function scheduleStep(s, when) {
         if (!currentSong) return;
 
@@ -509,9 +542,6 @@
         }
     }
 
-    // Планувальник: дивиться на 150 мс уперед і ставить ноти у Web Audio.
-    // Працює навіть коли вкладка у фоні (бо setInterval/таймер лише «будить»,
-    // а реальний час нот тримає аудіо-контекст).
     function scheduler() {
         if (!isAnimating || !currentSong || !audioCtx) return;
 
@@ -539,11 +569,11 @@
             audioCtx.resume();
         }
 
-        initAudioRouting();          // ← створює mediaDest + <audio>
+        initAudioRouting();
 
         currentSong = generateRandomSong(danceIdx);
         currentStep = 0;
-        nextNoteTime = audioCtx.currentTime + 0.1;  // старт за 100 мс
+        nextNoteTime = audioCtx.currentTime + 0.1;
         scheduler();
     }
 
@@ -602,6 +632,8 @@
 
     canvas.addEventListener('pointerdown', (e) => {
         if (isAnimating) return;
+        // Зберігаємо стан ПЕРЕД новим штрихом, щоб його можна було скасувати
+        pushHistorySnapshot();
         isDrawing = true;
         ctx.lineWidth = currentBrushSize;
         ctx.strokeStyle = currentStrokeColor;
@@ -625,6 +657,8 @@
     canvas.addEventListener('pointercancel', () => isDrawing = false);
 
     document.getElementById('clearBtn').addEventListener('click', () => {
+        // Робимо очищення скасовуваним: зберігаємо поточний стан
+        pushHistorySnapshot();
         savedDrawing = null;
         stopAnimation(true);
     });
@@ -801,9 +835,11 @@
             bodyParts[partName] = { canvas: partCanvas, offsetX: minX, offsetY: minY, connectX: connectX, connectY: connectY };
         }
 
+        // Ховаємо інструменти малювання, показуємо керування анімацією
         document.getElementById('palette').style.display = 'none';
         document.getElementById('brushControls').style.display = 'none';
         document.getElementById('clearBtn').style.display = 'none';
+        document.getElementById('undoBtn').style.display = 'none';
         document.getElementById('animateBtn').style.display = 'none';
         document.getElementById('instruction').style.display = 'none';
         document.getElementById('nextDanceBtn').style.display = 'inline-block';
@@ -984,21 +1020,28 @@
         isAnimating = false;
         stopMusic();
         cancelAnimationFrame(animationFrameId);
+
         document.getElementById('palette').style.display = 'flex';
         document.getElementById('brushControls').style.display = 'flex';
         document.getElementById('clearBtn').style.display = 'inline-block';
+        document.getElementById('undoBtn').style.display = 'inline-block';
         document.getElementById('animateBtn').style.display = 'inline-block';
         document.getElementById('instruction').style.display = 'block';
         document.getElementById('nextDanceBtn').style.display = 'none';
         document.getElementById('muteBtn').style.display = 'none';
         document.getElementById('drawBtn').style.display = 'none';
         document.getElementById('danceNameBadge').style.display = 'none';
+
+        updateUndoButton();
         
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (!clearCanvas && savedDrawing) {
             ctx.putImageData(savedDrawing, 0, 0);
         }
     }
+
+    // Ініціалізація кнопки при старті
+    updateUndoButton();
 </script>
 
 </body>
