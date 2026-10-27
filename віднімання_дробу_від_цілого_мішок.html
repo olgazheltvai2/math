@@ -1,0 +1,2964 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Math Pull Game</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #140c06;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 16:9 Widescreen Responsive Stage */
+  #stage-wrapper {
+    position: relative;
+    width: 100vw;
+    height: 56.25vw;
+    max-height: 100vh;
+    max-width: 177.78vh;
+    overflow: hidden;
+    box-shadow: 0 0 60px rgba(0,0,0,0.95), inset 0 0 80px rgba(0,0,0,0.6);
+    border-radius: 12px;
+    background: #2b180c;
+  }
+
+  #scene-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #fx-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 15;
+  }
+
+  /* Hanging Carved Oak & Brass Carpenter Task Board (No white rectangles!) */
+  #problem-board-container {
+    position: absolute;
+    top: 1.8%;
+    left: 47%;
+    transform: translateX(-50%);
+    width: 52%;
+    height: 24.5%;
+    z-index: 20;
+    filter: drop-shadow(0 14px 18px rgba(0,0,0,0.7));
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  #problem-board-container.swing {
+    animation: boardSwing 0.6s ease-in-out;
+  }
+
+  #problem-board-container.wrong-shake {
+    animation: boardWrongShake 0.48s ease;
+  }
+
+  @keyframes boardSwing {
+    0% { transform: translateX(-50%) rotate(0deg); }
+    25% { transform: translateX(-50%) rotate(-2.5deg) scale(1.02); }
+    55% { transform: translateX(-50%) rotate(2deg) scale(1.01); }
+    80% { transform: translateX(-50%) rotate(-0.8deg); }
+    100% { transform: translateX(-50%) rotate(0deg); }
+  }
+
+  @keyframes boardWrongShake {
+    0%, 100% { transform: translateX(-50%) rotate(0deg); }
+    20% { transform: translateX(calc(-50% - 14px)) rotate(-2.5deg); }
+    40% { transform: translateX(calc(-50% + 14px)) rotate(2.5deg); }
+    60% { transform: translateX(calc(-50% - 10px)) rotate(-1.5deg); }
+    80% { transform: translateX(calc(-50% + 8px)) rotate(1.2deg); }
+  }
+
+  .board-plate {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(ellipse at 50% 35%, rgba(255, 206, 125, 0.18), transparent 72%),
+      repeating-linear-gradient(90deg, rgba(40, 18, 5, 0.18) 0px, rgba(40, 18, 5, 0.18) 3px, transparent 3px, transparent 14px),
+      linear-gradient(180deg, #5c3419 0%, #3d210e 48%, #2a1507 100%);
+    border-radius: 24px;
+    border: 5px solid #b58233;
+    box-shadow:
+      inset 0 3px 6px rgba(255, 224, 150, 0.45),
+      inset 0 -6px 14px rgba(0, 0, 0, 0.85),
+      inset 0 0 28px rgba(20, 8, 2, 0.9),
+      0 6px 0 #704b18;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 3.5%;
+  }
+
+  .rivet {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffe999, #b87e22 65%, #5c3b09 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.8), inset 0 1px 2px rgba(255,255,255,0.6);
+  }
+  .rivet.tl { top: 9px; left: 11px; }
+  .rivet.tr { top: 9px; right: 11px; }
+  .rivet.bl { bottom: 9px; left: 11px; }
+  .rivet.br { bottom: 9px; right: 11px; }
+
+  .chain {
+    position: absolute;
+    top: -28px;
+    width: 12px;
+    height: 34px;
+    background: repeating-linear-gradient(180deg, #d4a14a 0px, #755118 5px, #2b1d07 8px, #d4a14a 11px);
+    border-radius: 6px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.7);
+    z-index: -1;
+  }
+  .chain.left { left: 14%; }
+  .chain.right { right: 14%; }
+
+  /* 3 Glowing Brass Lanterns/Gems on the Board Bottom Rim */
+  #rope-stage-dots {
+    position: absolute;
+    bottom: -13px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 14px;
+    background: linear-gradient(180deg, #4a2a12, #261407);
+    padding: 4px 16px;
+    border-radius: 14px;
+    border: 3px solid #9e6e24;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.75);
+  }
+
+  .stage-gem {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #523b22, #24170a);
+    border: 2px solid #8a6226;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+    transition: all 0.35s ease;
+  }
+
+  .stage-gem.lit {
+    background: radial-gradient(circle at 35% 35%, #fff5b8, #ffae00 55%, #b85d00 100%);
+    border-color: #ffe380;
+    box-shadow: 0 0 12px #ffae00, inset 0 1px 3px #ffffff;
+    transform: scale(1.18);
+  }
+
+  /* Math Equation & Carved Input Slots */
+  .math-expr {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.28em;
+    color: #fff3d1;
+    font-weight: bold;
+    text-shadow: 0 3px 6px rgba(0,0,0,0.9), 0 0 12px rgba(255, 190, 70, 0.3);
+    font-size: clamp(16px, 2.75vw, 42px);
+    line-height: 1;
+    flex: 1;
+  }
+
+  .whole-num {
+    font-size: 1.15em;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    padding: 0.06em 0.18em;
+    border-radius: 10px;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+
+  .whole-num.borrow-clickable:hover {
+    background: rgba(255, 210, 95, 0.18);
+    transform: scale(1.07);
+  }
+
+  .op-sign {
+    margin: 0 0.08em;
+    color: #ffd269;
+    font-size: 1.05em;
+  }
+
+  .mixed-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.14em;
+  }
+
+  .frac-box {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    font-size: 0.72em;
+    line-height: 1.05;
+    padding: 0 0.1em;
+  }
+
+  .frac-num { padding-bottom: 0.08em; }
+  .frac-bar {
+    width: 100%;
+    min-width: 1.25em;
+    height: 0.11em;
+    background: linear-gradient(90deg, #ffe299, #fff7e0, #ffe299);
+    border-radius: 3px;
+    box-shadow: 0 2px 3px rgba(0,0,0,0.8);
+  }
+  .frac-den { padding-top: 0.08em; }
+
+  /* Carved Recessed Wooden/Amber Answer Slots (NO white rectangles!) */
+  .answer-slots-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.18em;
+    margin-left: 0.08em;
+  }
+
+  .carved-slot {
+    min-width: 1.45em;
+    height: 1.32em;
+    padding: 0 0.22em;
+    border-radius: 10px;
+    background:
+      radial-gradient(circle at 50% 35%, rgba(92, 52, 20, 0.9), rgba(38, 19, 6, 0.98)),
+      linear-gradient(180deg, #2b1506, #45240e);
+    border: 3px solid #9e6d25;
+    box-shadow:
+      inset 0 4px 8px rgba(0,0,0,0.9),
+      inset 0 -1px 3px rgba(255, 215, 130, 0.35),
+      0 2px 4px rgba(0,0,0,0.6);
+    color: #ffea9f;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.92em;
+    cursor: pointer;
+    transition: all 0.16s ease;
+  }
+
+  .carved-slot.frac-slot {
+    min-width: 1.55em;
+    height: 1.18em;
+    font-size: 0.72em;
+    border-radius: 8px;
+  }
+
+  .carved-slot.active-slot {
+    border-color: #ffdf6b;
+    background:
+      radial-gradient(circle at 50% 35%, rgba(138, 82, 24, 0.95), rgba(56, 28, 8, 0.98));
+    box-shadow:
+      0 0 14px rgba(255, 205, 65, 0.85),
+      inset 0 3px 6px rgba(0,0,0,0.85),
+      inset 0 0 8px rgba(255, 220, 110, 0.45);
+    transform: scale(1.06);
+  }
+
+  .carved-slot.correct-slot {
+    border-color: #a8ff54;
+    background: radial-gradient(circle at 50% 35%, #3d6314, #1e3607);
+    box-shadow: 0 0 18px rgba(168, 255, 84, 0.85);
+  }
+
+  .slot-frac-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1em;
+  }
+
+  .slot-frac-bar {
+    width: 100%;
+    height: 0.09em;
+    min-height: 3px;
+    background: linear-gradient(90deg, #d99f3b, #fff0b3, #d99f3b);
+    border-radius: 3px;
+  }
+
+  /* Visual Borrow Helper Button & Non-Verbal Pie Overlay */
+  #borrow-helper-btn {
+    width: clamp(36px, 3.6vw, 52px);
+    height: clamp(36px, 3.6vw, 52px);
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #7d4920, #3d200b 70%);
+    border: 3px solid #d49b3b;
+    box-shadow: 0 4px 0 #4a2d0b, 0 6px 12px rgba(0,0,0,0.7), inset 0 2px 4px rgba(255,230,160,0.5);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.16s ease, filter 0.16s ease;
+    flex-shrink: 0;
+    margin-left: 8px;
+  }
+
+  #borrow-helper-btn:hover {
+    transform: scale(1.1);
+    filter: brightness(1.18);
+  }
+
+  #borrow-helper-btn.active {
+    border-color: #fff099;
+    box-shadow: 0 0 16px #ffbb29, 0 3px 0 #4a2d0b;
+  }
+
+  /* Non-Verbal Visual Borrow Tray (slides out below the wooden board) */
+  #visual-borrow-tray {
+    position: absolute;
+    top: 104%;
+    left: 50%;
+    transform: translateX(-50%) scaleY(0);
+    transform-origin: top center;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(255, 210, 125, 0.16), transparent 75%),
+      linear-gradient(180deg, #4a2810 0%, #2b1607 100%);
+    border: 4px solid #b8832f;
+    border-radius: 18px;
+    padding: 8px 18px;
+    box-shadow: 0 12px 24px rgba(0,0,0,0.85), inset 0 2px 5px rgba(255,225,150,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
+    z-index: 25;
+    white-space: nowrap;
+  }
+
+  #visual-borrow-tray.open {
+    transform: translateX(-50%) scaleY(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Tactile Wooden Carpenter Number Pad Dock at Bottom */
+  #keypad-dock {
+    position: absolute;
+    bottom: 1.8%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 82%;
+    height: 12.5%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1%;
+    z-index: 25;
+  }
+
+  .wood-key {
+    flex: 1;
+    height: 100%;
+    max-width: 7.5%;
+    border-radius: 14px;
+    cursor: pointer;
+    background:
+      radial-gradient(circle at 50% 25%, rgba(255, 218, 138, 0.22), transparent 68%),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 2px, transparent 2px, transparent 8px),
+      linear-gradient(180deg, #6b3d1e 0%, #4a2810 55%, #301808 100%);
+    border: 3.5px solid #c9933b;
+    box-shadow:
+      0 6px 0 #4d300d,
+      0 10px 16px rgba(0,0,0,0.75),
+      inset 0 2px 4px rgba(255, 230, 168, 0.55),
+      inset 0 -4px 8px rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff3d1;
+    font-weight: bold;
+    font-size: clamp(16px, 2.3vw, 34px);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+    transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .wood-key:hover {
+    transform: translateY(-4px) scale(1.04);
+    filter: brightness(1.14);
+  }
+
+  .wood-key:active {
+    transform: translateY(3px) scale(0.97);
+    box-shadow: 0 2px 0 #4d300d, 0 4px 8px rgba(0,0,0,0.7);
+  }
+
+  .wood-key.action- erase-key {
+    background: linear-gradient(180deg, #7a3320 0%, #4f1c0f 60%, #331007 100%);
+    border-color: #d97e4a;
+  }
+
+  .wood-key.action-check-key {
+    max-width: 9.5%;
+    background:
+      radial-gradient(circle at 50% 25%, rgba(220, 255, 140, 0.28), transparent 70%),
+      linear-gradient(180deg, #58781d 0%, #39520e 58%, #223306 100%);
+    border-color: #d8c84a;
+  }
+
+  .wood-key svg {
+    width: 56%;
+    height: 56%;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8));
+  }
+
+  /* Minimalist Wooden/Brass Icon Buttons (Skip ">>" & Sound) */
+  .icon-btn {
+    position: absolute;
+    top: 3.2%;
+    width: clamp(46px, 5vw, 72px);
+    height: clamp(46px, 5vw, 72px);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 30;
+    background:
+      radial-gradient(circle at 35% 30%, #804c24, #472710 65%, #291507 100%);
+    border: 4px solid #c99438;
+    box-shadow:
+      0 6px 0 #573811,
+      0 10px 18px rgba(0,0,0,0.75),
+      inset 0 2px 5px rgba(255, 232, 166, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .icon-btn:hover {
+    transform: translateY(-3px) scale(1.06);
+    filter: brightness(1.15);
+  }
+
+  .icon-btn:active {
+    transform: translateY(3px) scale(0.95);
+    box-shadow: 0 2px 0 #573811, 0 5px 10px rgba(0,0,0,0.7);
+  }
+
+  #skip-btn { right: 2.2%; }
+  #sound-btn { left: 2.2%; }
+
+  .icon-btn svg {
+    width: 58%;
+    height: 58%;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.75));
+  }
+
+  .shelf-trophy {
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+    transform-box: fill-box;
+    transform-origin: center bottom;
+  }
+  .shelf-trophy:hover {
+    filter: brightness(1.18) drop-shadow(0 0 10px rgba(255, 215, 100, 0.7));
+    transform: scale(1.08);
+  }
+</style>
+</head>
+<body>
+
+<div id="stage-wrapper">
+  <!-- Top-Left Sound Toggle Button -->
+  <button id="sound-btn" class="icon-btn" aria-label="Sound">
+    <svg viewBox="0 0 64 64">
+      <defs>
+        <linearGradient id="brassGradBtn" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#fff0a8"/>
+          <stop offset="50%" stop-color="#d4982a"/>
+          <stop offset="100%" stop-color="#784d0c"/>
+        </linearGradient>
+      </defs>
+      <path d="M12 24 L24 24 L38 12 L38 52 L24 40 L12 40 Z" fill="url(#brassGradBtn)" stroke="#3d2206" stroke-width="2.5" stroke-linejoin="round"/>
+      <path id="sound-waves" d="M45 20 C51 26, 51 38, 45 44 M52 14 C61 24, 61 40, 52 50" fill="none" stroke="url(#brassGradBtn)" stroke-width="4.5" stroke-linecap="round"/>
+      <line id="sound-mute-line" x1="10" y1="10" x2="54" y2="54" stroke="#e03c28" stroke-width="6" stroke-linecap="round" style="display:none;"/>
+    </svg>
+  </button>
+
+  <!-- Top-Right Minimalist Skip Button (">>" without words) -->
+  <button id="skip-btn" class="icon-btn" aria-label="Next">
+    <svg viewBox="0 0 64 64">
+      <path d="M12 14 L34 32 L12 50 Z" fill="url(#brassGradBtn)" stroke="#3d2206" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M32 14 L54 32 L32 50 Z" fill="url(#brassGradBtn)" stroke="#3d2206" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- Hanging Wooden & Brass Problem Board with Carved Input Slots & Visual Borrow Helper -->
+  <div id="problem-board-container">
+    <div class="chain left"></div>
+    <div class="chain right"></div>
+    <div class="board-plate">
+      <div class="rivet tl"></div>
+      <div class="rivet tr"></div>
+      <div class="rivet bl"></div>
+      <div class="rivet br"></div>
+
+      <div id="problem-math" class="math-expr"></div>
+
+      <!-- Non-verbal Visual Pie Split Helper Button (shows how 1 unit splits into b/b slices) -->
+      <button id="borrow-helper-btn" aria-label="Visual Split Helper">
+        <svg viewBox="0 0 48 48" width="72%" height="72%">
+          <circle cx="24" cy="24" r="18" fill="#ffd259" stroke="#3b2106" stroke-width="3"/>
+          <path d="M24 6 L24 42 M6 24 L42 24 M11 11 L37 37 M37 11 L11 37" stroke="#593209" stroke-width="2.5"/>
+          <circle cx="24" cy="24" r="18" fill="none" stroke="#fff3b8" stroke-width="2"/>
+        </svg>
+      </button>
+
+      <!-- 3 Brass Gems showing the 3 steps of pulling the current sack -->
+      <div id="rope-stage-dots">
+        <div class="stage-gem" id="gem-0"></div>
+        <div class="stage-gem" id="gem-1"></div>
+        <div class="stage-gem" id="gem-2"></div>
+      </div>
+    </div>
+
+    <!-- Non-Verbal Visual Borrow Tray (shows W = (W-1) + b/b visually with sliced pie) -->
+    <div id="visual-borrow-tray"></div>
+  </div>
+
+  <!-- Main Living Widescreen Scene SVG (1920x1080 unified coordinate system) -->
+  <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <linearGradient id="wallGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#362012"/>
+        <stop offset="55%" stop-color="#52311b"/>
+        <stop offset="100%" stop-color="#2e190c"/>
+      </linearGradient>
+
+      <pattern id="wallpaperStripes" width="80" height="1080" patternUnits="userSpaceOnUse">
+        <rect width="80" height="1080" fill="url(#wallGrad)"/>
+        <rect x="0" width="38" height="1080" fill="rgba(255, 200, 130, 0.04)"/>
+        <line x1="38" y1="0" x2="38" y2="1080" stroke="rgba(20, 8, 2, 0.25)" stroke-width="2"/>
+        <path d="M19 40 L24 50 L19 60 L14 50 Z" fill="rgba(212, 160, 86, 0.05)"/>
+      </pattern>
+
+      <linearGradient id="wainscotGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#4a2913"/>
+        <stop offset="20%" stop-color="#381e0d"/>
+        <stop offset="100%" stop-color="#211006"/>
+      </linearGradient>
+
+      <linearGradient id="floorGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#593318"/>
+        <stop offset="30%" stop-color="#754421"/>
+        <stop offset="70%" stop-color="#542e14"/>
+        <stop offset="100%" stop-color="#291407"/>
+      </linearGradient>
+
+      <radialGradient id="lampGlow" cx="50%" cy="35%" r="60%">
+        <stop offset="0%" stop-color="rgba(255, 220, 130, 0.42)"/>
+        <stop offset="45%" stop-color="rgba(255, 175, 70, 0.14)"/>
+        <stop offset="100%" stop-color="rgba(0, 0, 0, 0)"/>
+      </radialGradient>
+
+      <radialGradient id="skinGrad" cx="45%" cy="38%" r="58%">
+        <stop offset="0%" stop-color="#ffceb0"/>
+        <stop offset="55%" stop-color="#efa178"/>
+        <stop offset="85%" stop-color="#cc744b"/>
+        <stop offset="100%" stop-color="#9e4d28"/>
+      </radialGradient>
+
+      <radialGradient id="strainRedGrad" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#ff4d3b"/>
+        <stop offset="65%" stop-color="#d92316"/>
+        <stop offset="100%" stop-color="rgba(180, 20, 10, 0)"/>
+      </radialGradient>
+
+      <radialGradient id="noseGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#ff9d85"/>
+        <stop offset="55%" stop-color="#d95338"/>
+        <stop offset="100%" stop-color="#8c2512"/>
+      </radialGradient>
+
+      <pattern id="plaidShirt" width="44" height="44" patternUnits="userSpaceOnUse" patternTransform="rotate(-8)">
+        <rect width="44" height="44" fill="#a82819"/>
+        <rect x="0" y="0" width="22" height="44" fill="rgba(199, 58, 34, 0.55)"/>
+        <rect x="0" y="0" width="44" height="22" fill="rgba(199, 58, 34, 0.55)"/>
+        <line x1="0" y1="11" x2="44" y2="11" stroke="#241008" stroke-width="4" opacity="0.55"/>
+        <line x1="11" y1="0" x2="11" y2="44" stroke="#241008" stroke-width="4" opacity="0.55"/>
+        <line x1="0" y1="33" x2="44" y2="33" stroke="#ffcf59" stroke-width="2" opacity="0.5"/>
+        <line x1="33" y1="0" x2="33" y2="44" stroke="#ffcf59" stroke-width="2" opacity="0.5"/>
+      </pattern>
+
+      <radialGradient id="bellyShade" cx="55%" cy="38%" r="56%">
+        <stop offset="0%" stop-color="rgba(255, 220, 170, 0.22)"/>
+        <stop offset="60%" stop-color="rgba(0, 0, 0, 0)"/>
+        <stop offset="88%" stop-color="rgba(25, 6, 2, 0.55)"/>
+        <stop offset="100%" stop-color="rgba(15, 3, 0, 0.82)"/>
+      </radialGradient>
+
+      <linearGradient id="pantsGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#354b5e"/>
+        <stop offset="50%" stop-color="#233342"/>
+        <stop offset="100%" stop-color="#131c26"/>
+      </linearGradient>
+
+      <linearGradient id="bootGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#5c3317"/>
+        <stop offset="45%" stop-color="#3b1e0a"/>
+        <stop offset="100%" stop-color="#1c0d04"/>
+      </linearGradient>
+
+      <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#785238"/>
+        <stop offset="55%" stop-color="#4d311e"/>
+        <stop offset="100%" stop-color="#2b190d"/>
+      </linearGradient>
+
+      <pattern id="burlapWeave" width="16" height="16" patternUnits="userSpaceOnUse">
+        <rect width="16" height="16" fill="#9c7241"/>
+        <path d="M0 4 H16 M0 12 H16" stroke="#7d562a" stroke-width="2.5" opacity="0.65"/>
+        <path d="M4 0 V16 M12 0 V16" stroke="#b58954" stroke-width="2.5" opacity="0.55"/>
+        <circle cx="4" cy="4" r="1.3" fill="#593b18" opacity="0.5"/>
+        <circle cx="12" cy="12" r="1.3" fill="#593b18" opacity="0.5"/>
+      </pattern>
+
+      <radialGradient id="sackShade" cx="42%" cy="35%" r="62%">
+        <stop offset="0%" stop-color="rgba(255, 232, 185, 0.35)"/>
+        <stop offset="45%" stop-color="rgba(160, 110, 55, 0.1)"/>
+        <stop offset="82%" stop-color="rgba(55, 32, 10, 0.65)"/>
+        <stop offset="100%" stop-color="rgba(28, 15, 4, 0.92)"/>
+      </radialGradient>
+
+      <pattern id="ropePattern" width="24" height="20" patternUnits="userSpaceOnUse">
+        <rect width="24" height="20" fill="#9e7339"/>
+        <path d="M-4 18 L8 2 M4 18 L16 2 M12 18 L24 2 M20 18 L32 2" stroke="#d9ae6c" stroke-width="4" stroke-linecap="round"/>
+        <path d="M0 18 L12 2 M8 18 L20 2 M16 18 L28 2" stroke="#523714" stroke-width="2.2"/>
+      </pattern>
+
+      <radialGradient id="rugGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#8c2d19"/>
+        <stop offset="45%" stop-color="#6e1f10"/>
+        <stop offset="70%" stop-color="#d49b3b"/>
+        <stop offset="76%" stop-color="#3b5230"/>
+        <stop offset="92%" stop-color="#5e190c"/>
+        <stop offset="100%" stop-color="#381007"/>
+      </radialGradient>
+    </defs>
+
+    <!-- ================= BACKGROUND ROOM ================= -->
+    <rect x="0" y="0" width="1920" height="630" fill="url(#wallpaperStripes)"/>
+    <path d="M180 90 C220 85, 250 110, 235 140 C220 165, 175 160, 165 130 Z" fill="#29170b" opacity="0.45"/>
+    <path d="M1680 180 C1730 175, 1760 210, 1740 245 C1715 270, 1665 250, 1660 215 Z" fill="#29170b" opacity="0.4"/>
+
+    <!-- Framed Painting Left -->
+    <g id="painting-left" transform="translate(175, 195) rotate(-1.5)">
+      <path d="M0 -85 L-75 0 M0 -85 L75 0" stroke="#241306" stroke-width="3" fill="none"/>
+      <circle cx="0" cy="-85" r="6" fill="#c9933b"/>
+      <rect x="-95" y="-5" width="190" height="135" rx="8" fill="#8c5c25" stroke="#381f09" stroke-width="5"/>
+      <rect x="-82" y="8" width="164" height="109" rx="4" fill="#2a4759" stroke="#d4a34a" stroke-width="3"/>
+      <path d="M-80 85 Q-40 75 0 85 T80 85 L80 115 L-80 115 Z" fill="#1b3142"/>
+      <circle cx="-42" cy="36" r="14" fill="#ffdf85" opacity="0.85"/>
+      <path d="M-10 82 L30 82 L20 96 L0 96 Z" fill="#633215"/>
+      <path d="M10 30 L10 80 L42 74 Z" fill="#f5ead6"/>
+      <path d="M7 36 L7 78 L-18 74 Z" fill="#dec8a4"/>
+    </g>
+
+    <!-- Wooden Trophy Shelf on Right Wall for the 6 Funny Surprises -->
+    <g id="trophy-shelf" transform="translate(1255, 115)">
+      <rect x="0" y="0" width="610" height="310" rx="14" fill="#2b1608" stroke="#6e421c" stroke-width="6"/>
+      <rect x="12" y="12" width="586" height="286" rx="10" fill="#1f0f05" stroke="#47280f" stroke-width="3"/>
+      <rect x="-12" y="148" width="634" height="18" rx="6" fill="#5e3617" stroke="#2b1506" stroke-width="3"/>
+      <rect x="-16" y="296" width="642" height="22" rx="7" fill="#6e411c" stroke="#2b1506" stroke-width="3"/>
+      <rect x="198" y="12" width="12" height="284" fill="#4f2d13"/>
+      <rect x="398" y="12" width="12" height="284" fill="#4f2d13"/>
+      <g opacity="0.45" fill="#4a2b13">
+        <ellipse cx="102" cy="138" rx="55" ry="7"/>
+        <ellipse cx="304" cy="138" rx="55" ry="7"/>
+        <ellipse cx="504" cy="138" rx="55" ry="7"/>
+        <ellipse cx="102" cy="286" rx="55" ry="7"/>
+        <ellipse cx="304" cy="286" rx="55" ry="7"/>
+        <ellipse cx="504" cy="286" rx="55" ry="7"/>
+      </g>
+      <g id="discovered-trophies-layer"></g>
+    </g>
+
+    <!-- Wooden Wainscoting & Baseboard -->
+    <rect x="0" y="455" width="1920" height="180" fill="url(#wainscotGrad)"/>
+    <rect x="0" y="445" width="1920" height="16" fill="#63391b" stroke="#241205" stroke-width="2"/>
+    <g fill="#2d1709" stroke="#593318" stroke-width="3" opacity="0.85">
+      <rect x="40" y="478" width="200" height="120" rx="6"/>
+      <rect x="280" y="478" width="200" height="120" rx="6"/>
+      <rect x="520" y="478" width="200" height="120" rx="6"/>
+      <rect x="760" y="478" width="200" height="120" rx="6"/>
+      <rect x="1000" y="478" width="200" height="120" rx="6"/>
+      <rect x="1240" y="478" width="200" height="120" rx="6"/>
+      <rect x="1480" y="478" width="200" height="120" rx="6"/>
+      <rect x="1720" y="478" width="160" height="120" rx="6"/>
+    </g>
+    <rect x="0" y="612" width="1920" height="28" fill="#331a0a" stroke="#1a0c04" stroke-width="2"/>
+
+    <!-- Mouse Hole with Peeking Mouse -->
+    <g id="mouse-hole-group" transform="translate(115, 640)">
+      <path d="M-28 0 C-28 -44, 28 -44, 28 0 Z" fill="#0d0602" stroke="#45240e" stroke-width="3"/>
+      <g id="wall-mouse" transform="translate(0, -6)">
+        <ellipse cx="0" cy="-6" rx="14" ry="11" fill="#8c7a6b"/>
+        <circle cx="-9" cy="-16" r="7" fill="#786658"/>
+        <circle cx="-9" cy="-16" r="4" fill="#d99a8c"/>
+        <circle cx="9" cy="-16" r="7" fill="#786658"/>
+        <circle cx="9" cy="-16" r="4" fill="#d99a8c"/>
+        <circle cx="-4" cy="-9" r="2.3" fill="#111"/>
+        <circle cx="-4.5" cy="-9.7" r="0.8" fill="#fff"/>
+        <circle cx="5" cy="-9" r="2.3" fill="#111"/>
+        <circle cx="4.5" cy="-9.7" r="0.8" fill="#fff"/>
+        <circle cx="0" cy="-4" r="3" fill="#ff9482"/>
+        <path d="M-4 -4 L-18 -7 M-4 -3 L-17 -1 M4 -4 L18 -7 M4 -3 L17 -1" stroke="#3b2d22" stroke-width="1.2"/>
+      </g>
+    </g>
+
+    <!-- ================= PERSPECTIVE WOODEN FLOOR ================= -->
+    <rect x="0" y="638" width="1920" height="442" fill="url(#floorGrad)"/>
+    <g stroke="#291407" stroke-width="3" opacity="0.8">
+      <line x1="0" y1="685" x2="1920" y2="685"/>
+      <line x1="0" y1="742" x2="1920" y2="742"/>
+      <line x1="0" y1="812" x2="1920" y2="812"/>
+      <line x1="0" y1="895" x2="1920" y2="895"/>
+      <line x1="0" y1="990" x2="1920" y2="990"/>
+    </g>
+    <g stroke="#291407" stroke-width="3" opacity="0.65">
+      <line x1="350" y1="638" x2="180" y2="1080"/>
+      <line x1="780" y1="638" x2="690" y2="1080"/>
+      <line x1="1220" y1="638" x2="1280" y2="1080"/>
+      <line x1="1620" y1="638" x2="1790" y2="1080"/>
+    </g>
+
+    <!-- Braided Rug under the Uncle -->
+    <g transform="translate(520, 815)">
+      <ellipse cx="0" cy="0" rx="370" ry="74" fill="#261005" opacity="0.65"/>
+      <ellipse cx="0" cy="-5" rx="358" ry="68" fill="url(#rugGrad)" stroke="#d9a441" stroke-width="5" stroke-dasharray="14 6"/>
+      <ellipse cx="0" cy="-5" rx="285" ry="50" fill="none" stroke="#f5d487" stroke-width="3" stroke-dasharray="8 8" opacity="0.65"/>
+      <ellipse cx="0" cy="-5" rx="195" ry="33" fill="none" stroke="#3b1208" stroke-width="4" opacity="0.7"/>
+    </g>
+
+    <!-- Wooden Floor Cleat where Uncle Braces His Boots -->
+    <g transform="translate(765, 795)">
+      <path d="M-24 22 L28 22 L20 -12 L-16 -12 Z" fill="#4a2810" stroke="#1f0f04" stroke-width="3"/>
+      <circle cx="-6" cy="6" r="3.5" fill="#8c6229"/>
+      <circle cx="12" cy="6" r="3.5" fill="#8c6229"/>
+    </g>
+
+    <!-- Scrape Groove Track on Floor -->
+    <path d="M840 818 L1850 818" stroke="rgba(30, 12, 3, 0.45)" stroke-width="28" stroke-linecap="round"/>
+    <path d="M840 818 L1850 818" stroke="rgba(210, 155, 85, 0.12)" stroke-width="14" stroke-dasharray="18 24" stroke-linecap="round"/>
+
+    <!-- Floor Rope Stage Markers -->
+    <g id="floor-markers">
+      <ellipse id="floor-mark-0" cx="1440" cy="825" rx="22" ry="7" fill="#3b230c" stroke="#9e6e24" stroke-width="3"/>
+      <ellipse id="floor-mark-1" cx="1210" cy="825" rx="22" ry="7" fill="#3b230c" stroke="#9e6e24" stroke-width="3"/>
+      <ellipse id="floor-mark-2" cx="980" cy="825" rx="22" ry="7" fill="#3b230c" stroke="#9e6e24" stroke-width="3"/>
+    </g>
+
+    <!-- Coiled Rope Behind Uncle -->
+    <g id="rope-coil-behind" transform="translate(275, 815)">
+      <ellipse cx="0" cy="12" rx="68" ry="18" fill="rgba(0,0,0,0.45)"/>
+      <path id="coil-path-1" d="M-45 8 C-55 -10, 55 -10, 45 8 C35 22, -35 22, -45 8 Z" fill="none" stroke="url(#ropePattern)" stroke-width="15" stroke-linecap="round"/>
+      <path id="coil-path-2" d="M-36 -2 C-42 -18, 42 -18, 36 -2 C28 10, -28 10, -36 -2 Z" fill="none" stroke="url(#ropePattern)" stroke-width="14" stroke-linecap="round" opacity="0.3"/>
+      <path id="coil-path-3" d="M-24 -12 C-28 -25, 28 -25, 24 -12 C18 -2, -18 -2, -24 -12 Z" fill="none" stroke="url(#ropePattern)" stroke-width="13" stroke-linecap="round" opacity="0.1"/>
+    </g>
+
+    <!-- ================= ARM 1 (BACK ARM): UNCLE'S REAL IK LEFT ARM ================= -->
+    <!-- Always anchored to Uncle's Left Shoulder in unified SVG space! -->
+    <g id="uncle-left-arm"></g>
+
+    <!-- ================= THE CHARACTER: VERY FAT UNCLE (Torso, Head, Legs - NO extra arms inside!) ================= -->
+    <g id="uncle-master-group" transform="translate(500, 760)">
+      <ellipse cx="-15" cy="52" rx="225" ry="36" fill="rgba(0,0,0,0.6)"/>
+
+      <!-- Uncle's Left Leg (Back leg braced forward) -->
+      <g id="uncle-leg-back" transform="translate(50, -18)">
+        <path d="M-40 -22 C35 -28, 125 -8, 185 8 L178 46 C105 42, 20 35, -45 25 Z" fill="#1b2836" stroke="#0d151f" stroke-width="4"/>
+        <g transform="translate(182, 16) rotate(-8)">
+          <path d="M-18 -20 L22 -24 C28 -5, 42 5, 48 -12 C56 -28, 72 -18, 68 8 L62 34 L-22 34 Z" fill="url(#bootGrad)" stroke="#140902" stroke-width="4" stroke-linejoin="round"/>
+          <rect x="-24" y="26" width="88" height="12" rx="4" fill="#1a0c04"/>
+        </g>
+      </g>
+
+      <!-- Uncle's Upper Torso & Giant Belly Pivot Group -->
+      <g id="uncle-torso-pivot" transform="rotate(-14)">
+        <!-- Huge Round Belly & Torso Group -->
+        <g id="uncle-belly-breath">
+          <path d="M-155 -40
+                   C-185 -120, -145 -225, -60 -240
+                   C25 -252, 115 -195, 145 -105
+                   C172 -20, 135 45, 35 52
+                   C-65 56, -135 20, -155 -40 Z"
+                fill="url(#plaidShirt)" stroke="#290e06" stroke-width="5"/>
+
+          <path d="M-155 -40
+                   C-185 -120, -145 -225, -60 -240
+                   C25 -252, 115 -195, 145 -105
+                   C172 -20, 135 45, 35 52
+                   C-65 56, -135 20, -155 -40 Z"
+                fill="url(#bellyShade)" pointer-events="none"/>
+
+          <!-- Straining Shirt Placket & Buttons on the Huge Belly -->
+          <path d="M48 -210 C115 -150, 148 -65, 115 35" fill="none" stroke="#240b04" stroke-width="6"/>
+          <path id="belly-button-gap" d="M112 -118 C132 -95, 134 -68, 116 -45 C102 -70, 100 -95, 112 -118 Z" fill="#f2dec4" stroke="#3b150b" stroke-width="2.5"/>
+          <line x1="108" y1="-84" x2="128" y2="-80" stroke="#fff5d6" stroke-width="2.5"/>
+          <line x1="108" y1="-78" x2="128" y2="-84" stroke="#fff5d6" stroke-width="2.5"/>
+          <circle cx="95" cy="-148" r="6" fill="#f5e1a4" stroke="#4a2e0b" stroke-width="2"/>
+          <circle id="straining-button" cx="130" cy="-82" r="6.5" fill="#f5e1a4" stroke="#4a2e0b" stroke-width="2"/>
+          <circle cx="122" cy="-22" r="6" fill="#f5e1a4" stroke="#4a2e0b" stroke-width="2"/>
+
+          <!-- Heavy Leather Suspenders over the Belly -->
+          <path d="M-85 -228 C-10 -155, 45 -55, 38 45" fill="none" stroke="#4a260c" stroke-width="18" stroke-linecap="round"/>
+          <path d="M-85 -228 C-10 -155, 45 -55, 38 45" fill="none" stroke="#8c5323" stroke-width="12" stroke-linecap="round" stroke-dasharray="6 4"/>
+          <rect x="8" y="-85" width="26" height="20" rx="4" fill="none" stroke="#ebc054" stroke-width="5" transform="rotate(22, 21, -75)"/>
+        </g>
+
+        <!-- Uncle's Expressive Head & Double Chin Group -->
+        <g id="uncle-head-group" transform="translate(-45, -245)">
+          <path d="M-55 15 C-62 -25, 58 -25, 68 18 C78 52, -55 58, -55 15 Z" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="4"/>
+          <ellipse class="strain-flush" cx="8" cy="18" rx="58" ry="26" fill="url(#strainRedGrad)" opacity="0"/>
+          <path d="M-68 -55 C-88 -75, -82 -110, -52 -118 C-30 -128, 15 -125, 35 -105 Z" fill="url(#hairGrad)" stroke="#241308" stroke-width="3.5"/>
+
+          <path d="M-62 -52
+                   C-68 -105, -20 -128, 28 -115
+                   C72 -102, 85 -52, 78 -8
+                   C86 24, 55 52, 8 50
+                   C-42 48, -72 18, -62 -52 Z"
+                fill="url(#skinGrad)" stroke="#7a391b" stroke-width="4"/>
+
+          <path class="strain-flush" d="M-62 -52
+                   C-68 -105, -20 -128, 28 -115
+                   C72 -102, 85 -52, 78 -8
+                   C86 24, 55 52, 8 50
+                   C-42 48, -72 18, -62 -52 Z"
+                fill="url(#strainRedGrad)" opacity="0" pointer-events="none"/>
+
+          <path d="M-28 32 C2 44, 42 40, 58 22" fill="none" stroke="#8c4120" stroke-width="3" stroke-linecap="round"/>
+
+          <g transform="translate(-62, -32)">
+            <ellipse cx="0" cy="0" rx="16" ry="22" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="3.5"/>
+            <path d="M-5 -8 C4 -10, 6 8, -3 10" fill="none" stroke="#8c4120" stroke-width="3" stroke-linecap="round"/>
+          </g>
+
+          <g id="uncle-cheeks">
+            <circle cx="-12" cy="-14" r="22" fill="#e85d4a" opacity="0.55"/>
+            <circle cx="58" cy="-16" r="18" fill="#e85d4a" opacity="0.55"/>
+            <path id="cheek-puff-line" d="M-28 -2 C-38 -12, -35 -26, -22 -30" fill="none" stroke="#8c4120" stroke-width="3" stroke-linecap="round" opacity="0"/>
+          </g>
+
+          <path id="forehead-vein" d="M-22 -88 L-12 -76 L-20 -66 M-12 -76 L-2 -74" fill="none" stroke="#b82518" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>
+
+          <!-- EYES GROUP -->
+          <g id="uncle-eyes" transform="translate(22, -52)">
+            <g id="eye-left" transform="translate(-22, 0)">
+              <ellipse id="eye-l-white" cx="0" cy="0" rx="15" ry="15" fill="#fffdf7" stroke="#4a2210" stroke-width="3"/>
+              <g id="pupil-l" transform="translate(4, 1)">
+                <circle cx="0" cy="0" r="7" fill="#3b2313"/>
+                <circle cx="0" cy="0" r="3.5" fill="#0d0703"/>
+                <circle cx="-2.5" cy="-2.5" r="2.2" fill="#ffffff"/>
+              </g>
+              <path id="eyelid-l-top" d="M-17 -10 Q0 -16 17 -10" fill="#e6956c" stroke="#5c2810" stroke-width="3" stroke-linecap="round"/>
+              <path id="eyelid-l-bot" d="M-16 12 Q0 16 16 12" fill="none" stroke="#7a391b" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+
+            <g id="eye-right" transform="translate(24, -2)">
+              <ellipse id="eye-r-white" cx="0" cy="0" rx="14" ry="14" fill="#fffdf7" stroke="#4a2210" stroke-width="3"/>
+              <g id="pupil-r" transform="translate(4, 1)">
+                <circle cx="0" cy="0" r="6.5" fill="#3b2313"/>
+                <circle cx="0" cy="0" r="3.2" fill="#0d0703"/>
+                <circle cx="-2.2" cy="-2.5" r="2" fill="#ffffff"/>
+              </g>
+              <path id="eyelid-r-top" d="M-16 -10 Q0 -15 16 -10" fill="#e6956c" stroke="#5c2810" stroke-width="3" stroke-linecap="round"/>
+              <path id="eyelid-r-bot" d="M-15 12 Q0 15 15 12" fill="none" stroke="#7a391b" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+          </g>
+
+          <!-- Expressive Bushy Eyebrows -->
+          <g id="uncle-brows" transform="translate(22, -74)">
+            <path id="brow-left" d="M-42 4 C-32 -8, -12 -6, -4 4" fill="none" stroke="url(#hairGrad)" stroke-width="10" stroke-linecap="round"/>
+            <path id="brow-right" d="M8 2 C18 -8, 36 -8, 44 2" fill="none" stroke="url(#hairGrad)" stroke-width="10" stroke-linecap="round"/>
+          </g>
+
+          <!-- Mouth & Teeth / Tongue -->
+          <g id="uncle-mouth-group" transform="translate(24, 4)">
+            <path id="mouth-shape" d="M-24 0 C-10 -6, 14 -6, 26 2 C16 16, -12 16, -24 0 Z" fill="#420d09" stroke="#5c2210" stroke-width="3"/>
+            <path id="mouth-teeth" d="M-18 0 L20 0 L18 8 L-16 8 Z" fill="#fff8e8" stroke="#420d09" stroke-width="1.5"/>
+            <line id="teeth-grid" x1="-6" y1="0" x2="-6" y2="8" stroke="#420d09" stroke-width="1.5"/>
+            <line id="teeth-grid-2" x1="6" y1="0" x2="6" y2="8" stroke="#420d09" stroke-width="1.5"/>
+            <ellipse id="mouth-tongue" cx="0" cy="14" rx="12" ry="7" fill="#e04f4f" opacity="0"/>
+          </g>
+
+          <!-- Mustache & Bulbous Nose -->
+          <g id="uncle-mustache" transform="translate(26, -10)">
+            <path d="M0 -4
+                     C-22 -12, -52 2, -62 20
+                     C-42 24, -18 16, 0 8
+                     C18 16, 42 24, 58 18
+                     C48 0, 22 -12, 0 -4 Z"
+                  fill="url(#hairGrad)" stroke="#241308" stroke-width="3.5" stroke-linejoin="round"/>
+          </g>
+
+          <g id="uncle-nose" transform="translate(32, -32)">
+            <ellipse cx="0" cy="0" rx="22" ry="17" fill="url(#noseGrad)" stroke="#6e2210" stroke-width="3.5"/>
+            <ellipse cx="-6" cy="-5" rx="7" ry="4" fill="rgba(255, 220, 200, 0.45)" transform="rotate(-15)"/>
+          </g>
+
+          <path d="M-52 -102 C-25 -132, 32 -128, 52 -98 C25 -108, -15 -108, -52 -102 Z" fill="url(#hairGrad)" stroke="#241308" stroke-width="3"/>
+          <path d="M-12 -118 C-4 -138, 18 -136, 26 -115" fill="none" stroke="url(#hairGrad)" stroke-width="7" stroke-linecap="round"/>
+
+          <g id="uncle-sweat-drops">
+            <path id="sweat-1" d="M-38 -65 C-43 -52, -33 -52, -38 -65 Z" fill="#8cebff" stroke="#2b8ca3" stroke-width="1.5" transform="scale(1.4)"/>
+            <path id="sweat-2" d="M-48 -38 C-53 -25, -43 -25, -48 -38 Z" fill="#8cebff" stroke="#2b8ca3" stroke-width="1.5" transform="scale(1.2)"/>
+          </g>
+        </g>
+      </g> <!-- End of uncle-torso-pivot -->
+
+      <!-- Uncle's Foreground Right Leg -->
+      <g id="uncle-leg-front" transform="translate(0, 0)">
+        <path d="M-145 -32
+                 C-65 -48, 35 -35, 115 -14
+                 C168 0, 210 12, 238 18
+                 L228 62
+                 C160 58, 65 55, -25 54
+                 C-105 52, -155 25, -145 -32 Z"
+              fill="url(#pantsGrad)" stroke="#0d151f" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M45 -22 C62 -5, 60 18, 42 32" fill="none" stroke="#0d151f" stroke-width="3.5" stroke-linecap="round"/>
+        <g id="uncle-boot-front" transform="translate(232, 28) rotate(-4)">
+          <path d="M-22 -24 L24 -28 C30 -6, 46 6, 54 -14 C64 -32, 82 -20, 76 10 L70 38 L-26 38 Z"
+                fill="url(#bootGrad)" stroke="#140902" stroke-width="4.5" stroke-linejoin="round"/>
+          <line x1="8" y1="-16" x2="22" y2="-8" stroke="#d9a84e" stroke-width="3" stroke-linecap="round"/>
+          <line x1="16" y1="-6" x2="30" y2="2" stroke="#d9a84e" stroke-width="3" stroke-linecap="round"/>
+          <rect x="-28" y="30" width="102" height="14" rx="5" fill="#170a02" stroke="#000" stroke-width="2"/>
+        </g>
+      </g>
+    </g> <!-- End of uncle-master-group -->
+
+    <!-- ================= THE GIANT HEAVY BURLAP SACK ================= -->
+    <g id="sack-master-group" transform="translate(1520, 795)">
+      <ellipse cx="15" cy="36" rx="195" ry="38" fill="rgba(0,0,0,0.65)"/>
+
+      <g id="sack-body-group">
+        <!-- Back Frill of Tied Sack Neck -->
+        <g id="sack-closed-back-frill">
+          <path d="M-125 -82 C-165 -125, -185 -65, -155 -35 C-185 -15, -160 35, -120 10 Z" fill="url(#burlapWeave)" stroke="#3d240c" stroke-width="4"/>
+        </g>
+
+        <!-- Wide Open Sack Mouth - Back Lip & Dark Interior Cavity (#sack-interior-dark) -->
+        <g id="sack-open-mouth-back" opacity="0" transform="translate(-45, -135) scale(0.4)">
+          <path d="M-105 10 C-115 -38, -55 -55, 0 -48 C55 -55, 115 -38, 105 10 Z" fill="url(#burlapWeave)" stroke="#3b230b" stroke-width="4.5"/>
+          <ellipse id="sack-interior-dark" cx="0" cy="6" rx="86" ry="32" fill="#170b03" stroke="#2e1808" stroke-width="4"/>
+          <ellipse cx="0" cy="12" rx="70" ry="22" fill="#0a0401"/>
+        </g>
+
+        <!-- Giant Bulging Burlap Sack Shape -->
+        <path id="sack-main-shape" d="M-120 -65
+                 C-65 -140, 45 -185, 135 -145
+                 C215 -110, 235 -10, 195 22
+                 C145 48, -45 45, -118 16
+                 C-142 -8, -140 -42, -120 -65 Z"
+              fill="url(#burlapWeave)" stroke="#3b230b" stroke-width="5" stroke-linejoin="round"/>
+
+        <path d="M-120 -65
+                 C-65 -140, 45 -185, 135 -145
+                 C215 -110, 235 -10, 195 22
+                 C145 48, -45 45, -118 16
+                 C-142 -8, -140 -42, -120 -65 Z"
+              fill="url(#sackShade)" pointer-events="none"/>
+
+        <!-- Dynamic Rummaging Bulge Inside the Sack -->
+        <g id="sack-rummage-lump" opacity="0" transform="translate(20, -75)">
+          <ellipse cx="0" cy="0" rx="52" ry="42" fill="rgba(255, 225, 170, 0.22)"/>
+          <path d="M-42 -12 C-15 -38, 25 -38, 44 -8" fill="none" stroke="rgba(40, 20, 5, 0.65)" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M-32 18 C-5 34, 28 28, 38 8" fill="none" stroke="rgba(255, 230, 180, 0.35)" stroke-width="4" stroke-linecap="round"/>
+        </g>
+
+        <path d="M-20 -115 C20 -145, 85 -130, 95 -80" fill="none" stroke="rgba(45, 24, 6, 0.55)" stroke-width="5" stroke-linecap="round"/>
+        <path d="M35 -40 C85 -65, 145 -35, 150 5" fill="none" stroke="rgba(45, 24, 6, 0.5)" stroke-width="5" stroke-linecap="round"/>
+
+        <g transform="translate(55, -95) rotate(14)">
+          <rect x="-32" y="-24" width="64" height="48" rx="6" fill="#73482b" stroke="#2e1808" stroke-width="3"/>
+          <path d="M-36 -16 L-26 -16 M-36 0 L-26 0 M-36 16 L-26 16
+                   M26 -16 L36 -16 M26 0 L36 0 M26 16 L36 16
+                   M-18 -28 L-18 -18 M0 -28 L0 -18 M18 -28 L18 -18
+                   M-18 18 L-18 28 M0 18 L0 28 M18 18 L18 28"
+                stroke="#f0d290" stroke-width="3" stroke-linecap="round"/>
+        </g>
+
+        <g transform="translate(-35, -30) rotate(-18)">
+          <rect x="-26" y="-20" width="52" height="40" rx="5" fill="#5e6b38" stroke="#242b12" stroke-width="2.5"/>
+          <path d="M-30 -10 L-20 -10 M-30 8 L-20 8 M20 -10 L30 -10 M20 8 L30 8 M-10 -24 L-10 -14 M10 -24 L10 -14 M-10 14 L-10 24 M10 14 L10 24"
+                stroke="#ebd197" stroke-width="2.5" stroke-linecap="round"/>
+        </g>
+
+        <!-- Folded Front Burlap Lip of Open Sack Mouth -->
+        <g id="sack-open-mouth-front" opacity="0" transform="translate(-45, -135) scale(0.4)">
+          <path d="M-98 4 C-65 36, 65 36, 98 4 C108 24, 62 48, 0 48 C-62 48, -108 24, -98 4 Z"
+                fill="url(#burlapWeave)" stroke="#3b230b" stroke-width="4.5" stroke-linejoin="round"/>
+          <path d="M-75 18 C-30 34, 30 34, 75 18" fill="none" stroke="#291605" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+        </g>
+
+        <!-- Heavy Hemp Rope Tied Around the Sack Neck -->
+        <g id="sack-neck-knot" transform="translate(-122, -26)">
+          <rect x="-12" y="-45" width="24" height="68" rx="10" fill="url(#ropePattern)" stroke="#382208" stroke-width="3.5"/>
+          <rect x="-6" y="-42" width="22" height="64" rx="9" fill="url(#ropePattern)" stroke="#382208" stroke-width="3.5" transform="rotate(8)"/>
+          <circle cx="-4" cy="-8" r="14" fill="url(#ropePattern)" stroke="#382208" stroke-width="3.5"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- ================= TENSION ROPE BETWEEN UNCLE AND SACK ================= -->
+    <g id="rope-bridge-layer">
+      <path id="rope-shadow-line" d="M350 818 L1400 818" stroke="rgba(0,0,0,0.45)" stroke-width="14" stroke-linecap="round"/>
+      <path id="main-tension-rope" d="M310 790 L585 695 L1395 768" fill="none" stroke="url(#ropePattern)" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+      <path id="main-tension-rope-outline" d="M310 790 L585 695 L1395 768" fill="none" stroke="#362007" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+    </g>
+
+    <!-- ================= EXTRACTED ITEM GROUP (STRICTLY IN FRONT OF THE SACK!) ================= -->
+    <g id="extracted-item-group">
+      <ellipse id="extracted-item-shadow" cx="855" cy="838" rx="95" ry="22" fill="rgba(0,0,0,0.65)" opacity="0"/>
+      <ellipse id="extracted-item-glow" cx="855" cy="760" rx="135" ry="115" fill="url(#lampGlow)" opacity="0" style="mix-blend-mode: screen;"/>
+      <g id="surprise-reveal-slot" transform="translate(850, 780) scale(0)"></g>
+    </g>
+
+    <!-- ================= ARM 2 (FOREGROUND ARM): UNCLE'S REAL IK RIGHT ARM ================= -->
+    <!-- Always anchored to Uncle's Right Shoulder in unified SVG space! Never detached! -->
+    <g id="uncle-right-arm"></g>
+
+    <!-- Front Burlap Cuff Overlay (#sack-front-cuff-overlay):
+         Only visible while Uncle's right hand is deep inside the open sack mouth during rummaging,
+         so his hand looks truly inside the sack mouth! -->
+    <g id="sack-front-cuff-overlay" opacity="0" pointer-events="none">
+      <path d="M-98 4 C-65 36, 65 36, 98 4 C108 24, 62 48, 0 48 C-62 48, -108 24, -98 4 Z"
+            fill="url(#burlapWeave)" stroke="#3b230b" stroke-width="4.5" stroke-linejoin="round"/>
+      <path d="M-75 18 C-30 34, 30 34, 75 18" fill="none" stroke="#291605" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    </g>
+
+    <!-- ================= SWINGING CEILING LAMP & VOLUMETRIC LIGHT ================= -->
+    <g id="ceiling-lamp-group" transform="translate(960, 0)">
+      <line x1="0" y1="0" x2="0" y2="65" stroke="#241506" stroke-width="6"/>
+      <path d="M-55 65 C-45 35, 45 35, 55 65 L75 82 L-75 82 Z" fill="url(#brassGradBtn)" stroke="#382005" stroke-width="3.5"/>
+      <ellipse cx="0" cy="84" rx="24" ry="12" fill="#fff8c4"/>
+      <polygon points="-70,82 70,82 750,1080 -750,1080" fill="url(#lampGlow)" pointer-events="none" style="mix-blend-mode: screen;"/>
+    </g>
+  </svg>
+
+  <!-- Particle Effects & Dust Canvas Overlay -->
+  <canvas id="fx-canvas"></canvas>
+
+  <!-- Tactile Wooden Carpenter Number Pad Dock at the Bottom -->
+  <div id="keypad-dock">
+    <button class="wood-key" data-digit="1">1</button>
+    <button class="wood-key" data-digit="2">2</button>
+    <button class="wood-key" data-digit="3">3</button>
+    <button class="wood-key" data-digit="4">4</button>
+    <button class="wood-key" data-digit="5">5</button>
+    <button class="wood-key" data-digit="6">6</button>
+    <button class="wood-key" data-digit="7">7</button>
+    <button class="wood-key" data-digit="8">8</button>
+    <button class="wood-key" data-digit="9">9</button>
+    <button class="wood-key" data-digit="0">0</button>
+    <button class="wood-key action-erase-key" id="key-erase" aria-label="Erase">
+      <svg viewBox="0 0 64 64">
+        <path d="M22 16 L54 16 L54 48 L22 48 L8 32 Z" fill="none" stroke="#ffd2a6" stroke-width="4.5" stroke-linejoin="round"/>
+        <path d="M28 24 L44 40 M44 24 L28 40" stroke="#ffd2a6" stroke-width="4.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button class="wood-key action-check-key" id="key-submit" aria-label="Submit">
+      <svg viewBox="0 0 64 64">
+        <path d="M12 34 L26 48 L52 16" fill="none" stroke="#fff5b8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+(() => {
+  /* =========================================================================
+     1. 6 HILARIOUS DETAILED VECTOR SURPRISE OBJECTS (Pulled from the Sack!)
+     ========================================================================= */
+  const SURPRISE_ITEMS_SVG = [
+    // 1) Fat Grumpy Ginger Cat Clutching a String of Sausages
+    `<g class="surprise-art" id="item-cat">
+      <path d="M52 30 C95 25, 110 -25, 82 -45 C65 -55, 55 -30, 68 -15" fill="none" stroke="#d96b1b" stroke-width="22" stroke-linecap="round"/>
+      <path d="M78 12 L88 4 M90 -8 L98 -14 M85 -28 L92 -36" stroke="#7a3106" stroke-width="5" stroke-linecap="round"/>
+      <ellipse cx="0" cy="10" rx="68" ry="56" fill="#eb7a23" stroke="#5c2404" stroke-width="4"/>
+      <ellipse cx="0" cy="18" rx="44" ry="38" fill="#ffd699"/>
+      <path d="M-58 -5 L-35 0 M-62 12 L-38 15 M58 -5 L35 0 M62 12 L38 15" stroke="#8c3708" stroke-width="6" stroke-linecap="round"/>
+      <ellipse cx="-36" cy="58" rx="20" ry="12" fill="#ffd699" stroke="#5c2404" stroke-width="3.5"/>
+      <ellipse cx="36" cy="58" rx="20" ry="12" fill="#ffd699" stroke="#5c2404" stroke-width="3.5"/>
+      <ellipse cx="0" cy="-46" rx="52" ry="42" fill="#eb7a23" stroke="#5c2404" stroke-width="4"/>
+      <polygon points="-44,-72 -22,-104 -8,-78" fill="#eb7a23" stroke="#5c2404" stroke-width="4" stroke-linejoin="round"/>
+      <polygon points="-38,-75 -23,-96 -14,-78" fill="#eb8f82"/>
+      <polygon points="44,-72 22,-104 8,-78" fill="#eb7a23" stroke="#5c2404" stroke-width="4" stroke-linejoin="round"/>
+      <polygon points="38,-75 23,-96 14,-78" fill="#eb8f82"/>
+      <path d="M0 -82 L0 -64 M-14 -78 L-8 -64 M14 -78 L8 -64" stroke="#7a3106" stroke-width="4.5" stroke-linecap="round"/>
+      <circle cx="-18" cy="-48" r="12" fill="#ffe84d" stroke="#421902" stroke-width="3"/>
+      <ellipse cx="-18" cy="-48" rx="3.5" ry="9" fill="#111"/>
+      <circle cx="18" cy="-48" r="12" fill="#ffe84d" stroke="#421902" stroke-width="3"/>
+      <ellipse cx="18" cy="-48" rx="3.5" ry="9" fill="#111"/>
+      <path d="M-32 -60 L-6 -52 M32 -60 L6 -52" stroke="#5c2404" stroke-width="5" stroke-linecap="round"/>
+      <ellipse cx="0" cy="-34" rx="18" ry="12" fill="#ffd699"/>
+      <polygon points="-7,-38 7,-38 0,-30" fill="#ff7373" stroke="#5c2404" stroke-width="2"/>
+      <path d="M0 -30 C-6 -22, -16 -24, -18 -30 M0 -30 C6 -22, 16 -24, 18 -30" fill="none" stroke="#5c2404" stroke-width="3" stroke-linecap="round"/>
+      <g transform="translate(0, 6)">
+        <path d="M-65 -10 Q0 25 65 -10" fill="none" stroke="#f5e1b5" stroke-width="3"/>
+        <ellipse cx="-42" cy="4" rx="22" ry="11" transform="rotate(25,-42,4)" fill="#b83728" stroke="#4f120b" stroke-width="3"/>
+        <ellipse cx="0" cy="14" rx="22" ry="11" fill="#b83728" stroke="#4f120b" stroke-width="3"/>
+        <ellipse cx="42" cy="4" rx="22" ry="11" transform="rotate(-25,42,4)" fill="#b83728" stroke="#4f120b" stroke-width="3"/>
+        <circle cx="-26" cy="-4" r="14" fill="#ffd699" stroke="#5c2404" stroke-width="3.5"/>
+        <circle cx="26" cy="-4" r="14" fill="#ffd699" stroke="#5c2404" stroke-width="3.5"/>
+      </g>
+    </g>`,
+
+    // 2) Vintage Retro Canister Vacuum Cleaner with a Striped Sock Stuck in the Nozzle
+    `<g class="surprise-art" id="item-vacuum">
+      <circle cx="-38" cy="54" r="16" fill="#222" stroke="#000" stroke-width="3"/>
+      <circle cx="-38" cy="54" r="7" fill="#d9d9d9"/>
+      <circle cx="38" cy="54" r="16" fill="#222" stroke="#000" stroke-width="3"/>
+      <circle cx="38" cy="54" r="7" fill="#d9d9d9"/>
+      <rect x="-58" y="-25" width="116" height="72" rx="36" fill="#cc291b" stroke="#4a0c06" stroke-width="4"/>
+      <rect x="-56" y="4" width="112" height="16" fill="#e6e6e6" stroke="#595959" stroke-width="2.5"/>
+      <circle cx="-18" cy="-10" r="13" fill="#fff" stroke="#444" stroke-width="3.5"/>
+      <circle cx="-15" cy="-10" r="6" fill="#111"/>
+      <circle cx="18" cy="-10" r="13" fill="#fff" stroke="#444" stroke-width="3.5"/>
+      <circle cx="21" cy="-10" r="6" fill="#111"/>
+      <path d="M-24 -25 C-24 -45, 24 -45, 24 -25" fill="none" stroke="#d9d9d9" stroke-width="8" stroke-linecap="round"/>
+      <path d="M48 -5 C92 -15, 88 -75, 42 -82 C-5 -88, -25 -52, 8 -105" fill="none" stroke="#333" stroke-width="18" stroke-linecap="round"/>
+      <path d="M48 -5 C92 -15, 88 -75, 42 -82 C-5 -88, -25 -52, 8 -105" fill="none" stroke="#666" stroke-width="14" stroke-dasharray="5 6" stroke-linecap="round"/>
+      <polygon points="-12,-115 28,-115 38,-96 -22,-96" fill="#d9d9d9" stroke="#333" stroke-width="3.5" stroke-linejoin="round"/>
+      <!-- Funny Striped Sock Half-Sucked into the Nozzle! -->
+      <path d="M4 -115 C-2 -142, 22 -148, 36 -132 C48 -118, 28 -108, 16 -115 Z" fill="#52b8ff" stroke="#143d66" stroke-width="3"/>
+      <path d="M6 -128 L24 -124 M12 -136 L30 -130" stroke="#ffdf4d" stroke-width="3.5" stroke-linecap="round"/>
+    </g>`,
+
+    // 3) Old Rubber Fishing Boot with a Wide-Eyed Crowned Frog Inside
+    `<g class="surprise-art" id="item-boot-frog">
+      <path d="M-38 -25 L22 -28 L28 32 L68 38 C85 40, 86 64, 65 66 L-44 66 Z" fill="#3a5929" stroke="#182610" stroke-width="4.5" stroke-linejoin="round"/>
+      <rect x="-46" y="58" width="124" height="12" rx="5" fill="#7a5329" stroke="#291a0a" stroke-width="3"/>
+      <rect x="-40" y="-28" width="64" height="12" rx="4" fill="#bd8c3c" stroke="#291a0a" stroke-width="3"/>
+      <rect x="-22" y="12" width="28" height="24" rx="4" fill="#b85228" stroke="#3b1608" stroke-width="2.5"/>
+      <g transform="translate(-8, -52)">
+        <ellipse cx="0" cy="14" rx="36" ry="24" fill="#59b32b" stroke="#1e420b" stroke-width="3.5"/>
+        <ellipse cx="0" cy="18" rx="24" ry="15" fill="#d9f299"/>
+        <circle cx="-18" cy="-8" r="15" fill="#59b32b" stroke="#1e420b" stroke-width="3.5"/>
+        <circle cx="-18" cy="-8" r="11" fill="#fff"/>
+        <circle cx="-18" cy="-8" r="5.5" fill="#111"/>
+        <circle cx="-20" cy="-10" r="2" fill="#fff"/>
+        <circle cx="18" cy="-8" r="15" fill="#59b32b" stroke="#1e420b" stroke-width="3.5"/>
+        <circle cx="18" cy="-8" r="11" fill="#fff"/>
+        <circle cx="18" cy="-8" r="5.5" fill="#111"/>
+        <circle cx="16" cy="-10" r="2" fill="#fff"/>
+        <path d="M-24 10 Q0 22 24 10" fill="none" stroke="#1e420b" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M4 15 C8 32, 22 32, 18 13 Z" fill="#ff6680" stroke="#7a1b2b" stroke-width="2"/>
+        <polygon points="-16,-22 -22,-44 -8,-32 0,-48 8,-32 22,-44 16,-22" fill="#ffd230" stroke="#7a5400" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="0" cy="-48" r="4" fill="#ff3333"/>
+      </g>
+    </g>`,
+
+    // 4) Shiny Brass Tuba with a Yellow Rubber Duck Stuck in the Bell
+    `<g class="surprise-art" id="item-tuba-duck">
+      <rect x="-48" y="-18" width="84" height="78" rx="34" fill="none" stroke="#d99b26" stroke-width="22"/>
+      <rect x="-48" y="-18" width="84" height="78" rx="34" fill="none" stroke="#ffe580" stroke-width="8"/>
+      <rect x="-26" y="0" width="44" height="44" rx="16" fill="none" stroke="#b87d14" stroke-width="14"/>
+      <path d="M12 25 L-28 -68 L68 -68 L36 25 Z" fill="url(#brassGradBtn)" stroke="#593804" stroke-width="4" stroke-linejoin="round"/>
+      <ellipse cx="20" cy="-68" rx="54" ry="18" fill="#472b02" stroke="#ffd86b" stroke-width="5"/>
+      <g transform="translate(20, -82)">
+        <ellipse cx="0" cy="10" rx="30" ry="20" fill="#ffdd1a" stroke="#7a5900" stroke-width="3.5"/>
+        <circle cx="-10" cy="-14" r="20" fill="#ffdd1a" stroke="#7a5900" stroke-width="3.5"/>
+        <ellipse cx="8" cy="10" rx="14" ry="9" fill="#f2be00" stroke="#7a5900" stroke-width="2.5" transform="rotate(-12,8,10)"/>
+        <circle cx="-16" cy="-18" r="4.5" fill="#111"/>
+        <circle cx="-17.5" cy="-19.5" r="1.5" fill="#fff"/>
+        <path d="M-28 -16 C-44 -18, -44 -4, -26 -6 Z" fill="#ff6a14" stroke="#6e2400" stroke-width="2.5"/>
+      </g>
+    </g>`,
+
+    // 5) Ornate Wooden Cuckoo Clock with a Dizzy Mechanical Bird Popping Out on a Spring
+    `<g class="surprise-art" id="item-cuckoo">
+      <line x1="-18" y1="45" x2="-18" y2="75" stroke="#c9933b" stroke-width="3"/>
+      <ellipse cx="-18" cy="78" rx="7" ry="12" fill="#784718" stroke="#2e1805" stroke-width="2"/>
+      <line x1="18" y1="45" x2="18" y2="70" stroke="#c9933b" stroke-width="3"/>
+      <ellipse cx="18" cy="73" rx="7" ry="12" fill="#784718" stroke="#2e1805" stroke-width="2"/>
+      <line x1="0" y1="45" x2="8" y2="82" stroke="#ffd24d" stroke-width="3.5"/>
+      <circle cx="8" cy="84" r="11" fill="#ffd24d" stroke="#704e08" stroke-width="2.5"/>
+      <polygon points="-48,-35 0,-85 48,-35 48,48 -48,48" fill="#6e3d16" stroke="#291405" stroke-width="4" stroke-linejoin="round"/>
+      <polyline points="-62,-28 0,-92 62,-28" fill="none" stroke="#3d1e08" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="-62,-28 0,-92 62,-28" fill="none" stroke="#9e5a24" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="0" cy="12" r="26" fill="#fff5d6" stroke="#422209" stroke-width="4"/>
+      <line x1="0" y1="12" x2="0" y2="-4" stroke="#111" stroke-width="3.5" stroke-linecap="round"/>
+      <line x1="0" y1="12" x2="14" y2="12" stroke="#111" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="0" cy="12" r="3.5" fill="#b8321a"/>
+      <rect x="-14" y="-58" width="28" height="26" rx="4" fill="#1a0b03" stroke="#b57c36" stroke-width="2.5"/>
+      <path d="M0 -45 L-18 -55 L18 -65 L-22 -75 L25 -88" fill="none" stroke="#d9d9d9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <g transform="translate(28, -94) rotate(-10)">
+        <ellipse cx="0" cy="0" rx="18" ry="13" fill="#2e8AE6" stroke="#0d3159" stroke-width="3"/>
+        <circle cx="14" cy="-8" r="11" fill="#2e8AE6" stroke="#0d3159" stroke-width="3"/>
+        <polygon points="24,-10 38,-6 24,-2" fill="#ff9900" stroke="#593000" stroke-width="2"/>
+        <circle cx="16" cy="-10" r="3" fill="#fff"/>
+        <circle cx="17" cy="-10" r="1.5" fill="#111"/>
+      </g>
+    </g>`,
+
+    // 6) Giant Three-Tier Strawberry Cake with a Tiny Mouse on the Top Cherry
+    `<g class="surprise-art" id="item-cake">
+      <ellipse cx="0" cy="58" rx="76" ry="14" fill="#ffd24d" stroke="#6e4b08" stroke-width="3.5"/>
+      <rect x="-60" y="14" width="120" height="42" rx="8" fill="#f5c68c" stroke="#6e3f14" stroke-width="3.5"/>
+      <path d="M-62 14 Q-45 34 -30 18 Q-15 34 0 18 Q15 34 30 18 Q45 34 62 18 L62 10 L-62 10 Z" fill="#ff668c" stroke="#8c1936" stroke-width="3"/>
+      <rect x="-44" y="-26" width="88" height="38" rx="7" fill="#f5c68c" stroke="#6e3f14" stroke-width="3.5"/>
+      <path d="M-46 -26 Q-30 -8 -15 -22 Q0 -8 15 -22 Q30 -8 46 -22 L46 -30 L-46 -30 Z" fill="#fff8eb" stroke="#6e3f14" stroke-width="3"/>
+      <rect x="-28" y="-60" width="56" height="32" rx="6" fill="#f5c68c" stroke="#6e3f14" stroke-width="3.5"/>
+      <path d="M-30 -60 Q-15 -44 0 -56 Q15 -44 30 -56 L30 -64 L-30 -64 Z" fill="#ff668c" stroke="#8c1936" stroke-width="3"/>
+      <circle cx="-38" cy="40" r="7" fill="#e61919"/>
+      <circle cx="0" cy="42" r="7" fill="#e61919"/>
+      <circle cx="38" cy="40" r="7" fill="#e61919"/>
+      <circle cx="-22" cy="-2" r="6" fill="#e61919"/>
+      <circle cx="22" cy="-2" r="6" fill="#e61919"/>
+      <circle cx="0" cy="-74" r="12" fill="#d90f2b" stroke="#4f030d" stroke-width="3"/>
+      <g transform="translate(8, -94)">
+        <ellipse cx="6" cy="4" rx="14" ry="10" fill="#998675" stroke="#3b2f26" stroke-width="2.5"/>
+        <circle cx="-6" cy="-4" r="7" fill="#998675" stroke="#3b2f26" stroke-width="2"/>
+        <circle cx="6" cy="-6" r="7" fill="#998675" stroke="#3b2f26" stroke-width="2"/>
+        <circle cx="-3" cy="2" r="2" fill="#111"/>
+        <circle cx="-9" cy="5" r="3" fill="#ff8080"/>
+        <path d="M18 6 C32 8, 36 -8, 26 -14" fill="none" stroke="#d99a8c" stroke-width="3" stroke-linecap="round"/>
+      </g>
+    </g>`
+  ];
+
+  /* =========================================================================
+     2. TRUE 2-BONE INVERSE KINEMATICS (IK) SOLVER FOR UNCLE'S TWO REAL ARMS
+        (Eliminates any floating/third arm — always draws #uncle-left-arm and
+         #uncle-right-arm directly from his anatomical shoulder sockets!)
+     ========================================================================= */
+  function solveArmIK(shoulderX, shoulderY, handX, handY, upperLen, foreLen, flipElbow = false) {
+    let dx = handX - shoulderX;
+    let dy = handY - shoulderY;
+    let dist = Math.hypot(dx, dy);
+    const maxReach = upperLen + foreLen - 2;
+    const minReach = Math.abs(upperLen - foreLen) + 8;
+
+    if (dist > maxReach) {
+      const scale = maxReach / dist;
+      dx *= scale;
+      dy *= scale;
+      handX = shoulderX + dx;
+      handY = shoulderY + dy;
+      dist = maxReach;
+    } else if (dist < minReach) {
+      const scale = minReach / (dist || 1);
+      dx *= scale;
+      dy *= scale;
+      handX = shoulderX + dx;
+      handY = shoulderY + dy;
+      dist = minReach;
+    }
+
+    const baseAngle = Math.atan2(dy, dx);
+    const cosAngle = Math.max(-1, Math.min(1, (upperLen * upperLen + dist * dist - foreLen * foreLen) / (2 * upperLen * dist)));
+    const bendAngle = Math.acos(cosAngle);
+    const shoulderAngle = flipElbow ? (baseAngle - bendAngle) : (baseAngle + bendAngle);
+
+    const elbowX = shoulderX + Math.cos(shoulderAngle) * upperLen;
+    const elbowY = shoulderY + Math.sin(shoulderAngle) * upperLen;
+    const foreAngle = Math.atan2(handY - elbowY, handX - elbowX);
+
+    return {
+      shoulderX,
+      shoulderY,
+      elbowX,
+      elbowY,
+      handX,
+      handY,
+      upperDeg: (shoulderAngle * 180) / Math.PI,
+      foreDeg: (foreAngle * 180) / Math.PI
+    };
+  }
+
+  function renderIKArmSVG(ik, pose = 'grip', isLeftArm = false) {
+    const { shoulderX, shoulderY, elbowX, elbowY, handX, handY, upperDeg, foreDeg } = ik;
+    const sleeveLen = 68;
+    const cuffX = shoulderX + Math.cos((upperDeg * Math.PI) / 180) * sleeveLen;
+    const cuffY = shoulderY + Math.sin((upperDeg * Math.PI) / 180) * sleeveLen;
+    const opacityAttr = isLeftArm ? '0.94' : '1';
+
+    let handMarkup = '';
+    if (pose === 'shock') {
+      // Open-palm astonished hand pressed to Uncle's chubby cheek!
+      handMarkup = `
+        <g transform="translate(${handX.toFixed(1)}, ${handY.toFixed(1)}) rotate(${(foreDeg - 15).toFixed(1)})">
+          <ellipse cx="0" cy="0" rx="22" ry="19" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="3.5"/>
+          <ellipse cx="14" cy="-14" rx="11" ry="5.5" transform="rotate(-32, 14, -14)" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+          <ellipse cx="19" cy="-5" rx="12" ry="5.5" transform="rotate(-12, 19, -5)" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+          <ellipse cx="19" cy="5" rx="12" ry="5.5" transform="rotate(8, 19, 5)" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+          <ellipse cx="14" cy="14" rx="10" ry="5" transform="rotate(26, 14, 14)" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+          <ellipse cx="-4" cy="-15" rx="10" ry="6" transform="rotate(-65, -4, -15)" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+        </g>`;
+    } else if (pose === 'rummage') {
+      // Hand reaching downward into the open sack cavity
+      handMarkup = `
+        <g transform="translate(${handX.toFixed(1)}, ${handY.toFixed(1)}) rotate(${foreDeg.toFixed(1)})">
+          <ellipse cx="0" cy="0" rx="22" ry="18" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="3.5"/>
+          <circle cx="14" cy="-8" r="7.5" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+          <circle cx="17" cy="2" r="7.5" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+          <circle cx="13" cy="11" r="7" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8"/>
+        </g>`;
+    } else {
+      // Clenched fist gripping the rope or lifting the surprise item
+      handMarkup = `
+        <g transform="translate(${handX.toFixed(1)}, ${handY.toFixed(1)}) rotate(${foreDeg.toFixed(1)})">
+          <ellipse cx="0" cy="0" rx="23" ry="19" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="3.8"/>
+          <rect x="-8" y="-17" width="13" height="19" rx="6" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8" transform="rotate(12)"/>
+          <rect x="0" y="-16" width="13" height="20" rx="6" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8" transform="rotate(12)"/>
+          <rect x="8" y="-14" width="13" height="20" rx="6" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8" transform="rotate(12)"/>
+          <ellipse cx="-4" cy="10" rx="11" ry="7.5" fill="url(#skinGrad)" stroke="#7a391b" stroke-width="2.8" transform="rotate(-18)"/>
+        </g>`;
+    }
+
+    return `
+      <g opacity="${opacityAttr}">
+        <!-- Chubby Upper Arm Skin Base (Shoulder to Elbow) -->
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${elbowX.toFixed(1)}" y2="${elbowY.toFixed(1)}"
+              stroke="#7a391b" stroke-width="54" stroke-linecap="round"/>
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${elbowX.toFixed(1)}" y2="${elbowY.toFixed(1)}"
+              stroke="url(#skinGrad)" stroke-width="46" stroke-linecap="round"/>
+
+        <!-- Chubby Forearm (Elbow to Wrist/Hand) -->
+        <line x1="${elbowX.toFixed(1)}" y1="${elbowY.toFixed(1)}"
+              x2="${handX.toFixed(1)}" y2="${handY.toFixed(1)}"
+              stroke="#7a391b" stroke-width="46" stroke-linecap="round"/>
+        <line x1="${elbowX.toFixed(1)}" y1="${elbowY.toFixed(1)}"
+              x2="${handX.toFixed(1)}" y2="${handY.toFixed(1)}"
+              stroke="url(#skinGrad)" stroke-width="38" stroke-linecap="round"/>
+
+        <!-- Smooth Elbow Joint Dimple -->
+        <circle cx="${elbowX.toFixed(1)}" cy="${elbowY.toFixed(1)}" r="18" fill="url(#skinGrad)"/>
+
+        <!-- Rolled Plaid Flannel Shirt Sleeve Anchored at Shoulder Socket -->
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${cuffX.toFixed(1)}" y2="${cuffY.toFixed(1)}"
+              stroke="#290e06" stroke-width="64" stroke-linecap="round"/>
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${cuffX.toFixed(1)}" y2="${cuffY.toFixed(1)}"
+              stroke="url(#plaidShirt)" stroke-width="56" stroke-linecap="round"/>
+
+        <!-- Rolled Flannel Cuff Band -->
+        <g transform="translate(${cuffX.toFixed(1)}, ${cuffY.toFixed(1)}) rotate(${upperDeg.toFixed(1)})">
+          <rect x="-12" y="-30" width="22" height="60" rx="9" fill="url(#plaidShirt)" stroke="#290e06" stroke-width="4"/>
+        </g>
+
+        <!-- Hand -->
+        ${handMarkup}
+      </g>
+    `;
+  }
+
+  /* =========================================================================
+     3. 18 STRUCTURED PROBLEMS (EASY -> HARD) + ENDLESS GENERATOR
+     ========================================================================= */
+  function gcd(a, b) {
+    a = Math.abs(a);
+    b = Math.abs(b);
+    while (b) { let t = b; b = a % b; a = t; }
+    return a || 1;
+  }
+
+  const CURRICULUM_18 = [
+    // Levels 1-3: 1 - a/b (Answer has whole part = 0, fraction only!)
+    { W: 1, M: 0, num: 1, den: 4 },
+    { W: 1, M: 0, num: 3, den: 7 },
+    { W: 1, M: 0, num: 5, den: 9 },
+    // Levels 4-6: Small whole numbers minus a proper fraction
+    { W: 2, M: 0, num: 1, den: 3 },
+    { W: 3, M: 0, num: 2, den: 5 },
+    { W: 4, M: 0, num: 5, den: 8 },
+    // Levels 7-9: Medium whole numbers minus a proper fraction
+    { W: 5, M: 0, num: 3, den: 10 },
+    { W: 7, M: 0, num: 4, den: 9 },
+    { W: 9, M: 0, num: 7, den: 12 },
+    // Levels 10-12: Whole numbers minus a small mixed number
+    { W: 4, M: 1, num: 1, den: 3 },
+    { W: 6, M: 2, num: 3, den: 5 },
+    { W: 8, M: 3, num: 4, den: 7 },
+    // Levels 13-15: Larger whole numbers minus a mixed number
+    { W: 10, M: 4, num: 5, den: 9 },
+    { W: 12, M: 5, num: 7, den: 11 },
+    { W: 15, M: 8, num: 5, den: 12 },
+    // Levels 16-18: Challenging two-digit whole numbers minus mixed numbers
+    { W: 18, M: 9, num: 8, den: 15 },
+    { W: 21, M: 13, num: 11, den: 14 },
+    { W: 25, M: 16, num: 13, den: 20 }
+  ];
+
+  function generateEndlessProblem() {
+    const denPool = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 18, 20];
+    const den = denPool[Math.floor(Math.random() * denPool.length)];
+    let num = 1 + Math.floor(Math.random() * (den - 1));
+    while (gcd(num, den) !== 1) {
+      num = 1 + Math.floor(Math.random() * (den - 1));
+    }
+    const useMixed = Math.random() > 0.3;
+    const M = useMixed ? (1 + Math.floor(Math.random() * 8)) : 0;
+    const W = M + 2 + Math.floor(Math.random() * 12);
+    return { W, M, num, den };
+  }
+
+  function buildProblemData(raw) {
+    const { W, M, num, den } = raw;
+    const ansW = W - M - 1;
+    const ansNum = den - num;
+    const ansDen = den;
+    return { W, M, num, den, ansW, ansNum, ansDen };
+  }
+
+  function renderFractionHTML(w, n, d, clickableWhole = false) {
+    let html = `<span class="mixed-wrap">`;
+    if (w > 0) {
+      const cls = clickableWhole ? 'whole-num borrow-clickable' : 'whole-num';
+      const idAttr = clickableWhole ? 'id="board-whole-num"' : '';
+      html += `<span class="${cls}" ${idAttr}>${w}</span>`;
+    }
+    if (n > 0) {
+      html += `<span class="frac-box">
+        <span class="frac-num">${n}</span>
+        <span class="frac-bar"></span>
+        <span class="frac-den">${d}</span>
+      </span>`;
+    } else if (w === 0) {
+      html += `<span class="whole-num">0</span>`;
+    }
+    html += `</span>`;
+    return html;
+  }
+
+  /* =========================================================================
+     4. WEB AUDIO API SOUND SYNTHESIZER
+     ========================================================================= */
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+      this.muted = false;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    toggleMute() {
+      this.init();
+      this.muted = !this.muted;
+      document.getElementById('sound-mute-line').style.display = this.muted ? 'block' : 'none';
+      document.getElementById('sound-waves').style.opacity = this.muted ? '0.25' : '1';
+      if (!this.muted) this.playWoodClick();
+    }
+
+    playWoodClick() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(280, now);
+      osc.frequency.exponentialRampToValueAtTime(95, now + 0.065);
+      gain.gain.setValueAtTime(0.26, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.07);
+    }
+
+    playRopeCreak(intensity = 0.5) {
+      if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+      const now = this.ctx.currentTime;
+      for (let i = 0; i < 4; i++) {
+        const t = now + i * 0.045;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(420 + i * 35, t);
+        osc.frequency.exponentialRampToValueAtTime(160, t + 0.03);
+        g.gain.setValueAtTime(0.032 * intensity, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.04);
+      }
+    }
+
+    playHeaveSuccess(stepInTrio) {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const voice = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      const vGain = this.ctx.createGain();
+      voice.type = 'sawtooth';
+      voice.frequency.setValueAtTime(105, now);
+      voice.frequency.linearRampToValueAtTime(138, now + 0.18);
+      voice.frequency.exponentialRampToValueAtTime(88, now + 0.48);
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(520, now);
+      filter.Q.value = 3.5;
+      vGain.gain.setValueAtTime(0.001, now);
+      vGain.gain.linearRampToValueAtTime(0.22, now + 0.08);
+      vGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      voice.connect(filter).connect(vGain).connect(this.ctx.destination);
+      voice.start(now);
+      voice.stop(now + 0.52);
+
+      const bufSize = this.ctx.sampleRate * 0.45;
+      const noiseBuf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < bufSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufSize) * Math.PI);
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = noiseBuf;
+      const nFilter = this.ctx.createBiquadFilter();
+      nFilter.type = 'bandpass';
+      nFilter.frequency.setValueAtTime(320, now + 0.05);
+      nFilter.frequency.linearRampToValueAtTime(180, now + 0.45);
+      nFilter.Q.value = 1.8;
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.28, now + 0.05);
+      nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+      noise.connect(nFilter).connect(nGain).connect(this.ctx.destination);
+      noise.start(now + 0.05);
+
+      const baseNotes = [330, 415.3, 493.88, 659.25];
+      baseNotes.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        const pitchMult = 1 + stepInTrio * 0.12;
+        osc.frequency.setValueAtTime(freq * pitchMult, now + 0.08 + idx * 0.06);
+        g.gain.setValueAtTime(0.14, now + 0.08 + idx * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.55 + idx * 0.06);
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(now + 0.08 + idx * 0.06);
+        osc.stop(now + 0.58 + idx * 0.06);
+      });
+    }
+
+    playWrongSlip() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const osc = this.ctx.createOscillator();
+      const lfo = this.ctx.createOscillator();
+      const lfoGain = this.ctx.createGain();
+      const g = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(240, now);
+      osc.frequency.exponentialRampToValueAtTime(95, now + 0.52);
+
+      lfo.frequency.value = 26;
+      lfoGain.gain.value = 45;
+      lfo.connect(lfoGain).connect(osc.frequency);
+
+      g.gain.setValueAtTime(0.22, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+
+      osc.connect(g).connect(this.ctx.destination);
+      lfo.start(now);
+      osc.start(now);
+      lfo.stop(now + 0.55);
+      osc.stop(now + 0.55);
+
+      const v = this.ctx.createOscillator();
+      const vg = this.ctx.createGain();
+      v.type = 'triangle';
+      v.frequency.setValueAtTime(170, now + 0.06);
+      v.frequency.exponentialRampToValueAtTime(340, now + 0.22);
+      vg.gain.setValueAtTime(0.18, now + 0.06);
+      vg.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      v.connect(vg).connect(this.ctx.destination);
+      v.start(now + 0.06);
+      v.stop(now + 0.28);
+    }
+
+    playUntieAndRummage() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const zip = this.ctx.createOscillator();
+      const zg = this.ctx.createGain();
+      zip.type = 'triangle';
+      zip.frequency.setValueAtTime(190, now);
+      zip.frequency.exponentialRampToValueAtTime(420, now + 0.18);
+      zg.gain.setValueAtTime(0.18, now);
+      zg.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      zip.connect(zg).connect(this.ctx.destination);
+      zip.start(now);
+      zip.stop(now + 0.22);
+
+      const rustleTimes = [0.28, 0.52, 0.76, 1.0, 1.22];
+      rustleTimes.forEach((off, i) => {
+        const t = now + off;
+        const bufSize = Math.floor(this.ctx.sampleRate * 0.18);
+        const noiseBuf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let k = 0; k < bufSize; k++) {
+          data[k] = (Math.random() * 2 - 1) * Math.sin((k / bufSize) * Math.PI);
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = noiseBuf;
+        const flt = this.ctx.createBiquadFilter();
+        flt.type = 'bandpass';
+        flt.frequency.setValueAtTime(480 + (i % 2) * 240, t);
+        flt.Q.value = 1.6;
+        const ng = this.ctx.createGain();
+        ng.gain.setValueAtTime(0.24, t);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+        noise.connect(flt).connect(ng).connect(this.ctx.destination);
+        noise.start(t);
+
+        const clink = this.ctx.createOscillator();
+        const cg = this.ctx.createGain();
+        clink.type = 'sine';
+        clink.frequency.setValueAtTime(150 + i * 55, t + 0.04);
+        clink.frequency.exponentialRampToValueAtTime(90 + i * 20, t + 0.13);
+        cg.gain.setValueAtTime(0.16, t + 0.04);
+        cg.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        clink.connect(cg).connect(this.ctx.destination);
+        clink.start(t + 0.04);
+        clink.stop(t + 0.15);
+      });
+
+      const hmm = this.ctx.createOscillator();
+      const hg = this.ctx.createGain();
+      hmm.type = 'sawtooth';
+      hmm.frequency.setValueAtTime(115, now + 0.45);
+      hmm.frequency.linearRampToValueAtTime(155, now + 0.75);
+      hmm.frequency.linearRampToValueAtTime(130, now + 1.05);
+      const hFilter = this.ctx.createBiquadFilter();
+      hFilter.type = 'bandpass';
+      hFilter.frequency.value = 480;
+      hFilter.Q.value = 3.5;
+      hg.gain.setValueAtTime(0.15, now + 0.45);
+      hg.gain.exponentialRampToValueAtTime(0.001, now + 1.15);
+      hmm.connect(hFilter).connect(hg).connect(this.ctx.destination);
+      hmm.start(now + 0.45);
+      hmm.stop(now + 1.18);
+    }
+
+    playHeavyLiftStrain() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const liftOsc = this.ctx.createOscillator();
+      const lg = this.ctx.createGain();
+      liftOsc.type = 'triangle';
+      liftOsc.frequency.setValueAtTime(130, now);
+      liftOsc.frequency.exponentialRampToValueAtTime(520, now + 0.55);
+      lg.gain.setValueAtTime(0.24, now);
+      lg.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+      liftOsc.connect(lg).connect(this.ctx.destination);
+      liftOsc.start(now);
+      liftOsc.stop(now + 0.6);
+    }
+
+    playSurpriseReveal(itemIndex) {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const pop = this.ctx.createOscillator();
+      const popG = this.ctx.createGain();
+      pop.type = 'sine';
+      pop.frequency.setValueAtTime(160, now);
+      pop.frequency.exponentialRampToValueAtTime(680, now + 0.09);
+      popG.gain.setValueAtTime(0.35, now);
+      popG.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+      pop.connect(popG).connect(this.ctx.destination);
+      pop.start(now);
+      pop.stop(now + 0.12);
+
+      const fanfare = [523.25, 659.25, 783.99, 1046.5, 987.77, 1046.5];
+      fanfare.forEach((f, idx) => {
+        const t = now + 0.12 + idx * 0.085;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = idx === fanfare.length - 1 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(f, t);
+        g.gain.setValueAtTime(0.2, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + (idx === fanfare.length - 1 ? 0.55 : 0.15));
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.6);
+      });
+
+      this.playItemSignatureSound(itemIndex, now + 0.55);
+    }
+
+    playItemSignatureSound(itemIndex, startTime) {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const t0 = startTime || this.ctx.currentTime;
+
+      switch (itemIndex % 6) {
+        case 0: {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(380, t0);
+          osc.frequency.linearRampToValueAtTime(720, t0 + 0.18);
+          osc.frequency.exponentialRampToValueAtTime(290, t0 + 0.52);
+          const flt = this.ctx.createBiquadFilter();
+          flt.type = 'bandpass';
+          flt.frequency.setValueAtTime(1100, t0);
+          flt.Q.value = 3;
+          g.gain.setValueAtTime(0.18, t0);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.55);
+          osc.connect(flt).connect(g).connect(this.ctx.destination);
+          osc.start(t0);
+          osc.stop(t0 + 0.56);
+          break;
+        }
+        case 1: {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(110, t0);
+          osc.frequency.exponentialRampToValueAtTime(390, t0 + 0.42);
+          osc.frequency.exponentialRampToValueAtTime(180, t0 + 0.58);
+          g.gain.setValueAtTime(0.16, t0);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.6);
+          osc.connect(g).connect(this.ctx.destination);
+          osc.start(t0);
+          osc.stop(t0 + 0.62);
+          break;
+        }
+        case 2: {
+          [0, 0.24].forEach(offset => {
+            const osc = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(140, t0 + offset);
+            osc.frequency.exponentialRampToValueAtTime(340, t0 + offset + 0.14);
+            g.gain.setValueAtTime(0.2, t0 + offset);
+            g.gain.exponentialRampToValueAtTime(0.001, t0 + offset + 0.17);
+            osc.connect(g).connect(this.ctx.destination);
+            osc.start(t0 + offset);
+            osc.stop(t0 + offset + 0.18);
+          });
+          break;
+        }
+        case 3: {
+          const tuba = this.ctx.createOscillator();
+          const tg = this.ctx.createGain();
+          tuba.type = 'sawtooth';
+          tuba.frequency.setValueAtTime(82.4, t0);
+          tuba.frequency.setValueAtTime(65.4, t0 + 0.16);
+          tg.gain.setValueAtTime(0.22, t0);
+          tg.gain.exponentialRampToValueAtTime(0.001, t0 + 0.42);
+          tuba.connect(tg).connect(this.ctx.destination);
+          tuba.start(t0);
+          tuba.stop(t0 + 0.44);
+
+          [0.36, 0.52].forEach(off => {
+            const sq = this.ctx.createOscillator();
+            const sg = this.ctx.createGain();
+            sq.type = 'sine';
+            sq.frequency.setValueAtTime(980, t0 + off);
+            sq.frequency.exponentialRampToValueAtTime(1480, t0 + off + 0.08);
+            sg.gain.setValueAtTime(0.22, t0 + off);
+            sg.gain.exponentialRampToValueAtTime(0.001, t0 + off + 0.11);
+            sq.connect(sg).connect(this.ctx.destination);
+            sq.start(t0 + off);
+            sq.stop(t0 + off + 0.12);
+          });
+          break;
+        }
+        case 4: {
+          [[0, 659.25], [0.16, 523.25], [0.42, 659.25], [0.58, 523.25]].forEach(([off, f]) => {
+            const osc = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(f, t0 + off);
+            g.gain.setValueAtTime(0.24, t0 + off);
+            g.gain.exponentialRampToValueAtTime(0.001, t0 + off + 0.14);
+            osc.connect(g).connect(this.ctx.destination);
+            osc.start(t0 + off);
+            osc.stop(t0 + off + 0.15);
+          });
+          break;
+        }
+        case 5: {
+          [0, 0.12, 0.24].forEach((off, idx) => {
+            const sq = this.ctx.createOscillator();
+            const sg = this.ctx.createGain();
+            sq.type = 'sine';
+            sq.frequency.setValueAtTime(1600 + idx * 180, t0 + off);
+            sq.frequency.exponentialRampToValueAtTime(2200, t0 + off + 0.07);
+            sg.gain.setValueAtTime(0.18, t0 + off);
+            sg.gain.exponentialRampToValueAtTime(0.001, t0 + off + 0.09);
+            sq.connect(sg).connect(this.ctx.destination);
+            sq.start(t0 + off);
+            sq.stop(t0 + off + 0.1);
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  const sfx = new SoundEngine();
+
+  /* =========================================================================
+     5. PARTICLE & ATMOSPHERE CANVAS ENGINE
+     ========================================================================= */
+  const canvas = document.getElementById('fx-canvas');
+  const ctx = canvas.getContext('2d');
+  const cw = 1920, ch = 1080;
+  canvas.width = cw;
+  canvas.height = ch;
+
+  const dustMotes = Array.from({ length: 45 }, () => ({
+    x: Math.random() * cw,
+    y: Math.random() * ch * 0.78,
+    r: 1.2 + Math.random() * 2.6,
+    vx: (Math.random() - 0.5) * 0.35,
+    vy: -0.15 - Math.random() * 0.25,
+    alpha: 0.2 + Math.random() * 0.55,
+    phase: Math.random() * Math.PI * 2
+  }));
+
+  const activeParticles = [];
+
+  function spawnFloorDust(x, y, count = 22) {
+    for (let i = 0; i < count; i++) {
+      activeParticles.push({
+        type: 'dust',
+        x: x + (Math.random() - 0.5) * 90,
+        y: y + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.3) * 7,
+        vy: -1.5 - Math.random() * 5,
+        r: 8 + Math.random() * 18,
+        alpha: 0.65,
+        decay: 0.014 + Math.random() * 0.012,
+        color: `rgba(195, 155, 105, `
+      });
+    }
+  }
+
+  function spawnGoldenSparks(x, y, count = 32) {
+    const hues = ['#ffe866', '#ffae19', '#fff6b3', '#ff7714'];
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2.5 + Math.random() * 11;
+      activeParticles.push({
+        type: 'spark',
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 3,
+        r: 3.5 + Math.random() * 5.5,
+        alpha: 1,
+        decay: 0.018 + Math.random() * 0.015,
+        color: hues[Math.floor(Math.random() * hues.length)]
+      });
+    }
+  }
+
+  function spawnSweatBurst(x, y) {
+    for (let i = 0; i < 7; i++) {
+      activeParticles.push({
+        type: 'sweat',
+        x,
+        y,
+        vx: -2 - Math.random() * 5,
+        vy: -4 - Math.random() * 5,
+        r: 4 + Math.random() * 3,
+        alpha: 0.9,
+        decay: 0.025,
+        color: '#8cebff'
+      });
+    }
+  }
+
+  /* =========================================================================
+     6. GAME STATE, INPUT SLOTS, VISUAL BORROW HELPER & IK ANIMATION ENGINE
+     ========================================================================= */
+  let problemIndex = 0;
+  let pullStep = 0;
+  let surprisesUnlocked = 0;
+  let currentProblem = null;
+  let isLocked = false;
+
+  // Input Slots State ('whole', 'num', 'den')
+  let activeSlotName = 'whole';
+  let userValues = { whole: '', num: '', den: '' };
+  let borrowHelperOpen = false;
+
+  // Uncle & Sack Physics Coordinates (1920x1080 SVG space)
+  const SACK_POSITIONS = [1520, 1285, 1055, 865];
+  let sackCurrentX = SACK_POSITIONS[0];
+  let sackTargetX = SACK_POSITIONS[0];
+  let uncleSlideOffset = 0;
+  let uncleTargetSlide = 0;
+
+  // Custom IK Hand Overrides during the Extraction Sequence
+  let extractionHandOverride = null;
+
+  // Emotion & Animation State
+  let uncleMode = 'straining_loop';
+  let modeTimer = 0;
+  let lastCreakCycle = -1;
+
+  // DOM References
+  const problemMathEl = document.getElementById('problem-math');
+  const problemBoardEl = document.getElementById('problem-board-container');
+  const borrowBtnEl = document.getElementById('borrow-helper-btn');
+  const borrowTrayEl = document.getElementById('visual-borrow-tray');
+
+  const sackMasterEl = document.getElementById('sack-master-group');
+  const sackBodyEl = document.getElementById('sack-body-group');
+  const sackClosedFrillEl = document.getElementById('sack-closed-back-frill');
+  const sackNeckKnotEl = document.getElementById('sack-neck-knot');
+  const sackOpenBackEl = document.getElementById('sack-open-mouth-back');
+  const sackOpenFrontEl = document.getElementById('sack-open-mouth-front');
+  const sackFrontCuffOverlayEl = document.getElementById('sack-front-cuff-overlay');
+  const sackRummageLumpEl = document.getElementById('sack-rummage-lump');
+  const surpriseSlotEl = document.getElementById('surprise-reveal-slot');
+  const extractedShadowEl = document.getElementById('extracted-item-shadow');
+  const extractedGlowEl = document.getElementById('extracted-item-glow');
+  const trophiesLayerEl = document.getElementById('discovered-trophies-layer');
+
+  const uncleMasterEl = document.getElementById('uncle-master-group');
+  const uncleTorsoEl = document.getElementById('uncle-torso-pivot');
+  const uncleBellyEl = document.getElementById('uncle-belly-breath');
+  const uncleHeadEl = document.getElementById('uncle-head-group');
+  const uncleLeftArmEl = document.getElementById('uncle-left-arm');
+  const uncleRightArmEl = document.getElementById('uncle-right-arm');
+
+  const browLeftEl = document.getElementById('brow-left');
+  const browRightEl = document.getElementById('brow-right');
+  const pupilLeftEl = document.getElementById('pupil-l');
+  const pupilRightEl = document.getElementById('pupil-r');
+  const eyelidLeftEl = document.getElementById('eyelid-l-top');
+  const eyelidRightEl = document.getElementById('eyelid-r-top');
+  const mouthShapeEl = document.getElementById('mouth-shape');
+  const mouthTeethEl = document.getElementById('mouth-teeth');
+  const mouthTongueEl = document.getElementById('mouth-tongue');
+  const mustacheEl = document.getElementById('uncle-mustache');
+  const veinEl = document.getElementById('forehead-vein');
+  const cheekPuffEl = document.getElementById('cheek-puff-line');
+  const flushEls = Array.from(document.querySelectorAll('.strain-flush'));
+  const sweat1El = document.getElementById('sweat-1');
+  const sweat2El = document.getElementById('sweat-2');
+  const strainingBtnEl = document.getElementById('straining-button');
+
+  const ropeMainEl = document.getElementById('main-tension-rope');
+  const ropeOutlineEl = document.getElementById('main-tension-rope-outline');
+  const ropeShadowEl = document.getElementById('rope-shadow-line');
+  const coil2El = document.getElementById('coil-path-2');
+  const coil3El = document.getElementById('coil-path-3');
+  const lampGroupEl = document.getElementById('ceiling-lamp-group');
+  const paintingLeftEl = document.getElementById('painting-left');
+  const wallMouseEl = document.getElementById('wall-mouse');
+
+  function updateStageIndicators() {
+    for (let i = 0; i < 3; i++) {
+      const gem = document.getElementById(`gem-${i}`);
+      const floorMark = document.getElementById(`floor-mark-${i}`);
+      if (i < pullStep) {
+        gem.classList.add('lit');
+        floorMark.setAttribute('fill', '#ffae00');
+        floorMark.setAttribute('stroke', '#fff2a6');
+      } else {
+        gem.classList.remove('lit');
+        floorMark.setAttribute('fill', '#3b230c');
+        floorMark.setAttribute('stroke', '#9e6e24');
+      }
+    }
+    coil2El.style.opacity = pullStep >= 1 ? '1' : '0.2';
+    coil3El.style.opacity = pullStep >= 2 ? '1' : '0.1';
+  }
+
+  // Non-verbal Visual Borrow Pie SVG Builder (shows 1 unit split into den/den slices, with num slices dimmed)
+  function buildSlicedPieSVG(num, den) {
+    const r = 28;
+    const cx = 34, cy = 34;
+    let paths = '';
+    for (let i = 0; i < den; i++) {
+      const a1 = (i / den) * Math.PI * 2 - Math.PI / 2;
+      const a2 = ((i + 1) / den) * Math.PI * 2 - Math.PI / 2;
+      const x1 = cx + Math.cos(a1) * r;
+      const y1 = cy + Math.sin(a1) * r;
+      const x2 = cx + Math.cos(a2) * r;
+      const y2 = cy + Math.sin(a2) * r;
+      const isSubtracted = i >= (den - num);
+      const fill = isSubtracted ? 'rgba(65, 30, 10, 0.55)' : '#ffd24d';
+      paths += `<path d="M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z"
+                      fill="${fill}" stroke="#3b1f06" stroke-width="2"/>`;
+    }
+    return `<svg width="68" height="68" viewBox="0 0 68 68" style="vertical-align:middle; filter:drop-shadow(0 3px 5px rgba(0,0,0,0.7));">${paths}</svg>`;
+  }
+
+  function renderVisualBorrowTray() {
+    if (!currentProblem) return;
+    const { W, M, num, den } = currentProblem;
+    const remWholeAfterBorrow = W - 1;
+    const pieSVG = buildSlicedPieSVG(num, den);
+
+    borrowTrayEl.innerHTML = `
+      <div class="math-expr" style="font-size:clamp(14px, 2vw, 28px);">
+        <span class="whole-num">${W}</span>
+        <span class="op-sign">=</span>
+        ${remWholeAfterBorrow > 0 ? `<span class="whole-num">${remWholeAfterBorrow}</span><span class="op-sign">+</span>` : ''}
+        ${renderFractionHTML(0, den, den)}
+        <span style="margin-left:8px;">${pieSVG}</span>
+        ${M > 0 ? `<span class="op-sign">&minus;</span><span class="whole-num">${M}</span>` : ''}
+        <span class="op-sign">&minus;</span>
+        ${renderFractionHTML(0, num, den)}
+      </div>
+    `;
+  }
+
+  function toggleBorrowHelper(forceState) {
+    borrowHelperOpen = typeof forceState === 'boolean' ? forceState : !borrowHelperOpen;
+    borrowBtnEl.classList.toggle('active', borrowHelperOpen);
+    borrowTrayEl.classList.toggle('open', borrowHelperOpen);
+    if (borrowHelperOpen) renderVisualBorrowTray();
+  }
+
+  function getSlotOrder() {
+    if (!currentProblem) return ['num', 'den'];
+    return currentProblem.ansW > 0 ? ['whole', 'num', 'den'] : ['num', 'den'];
+  }
+
+  function updateSlotDOM() {
+    const wEl = document.getElementById('slot-whole');
+    const nEl = document.getElementById('slot-num');
+    const dEl = document.getElementById('slot-den');
+
+    if (wEl) {
+      wEl.textContent = userValues.whole;
+      wEl.classList.toggle('active-slot', activeSlotName === 'whole');
+    }
+    if (nEl) {
+      nEl.textContent = userValues.num;
+      nEl.classList.toggle('active-slot', activeSlotName === 'num');
+    }
+    if (dEl) {
+      dEl.textContent = userValues.den;
+      dEl.classList.toggle('active-slot', activeSlotName === 'den');
+    }
+  }
+
+  function setActiveSlot(slotName) {
+    if (isLocked) return;
+    activeSlotName = slotName;
+    updateSlotDOM();
+  }
+
+  function loadProblem(idx) {
+    const raw = idx < CURRICULUM_18.length
+      ? CURRICULUM_18[idx]
+      : generateEndlessProblem();
+
+    currentProblem = buildProblemData(raw);
+    userValues = { whole: '', num: '', den: '' };
+    const order = getSlotOrder();
+    activeSlotName = order[0];
+    toggleBorrowHelper(false);
+
+    const subtrahendHTML = renderFractionHTML(currentProblem.M, currentProblem.num, currentProblem.den, false);
+    const showWholeSlot = currentProblem.ansW > 0;
+
+    problemMathEl.innerHTML = `
+      <span class="whole-num borrow-clickable" id="board-whole-num">${currentProblem.W}</span>
+      <span class="op-sign">&minus;</span>
+      ${subtrahendHTML}
+      <span class="op-sign">=</span>
+      <span class="answer-slots-wrap">
+        ${showWholeSlot ? `<span class="carved-slot" id="slot-whole" data-slot="whole"></span>` : ''}
+        <span class="slot-frac-stack">
+          <span class="carved-slot frac-slot" id="slot-num" data-slot="num"></span>
+          <span class="slot-frac-bar"></span>
+          <span class="carved-slot frac-slot" id="slot-den" data-slot="den"></span>
+        </span>
+      </span>
+    `;
+
+    // Bind slot clicks
+    document.querySelectorAll('.carved-slot').forEach(slotEl => {
+      slotEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sfx.playWoodClick();
+        setActiveSlot(slotEl.dataset.slot);
+      });
+    });
+
+    // Clicking the whole number W on the board also toggles the visual borrow helper!
+    const boardWholeEl = document.getElementById('board-whole-num');
+    if (boardWholeEl) {
+      boardWholeEl.addEventListener('click', () => {
+        sfx.playWoodClick();
+        toggleBorrowHelper();
+      });
+    }
+
+    updateSlotDOM();
+
+    problemBoardEl.classList.remove('swing', 'wrong-shake');
+    void problemBoardEl.offsetWidth;
+    problemBoardEl.classList.add('swing');
+
+    updateStageIndicators();
+  }
+
+  borrowBtnEl.addEventListener('click', () => {
+    sfx.playWoodClick();
+    toggleBorrowHelper();
+  });
+
+  function handleDigitInput(digitStr) {
+    if (isLocked || !currentProblem) return;
+    sfx.playWoodClick();
+
+    const targetExpected = activeSlotName === 'whole'
+      ? String(currentProblem.ansW)
+      : activeSlotName === 'num'
+        ? String(currentProblem.ansNum)
+        : String(currentProblem.ansDen);
+
+    const maxLen = Math.max(2, targetExpected.length);
+    if (userValues[activeSlotName].length >= maxLen) {
+      userValues[activeSlotName] = digitStr;
+    } else {
+      userValues[activeSlotName] += digitStr;
+    }
+
+    updateSlotDOM();
+
+    // Auto-advance to the next slot once expected digit length is typed
+    if (userValues[activeSlotName].length >= targetExpected.length) {
+      const order = getSlotOrder();
+      const curIdx = order.indexOf(activeSlotName);
+      if (curIdx >= 0 && curIdx < order.length - 1) {
+        activeSlotName = order[curIdx + 1];
+        updateSlotDOM();
+      }
+    }
+  }
+
+  function handleBackspace() {
+    if (isLocked || !currentProblem) return;
+    sfx.playWoodClick();
+    if (userValues[activeSlotName].length > 0) {
+      userValues[activeSlotName] = userValues[activeSlotName].slice(0, -1);
+    } else {
+      const order = getSlotOrder();
+      const curIdx = order.indexOf(activeSlotName);
+      if (curIdx > 0) {
+        activeSlotName = order[curIdx - 1];
+        userValues[activeSlotName] = userValues[activeSlotName].slice(0, -1);
+      }
+    }
+    updateSlotDOM();
+  }
+
+  function evaluateSubmission() {
+    if (isLocked || !currentProblem) return;
+
+    const enteredW = currentProblem.ansW > 0
+      ? (userValues.whole === '' ? -1 : parseInt(userValues.whole, 10))
+      : (userValues.whole === '' ? 0 : parseInt(userValues.whole, 10));
+    const enteredN = userValues.num === '' ? -1 : parseInt(userValues.num, 10);
+    const enteredD = userValues.den === '' ? -1 : parseInt(userValues.den, 10);
+
+    const isCorrect = (
+      enteredW === currentProblem.ansW &&
+      enteredN === currentProblem.ansNum &&
+      enteredD === currentProblem.ansDen
+    );
+
+    if (isCorrect) {
+      isLocked = true;
+      toggleBorrowHelper(false);
+      document.querySelectorAll('.carved-slot').forEach(el => {
+        el.classList.remove('active-slot');
+        el.classList.add('correct-slot');
+      });
+
+      spawnGoldenSparks(900, 160, 38);
+
+      pullStep++;
+      sackTargetX = SACK_POSITIONS[pullStep];
+      uncleMode = 'heaving';
+      modeTimer = 0;
+
+      sfx.playHeaveSuccess(pullStep);
+      spawnFloorDust(sackCurrentX - 90, 815, 28);
+      spawnSweatBurst(440, 480);
+      updateStageIndicators();
+
+      if (pullStep >= 3) {
+        setTimeout(() => {
+          triggerSurpriseReveal();
+        }, 680);
+      } else {
+        setTimeout(() => {
+          uncleMode = 'straining_loop';
+          isLocked = false;
+          problemIndex++;
+          loadProblem(problemIndex);
+        }, 760);
+      }
+    } else {
+      // Wrong answer: shake board, rope slips, uncle gasps!
+      problemBoardEl.classList.remove('wrong-shake');
+      void problemBoardEl.offsetWidth;
+      problemBoardEl.classList.add('wrong-shake');
+
+      sfx.playWrongSlip();
+      uncleMode = 'slipping';
+      modeTimer = 0;
+      uncleTargetSlide = 48;
+      spawnFloorDust(680, 815, 20);
+
+      setTimeout(() => {
+        uncleTargetSlide = 0;
+        if (uncleMode === 'slipping') uncleMode = 'straining_loop';
+      }, 620);
+    }
+  }
+
+  // Bind On-Screen Wooden Keypad Buttons
+  document.querySelectorAll('.wood-key[data-digit]').forEach(btn => {
+    btn.addEventListener('click', () => handleDigitInput(btn.dataset.digit));
+  });
+  document.getElementById('key-erase').addEventListener('click', handleBackspace);
+  document.getElementById('key-submit').addEventListener('click', evaluateSubmission);
+
+  // Full Physical Keyboard Support
+  window.addEventListener('keydown', (e) => {
+    if (isLocked) return;
+    if (e.key >= '0' && e.key <= '9') {
+      e.preventDefault();
+      handleDigitInput(e.key);
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+      e.preventDefault();
+      handleBackspace();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      evaluateSubmission();
+    } else if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const order = getSlotOrder();
+      const nextIdx = (order.indexOf(activeSlotName) + 1) % order.length;
+      setActiveSlot(order[nextIdx]);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const order = getSlotOrder();
+      const prevIdx = (order.indexOf(activeSlotName) - 1 + order.length) % order.length;
+      setActiveSlot(order[prevIdx]);
+    }
+  });
+
+  // Place a discovered funny item onto the 6-slot wooden wall shelf
+  function addTrophyToShelf(itemIdx) {
+    const slot = itemIdx % 6;
+    const existing = document.getElementById(`shelf-slot-${slot}`);
+    if (existing) existing.remove();
+
+    const col = slot % 3;
+    const row = Math.floor(slot / 3);
+    const xPos = [102, 304, 504][col];
+    const yPos = [110, 258][row];
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('id', `shelf-slot-${slot}`);
+    g.setAttribute('class', 'shelf-trophy');
+    g.setAttribute('transform', `translate(${xPos}, ${yPos}) scale(0.55)`);
+    g.innerHTML = SURPRISE_ITEMS_SVG[slot];
+
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sfx.playItemSignatureSound(slot);
+      g.style.transform = 'scale(0.68) translateY(-10px)';
+      setTimeout(() => { g.style.transform = ''; }, 320);
+    });
+
+    trophiesLayerEl.appendChild(g);
+  }
+
+  function setSackMouthState(openProgress, rummageProgress = 0, t = 0, showFrontCuffOverlay = false) {
+    const closedOpacity = Math.max(0, 1 - openProgress * 2.2);
+    sackClosedFrillEl.setAttribute('opacity', closedOpacity.toFixed(2));
+    sackNeckKnotEl.setAttribute('opacity', closedOpacity.toFixed(2));
+
+    const openScale = 0.4 + openProgress * 0.68;
+    sackOpenBackEl.setAttribute('opacity', openProgress.toFixed(2));
+    sackOpenBackEl.setAttribute('transform', `translate(-42, -138) scale(${openScale.toFixed(2)})`);
+    sackOpenFrontEl.setAttribute('opacity', openProgress.toFixed(2));
+    sackOpenFrontEl.setAttribute('transform', `translate(-42, -138) scale(${openScale.toFixed(2)})`);
+
+    // Synchronize the foreground cuff overlay so when the uncle's REAL right arm plunges
+    // into the sack mouth during rummaging, the front lip of the sack covers his hand!
+    if (showFrontCuffOverlay && openProgress > 0.5) {
+      const worldCuffX = sackCurrentX - 42;
+      const worldCuffY = 795 - 138;
+      sackFrontCuffOverlayEl.setAttribute('opacity', '1');
+      sackFrontCuffOverlayEl.setAttribute('transform', `translate(${worldCuffX.toFixed(1)}, ${worldCuffY.toFixed(1)}) scale(${openScale.toFixed(2)})`);
+    } else {
+      sackFrontCuffOverlayEl.setAttribute('opacity', '0');
+    }
+
+    if (rummageProgress > 0) {
+      const lumpX = 15 + Math.sin(t * 19) * 52 + Math.cos(t * 11) * 24;
+      const lumpY = -65 + Math.cos(t * 23) * 28;
+      const lumpScale = 0.85 + Math.sin(t * 27) * 0.22;
+      sackRummageLumpEl.setAttribute('opacity', rummageProgress.toFixed(2));
+      sackRummageLumpEl.setAttribute('transform', `translate(${lumpX.toFixed(1)}, ${lumpY.toFixed(1)}) scale(${lumpScale.toFixed(2)})`);
+    } else {
+      sackRummageLumpEl.setAttribute('opacity', '0');
+    }
+  }
+
+  /* =========================================================================
+     7. REALISTIC MULTI-STAGE EXTRACTION USING ONLY UNCLE'S TWO REAL IK ARMS!
+     ========================================================================= */
+  function triggerSurpriseReveal() {
+    isLocked = true;
+    modeTimer = 0;
+
+    const itemIdx = surprisesUnlocked % 6;
+    surprisesUnlocked++;
+
+    surpriseSlotEl.innerHTML = SURPRISE_ITEMS_SVG[itemIdx];
+    surpriseSlotEl.setAttribute('transform', 'translate(820, 650) scale(0)');
+    extractedShadowEl.setAttribute('opacity', '0');
+    extractedGlowEl.setAttribute('opacity', '0');
+
+    sfx.playUntieAndRummage();
+    spawnFloorDust(815, 720, 14);
+
+    let liftSoundPlayed = false;
+    let revealSoundPlayed = false;
+
+    const slot = itemIdx % 6;
+    const shelfTargetX = 1255 + [102, 304, 504][slot % 3];
+    const shelfTargetY = 115 + [110, 258][Math.floor(slot / 3)];
+
+    const seqStart = performance.now();
+
+    function animateExtractionSequence(now) {
+      const elapsed = (now - seqStart) / 1000;
+
+      if (elapsed < 0.45) {
+        // STAGE 1: Uncle leans forward and reaches both REAL hands to untie & open the sack collar
+        uncleMode = 'untying_sack';
+        const p = elapsed / 0.45;
+        setSackMouthState(p, 0, elapsed, false);
+
+        extractionHandOverride = {
+          leftX: 745 + p * 35,
+          leftY: 660 - p * 15,
+          leftPose: 'grip',
+          rightX: 730 + p * 85,
+          rightY: 665 - p * 12,
+          rightPose: 'grip'
+        };
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 1.65) {
+        // STAGE 2: Uncle leans forward toward the sack, his left hand holds the sack rim,
+        // and his REAL right arm (#uncle-right-arm) plunges deep inside the open sack mouth!
+        uncleMode = 'rummaging_sack';
+        setSackMouthState(1, 1, elapsed, true);
+
+        const rummageX = (sackCurrentX - 38) + Math.sin(elapsed * 22) * 26;
+        const rummageY = 678 + Math.abs(Math.cos(elapsed * 18)) * 26;
+
+        extractionHandOverride = {
+          leftX: sackCurrentX - 115,
+          leftY: 648 + Math.sin(elapsed * 12) * 5,
+          leftPose: 'grip',
+          rightX: rummageX,
+          rightY: rummageY,
+          rightPose: 'rummage'
+        };
+
+        if (Math.random() < 0.22) {
+          spawnFloorDust(sackCurrentX - 40 + (Math.random() - 0.5) * 40, 650, 2);
+        }
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 2.35) {
+        // STAGE 3: His REAL right hand grips the funny object, lifts it UP out of the open mouth,
+        // and brings it forward over the front lip to place it strictly IN FRONT OF THE SACK!
+        uncleMode = 'lifting_from_sack';
+        if (!liftSoundPlayed) {
+          liftSoundPlayed = true;
+          sfx.playHeavyLiftStrain();
+          spawnSweatBurst(540, 490);
+        }
+
+        const p = (elapsed - 1.65) / 0.7;
+        const ease = 1 - Math.pow(1 - p, 3);
+        setSackMouthState(1, Math.max(0, 1 - p * 2), elapsed, false);
+
+        // Arc from sack mouth (x=825, y=670) up to y=525 and down to in front of the sack (x=855, y=755)
+        const itemX = (sackCurrentX - 40) + ease * 30;
+        const itemY = 670 - Math.sin(p * Math.PI) * 150 + ease * 85;
+        const itemScale = 0.28 + ease * 1.12;
+        const itemRot = (1 - ease) * -16 + Math.sin(elapsed * 16) * 4;
+
+        surpriseSlotEl.setAttribute('transform', `translate(${itemX.toFixed(1)}, ${itemY.toFixed(1)}) rotate(${itemRot.toFixed(1)}) scale(${itemScale.toFixed(2)})`);
+
+        // His REAL right hand holds the top-left of the item as he lifts it out and sets it down!
+        extractionHandOverride = {
+          leftX: sackCurrentX - 120,
+          leftY: 655,
+          leftPose: 'grip',
+          rightX: itemX - 24,
+          rightY: itemY - 28,
+          rightPose: 'grip'
+        };
+
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 4.45) {
+        // STAGE 4: Item rests strictly IN FRONT OF THE SACK!
+        // Uncle leans back in comical astonishment with BOTH REAL HANDS on his cheeks!
+        uncleMode = 'amazed_reveal';
+        extractionHandOverride = null; // Uses 'amazed_reveal' cheek shock pose in main loop
+
+        if (!revealSoundPlayed) {
+          revealSoundPlayed = true;
+          sfx.playSurpriseReveal(itemIdx);
+          spawnGoldenSparks(855, 735, 60);
+          spawnFloorDust(855, 830, 28);
+
+          paintingLeftEl.setAttribute('transform', 'translate(175, 195) rotate(-6.5)');
+          setTimeout(() => {
+            paintingLeftEl.setAttribute('transform', 'translate(175, 195) rotate(-1.5)');
+          }, 650);
+        }
+
+        const p = (elapsed - 2.35) / 2.1;
+        const bounce = Math.exp(-p * 5) * Math.cos(p * 22) * 22;
+        const idleBob = Math.sin(elapsed * 6.5) * 6;
+        const itemX = 855;
+        const itemY = 755 - Math.abs(bounce) + idleBob;
+        const wobbleRot = Math.sin(elapsed * 5.5) * 5.5;
+        const scaleX = 1.40 + Math.sin(elapsed * 11) * 0.04;
+        const scaleY = 1.40 - Math.sin(elapsed * 11) * 0.04;
+
+        surpriseSlotEl.setAttribute('transform', `translate(${itemX}, ${itemY.toFixed(1)}) rotate(${wobbleRot.toFixed(1)}) scale(${scaleX.toFixed(2)}, ${scaleY.toFixed(2)})`);
+
+        extractedShadowEl.setAttribute('cx', itemX);
+        extractedShadowEl.setAttribute('cy', '838');
+        extractedShadowEl.setAttribute('rx', (98 - Math.abs(bounce) * 0.6).toFixed(1));
+        extractedShadowEl.setAttribute('opacity', '0.78');
+
+        extractedGlowEl.setAttribute('cx', itemX);
+        extractedGlowEl.setAttribute('cy', (itemY - 15).toFixed(1));
+        extractedGlowEl.setAttribute('opacity', '0.85');
+
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 5.05) {
+        // STAGE 5: Item smoothly arcs up to the wooden Trophy Shelf!
+        const p = (elapsed - 4.45) / 0.6;
+        const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+
+        const startX = 855;
+        const startY = 755;
+        const curX = startX + (shelfTargetX - startX) * ease;
+        const curY = startY + (shelfTargetY - startY) * ease - Math.sin(p * Math.PI) * 140;
+        const curScale = 1.40 + (0.55 - 1.40) * ease;
+        const curRot = Math.sin(p * Math.PI * 2) * 12 * (1 - ease);
+
+        surpriseSlotEl.setAttribute('transform', `translate(${curX.toFixed(1)}, ${curY.toFixed(1)}) rotate(${curRot.toFixed(1)}) scale(${curScale.toFixed(2)})`);
+        extractedShadowEl.setAttribute('opacity', ((1 - ease) * 0.78).toFixed(2));
+        extractedGlowEl.setAttribute('opacity', ((1 - ease) * 0.85).toFixed(2));
+        setSackMouthState(1 - ease, 0, elapsed, false);
+
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else {
+        addTrophyToShelf(itemIdx);
+        sfx.playWoodClick();
+        surpriseSlotEl.setAttribute('transform', 'translate(850, 780) scale(0)');
+        extractedShadowEl.setAttribute('opacity', '0');
+        extractedGlowEl.setAttribute('opacity', '0');
+        setSackMouthState(0, 0, 0, false);
+        extractionHandOverride = null;
+
+        pullStep = 0;
+        sackCurrentX = 1880;
+        sackTargetX = SACK_POSITIONS[0];
+        uncleMode = 'straining_loop';
+        isLocked = false;
+
+        problemIndex++;
+        loadProblem(problemIndex);
+      }
+    }
+
+    requestAnimationFrame(animateExtractionSequence);
+  }
+
+  // Minimalist Skip Button (">>" without words)
+  document.getElementById('skip-btn').addEventListener('click', () => {
+    if (isLocked) return;
+    sfx.playWoodClick();
+    pullStep++;
+    if (pullStep >= 3) {
+      sackTargetX = SACK_POSITIONS[3];
+      updateStageIndicators();
+      triggerSurpriseReveal();
+    } else {
+      sackTargetX = SACK_POSITIONS[pullStep];
+      spawnFloorDust(sackCurrentX - 80, 815, 16);
+      problemIndex++;
+      loadProblem(problemIndex);
+    }
+  });
+
+  // Sound Mute/Unmute Button
+  document.getElementById('sound-btn').addEventListener('click', () => {
+    sfx.toggleMute();
+  });
+
+  /* =========================================================================
+     8. CONTINUOUS REAL-TIME PHYSICS, IK ARMS & FACIAL EXPRESSION LOOP
+     ========================================================================= */
+  const startTime = performance.now();
+
+  function localTorsoToWorld(lx, ly, uncleX, uncleY, torsoAngleDeg) {
+    const rad = (torsoAngleDeg * Math.PI) / 180;
+    return {
+      x: uncleX + lx * Math.cos(rad) - ly * Math.sin(rad),
+      y: uncleY + lx * Math.sin(rad) + ly * Math.cos(rad)
+    };
+  }
+
+  function animateScene(now) {
+    const t = (now - startTime) / 1000;
+    modeTimer += 0.016;
+
+    sackCurrentX += (sackTargetX - sackCurrentX) * 0.12;
+    uncleSlideOffset += (uncleTargetSlide - uncleSlideOffset) * 0.18;
+
+    let torsoAngle = -14;
+    let bellyScaleX = 1;
+    let bellyScaleY = 1;
+    let headRot = 0;
+    let flushOpacity = 0.25;
+    let veinOpacity = 0;
+    let cheekPuffOpacity = 0;
+    let sackWobbleRot = 0;
+    let sackSquashX = 1;
+    let sackSquashY = 1;
+
+    if (uncleMode === 'straining_loop') {
+      const cycle = t % 4.2;
+      const heavyStrain = cycle < 2.7 ? (0.55 + 0.45 * Math.sin(t * 4.5)) : 0.15;
+
+      const creakIdx = Math.floor(t / 1.4);
+      if (creakIdx !== lastCreakCycle && cycle < 2.5) {
+        lastCreakCycle = creakIdx;
+        sfx.playRopeCreak(0.45);
+      }
+
+      torsoAngle = -12 - heavyStrain * 11 + Math.sin(t * 9) * (heavyStrain * 1.4);
+      bellyScaleX = 1 + Math.sin(t * 3.6) * 0.045 + heavyStrain * 0.03;
+      bellyScaleY = 1 - Math.sin(t * 3.6) * 0.025 + heavyStrain * 0.02;
+      headRot = -heavyStrain * 8 + Math.sin(t * 7) * 1.5;
+
+      flushOpacity = 0.18 + heavyStrain * 0.62;
+      veinOpacity = heavyStrain > 0.65 ? (heavyStrain - 0.5) * 1.8 : 0;
+      cheekPuffOpacity = cycle > 1.2 && cycle < 2.6 ? 0.9 : 0;
+
+      if (cycle < 1.3) {
+        browLeftEl.setAttribute('d', 'M-42 -2 C-30 -2, -14 4, -4 10');
+        browRightEl.setAttribute('d', 'M8 10 C18 4, 34 -2, 44 -2');
+        eyelidLeftEl.setAttribute('d', 'M-17 -3 Q0 4 17 -3');
+        eyelidRightEl.setAttribute('d', 'M-16 -7 Q0 -2 16 -7');
+        pupilLeftEl.setAttribute('transform', 'translate(6, 1)');
+        pupilRightEl.setAttribute('transform', 'translate(6, 1)');
+        mouthShapeEl.setAttribute('d', 'M-26 2 C-10 -6, 14 -6, 28 2 C20 15, -14 15, -26 2 Z');
+        mouthTeethEl.style.opacity = '1';
+        mouthTongueEl.style.opacity = '0';
+      } else if (cycle < 2.6) {
+        browLeftEl.setAttribute('d', 'M-42 -4 C-28 2, -14 6, -4 12');
+        browRightEl.setAttribute('d', 'M8 12 C18 6, 32 2, 44 -4');
+        eyelidLeftEl.setAttribute('d', 'M-17 0 Q0 6 17 0');
+        eyelidRightEl.setAttribute('d', 'M-16 0 Q0 6 16 0');
+        mouthShapeEl.setAttribute('d', 'M-18 4 C-6 -2, 10 -2, 20 4 C10 8, -6 8, -18 4 Z');
+        mouthTeethEl.style.opacity = '0.4';
+        mouthTongueEl.style.opacity = '0';
+      } else {
+        browLeftEl.setAttribute('d', 'M-42 6 C-32 -10, -12 -10, -4 2');
+        browRightEl.setAttribute('d', 'M8 2 C18 -10, 36 -10, 44 6');
+        eyelidLeftEl.setAttribute('d', 'M-17 -12 Q0 -18 17 -12');
+        eyelidRightEl.setAttribute('d', 'M-16 -12 Q0 -18 16 -12');
+        pupilLeftEl.setAttribute('transform', 'translate(7, 2)');
+        pupilRightEl.setAttribute('transform', 'translate(7, 2)');
+        mouthShapeEl.setAttribute('d', 'M-14 0 C-6 -6, 8 -6, 16 0 C12 16, -8 16, -14 0 Z');
+        mouthTeethEl.style.opacity = '0';
+        mouthTongueEl.style.opacity = '0.85';
+      }
+
+      mustacheEl.setAttribute('transform', `translate(26, -10) rotate(${Math.sin(t * 11) * 2.5})`);
+      sackWobbleRot = -heavyStrain * 2.2 + Math.sin(t * 14) * (heavyStrain * 0.8);
+      sackSquashX = 1 + heavyStrain * 0.025;
+      sackSquashY = 1 - heavyStrain * 0.02;
+
+    } else if (uncleMode === 'heaving') {
+      torsoAngle = -28 - Math.sin(modeTimer * 12) * 4;
+      bellyScaleX = 1.09;
+      bellyScaleY = 1.04;
+      headRot = -14;
+      flushOpacity = 0.92;
+      veinOpacity = 1;
+      cheekPuffOpacity = 1;
+
+      browLeftEl.setAttribute('d', 'M-42 -6 C-28 2, -12 8, -4 14');
+      browRightEl.setAttribute('d', 'M8 14 C18 8, 32 2, 44 -6');
+      eyelidLeftEl.setAttribute('d', 'M-17 1 Q0 7 17 1');
+      eyelidRightEl.setAttribute('d', 'M-16 1 Q0 7 16 1');
+      mouthShapeEl.setAttribute('d', 'M-28 -2 C-10 -10, 14 -10, 30 -2 C24 18, -18 18, -28 -2 Z');
+      mouthTeethEl.style.opacity = '1';
+      mouthTongueEl.style.opacity = '0';
+
+      sackWobbleRot = -7 * Math.sin(modeTimer * 18);
+      sackSquashX = 1.06;
+      sackSquashY = 0.94;
+
+    } else if (uncleMode === 'slipping') {
+      torsoAngle = 8 + Math.sin(modeTimer * 24) * 5;
+      bellyScaleX = 0.95;
+      bellyScaleY = 1.06;
+      headRot = 12;
+      flushOpacity = 0.45;
+      veinOpacity = 0;
+      cheekPuffOpacity = 0;
+
+      browLeftEl.setAttribute('d', 'M-42 -12 C-30 -22, -12 -18, -4 -6');
+      browRightEl.setAttribute('d', 'M8 -6 C18 -18, 36 -22, 44 -12');
+      eyelidLeftEl.setAttribute('d', 'M-17 -15 Q0 -20 17 -15');
+      eyelidRightEl.setAttribute('d', 'M-16 -15 Q0 -20 16 -15');
+      pupilLeftEl.setAttribute('transform', 'translate(8, 0) scale(0.75)');
+      pupilRightEl.setAttribute('transform', 'translate(8, 0) scale(0.75)');
+      mouthShapeEl.setAttribute('d', 'M-14 -4 C-6 -14, 10 -14, 16 -4 C18 18, -14 18, -14 -4 Z');
+      mouthTeethEl.style.opacity = '0';
+      mouthTongueEl.style.opacity = '0.9';
+
+    } else if (uncleMode === 'untying_sack') {
+      torsoAngle = 16 + Math.sin(t * 10) * 2;
+      bellyScaleX = 1.03;
+      bellyScaleY = 0.97;
+      headRot = 14;
+      flushOpacity = 0.35;
+
+      browLeftEl.setAttribute('d', 'M-42 2 C-30 -6, -12 -4, -4 4');
+      browRightEl.setAttribute('d', 'M8 4 C18 -4, 34 -6, 44 2');
+      eyelidLeftEl.setAttribute('d', 'M-17 -8 Q0 -14 17 -8');
+      eyelidRightEl.setAttribute('d', 'M-16 -8 Q0 -14 16 -8');
+      pupilLeftEl.setAttribute('transform', 'translate(8, 4)');
+      pupilRightEl.setAttribute('transform', 'translate(8, 4)');
+      mouthShapeEl.setAttribute('d', 'M-16 2 C-6 -4, 8 -4, 18 2 C12 10, -8 10, -16 2 Z');
+      mouthTeethEl.style.opacity = '0.5';
+      mouthTongueEl.style.opacity = '0';
+      sackWobbleRot = Math.sin(t * 16) * 2;
+
+    } else if (uncleMode === 'rummaging_sack') {
+      // Uncle leans forward toward the sack so his real right shoulder is close enough for his right hand to plunge deep inside!
+      torsoAngle = 25 + Math.sin(t * 18) * 3;
+      bellyScaleX = 1.05 + Math.sin(t * 18) * 0.03;
+      bellyScaleY = 0.95 - Math.sin(t * 18) * 0.02;
+      headRot = 18 + Math.sin(t * 14) * 3;
+      flushOpacity = 0.48;
+      cheekPuffOpacity = 0.5;
+
+      browLeftEl.setAttribute('d', 'M-42 -8 C-28 -16, -12 -10, -4 0');
+      browRightEl.setAttribute('d', 'M8 6 C18 0, 34 -2, 44 -6');
+      eyelidLeftEl.setAttribute('d', 'M-17 -12 Q0 -16 17 -12');
+      eyelidRightEl.setAttribute('d', 'M-16 -1 Q0 5 16 -1');
+      pupilLeftEl.setAttribute('transform', 'translate(9, 5)');
+      pupilRightEl.setAttribute('transform', 'translate(9, 5)');
+      mouthShapeEl.setAttribute('d', 'M-18 2 C-6 -4, 10 -4, 20 4 C14 14, -10 14, -18 2 Z');
+      mouthTeethEl.style.opacity = '0.3';
+      mouthTongueEl.style.opacity = '1';
+      mustacheEl.setAttribute('transform', `translate(26, -10) rotate(${Math.sin(t * 20) * 4})`);
+
+      sackWobbleRot = Math.sin(t * 22) * 5.5;
+      sackSquashX = 1 + Math.sin(t * 24) * 0.065;
+      sackSquashY = 1 - Math.sin(t * 24) * 0.055;
+
+    } else if (uncleMode === 'lifting_from_sack') {
+      torsoAngle = 14 - modeTimer * 16;
+      bellyScaleX = 1.08;
+      bellyScaleY = 0.95;
+      headRot = 4;
+      flushOpacity = 0.78;
+      veinOpacity = 0.85;
+      cheekPuffOpacity = 1;
+
+      browLeftEl.setAttribute('d', 'M-42 -10 C-28 -20, -12 -18, -4 -6');
+      browRightEl.setAttribute('d', 'M8 -6 C18 -18, 36 -20, 44 -10');
+      eyelidLeftEl.setAttribute('d', 'M-17 -14 Q0 -19 17 -14');
+      eyelidRightEl.setAttribute('d', 'M-16 -14 Q0 -19 16 -14');
+      pupilLeftEl.setAttribute('transform', 'translate(7, 2)');
+      pupilRightEl.setAttribute('transform', 'translate(7, 2)');
+      mouthShapeEl.setAttribute('d', 'M-22 0 C-8 -8, 12 -8, 24 0 C18 16, -12 16, -22 0 Z');
+      mouthTeethEl.style.opacity = '1';
+      mouthTongueEl.style.opacity = '0';
+
+      sackWobbleRot = Math.sin(t * 18) * 3.5;
+      sackSquashX = 0.94;
+      sackSquashY = 1.07;
+
+    } else if (uncleMode === 'amazed_reveal') {
+      torsoAngle = -8 + Math.sin(t * 6) * 2.5;
+      bellyScaleX = 1 + Math.sin(t * 8) * 0.04;
+      bellyScaleY = 1 - Math.sin(t * 8) * 0.03;
+      headRot = 6 + Math.sin(t * 5) * 3;
+      flushOpacity = 0.3;
+
+      browLeftEl.setAttribute('d', 'M-44 -16 C-30 -28, -12 -26, -2 -14');
+      browRightEl.setAttribute('d', 'M6 -14 C16 -26, 34 -28, 46 -16');
+      eyelidLeftEl.setAttribute('d', 'M-17 -16 Q0 -22 17 -16');
+      eyelidRightEl.setAttribute('d', 'M-16 -16 Q0 -22 16 -16');
+      pupilLeftEl.setAttribute('transform', 'translate(7, 2) scale(1.14)');
+      pupilRightEl.setAttribute('transform', 'translate(7, 2) scale(1.14)');
+      mouthShapeEl.setAttribute('d', 'M-22 -4 C-8 -12, 12 -12, 24 -4 C26 28, -20 28, -22 -4 Z');
+      mouthTeethEl.style.opacity = '0.3';
+      mouthTongueEl.style.opacity = '1';
+      mustacheEl.setAttribute('transform', `translate(26, -14) rotate(${Math.sin(t * 16) * 5})`);
+
+      sackWobbleRot = Math.sin(t * 10) * 1.5;
+    }
+
+    // Apply Uncle Torso & Head Transforms
+    const isLeaningIntoSack = (uncleMode === 'untying_sack' || uncleMode === 'rummaging_sack' || uncleMode === 'lifting_from_sack');
+    const uncleX = 500 + uncleSlideOffset + (isLeaningIntoSack ? 42 : 0);
+    const uncleY = 760;
+
+    uncleMasterEl.setAttribute('transform', `translate(${uncleX.toFixed(1)}, ${uncleY})`);
+    uncleTorsoEl.setAttribute('transform', `rotate(${torsoAngle.toFixed(2)})`);
+    uncleBellyEl.setAttribute('transform', `scale(${bellyScaleX.toFixed(3)}, ${bellyScaleY.toFixed(3)})`);
+    uncleHeadEl.setAttribute('transform', `translate(-45, -245) rotate(${headRot.toFixed(2)})`);
+
+    const btnJitter = Math.sin(t * 22) * (flushOpacity * 2.2);
+    strainingBtnEl.setAttribute('cx', (130 + btnJitter).toFixed(1));
+
+    // =====================================================================
+    // COMPUTE EXACT WORLD SHOULDER SOCKETS & SOLVE 2-BONE IK FOR BOTH ARMS
+    // =====================================================================
+    const rightShoulderWorld = localTorsoToWorld(-32, -142, uncleX, uncleY, torsoAngle);
+    const leftShoulderWorld = localTorsoToWorld(42, -152, uncleX, uncleY, torsoAngle);
+
+    let leftHandTargetX, leftHandTargetY, leftPose = 'grip';
+    let rightHandTargetX, rightHandTargetY, rightPose = 'grip';
+    let flipRightElbow = false;
+
+    if (extractionHandOverride) {
+      // During untying, rummaging inside the sack, and lifting the item out in front of the sack:
+      leftHandTargetX = extractionHandOverride.leftX;
+      leftHandTargetY = extractionHandOverride.leftY;
+      leftPose = extractionHandOverride.leftPose;
+      rightHandTargetX = extractionHandOverride.rightX;
+      rightHandTargetY = extractionHandOverride.rightY;
+      rightPose = extractionHandOverride.rightPose;
+      flipRightElbow = (uncleMode === 'rummaging_sack' || uncleMode === 'lifting_from_sack');
+    } else if (uncleMode === 'amazed_reveal') {
+      // Hands pressed to his plump cheeks in comical shock!
+      const rightCheekWorld = localTorsoToWorld(-58, -242 + Math.sin(t * 10) * 5, uncleX, uncleY, torsoAngle);
+      const leftCheekWorld = localTorsoToWorld(30, -248 - Math.sin(t * 10) * 5, uncleX, uncleY, torsoAngle);
+      rightHandTargetX = rightCheekWorld.x;
+      rightHandTargetY = rightCheekWorld.y;
+      rightPose = 'shock';
+      leftHandTargetX = leftCheekWorld.x;
+      leftHandTargetY = leftCheekWorld.y;
+      leftPose = 'shock';
+    } else {
+      // Gripping the braided tension rope!
+      const rightGripWorld = localTorsoToWorld(142, -92, uncleX, uncleY, torsoAngle);
+      const leftGripWorld = localTorsoToWorld(192, -102, uncleX, uncleY, torsoAngle);
+      rightHandTargetX = rightGripWorld.x;
+      rightHandTargetY = rightGripWorld.y;
+      leftHandTargetX = leftGripWorld.x;
+      leftHandTargetY = leftGripWorld.y;
+    }
+
+    const leftIK = solveArmIK(
+      leftShoulderWorld.x,
+      leftShoulderWorld.y,
+      leftHandTargetX,
+      leftHandTargetY,
+      115,
+      115,
+      false
+    );
+    const rightIK = solveArmIK(
+      rightShoulderWorld.x,
+      rightShoulderWorld.y,
+      rightHandTargetX,
+      rightHandTargetY,
+      122,
+      122,
+      flipRightElbow
+    );
+
+    uncleLeftArmEl.innerHTML = renderIKArmSVG(leftIK, leftPose, true);
+    uncleRightArmEl.innerHTML = renderIKArmSVG(rightIK, rightPose, false);
+
+    // Apply Face Flush, Vein, Cheek Puff & Falling Sweat Drops
+    flushEls.forEach(el => el.setAttribute('opacity', flushOpacity.toFixed(2)));
+    veinEl.setAttribute('opacity', veinOpacity.toFixed(2));
+    cheekPuffEl.setAttribute('opacity', cheekPuffOpacity.toFixed(2));
+
+    const sweatDrop1Y = (t * 28) % 34;
+    const sweatDrop2Y = ((t * 28) + 17) % 34;
+    sweat1El.setAttribute('transform', `translate(0, ${sweatDrop1Y.toFixed(1)}) scale(${(1.3 - sweatDrop1Y * 0.025).toFixed(2)})`);
+    sweat2El.setAttribute('transform', `translate(0, ${sweatDrop2Y.toFixed(1)}) scale(${(1.2 - sweatDrop2Y * 0.025).toFixed(2)})`);
+
+    // Apply Sack Transforms
+    sackMasterEl.setAttribute('transform', `translate(${sackCurrentX.toFixed(1)}, 795)`);
+    sackBodyEl.setAttribute('transform', `rotate(${sackWobbleRot.toFixed(2)}) scale(${sackSquashX.toFixed(3)}, ${sackSquashY.toFixed(3)})`);
+
+    // Update Braided Hemp Rope Connecting Uncle's Hands to the Sack Neck
+    const ropeGripWorld = localTorsoToWorld(142, -92, uncleX, uncleY, torsoAngle);
+    const sackKnotX = sackCurrentX - 122;
+    const sackKnotY = 769;
+    const isRopeSlack = isLeaningIntoSack || uncleMode === 'amazed_reveal';
+    const anchorHandX = isRopeSlack ? (uncleX + 125) : rightIK.handX;
+    const anchorHandY = isRopeSlack ? 790 : rightIK.handY;
+    const ropeMidX = (anchorHandX + sackKnotX) / 2;
+    const ropeSag = isRopeSlack ? 32 : Math.sin(t * 28) * 3.5;
+    const ropeMidY = (anchorHandY + sackKnotY) / 2 + ropeSag;
+
+    const ropePathD = `M 285 812 Q ${uncleX - 60} 795 ${anchorHandX.toFixed(1)} ${anchorHandY.toFixed(1)} Q ${ropeMidX.toFixed(1)} ${ropeMidY.toFixed(1)} ${sackKnotX.toFixed(1)} ${sackKnotY}`;
+    ropeMainEl.setAttribute('d', ropePathD);
+    ropeOutlineEl.setAttribute('d', ropePathD);
+    ropeShadowEl.setAttribute('d', `M 285 822 L ${sackKnotX.toFixed(1)} 820`);
+
+    // Ambient Room Animations
+    const lampAngle = Math.sin(t * 1.35) * 2.2;
+    lampGroupEl.setAttribute('transform', `translate(960, 0) rotate(${lampAngle.toFixed(2)})`);
+
+    const mousePeekY = Math.sin(t * 1.8) > 0.2 ? -6 + Math.sin(t * 7) * 1.5 : 18;
+    wallMouseEl.setAttribute('transform', `translate(0, ${mousePeekY.toFixed(1)})`);
+
+    // Render Particle Canvas
+    ctx.clearRect(0, 0, cw, ch);
+
+    for (const m of dustMotes) {
+      m.x += m.vx + Math.sin(t + m.phase) * 0.18;
+      m.y += m.vy;
+      if (m.y < 0) { m.y = ch * 0.78; m.x = Math.random() * cw; }
+      if (m.x < 0) m.x = cw;
+      if (m.x > cw) m.x = 0;
+
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 228, 155, ${m.alpha * (0.6 + 0.4 * Math.sin(t * 2 + m.phase))})`;
+      ctx.fill();
+    }
+
+    for (let i = activeParticles.length - 1; i >= 0; i--) {
+      const p = activeParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha -= p.decay;
+
+      if (p.type === 'dust') {
+        p.r += 0.45;
+        p.vx *= 0.96;
+        p.vy *= 0.95;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `${p.color}${Math.max(0, p.alpha)})`;
+        ctx.fill();
+      } else if (p.type === 'spark') {
+        p.vy += 0.28;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(t * 8);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.beginPath();
+        ctx.moveTo(0, -p.r * 1.6);
+        ctx.lineTo(p.r * 0.6, -p.r * 0.6);
+        ctx.lineTo(p.r * 1.6, 0);
+        ctx.lineTo(p.r * 0.6, p.r * 0.6);
+        ctx.lineTo(0, p.r * 1.6);
+        ctx.lineTo(-p.r * 0.6, p.r * 0.6);
+        ctx.lineTo(-p.r * 1.6, 0);
+        ctx.lineTo(-p.r * 0.6, -p.r * 0.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      } else if (p.type === 'sweat') {
+        p.vy += 0.35;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.alpha <= 0) {
+        activeParticles.splice(i, 1);
+      }
+    }
+
+    requestAnimationFrame(animateScene);
+  }
+
+  window.addEventListener('load', () => {
+    loadProblem(0);
+    requestAnimationFrame(animateScene);
+  });
+})();
+</script>
+</body>
+</html>
