@@ -129,7 +129,6 @@
             text-align: center;
         }
 
-        /* Праве вікно — Зошит у клітинку */
         .notebook-header {
             width: 100%;
             display: flex;
@@ -182,7 +181,6 @@
 <body>
 
 <div class="workspace">
-    <!-- ЛІВА ПАНЕЛЬ: МАЛЮВАЛКА ТА АНІМАТОР -->
     <div class="panel left-panel">
         <p class="instruction" id="instruction">
             Малюй так, щоб руки, ноги та голова <b>заходили (накладалися)</b> на синє тіло!
@@ -213,7 +211,6 @@
         </div>
     </div>
 
-    <!-- ПРАВА ПАНЕЛЬ: ЗОШИТ У КЛІТИНКУ ДЛЯ ЗАВДАНЬ -->
     <div class="panel right-panel">
         <div class="notebook-header">
             <h3 class="notebook-title">📒 Робочий зошит для завдань</h3>
@@ -255,6 +252,8 @@
 
     // =========================================================================
     // ПОЛІФОНІЧНИЙ ГЕНЕРАТОР МЕЛОДІЙ (WEB AUDIO API)
+    // Звук маршрутизується через MediaStreamDestination → <audio>,
+    // щоб Zoom міг його захопити при "Share computer sound".
     // =========================================================================
     let audioCtx = null;
     let isMuted = false;
@@ -262,17 +261,24 @@
     let currentSong = null;
     let currentStep = 0;
 
-    // Музичні лади (інтервали у півтонах на 2 октави)
+    // Маршрутизація для Zoom
+    let mediaDest = null;
+    let audioEl = null;
+
+    // Планувальник (lookahead)
+    let nextNoteTime = 0;
+    const LOOKAHEAD_MS = 25;
+    const SCHEDULE_AHEAD_S = 0.15;
+
     const SCALES = {
         major:      [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19],
         minor:      [0, 2, 3, 5, 7, 8, 10, 12, 14, 15, 17, 19],
         pentatonic: [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24],
         dorian:     [0, 2, 3, 5, 7, 9, 10, 12, 14, 15, 17, 19],
-        hijaz:      [0, 1, 4, 5, 7, 8, 11, 12, 13, 16, 17, 19], // Східний колорит
+        hijaz:      [0, 1, 4, 5, 7, 8, 11, 12, 13, 16, 17, 19],
         blues:      [0, 3, 5, 6, 7, 10, 12, 15, 17, 18, 19, 22]
     };
 
-    // Пресети стилів під кожен із 10 танців
     const STYLE_PRESETS = [
         { scale: 'major',      tempo: 125, leadWave: 'triangle', bassWave: 'sawtooth', style: 'march' },
         { scale: 'pentatonic', tempo: 142, leadWave: 'square',   bassWave: 'triangle', style: 'happy' },
@@ -290,17 +296,31 @@
         return 440 * Math.pow(2, (midi - 69) / 12);
     }
 
-    // Створює нову рандомну структуровану мелодію (32 кроки = 2 такти по 16)
+    // Створюємо прихований <audio>, що програє той самий стрім, що йде в систему.
+    function initAudioRouting() {
+        if (mediaDest) return;
+        mediaDest = audioCtx.createMediaStreamDestination();
+
+        audioEl = new Audio();
+        audioEl.srcObject = mediaDest.stream;
+        audioEl.autoplay = true;
+        audioEl.muted = isMuted;
+        audioEl.volume = 1;
+        audioEl.setAttribute('playsinline', '');
+        audioEl.style.display = 'none';
+        document.body.appendChild(audioEl);
+
+        audioEl.play().catch(err => console.warn('audio.play() failed:', err));
+    }
+
     function generateRandomSong(danceIdx) {
         const preset = STYLE_PRESETS[danceIdx % STYLE_PRESETS.length];
         const scale = SCALES[preset.scale];
-        
-        // Випадкова тональність (До, Ре, Мі, Фа, Соль або Ля)
+
         const roots = [57, 59, 60, 62, 64, 65, 67];
         const rootMidi = roots[Math.floor(Math.random() * roots.length)];
         const tempo = preset.tempo + Math.floor(Math.random() * 12 - 6);
 
-        // Випадкова акордова прогресія з 4 ступенів
         const progressions = [
             [0, 3, 4, 0],
             [0, 4, 5, 3],
@@ -310,21 +330,13 @@
         ];
         const prog = progressions[Math.floor(Math.random() * progressions.length)];
 
-        // Генератор 8-крокової музичної фрази (мотиву) з плавним рухом по гамі
         function makeMotif(startDeg, isEnding) {
             let motif = [];
             let deg = startDeg;
             for (let i = 0; i < 8; i++) {
-                if (isEnding && i === 6) {
-                    motif.push(0); // Тоніка у фіналі
-                    continue;
-                }
-                if (isEnding && i === 7) {
-                    motif.push(null); // Пауза в кінці фрази
-                    continue;
-                }
+                if (isEnding && i === 6) { motif.push(0); continue; }
+                if (isEnding && i === 7) { motif.push(null); continue; }
 
-                // На сильних долях нота звучить майже завжди, на слабких — рандомно
                 let playProb = (i % 2 === 0) ? 0.92 : 0.62;
                 if (preset.style === 'robot') playProb = 0.85;
 
@@ -339,7 +351,6 @@
             return motif;
         }
 
-        // Формуємо структуру мелодії A - B - A - C (питання - відповідь)
         const motifA = makeMotif(prog[0], false);
         const motifB = makeMotif(prog[1], false);
         const motifA2 = motifA.map((n, idx) => (idx === 7 ? prog[2] : n));
@@ -347,59 +358,52 @@
 
         const melodyDegrees = [...motifA, ...motifB, ...motifA2, ...motifC];
 
-        return {
-            preset,
-            scale,
-            rootMidi,
-            tempo,
-            prog,
-            melodyDegrees
-        };
+        return { preset, scale, rootMidi, tempo, prog, melodyDegrees };
     }
 
-    // Синтез мелодичної або басової ноти
-    function playSynthTone(freq, duration, waveType, volume, slide = false) {
-        if (!audioCtx || isMuted) return;
-        const now = audioCtx.currentTime;
+    // when — точний час у audioCtx.currentTime, коли має стартувати нота
+    function playSynthTone(freq, duration, waveType, volume, slide = false, when = null) {
+        if (!audioCtx || isMuted || !mediaDest) return;
+        const start = (typeof when === 'number' && when > 0) ? when : audioCtx.currentTime;
+
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
 
         osc.type = waveType;
         if (slide) {
-            osc.frequency.setValueAtTime(freq * 0.85, now);
-            osc.frequency.exponentialRampToValueAtTime(freq, now + 0.04);
+            osc.frequency.setValueAtTime(freq * 0.85, start);
+            osc.frequency.exponentialRampToValueAtTime(freq, start + 0.04);
         } else {
-            osc.frequency.setValueAtTime(freq, now);
+            osc.frequency.setValueAtTime(freq, start);
         }
 
-        gain.gain.setValueAtTime(0.001, now);
-        gain.gain.linearRampToValueAtTime(volume, now + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.linearRampToValueAtTime(volume, start + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0008, start + duration);
 
         osc.connect(gain);
-        gain.connect(audioCtx.destination);
+        gain.connect(mediaDest);   // ← було audioCtx.destination
 
-        osc.start(now);
-        osc.stop(now + duration + 0.02);
+        osc.start(start);
+        osc.stop(start + duration + 0.02);
     }
 
-    // Синтез ударних (Бочка, Малий барабан, Хай-хет)
-    function playDrum(type) {
-        if (!audioCtx || isMuted) return;
-        const now = audioCtx.currentTime;
+    function playDrum(type, when = null) {
+        if (!audioCtx || isMuted || !mediaDest) return;
+        const start = (typeof when === 'number' && when > 0) ? when : audioCtx.currentTime;
 
         if (type === 'kick') {
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(135, now);
-            osc.frequency.exponentialRampToValueAtTime(32, now + 0.11);
-            gain.gain.setValueAtTime(0.28, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+            osc.frequency.setValueAtTime(135, start);
+            osc.frequency.exponentialRampToValueAtTime(32, start + 0.11);
+            gain.gain.setValueAtTime(0.28, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.14);
             osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start(now);
-            osc.stop(now + 0.15);
+            gain.connect(mediaDest);   // ← було audioCtx.destination
+            osc.start(start);
+            osc.stop(start + 0.15);
         } 
         else if (type === 'snare') {
             const bufSize = audioCtx.sampleRate * 0.1;
@@ -412,16 +416,16 @@
 
             const filter = audioCtx.createBiquadFilter();
             filter.type = 'highpass';
-            filter.frequency.setValueAtTime(650, now);
+            filter.frequency.setValueAtTime(650, start);
 
             const gain = audioCtx.createGain();
-            gain.gain.setValueAtTime(0.14, now);
-            gain.gain.exponentialRampToValueAtTime(0.005, now + 0.1);
+            gain.gain.setValueAtTime(0.14, start);
+            gain.gain.exponentialRampToValueAtTime(0.005, start + 0.1);
 
             noise.connect(filter);
             filter.connect(gain);
-            gain.connect(audioCtx.destination);
-            noise.start(now);
+            gain.connect(mediaDest);   // ← було audioCtx.destination
+            noise.start(start);
         } 
         else if (type === 'hat') {
             const bufSize = audioCtx.sampleRate * 0.035;
@@ -434,82 +438,96 @@
 
             const filter = audioCtx.createBiquadFilter();
             filter.type = 'highpass';
-            filter.frequency.setValueAtTime(5200, now);
+            filter.frequency.setValueAtTime(5200, start);
 
             const gain = audioCtx.createGain();
-            gain.gain.setValueAtTime(0.05, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+            gain.gain.setValueAtTime(0.05, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.035);
 
             noise.connect(filter);
             filter.connect(gain);
-            gain.connect(audioCtx.destination);
-            noise.start(now);
+            gain.connect(mediaDest);   // ← було audioCtx.destination
+            noise.start(start);
         }
     }
 
-    // Відтворення одного кроку секвенсора (1/16 такту)
-    function playSequencerStep() {
-        if (!isAnimating || !currentSong) return;
+    // Планує ВСІ ноти одного 1/16-кроку на конкретний час `when`.
+    // Не грає зараз — просто ставить у чергу Web Audio.
+    function scheduleStep(s, when) {
+        if (!currentSong) return;
 
-        const { preset, scale, rootMidi, tempo, prog, melodyDegrees } = currentSong;
-        const stepDur = 60 / tempo / 4; // Тривалість 16-ї ноти в секундах
-        const s = currentStep % 32;
-        const barIndex = Math.floor(s / 8); // Який зараз акорд (0..3)
+        const { preset, scale, rootMidi, prog, melodyDegrees } = currentSong;
+        const stepDur = 60 / currentSong.tempo / 4;
+        const barIndex = Math.floor(s / 8);
         const chordDeg = prog[barIndex];
 
-        // 1. СОЛО-МЕЛОДІЯ
+        // 1. Мелодія
         const noteDeg = melodyDegrees[s];
         if (noteDeg !== null && noteDeg !== undefined) {
             const semitones = scale[noteDeg % scale.length];
             const midi = rootMidi + semitones;
             const dur = (s % 2 === 0) ? stepDur * 1.65 : stepDur * 1.1;
             const slide = (preset.style === 'egypt' || preset.style === 'salsa') && (s % 4 === 2);
-            playSynthTone(midiToFreq(midi), dur, preset.leadWave, 0.11, slide);
+            playSynthTone(midiToFreq(midi), dur, preset.leadWave, 0.11, slide, when);
         }
 
-        // 2. БАС-ПАРТІЯ (на кожну парну долю або октавний диско-бас)
+        // 2. Бас
         if (s % 2 === 0) {
             let bassSemitones = scale[chordDeg % scale.length];
-            // У диско та гопаку бас стрибає на октаву вгору на слабку долю
             if ((preset.style === 'disco' || preset.style === 'hopak') && (s % 4 === 2)) {
                 bassSemitones += 12;
             }
             const bassMidi = rootMidi - 12 + bassSemitones;
-            playSynthTone(midiToFreq(bassMidi), stepDur * 1.5, preset.bassWave, 0.13, false);
+            playSynthTone(midiToFreq(bassMidi), stepDur * 1.5, preset.bassWave, 0.13, false, when);
         }
 
-        // 3. АКОРДОВИЙ АКОМПАНЕМЕНТ (тризвук на слабку долю)
+        // 3. Акорди
         if (s % 4 === 2) {
             const c1 = rootMidi + scale[chordDeg % scale.length];
             const c2 = rootMidi + scale[(chordDeg + 2) % scale.length];
             const c3 = rootMidi + scale[(chordDeg + 4) % scale.length];
-            playSynthTone(midiToFreq(c1), stepDur * 1.4, 'triangle', 0.04, false);
-            playSynthTone(midiToFreq(c2), stepDur * 1.4, 'triangle', 0.04, false);
-            playSynthTone(midiToFreq(c3), stepDur * 1.4, 'triangle', 0.04, false);
+            playSynthTone(midiToFreq(c1), stepDur * 1.4, 'triangle', 0.04, false, when);
+            playSynthTone(midiToFreq(c2), stepDur * 1.4, 'triangle', 0.04, false, when);
+            playSynthTone(midiToFreq(c3), stepDur * 1.4, 'triangle', 0.04, false, when);
         }
 
-        // 4. УДАРНІ (Ритм-секція)
+        // 4. Ударні
         if (s % 4 === 0) {
-            playDrum('kick');
+            playDrum('kick', when);
         } else if (preset.style === 'salsa' && s % 8 === 3) {
-            playDrum('kick'); // Синкопа для сальси
+            playDrum('kick', when);
         }
 
         if (s % 8 === 4) {
-            playDrum('snare');
+            playDrum('snare', when);
         } else if (preset.style === 'march' && (s % 8 === 6 || s % 8 === 7)) {
-            playDrum('snare'); // Маршовий дріб
+            playDrum('snare', when);
         }
 
         if (s % 2 === 1) {
-            playDrum('hat');
+            playDrum('hat', when);
         }
+    }
 
-        currentStep++;
-        // Кожні 64 кроки (2 повні квадрати) створюємо свіжу варіацію мелодії, щоб вона ніколи не набридала
-        if (currentStep % 64 === 0) {
-            currentSong = generateRandomSong(currentDance);
+    // Планувальник: дивиться на 150 мс уперед і ставить ноти у Web Audio.
+    // Працює навіть коли вкладка у фоні (бо setInterval/таймер лише «будить»,
+    // а реальний час нот тримає аудіо-контекст).
+    function scheduler() {
+        if (!isAnimating || !currentSong || !audioCtx) return;
+
+        while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD_S) {
+            const s = currentStep % 32;
+            scheduleStep(s, nextNoteTime);
+
+            const stepDur = 60 / currentSong.tempo / 4;
+            nextNoteTime += stepDur;
+            currentStep++;
+
+            if (currentStep % 64 === 0) {
+                currentSong = generateRandomSong(currentDance);
+            }
         }
+        musicTimer = setTimeout(scheduler, LOOKAHEAD_MS);
     }
 
     function startMusicForDance(danceIdx) {
@@ -520,16 +538,18 @@
         if (audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
+
+        initAudioRouting();          // ← створює mediaDest + <audio>
+
         currentSong = generateRandomSong(danceIdx);
         currentStep = 0;
-        const stepMs = (60 / currentSong.tempo / 4) * 1000;
-        playSequencerStep();
-        musicTimer = setInterval(playSequencerStep, stepMs);
+        nextNoteTime = audioCtx.currentTime + 0.1;  // старт за 100 мс
+        scheduler();
     }
 
     function stopMusic() {
         if (musicTimer) {
-            clearInterval(musicTimer);
+            clearTimeout(musicTimer);
             musicTimer = null;
         }
     }
@@ -544,7 +564,6 @@
     ctx.lineJoin = 'round';
     ctx.strokeStyle = currentStrokeColor;
 
-    // Товщина лінії
     const brushSlider = document.getElementById('brushSize');
     const brushVal = document.getElementById('brushVal');
     brushSlider.addEventListener('input', (e) => {
@@ -553,7 +572,6 @@
         brushVal.textContent = currentBrushSize;
     });
 
-    // Розмір клітинок зошита
     const gridSlider = document.getElementById('gridSize');
     const gridVal = document.getElementById('gridVal');
     const notebookSheet = document.getElementById('notebookSheet');
@@ -563,7 +581,6 @@
         notebookSheet.style.setProperty('--grid-size', size + 'px');
     });
 
-    // Палітра
     document.querySelectorAll('.color-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
@@ -607,7 +624,6 @@
     canvas.addEventListener('pointerup', () => isDrawing = false);
     canvas.addEventListener('pointercancel', () => isDrawing = false);
 
-    // Кнопки
     document.getElementById('clearBtn').addEventListener('click', () => {
         savedDrawing = null;
         stopAnimation(true);
@@ -625,6 +641,7 @@
 
     document.getElementById('muteBtn').addEventListener('click', (e) => {
         isMuted = !isMuted;
+        if (audioEl) audioEl.muted = isMuted;
         e.target.textContent = isMuted ? '🔇 Без звуку' : '🔊 Звук';
         e.target.style.background = isMuted ? '#6c757d' : '#fd7e14';
     });
@@ -642,7 +659,6 @@
         badge.textContent = "Танець: " + DANCE_NAMES[currentDance];
         badge.style.display = 'block';
 
-        // Генеруємо та запускаємо нову мелодію під обраний танець
         startMusicForDance(currentDance);
     }
 
@@ -809,7 +825,7 @@
         return bestMatch;
     }
 
-    // --- 10 ВИДІВ АНІМАЦІЇ (БЕЗ ОБЕРТАННЯ НАВКОЛО СВОЄЇ ОСІ) ---
+    // --- 10 ВИДІВ АНІМАЦІЇ ---
     function getDancePose(t, danceIndex) {
         let pose = {
             bodyX: 0, bodyY: 0, bodyRot: 0,
@@ -817,7 +833,7 @@
         };
 
         switch (danceIndex) {
-            case 0: // 1. Веселий марш
+            case 0:
                 pose.bodyY = -Math.abs(Math.sin(t * 6)) * 8;
                 pose.leftArmRot = Math.sin(t * 6) * 0.5;
                 pose.rightArmRot = -Math.sin(t * 6) * 0.5;
@@ -826,7 +842,7 @@
                 pose.headRot = Math.sin(t * 3) * 0.1;
                 break;
 
-            case 1: // 2. Стрибки радості
+            case 1:
                 let jump = (Math.sin(t * 8) + 1) / 2;
                 pose.bodyY = -jump * 28;
                 pose.leftArmRot = jump * 1.35;
@@ -836,7 +852,7 @@
                 pose.headRot = Math.sin(t * 4) * 0.08;
                 break;
 
-            case 2: // 3. Запальне Диско
+            case 2:
                 pose.bodyX = Math.sin(t * 5) * 14;
                 pose.bodyY = -Math.abs(Math.cos(t * 10)) * 8;
                 pose.bodyRot = Math.sin(t * 5) * 0.12;
@@ -847,7 +863,7 @@
                 pose.headRot = -Math.sin(t * 5) * 0.25;
                 break;
 
-            case 3: // 4. Кібер-Робот
+            case 3:
                 let step = Math.floor(t * 5) / 5;
                 pose.bodyY = (Math.floor(t * 4) % 2) * -6;
                 pose.leftArmRot = Math.round(Math.sin(step * 6) * 2) * 0.45;
@@ -857,7 +873,7 @@
                 pose.headRot = (Math.floor(t * 3) % 3 - 1) * 0.22;
                 break;
 
-            case 4: // 5. Український Гопак
+            case 4:
                 pose.bodyY = Math.sin(t * 10) * 15 + 10;
                 pose.leftArmRot = -0.5 + Math.sin(t * 5) * 0.3;
                 pose.rightArmRot = 0.5 - Math.sin(t * 5) * 0.3;
@@ -866,7 +882,7 @@
                 pose.headRot = Math.sin(t * 10) * 0.15;
                 break;
 
-            case 5: // 6. Гавайська хвиля
+            case 5:
                 pose.bodyX = Math.sin(t * 4) * 22;
                 pose.bodyRot = Math.cos(t * 4) * 0.18;
                 pose.headRot = Math.sin(t * 4 - 1) * 0.3;
@@ -876,7 +892,7 @@
                 pose.rightLegRot = -pose.bodyRot * 1.2;
                 break;
 
-            case 6: // 7. Латина / Сальса (замість обертання навколо осі)
+            case 6:
                 pose.bodyX = Math.sin(t * 7) * 18;
                 pose.bodyY = -Math.abs(Math.sin(t * 14)) * 7;
                 pose.bodyRot = -Math.sin(t * 7) * 0.16;
@@ -887,7 +903,7 @@
                 pose.headRot = Math.sin(t * 7) * 0.22;
                 break;
 
-            case 7: // 8. Рок-гітарист
+            case 7:
                 pose.bodyY = Math.abs(Math.sin(t * 12)) * 10;
                 pose.bodyRot = Math.sin(t * 6) * 0.15 + 0.1;
                 pose.headRot = Math.sin(t * 14) * 0.55;
@@ -897,7 +913,7 @@
                 pose.rightLegRot = -0.35;
                 break;
 
-            case 8: // 9. Єгипетський фараон
+            case 8:
                 pose.bodyX = Math.sin(t * 4) * 18;
                 pose.bodyY = -Math.abs(Math.sin(t * 8)) * 5;
                 pose.leftArmRot = 0.9 + Math.sin(t * 8) * 0.35;
@@ -907,7 +923,7 @@
                 pose.headRot = Math.cos(t * 8) * 0.18;
                 break;
 
-            case 9: // 10. Супер-спринт
+            case 9:
                 pose.bodyY = -Math.abs(Math.sin(t * 18)) * 12;
                 pose.bodyX = Math.sin(t * 3) * 12;
                 pose.leftLegRot = Math.sin(t * 18) * 0.85;
@@ -920,7 +936,6 @@
         return pose;
     }
 
-    // --- ЦИКЛ АНІМАЦІЇ ---
     function animateLoop() {
         if (!isAnimating) return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -940,20 +955,16 @@
         ctx.rotate(pose.bodyRot);
         ctx.translate(-pivotX, -pivotY);
 
-        // 1. Ноги (на задньому плані)
         drawConnectedPart(bodyParts.leftLeg, joints.leftLeg, pose.leftLegRot);
         drawConnectedPart(bodyParts.rightLeg, joints.rightLeg, pose.rightLegRot);
 
-        // 2. Торс
         if (bodyParts.torso) {
             ctx.drawImage(bodyParts.torso.canvas, bodyParts.torso.offsetX, bodyParts.torso.offsetY);
         }
 
-        // 3. Руки (на передньому плані)
         drawConnectedPart(bodyParts.leftArm, joints.leftArm, pose.leftArmRot);
         drawConnectedPart(bodyParts.rightArm, joints.rightArm, pose.rightArmRot);
 
-        // 4. Голова
         drawConnectedPart(bodyParts.head, joints.head, pose.headRot);
 
         ctx.restore();
