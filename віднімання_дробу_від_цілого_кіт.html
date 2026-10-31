@@ -1,0 +1,3446 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Алхімічний Реактор — Математична Гра</title>
+
+<!-- Підключення Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    font-family: Arial, sans-serif;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #130924;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    font-family: Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 16:9 Widescreen Responsive Stage (прозорий для динамічних фонів) */
+  #stage-wrapper {
+    position: relative;
+    width: 100vw;
+    height: 56.25vw;
+    max-height: 100vh;
+    max-width: 177.78vh;
+    overflow: hidden;
+    background: transparent;
+    transform-origin: center center;
+    transition: transform 0.2s ease;
+  }
+
+  #scene-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Коли обрано користувацький динамічний фон, робимо задню стіну печери напівпрозорою */
+  body.has-custom-bg #cave-backdrop-rect {
+    opacity: 0.18;
+  }
+  body.has-custom-bg #cave-far-wall {
+    opacity: 0.28;
+  }
+
+  #fx-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 15;
+  }
+
+  /* Hanging Alchemical Crystal & Brass Task Board */
+  #problem-board-container {
+    position: absolute;
+    top: 1.5%;
+    left: 46%;
+    transform: translateX(-50%);
+    width: 52%;
+    height: 24.5%;
+    z-index: 20;
+    filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.75));
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  #problem-board-container.swing {
+    animation: boardSwing 0.6s ease-in-out;
+  }
+
+  #problem-board-container.wrong-shake {
+    animation: boardWrongShake 0.48s ease;
+  }
+
+  @keyframes boardSwing {
+    0% { transform: translateX(-50%) rotate(0deg); }
+    25% { transform: translateX(-50%) rotate(-2.5deg) scale(1.02); }
+    55% { transform: translateX(-50%) rotate(2deg) scale(1.01); }
+    80% { transform: translateX(-50%) rotate(-0.8deg); }
+    100% { transform: translateX(-50%) rotate(0deg); }
+  }
+
+  @keyframes boardWrongShake {
+    0%, 100% { transform: translateX(-50%) rotate(0deg); }
+    20% { transform: translateX(calc(-50% - 14px)) rotate(-2.5deg); }
+    40% { transform: translateX(calc(-50% + 14px)) rotate(2.5deg); }
+    60% { transform: translateX(calc(-50% - 10px)) rotate(-1.5deg); }
+    80% { transform: translateX(calc(-50% + 8px)) rotate(1.2deg); }
+  }
+
+  .board-plate {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background:
+      radial-gradient(ellipse at 50% 35%, rgba(186, 104, 255, 0.25), transparent 72%),
+      linear-gradient(180deg, rgba(46, 20, 77, 0.9) 0%, rgba(28, 11, 48, 0.92) 55%, rgba(16, 6, 31, 0.95) 100%);
+    border-radius: 24px;
+    border: 4px solid #e0a938;
+    box-shadow:
+      inset 0 3px 6px rgba(230, 175, 255, 0.4),
+      inset 0 -6px 14px rgba(8, 2, 18, 0.9),
+      0 6px 0 #6e480b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 3.5%;
+    backdrop-filter: blur(4px);
+  }
+
+  .rivet {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #a8ffed, #1bc4a3 65%, #075243 100%);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.8), inset 0 1px 2px rgba(255,255,255,0.7);
+  }
+  .rivet.tl { top: 9px; left: 11px; }
+  .rivet.tr { top: 9px; right: 11px; }
+  .rivet.bl { bottom: 9px; left: 11px; }
+  .rivet.br { bottom: 9px; right: 11px; }
+
+  .chain {
+    position: absolute;
+    top: -28px;
+    width: 12px;
+    height: 34px;
+    background: repeating-linear-gradient(180deg, #f0c259 0px, #7d5716 5px, #2b1d07 8px, #f0c259 11px);
+    border-radius: 6px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.7);
+    z-index: -1;
+  }
+  .chain.left { left: 14%; }
+  .chain.right { right: 14%; }
+
+  /* 3 Glowing Alchemy Runes on the Board Bottom Rim */
+  #rope-stage-dots {
+    position: absolute;
+    bottom: -13px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 14px;
+    background: linear-gradient(180deg, #2d144d, #160829);
+    padding: 4px 16px;
+    border-radius: 14px;
+    border: 3px solid #d49b35;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.75);
+  }
+
+  .stage-gem {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #432266, #1b0a30);
+    border: 2px solid #8a6b26;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.8);
+    transition: all 0.35s ease;
+  }
+
+  .stage-gem.lit {
+    background: radial-gradient(circle at 35% 35%, #e6fff9, #19f5b8 55%, #057a59 100%);
+    border-color: #afffe8;
+    box-shadow: 0 0 12px #19f5b8, inset 0 1px 3px #ffffff;
+    transform: scale(1.18);
+  }
+
+  /* Math Equation & Input Slots */
+  .math-expr {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.28em;
+    color: #fdf2ff;
+    font-weight: bold;
+    text-shadow: 0 3px 6px rgba(0,0,0,0.9), 0 0 12px rgba(195, 110, 255, 0.4);
+    font-size: clamp(16px, 2.75vw, 42px);
+    line-height: 1;
+    flex: 1;
+  }
+
+  .whole-num {
+    font-size: 1.15em;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    padding: 0.06em 0.18em;
+    border-radius: 10px;
+    transition: transform 0.18s ease, background 0.18s ease;
+  }
+
+  .whole-num.borrow-clickable:hover {
+    background: rgba(50, 245, 190, 0.22);
+    transform: scale(1.07);
+  }
+
+  .op-sign {
+    margin: 0 0.08em;
+    color: #ffe066;
+    font-size: 1.05em;
+  }
+
+  .mixed-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.14em;
+  }
+
+  .frac-box {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    font-size: 0.72em;
+    line-height: 1.05;
+    padding: 0 0.1em;
+  }
+
+  .frac-num { padding-bottom: 0.08em; }
+  .frac-bar {
+    width: 100%;
+    min-width: 1.25em;
+    height: 0.11em;
+    background: linear-gradient(90deg, #6bffdf, #ffffff, #6bffdf);
+    border-radius: 3px;
+    box-shadow: 0 2px 3px rgba(0,0,0,0.8);
+  }
+  .frac-den { padding-top: 0.08em; }
+
+  .answer-slots-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.18em;
+    margin-left: 0.08em;
+  }
+
+  .carved-slot {
+    min-width: 1.45em;
+    height: 1.32em;
+    padding: 0 0.22em;
+    border-radius: 10px;
+    background:
+      radial-gradient(circle at 50% 35%, rgba(64, 25, 105, 0.92), rgba(24, 8, 44, 0.98));
+    border: 3px solid #d49b35;
+    box-shadow:
+      inset 0 4px 8px rgba(0,0,0,0.9),
+      inset 0 -1px 3px rgba(180, 120, 255, 0.35),
+      0 2px 4px rgba(0,0,0,0.6);
+    color: #ffe885;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.92em;
+    cursor: pointer;
+    transition: all 0.16s ease;
+  }
+
+  .carved-slot.frac-slot {
+    min-width: 1.55em;
+    height: 1.18em;
+    font-size: 0.72em;
+    border-radius: 8px;
+  }
+
+  .carved-slot.active-slot {
+    border-color: #2bf5c2;
+    background:
+      radial-gradient(circle at 50% 35%, rgba(28, 115, 110, 0.95), rgba(10, 48, 52, 0.98));
+    box-shadow:
+      0 0 14px rgba(43, 245, 194, 0.85),
+      inset 0 3px 6px rgba(0,0,0,0.85);
+    transform: scale(1.06);
+  }
+
+  .carved-slot.correct-slot {
+    border-color: #a8ff54;
+    background: radial-gradient(circle at 50% 35%, #246e3a, #0e381b);
+    box-shadow: 0 0 18px rgba(168, 255, 84, 0.85);
+  }
+
+  .slot-frac-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1em;
+  }
+
+  .slot-frac-bar {
+    width: 100%;
+    height: 0.09em;
+    min-height: 3px;
+    background: linear-gradient(90deg, #42f5c8, #e6fff9, #42f5c8);
+    border-radius: 3px;
+  }
+
+  /* Visual Borrow Helper Button */
+  #borrow-helper-btn {
+    width: clamp(36px, 3.6vw, 52px);
+    height: clamp(36px, 3.6vw, 52px);
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #4c227a, #1d0936 70%);
+    border: 3px solid #e0a83a;
+    box-shadow: 0 4px 0 #593b0a, 0 6px 12px rgba(0,0,0,0.7), inset 0 2px 4px rgba(215,165,255,0.5);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.16s ease, filter 0.16s ease;
+    flex-shrink: 0;
+    margin-left: 8px;
+  }
+
+  #borrow-helper-btn:hover {
+    transform: scale(1.1);
+    filter: brightness(1.18);
+  }
+
+  #borrow-helper-btn.active {
+    border-color: #52ffcf;
+    box-shadow: 0 0 16px #2bf5c2, 0 3px 0 #593b0a;
+  }
+
+  /* Non-Verbal Visual Borrow Tray */
+  #visual-borrow-tray {
+    position: absolute;
+    top: 104%;
+    left: 50%;
+    transform: translateX(-50%) scaleY(0);
+    transform-origin: top center;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(165, 95, 255, 0.22), transparent 75%),
+      linear-gradient(180deg, rgba(46, 18, 77, 0.95) 0%, rgba(20, 7, 36, 0.98) 100%);
+    border: 4px solid #cf9b34;
+    border-radius: 18px;
+    padding: 8px 18px;
+    box-shadow: 0 12px 24px rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
+    z-index: 25;
+    white-space: nowrap;
+  }
+
+  #visual-borrow-tray.open {
+    transform: translateX(-50%) scaleY(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Tactile Alchemical Crystal Number Pad Dock at Bottom */
+  #keypad-dock {
+    position: absolute;
+    bottom: 1.8%;
+    left: 46%;
+    transform: translateX(-50%);
+    width: 76%;
+    height: 12.2%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.9%;
+    z-index: 25;
+  }
+
+  .wood-key {
+    flex: 1;
+    height: 100%;
+    max-width: 7.5%;
+    border-radius: 14px;
+    cursor: pointer;
+    background:
+      radial-gradient(circle at 50% 25%, rgba(190, 125, 255, 0.26), transparent 68%),
+      linear-gradient(180deg, rgba(66, 28, 110, 0.92) 0%, rgba(40, 15, 71, 0.95) 55%, rgba(22, 7, 41, 0.98) 100%);
+    border: 3.5px solid #d49f38;
+    box-shadow:
+      0 6px 0 #593b0c,
+      0 10px 16px rgba(0,0,0,0.75),
+      inset 0 2px 4px rgba(225, 175, 255, 0.5),
+      inset 0 -4px 8px rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fdf5ff;
+    font-weight: bold;
+    font-size: clamp(15px, 2.2vw, 32px);
+    text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+    transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .wood-key:hover {
+    transform: translateY(-4px) scale(1.04);
+    filter: brightness(1.15);
+  }
+
+  .wood-key:active {
+    transform: translateY(3px) scale(0.97);
+    box-shadow: 0 2px 0 #593b0c, 0 4px 8px rgba(0,0,0,0.7);
+  }
+
+  .wood-key.action-erase-key {
+    background: linear-gradient(180deg, #8f2d47 0%, #5c162b 60%, #380a18 100%);
+    border-color: #eb7c96;
+  }
+
+  .wood-key.action-check-key {
+    max-width: 9.5%;
+    background:
+      radial-gradient(circle at 50% 25%, rgba(140, 255, 215, 0.28), transparent 70%),
+      linear-gradient(180deg, #168065 0%, #0d5442 58%, #063327 100%);
+    border-color: #5cf2c8;
+  }
+
+  .wood-key svg {
+    width: 56%;
+    height: 56%;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.8));
+  }
+
+  /* Minimalist Top Icon Buttons (Skip ">>", Sound, Zoom+, Zoom-) */
+  .icon-btn {
+    position: absolute;
+    top: 3.2%;
+    width: clamp(42px, 4.6vw, 66px);
+    height: clamp(42px, 4.6vw, 66px);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 30;
+    background:
+      radial-gradient(circle at 35% 30%, #4f2380, #2a1047 65%, #160726 100%);
+    border: 3.5px solid #d49f38;
+    box-shadow:
+      0 5px 0 #593b0c,
+      0 8px 16px rgba(0,0,0,0.75),
+      inset 0 2px 5px rgba(220, 175, 255, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff4b8;
+    font-weight: bold;
+    font-size: clamp(14px, 1.5vw, 22px);
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+  }
+
+  .icon-btn:hover {
+    transform: translateY(-3px) scale(1.06);
+    filter: brightness(1.15);
+  }
+
+  .icon-btn:active {
+    transform: translateY(3px) scale(0.95);
+  }
+
+  #sound-btn { left: 1.8%; }
+  #zoom-in-btn { left: 7.4%; }
+  #zoom-out-btn { left: 13.0%; }
+  #skip-btn { right: 2.2%; }
+
+  .icon-btn svg {
+    width: 58%;
+    height: 58%;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.75));
+  }
+
+  .shelf-trophy {
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+    transform-box: fill-box;
+    transform-origin: center bottom;
+  }
+  .shelf-trophy:hover {
+    filter: brightness(1.2) drop-shadow(0 0 12px rgba(80, 255, 210, 0.85));
+    transform: scale(1.08);
+  }
+
+  /* ================= THEME MANAGER UI (⚙️) ================= */
+  #theme-settings-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2b144d, #140726);
+    border: 3px solid #e0a938;
+    color: #fff;
+    font-size: 26px;
+    cursor: pointer;
+    z-index: 85000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.75);
+    transition: transform 0.2s ease;
+  }
+  #theme-settings-btn:hover {
+    transform: scale(1.1) rotate(25deg);
+  }
+
+  #theme-modal-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.72);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 86000;
+    backdrop-filter: blur(4px);
+  }
+  #theme-modal-overlay.open {
+    display: flex;
+  }
+
+  #theme-modal {
+    width: 90%;
+    max-width: 680px;
+    max-height: 60vh;
+    background: rgba(26, 12, 46, 0.96);
+    border: 3px solid #e0a938;
+    border-radius: 18px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.9);
+    color: #fff;
+  }
+
+  .theme-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(224, 169, 56, 0.35);
+    margin-bottom: 12px;
+    font-size: 18px;
+    font-weight: bold;
+  }
+
+  .theme-modal-close {
+    background: #c0392b;
+    color: #fff;
+    border: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+
+  #theme-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 12px;
+    overflow-y: auto;
+    padding-right: 6px;
+    flex: 1;
+  }
+
+  .theme-thumb-card {
+    position: relative;
+    height: 90px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 3px solid rgba(255,255,255,0.25);
+    cursor: pointer;
+    background-size: cover;
+    background-position: center;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .theme-thumb-card:hover {
+    transform: scale(1.04);
+    border-color: #ffd84d;
+  }
+  .theme-thumb-card.active-theme {
+    border-color: #2bf5c2;
+    box-shadow: 0 0 12px #2bf5c2;
+  }
+  .theme-thumb-card.no-bg-card {
+    background: linear-gradient(135deg, #241040, #0d2e3a);
+    align-items: center;
+  }
+  .theme-thumb-title {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.68);
+    color: #fff;
+    font-size: 13px;
+    font-weight: bold;
+    text-align: center;
+    padding: 4px 6px;
+    text-shadow: 0 1px 2px #000;
+  }
+
+  /* ================= GLOBAL DRAWING TOOL UI (✏️ Малювати) ================= */
+  #global-draw-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 90000;
+    pointer-events: none;
+    touch-action: none;
+  }
+
+  #toggle-draw-btn-global {
+    position: fixed;
+    bottom: 85px;
+    right: 20px;
+    background: #8e44ad;
+    color: #ffffff;
+    border: 2px solid #e0a938;
+    border-radius: 28px;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 90001;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+  #toggle-draw-btn-global:hover {
+    transform: scale(1.05);
+    filter: brightness(1.12);
+  }
+
+  #draw-panel-global {
+    position: fixed;
+    bottom: 145px;
+    right: 20px;
+    width: 250px;
+    background: rgba(28, 14, 46, 0.96);
+    border: 2.5px solid #e0a938;
+    border-radius: 16px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.85);
+    z-index: 90002;
+    display: none;
+    flex-direction: column;
+    color: #fff;
+    overflow: hidden;
+  }
+
+  #draw-panel-header {
+    background: #8e44ad;
+    padding: 8px 12px;
+    cursor: move;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    touch-action: none;
+  }
+
+  .draw-drag-bars {
+    width: 36px;
+    height: 6px;
+    border-top: 2px solid rgba(255,255,255,0.8);
+    border-bottom: 2px solid rgba(255,255,255,0.8);
+  }
+
+  #close-draw-panel-btn {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .draw-panel-body {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .draw-tools-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .draw-tool-btn {
+    flex: 1;
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    font-size: 13px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .draw-tool-btn.active {
+    background: #8e44ad;
+    border-color: #2bf5c2;
+    box-shadow: 0 0 8px rgba(43, 245, 194, 0.6);
+  }
+
+  .draw-controls-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  #draw-size-slider {
+    flex: 1;
+    accent-color: #2bf5c2;
+    cursor: pointer;
+  }
+
+  #draw-color-picker {
+    width: 36px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  #draw-clear-btn {
+    width: 100%;
+    padding: 8px;
+    border-radius: 10px;
+    border: none;
+    background: #c0392b;
+    color: #fff;
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #draw-clear-btn:hover {
+    background: #e74c3c;
+  }
+
+  /* Responsive Mobile Adjustments */
+  @media (max-width: 768px) {
+    #problem-board-container {
+      width: 62%;
+      height: 26%;
+      left: 48%;
+    }
+    #keypad-dock {
+      width: 86%;
+      left: 45%;
+      height: 13.5%;
+    }
+    #toggle-draw-btn-global {
+      padding: 8px 12px;
+      font-size: 13px;
+      bottom: 76px;
+      right: 12px;
+    }
+    #theme-settings-btn {
+      width: 46px;
+      height: 46px;
+      font-size: 22px;
+      bottom: 14px;
+      right: 12px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage-wrapper">
+  <!-- Top-Left Sound Toggle Button -->
+  <button id="sound-btn" class="icon-btn" aria-label="Sound">
+    <svg viewBox="0 0 64 64">
+      <defs>
+        <linearGradient id="brassGradBtn" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#fff4b8"/>
+          <stop offset="50%" stop-color="#deb841"/>
+          <stop offset="100%" stop-color="#7d560d"/>
+        </linearGradient>
+      </defs>
+      <path d="M12 24 L24 24 L38 12 L38 52 L24 40 L12 40 Z" fill="url(#brassGradBtn)" stroke="#1f1402" stroke-width="2.5" stroke-linejoin="round"/>
+      <path id="sound-waves" d="M45 20 C51 26, 51 38, 45 44 M52 14 C61 24, 61 40, 52 50" fill="none" stroke="url(#brassGradBtn)" stroke-width="4.5" stroke-linecap="round"/>
+      <line id="sound-mute-line" x1="10" y1="10" x2="54" y2="54" stroke="#ff4747" stroke-width="6" stroke-linecap="round" style="display:none;"/>
+    </svg>
+  </button>
+
+  <!-- Zoom In / Zoom Out Buttons for Tablet & Mobile -->
+  <button id="zoom-in-btn" class="icon-btn" aria-label="Zoom In">🔍+</button>
+  <button id="zoom-out-btn" class="icon-btn" aria-label="Zoom Out">🔍-</button>
+
+  <!-- Top-Right Minimalist Skip Button (">>" without words) -->
+  <button id="skip-btn" class="icon-btn" aria-label="Next">
+    <svg viewBox="0 0 64 64">
+      <path d="M12 14 L34 32 L12 50 Z" fill="url(#brassGradBtn)" stroke="#1f1402" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M32 14 L54 32 L32 50 Z" fill="url(#brassGradBtn)" stroke="#1f1402" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <!-- Hanging Alchemical Problem Board with Input Slots & Visual Borrow Helper -->
+  <div id="problem-board-container">
+    <div class="chain left"></div>
+    <div class="chain right"></div>
+    <div class="board-plate">
+      <div class="rivet tl"></div>
+      <div class="rivet tr"></div>
+      <div class="rivet bl"></div>
+      <div class="rivet br"></div>
+
+      <div id="problem-math" class="math-expr"></div>
+
+      <!-- Non-verbal Visual Alchemy Crystal Split Helper Button -->
+      <button id="borrow-helper-btn" aria-label="Visual Split Helper">
+        <svg viewBox="0 0 48 48" width="72%" height="72%">
+          <circle cx="24" cy="24" r="18" fill="#2bf5c2" stroke="#130826" stroke-width="3"/>
+          <path d="M24 6 L24 42 M6 24 L42 24 M11 11 L37 37 M37 11 L11 37" stroke="#0c4738" stroke-width="2.5"/>
+          <circle cx="24" cy="24" r="18" fill="none" stroke="#ffdf73" stroke-width="2.5"/>
+          <circle cx="24" cy="24" r="4.5" fill="#ffdf73" stroke="#130826" stroke-width="2"/>
+        </svg>
+      </button>
+
+      <!-- 3 Glowing Alchemy Gems showing the 3 charges of the Cauldron -->
+      <div id="rope-stage-dots">
+        <div class="stage-gem" id="gem-0"></div>
+        <div class="stage-gem" id="gem-1"></div>
+        <div class="stage-gem" id="gem-2"></div>
+      </div>
+    </div>
+
+    <!-- Non-Verbal Visual Borrow Tray -->
+    <div id="visual-borrow-tray"></div>
+  </div>
+
+  <!-- Main Living Widescreen Scene SVG (1920x1080 unified coordinate system) -->
+  <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Enchanted Crystal Cave Backdrop Gradients -->
+      <linearGradient id="wallGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#140826"/>
+        <stop offset="55%" stop-color="#261147"/>
+        <stop offset="100%" stop-color="#120624"/>
+      </linearGradient>
+
+      <linearGradient id="floorGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#22103d"/>
+        <stop offset="35%" stop-color="#2d1652"/>
+        <stop offset="75%" stop-color="#1c0c36"/>
+        <stop offset="100%" stop-color="#0d041a"/>
+      </linearGradient>
+
+      <radialGradient id="lampGlow" cx="50%" cy="35%" r="60%">
+        <stop offset="0%" stop-color="rgba(85, 255, 215, 0.42)"/>
+        <stop offset="45%" stop-color="rgba(165, 90, 255, 0.16)"/>
+        <stop offset="100%" stop-color="rgba(0, 0, 0, 0)"/>
+      </radialGradient>
+
+      <!-- Raccoon Alchemist Fur Gradient -->
+      <radialGradient id="skinGrad" cx="45%" cy="38%" r="58%">
+        <stop offset="0%" stop-color="#d8c8e8"/>
+        <stop offset="55%" stop-color="#9b88b3"/>
+        <stop offset="85%" stop-color="#685680"/>
+        <stop offset="100%" stop-color="#3f3152"/>
+      </radialGradient>
+
+      <radialGradient id="strainRedGrad" cx="50%" cy="45%" r="55%">
+        <stop offset="0%" stop-color="#ff5e7e"/>
+        <stop offset="65%" stop-color="#d9164a"/>
+        <stop offset="100%" stop-color="rgba(180, 20, 60, 0)"/>
+      </radialGradient>
+
+      <!-- Dark Raccoon Nose Gradient -->
+      <radialGradient id="noseGrad" cx="35%" cy="30%" r="65%">
+        <stop offset="0%" stop-color="#6e5a85"/>
+        <stop offset="55%" stop-color="#2c2038"/>
+        <stop offset="100%" stop-color="#110b17"/>
+      </radialGradient>
+
+      <!-- Purple & Gold Starry Wizard Robe Pattern -->
+      <pattern id="plaidShirt" width="48" height="48" patternUnits="userSpaceOnUse">
+        <rect width="48" height="48" fill="#4a1c7d"/>
+        <circle cx="14" cy="14" r="2.5" fill="#ffe066" opacity="0.8"/>
+        <circle cx="38" cy="34" r="2" fill="#52ffcf" opacity="0.75"/>
+        <polygon points="34,8 36,13 41,15 36,17 34,22 32,17 27,15 32,13" fill="#ffd84d" opacity="0.7"/>
+      </pattern>
+
+      <radialGradient id="bellyShade" cx="55%" cy="38%" r="56%">
+        <stop offset="0%" stop-color="rgba(255, 230, 255, 0.22)"/>
+        <stop offset="60%" stop-color="rgba(0, 0, 0, 0)"/>
+        <stop offset="88%" stop-color="rgba(18, 5, 36, 0.55)"/>
+        <stop offset="100%" stop-color="rgba(8, 2, 18, 0.85)"/>
+      </radialGradient>
+
+      <linearGradient id="pantsGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#2d174a"/>
+        <stop offset="50%" stop-color="#1c0d30"/>
+        <stop offset="100%" stop-color="#0e051a"/>
+      </linearGradient>
+
+      <linearGradient id="bootGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#8c4f19"/>
+        <stop offset="45%" stop-color="#4f2908"/>
+        <stop offset="100%" stop-color="#241002"/>
+      </linearGradient>
+
+      <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="55%" stop-color="#e3d5f5"/>
+        <stop offset="100%" stop-color="#a894c2"/>
+      </linearGradient>
+
+      <!-- Forged Copper & Emerald Cauldron Metal Gradient -->
+      <radialGradient id="cauldronMetal" cx="38%" cy="32%" r="65%">
+        <stop offset="0%" stop-color="#ffba6b"/>
+        <stop offset="38%" stop-color="#c96d24"/>
+        <stop offset="75%" stop-color="#6e3209"/>
+        <stop offset="100%" stop-color="#2e1102"/>
+      </radialGradient>
+
+      <linearGradient id="potionGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#75ffdf"/>
+        <stop offset="50%" stop-color="#14cc9e"/>
+        <stop offset="100%" stop-color="#06523e"/>
+      </linearGradient>
+
+      <!-- Glowing Emerald-Gold Conduit Pipe Pattern -->
+      <pattern id="ropePattern" width="28" height="20" patternUnits="userSpaceOnUse">
+        <rect width="28" height="20" fill="#0d4a42"/>
+        <rect x="0" y="4" width="28" height="12" fill="#2bf5c2" opacity="0.75"/>
+        <rect x="10" y="0" width="6" height="20" fill="#d49b35"/>
+      </pattern>
+
+      <radialGradient id="rugGrad" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#411b6e"/>
+        <stop offset="50%" stop-color="#290e4a"/>
+        <stop offset="72%" stop-color="#e0a938"/>
+        <stop offset="80%" stop-color="#197868"/>
+        <stop offset="100%" stop-color="#140626"/>
+      </radialGradient>
+    </defs>
+
+    <!-- ================= BACKGROUND ENCHANTED CRYSTAL CAVE ================= -->
+    <rect id="cave-backdrop-rect" x="0" y="0" width="1920" height="650" fill="url(#wallGrad)"/>
+
+    <!-- Far Cave Stalactites & Glowing Crystals -->
+    <g id="cave-far-wall">
+      <path d="M0 0 L0 190 Q110 90 210 170 L260 40 L310 150 Q450 60 580 120 L640 0 Z" fill="#1b0b33" opacity="0.8"/>
+      <path d="M1220 0 L1290 140 Q1450 75 1590 165 L1670 50 L1750 180 L1920 110 L1920 0 Z" fill="#1b0b33" opacity="0.8"/>
+      <!-- Glowing Background Amethyst & Aqua Crystals -->
+      <polygon points="85,455 115,320 155,355 140,455" fill="#b84dff" opacity="0.45"/>
+      <polygon points="145,455 175,365 205,390 190,455" fill="#2bf5c2" opacity="0.4"/>
+      <polygon points="1140,455 1170,335 1215,370 1195,455" fill="#ff59b8" opacity="0.38"/>
+    </g>
+
+    <!-- Enchanted Alchemy Window / Astrolabe on Left Wall -->
+    <g id="painting-left" transform="translate(185, 205) rotate(-1.5)">
+      <circle cx="0" cy="40" r="86" fill="#0d041c" stroke="url(#brassGradBtn)" stroke-width="12"/>
+      <circle cx="0" cy="40" r="72" fill="#1a0b36"/>
+      <!-- Crescent Moon & Floating Potion Flask inside Window -->
+      <path d="M-28 12 A24 24 0 1 0 4 46 A18 18 0 1 1 -28 12 Z" fill="#ffe478"/>
+      <circle cx="28" cy="18" r="3" fill="#52ffcf"/>
+      <circle cx="-36" cy="56" r="2.5" fill="#ff85d8"/>
+      <!-- Little Levitating Potion Bottle -->
+      <path d="M6 42 L18 42 L28 68 C30 74, 24 80, 12 80 C0 80, -6 74, -4 68 Z" fill="#2bf5c2" stroke="#ffffff" stroke-width="2.5"/>
+      <rect x="8" y="34" width="8" height="8" rx="2" fill="#d49b35"/>
+    </g>
+
+    <!-- Crystal Alcove Trophy Cabinet on Right Wall for the 6 Magical Creations -->
+    <g id="trophy-shelf" transform="translate(1255, 115)">
+      <rect x="0" y="0" width="610" height="310" rx="18" fill="rgba(22, 8, 42, 0.85)" stroke="#e0a938" stroke-width="6"/>
+      <rect x="12" y="12" width="586" height="286" rx="12" fill="rgba(12, 4, 24, 0.85)" stroke="#7b38c9" stroke-width="3"/>
+      <rect x="-12" y="148" width="634" height="18" rx="6" fill="#4f2085" stroke="#18072e" stroke-width="3"/>
+      <rect x="-16" y="296" width="642" height="22" rx="7" fill="#5e279e" stroke="#18072e" stroke-width="3"/>
+      <rect x="198" y="12" width="12" height="284" fill="#3b1666"/>
+      <rect x="398" y="12" width="12" height="284" fill="#3b1666"/>
+      <g opacity="0.6" fill="#2bf5c2">
+        <ellipse cx="102" cy="138" rx="55" ry="7"/>
+        <ellipse cx="304" cy="138" rx="55" ry="7"/>
+        <ellipse cx="504" cy="138" rx="55" ry="7"/>
+        <ellipse cx="102" cy="286" rx="55" ry="7"/>
+        <ellipse cx="304" cy="286" rx="55" ry="7"/>
+        <ellipse cx="504" cy="286" rx="55" ry="7"/>
+      </g>
+      <g id="discovered-trophies-layer"></g>
+    </g>
+
+    <!-- Carved Stone Alchemy Wall Trim -->
+    <rect x="0" y="465" width="1920" height="175" fill="#1b0c33" opacity="0.82"/>
+    <rect x="0" y="455" width="1920" height="14" fill="#d49b35" stroke="#140626" stroke-width="2"/>
+    <rect x="0" y="616" width="1920" height="24" fill="#120624" stroke="#070210" stroke-width="2"/>
+
+    <!-- Little Crystal Arch with Peeking Glowing Crystal Gecko/Sprite -->
+    <g id="mouse-hole-group" transform="translate(115, 640)">
+      <path d="M-30 0 C-30 -46, 30 -46, 30 0 Z" fill="#080212" stroke="#d49b35" stroke-width="3.5"/>
+      <g id="wall-mouse" transform="translate(0, -6)">
+        <ellipse cx="0" cy="-8" rx="15" ry="11" fill="#2bf5c2"/>
+        <!-- Cute Glowing Antennae -->
+        <path d="M-6 -18 Q-14 -30 -4 -32" fill="none" stroke="#ffdf66" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M6 -18 Q14 -30 4 -32" fill="none" stroke="#ffdf66" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="-4" cy="-32" r="3.5" fill="#fff8b8"/>
+        <circle cx="4" cy="-32" r="3.5" fill="#fff8b8"/>
+        <circle cx="-6" cy="-10" r="4" fill="#140626"/>
+        <circle cx="-7" cy="-11" r="1.5" fill="#fff"/>
+        <circle cx="6" cy="-10" r="4" fill="#140626"/>
+        <circle cx="5" cy="-11" r="1.5" fill="#fff"/>
+      </g>
+    </g>
+
+    <!-- ================= PERSPECTIVE ALCHEMY STONE FLOOR ================= -->
+    <rect x="0" y="638" width="1920" height="442" fill="url(#floorGrad)" opacity="0.9"/>
+    <g stroke="#120524" stroke-width="3" opacity="0.75">
+      <line x1="0" y1="690" x2="1920" y2="690"/>
+      <line x1="0" y1="755" x2="1920" y2="755"/>
+      <line x1="0" y1="830" x2="1920" y2="830"/>
+      <line x1="0" y1="920" x2="1920" y2="920"/>
+    </g>
+
+    <!-- Glowing Arcane Circle Rug under the Alchemist & Pump -->
+    <g transform="translate(520, 815)">
+      <ellipse cx="0" cy="0" rx="350" ry="70" fill="#090214" opacity="0.65"/>
+      <ellipse cx="0" cy="-5" rx="338" ry="64" fill="url(#rugGrad)" stroke="#ebb542" stroke-width="5" stroke-dasharray="14 6"/>
+      <ellipse cx="0" cy="-5" rx="265" ry="46" fill="none" stroke="#52ffcf" stroke-width="3" stroke-dasharray="10 8" opacity="0.65"/>
+    </g>
+
+    <!-- Magical Energy Conduit Track on the Floor Connecting Pump to Cauldron -->
+    <g id="rope-bridge-layer">
+      <path id="rope-shadow-line" d="M620 822 L1260 822" stroke="rgba(0,0,0,0.55)" stroke-width="22" stroke-linecap="round"/>
+      <path id="main-tension-rope" d="M620 795 Q920 825 1260 785" fill="none" stroke="url(#ropePattern)" stroke-width="22" stroke-linecap="round"/>
+      <path id="main-tension-rope-outline" d="M620 795 Q920 825 1260 785" fill="none" stroke="#52ffcf" stroke-width="6" stroke-dasharray="14 18" stroke-linecap="round" opacity="0.85"/>
+    </g>
+
+    <!-- Floor Crystal Charge Nodes (Light up on steps 1, 2, 3) -->
+    <g id="floor-markers">
+      <ellipse id="floor-mark-0" cx="820" cy="818" rx="24" ry="9" fill="#230e40" stroke="#c9952c" stroke-width="3"/>
+      <ellipse id="floor-mark-1" cx="985" cy="822" rx="24" ry="9" fill="#230e40" stroke="#c9952c" stroke-width="3"/>
+      <ellipse id="floor-mark-2" cx="1150" cy="816" rx="24" ry="9" fill="#230e40" stroke="#c9952c" stroke-width="3"/>
+    </g>
+
+    <!-- Auxiliary Glowing Elixir Coils Behind Alchemist -->
+    <g id="rope-coil-behind" transform="translate(235, 795)">
+      <ellipse cx="0" cy="22" rx="64" ry="18" fill="rgba(0,0,0,0.45)"/>
+      <path id="coil-path-1" d="M-38 10 C-45 -25, 45 -25, 38 10 Z" fill="rgba(43, 245, 194, 0.35)" stroke="#d49b35" stroke-width="6"/>
+      <path id="coil-path-2" d="M-30 -18 C-35 -50, 35 -50, 30 -18 Z" fill="rgba(184, 77, 255, 0.45)" stroke="#d49b35" stroke-width="5" opacity="0.3"/>
+      <path id="coil-path-3" d="M-22 -44 C-25 -72, 25 -72, 22 -44 Z" fill="rgba(255, 224, 102, 0.65)" stroke="#d49b35" stroke-width="5" opacity="0.1"/>
+    </g>
+
+    <!-- ================= ARM 1 (BACK ARM): ALCHEMIST'S REAL IK LEFT ARM ================= -->
+    <g id="uncle-left-arm"></g>
+
+    <!-- ================= THE CHARACTER: UPRIGHT RACCOON ALCHEMIST PUMPING THE ELIXIR PRESS ================= -->
+    <g id="uncle-master-group" transform="translate(465, 760)">
+      <ellipse cx="10" cy="54" rx="195" ry="34" fill="rgba(0,0,0,0.6)"/>
+
+      <!-- Fluffy Striped Raccoon Tail Bobbing Happily Behind Him -->
+      <g id="alchemist-tail" transform="translate(-115, -18)">
+        <path d="M0 0 C-95 -15, -135 -95, -75 -135 C-35 -155, -10 -95, -45 -65" fill="none" stroke="url(#skinGrad)" stroke-width="44" stroke-linecap="round"/>
+        <path d="M0 0 C-95 -15, -135 -95, -75 -135 C-35 -155, -10 -95, -45 -65" fill="none" stroke="#231730" stroke-width="44" stroke-dasharray="18 22" stroke-linecap="round"/>
+      </g>
+
+      <!-- Alchemist's Left Leg (Upright Stance) -->
+      <g id="uncle-leg-back" transform="translate(38, -10)">
+        <rect x="-24" y="-35" width="48" height="70" rx="18" fill="url(#pantsGrad)" stroke="#0d041a" stroke-width="4"/>
+        <path d="M-28 24 L36 24 C46 24, 52 44, 34 48 L-30 48 Z" fill="url(#bootGrad)" stroke="#140802" stroke-width="4"/>
+      </g>
+
+      <!-- Alchemist's Upright Torso & Wizard Robe Pivot Group -->
+      <g id="uncle-torso-pivot" transform="rotate(0)">
+        <g id="uncle-belly-breath">
+          <!-- Plump Starry Alchemist Tunic -->
+          <path d="M-115 -35
+                   C-135 -115, -105 -215, -35 -235
+                   C35 -248, 105 -195, 122 -105
+                   C138 -20, 108 42, 25 48
+                   C-55 52, -102 20, -115 -35 Z"
+                fill="url(#plaidShirt)" stroke="#1c0836" stroke-width="5"/>
+
+          <path d="M-115 -35
+                   C-135 -115, -105 -215, -35 -235
+                   C35 -248, 105 -195, 122 -105
+                   C138 -20, 108 42, 25 48
+                   C-55 52, -102 20, -115 -35 Z"
+                fill="url(#bellyShade)" pointer-events="none"/>
+
+          <!-- Golden Alchemist Belt & Glowing Potion Buckle -->
+          <path d="M-112 -28 Q10 -8 120 -32" fill="none" stroke="#2b1204" stroke-width="22" stroke-linecap="round"/>
+          <path d="M-112 -28 Q10 -8 120 -32" fill="none" stroke="#e0a938" stroke-width="14" stroke-linecap="round" stroke-dasharray="10 6"/>
+          <circle id="straining-button" cx="52" cy="-22" r="14" fill="#2bf5c2" stroke="#ffd84d" stroke-width="4"/>
+          <path id="belly-button-gap" d="M46 -22 L58 -22" stroke="#ffffff" stroke-width="3"/>
+        </g>
+
+        <!-- Raccoon Alchemist's Expressive Head Group -->
+        <g id="uncle-head-group" transform="translate(-8, -248)">
+          <!-- Left Raccoon Ear -->
+          <polygon points="18,-102 52,-148 66,-90" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="4" stroke-linejoin="round"/>
+          <polygon points="26,-102 48,-135 58,-95" fill="#e8b5ce"/>
+
+          <!-- Fluffy Neck Ruff -->
+          <path d="M-58 12 C-65 -22, 62 -22, 70 15 C78 48, -58 52, -58 12 Z" fill="url(#hairGrad)" stroke="#4c3b63" stroke-width="3.5"/>
+          <ellipse class="strain-flush" cx="8" cy="18" rx="55" ry="24" fill="url(#strainRedGrad)" opacity="0"/>
+
+          <!-- Main Raccoon Head Shape with Fluffy Cheek Tufts -->
+          <path d="M-66 -48
+                   C-72 -104, -18 -126, 28 -114
+                   C74 -100, 86 -50, 78 -6
+                   C92 14, 62 48, 8 46
+                   C-48 44, -82 14, -66 -48 Z"
+                fill="url(#skinGrad)" stroke="#2e2040" stroke-width="4"/>
+
+          <!-- Characteristic Dark Raccoon Bandit Mask Around the Eyes -->
+          <path d="M-42 -66 C-15 -84, 52 -84, 72 -62 C78 -38, 55 -18, 22 -26 C8 -30, -15 -22, -38 -32 C-52 -40, -52 -56, -42 -66 Z"
+                fill="#281c38" stroke="#170f21" stroke-width="2.5"/>
+
+          <!-- Right Raccoon Ear -->
+          <polygon points="-58,-78 -48,-142 -10,-104" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="4" stroke-linejoin="round"/>
+          <polygon points="-50,-84 -44,-128 -18,-102" fill="#e8b5ce"/>
+
+          <path class="strain-flush" d="M-66 -48
+                   C-72 -104, -18 -126, 28 -114
+                   C74 -100, 86 -50, 78 -6
+                   C92 14, 62 48, 8 46
+                   C-48 44, -82 14, -66 -48 Z"
+                fill="url(#strainRedGrad)" opacity="0" pointer-events="none"/>
+
+          <g id="uncle-cheeks">
+            <circle cx="-14" cy="-12" r="18" fill="#ff6b8b" opacity="0.5"/>
+            <circle cx="58" cy="-14" r="16" fill="#ff6b8b" opacity="0.5"/>
+            <path id="cheek-puff-line" d="M-28 -2 C-38 -12, -35 -26, -22 -30" fill="none" stroke="#2e2040" stroke-width="3" stroke-linecap="round" opacity="0"/>
+          </g>
+
+          <path id="forehead-vein" d="M-22 -88 L-12 -76 L-20 -66 M-12 -76 L-2 -74" fill="none" stroke="#ff2e55" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>
+
+          <!-- EYES GROUP -->
+          <g id="uncle-eyes" transform="translate(22, -52)">
+            <g id="eye-left" transform="translate(-22, 0)">
+              <ellipse id="eye-l-white" cx="0" cy="0" rx="15" ry="15" fill="#ffffff" stroke="#1b0f29" stroke-width="3"/>
+              <g id="pupil-l" transform="translate(4, 1)">
+                <circle cx="0" cy="0" r="7.5" fill="#ffb826"/>
+                <circle cx="0" cy="0" r="4" fill="#12081c"/>
+                <circle cx="-2.5" cy="-2.5" r="2.2" fill="#ffffff"/>
+              </g>
+              <path id="eyelid-l-top" d="M-17 -10 Q0 -16 17 -10" fill="#685680" stroke="#281c38" stroke-width="3" stroke-linecap="round"/>
+              <path id="eyelid-l-bot" d="M-16 12 Q0 16 16 12" fill="none" stroke="#281c38" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+
+            <g id="eye-right" transform="translate(24, -2)">
+              <ellipse id="eye-r-white" cx="0" cy="0" rx="14" ry="14" fill="#ffffff" stroke="#1b0f29" stroke-width="3"/>
+              <g id="pupil-r" transform="translate(4, 1)">
+                <circle cx="0" cy="0" r="7" fill="#ffb826"/>
+                <circle cx="0" cy="0" r="3.8" fill="#12081c"/>
+                <circle cx="-2.2" cy="-2.5" r="2" fill="#ffffff"/>
+              </g>
+              <path id="eyelid-r-top" d="M-16 -10 Q0 -15 16 -10" fill="#685680" stroke="#281c38" stroke-width="3" stroke-linecap="round"/>
+              <path id="eyelid-r-bot" d="M-15 12 Q0 15 15 12" fill="none" stroke="#281c38" stroke-width="2.5" stroke-linecap="round"/>
+            </g>
+          </g>
+
+          <!-- Expressive White Alchemist Eyebrows -->
+          <g id="uncle-brows" transform="translate(22, -74)">
+            <path id="brow-left" d="M-42 4 C-32 -8, -12 -6, -4 4" fill="none" stroke="url(#hairGrad)" stroke-width="8" stroke-linecap="round"/>
+            <path id="brow-right" d="M8 2 C18 -8, 36 -8, 44 2" fill="none" stroke="url(#hairGrad)" stroke-width="8" stroke-linecap="round"/>
+          </g>
+
+          <!-- Mouth & Teeth / Tongue -->
+          <g id="uncle-mouth-group" transform="translate(24, 4)">
+            <path id="mouth-shape" d="M-24 0 C-10 -6, 14 -6, 26 2 C16 16, -12 16, -24 0 Z" fill="#420d21" stroke="#2e0716" stroke-width="3"/>
+            <path id="mouth-teeth" d="M-18 0 L20 0 L18 8 L-16 8 Z" fill="#fff8e8" stroke="#420d21" stroke-width="1.5"/>
+            <line id="teeth-grid" x1="-6" y1="0" x2="-6" y2="8" stroke="#420d21" stroke-width="1.5"/>
+            <line id="teeth-grid-2" x1="6" y1="0" x2="6" y2="8" stroke="#420d21" stroke-width="1.5"/>
+            <ellipse id="mouth-tongue" cx="0" cy="14" rx="12" ry="7" fill="#ff668c" opacity="0"/>
+          </g>
+
+          <!-- White Raccoon Muzzle & Whiskers -->
+          <g id="uncle-mustache" transform="translate(26, -10)">
+            <path d="M0 -4
+                     C-20 -10, -45 2, -52 14
+                     C-35 18, -15 12, 0 6
+                     C15 12, 35 18, 48 14
+                     C40 0, 20 -10, 0 -4 Z"
+                  fill="url(#hairGrad)" stroke="#58476e" stroke-width="2.5" stroke-linejoin="round"/>
+            <path d="M-28 2 L-68 -4 M-30 8 L-65 12 M28 2 L65 -4 M30 8 L62 12" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+          </g>
+
+          <!-- Glossy Dark Raccoon Nose -->
+          <g id="uncle-nose" transform="translate(32, -26)">
+            <ellipse cx="0" cy="0" rx="14" ry="10" fill="url(#noseGrad)" stroke="#12091c" stroke-width="3"/>
+            <ellipse cx="-4" cy="-3" rx="4.5" ry="2.2" fill="rgba(255, 255, 255, 0.55)"/>
+          </g>
+
+          <!-- Pointed Alchemist Hat with Brass Goggles on the Brim -->
+          <g transform="translate(0, -112) rotate(-6)">
+            <ellipse cx="2" cy="12" rx="68" ry="14" fill="#3a1466" stroke="#e0a938" stroke-width="3.5"/>
+            <path d="M-46 10 L-8 -72 L38 -88 L22 -48 L48 10 Z" fill="#4f1d87" stroke="#21083d" stroke-width="3.5" stroke-linejoin="round"/>
+            <!-- Brass Alchemist Goggles Resting on Hat -->
+            <circle cx="-12" cy="-6" r="13" fill="#2bf5c2" stroke="url(#brassGradBtn)" stroke-width="5"/>
+            <circle cx="18" cy="-6" r="13" fill="#2bf5c2" stroke="url(#brassGradBtn)" stroke-width="5"/>
+          </g>
+
+          <g id="uncle-sweat-drops">
+            <path id="sweat-1" d="M-38 -65 C-43 -52, -33 -52, -38 -65 Z" fill="#75ffdf" stroke="#128066" stroke-width="1.5" transform="scale(1.4)"/>
+            <path id="sweat-2" d="M-48 -38 C-53 -25, -43 -25, -48 -38 Z" fill="#75ffdf" stroke="#128066" stroke-width="1.5" transform="scale(1.2)"/>
+          </g>
+        </g>
+      </g> <!-- End of uncle-torso-pivot -->
+
+      <!-- Alchemist's Foreground Right Leg (Upright Stance) -->
+      <g id="uncle-leg-front" transform="translate(-28, 0)">
+        <rect x="-26" y="-35" width="52" height="72" rx="20" fill="url(#pantsGrad)" stroke="#0d041a" stroke-width="4.5"/>
+        <g id="uncle-boot-front" transform="translate(8, 28)">
+          <path d="M-32 -14 L26 -14 C42 -14, 48 18, 28 22 L-34 22 Z" fill="url(#bootGrad)" stroke="#140802" stroke-width="4.5" stroke-linejoin="round"/>
+          <rect x="-8" y="-10" width="16" height="12" rx="3" fill="none" stroke="#ffd84d" stroke-width="3"/>
+        </g>
+      </g>
+
+      <!-- ================= VERTICAL ALCHEMICAL Bellows-Pump Apparatus in front of the Alchemist ================= -->
+      <g id="alchemy-pump-stand" transform="translate(155, 0)">
+        <!-- Heavy Brass Base Pedestal -->
+        <rect x="-54" y="18" width="108" height="36" rx="10" fill="url(#brassGradBtn)" stroke="#291a02" stroke-width="4"/>
+        <!-- Glowing Glass Compression Cylinder -->
+        <rect x="-36" y="-145" width="72" height="165" rx="12" fill="rgba(43, 245, 194, 0.22)" stroke="#e0a938" stroke-width="5"/>
+        <rect id="pump-liquid-column" x="-30" y="-85" width="60" height="100" rx="6" fill="url(#potionGrad)" opacity="0.85"/>
+        <!-- Moving Vertical Plunger Rod & T-Bar Handle (#pump-plunger-group) -->
+        <g id="pump-plunger-group" transform="translate(0, -165)">
+          <rect x="-8" y="0" width="16" height="110" fill="#d9d9d9" stroke="#333" stroke-width="3"/>
+          <rect x="-28" y="95" width="56" height="18" rx="6" fill="url(#brassGradBtn)" stroke="#291a02" stroke-width="3"/>
+          <!-- Horizontal Two-Handed T-Bar Handle -->
+          <rect x="-68" y="-14" width="136" height="22" rx="11" fill="#8c4f19" stroke="#291402" stroke-width="4"/>
+          <circle cx="0" cy="-3" r="14" fill="url(#brassGradBtn)" stroke="#291a02" stroke-width="3"/>
+        </g>
+      </g>
+    </g> <!-- End of uncle-master-group -->
+
+    <!-- ================= THE GIANT ALCHEMICAL CAULDRON-REACTOR ================= -->
+    <g id="sack-master-group" transform="translate(1310, 775)">
+      <!-- Glowing Arcane Shadow Underneath Cauldron -->
+      <ellipse cx="0" cy="48" rx="210" ry="42" fill="rgba(0,0,0,0.68)"/>
+      <ellipse id="cauldron-under-glow" cx="0" cy="45" rx="175" ry="32" fill="rgba(43, 245, 194, 0.35)"/>
+
+      <g id="sack-body-group">
+        <!-- Back Rim & Bubbling Potion Surface -->
+        <g id="sack-closed-back-frill">
+          <ellipse cx="0" cy="-152" rx="145" ry="32" fill="#2e1102" stroke="#ffba6b" stroke-width="5"/>
+          <ellipse id="cauldron-potion-surface" cx="0" cy="-148" rx="132" ry="24" fill="#2bf5c2"/>
+        </g>
+
+        <!-- Wide Open Magical Vortex Mouth (When Triggered on 3rd Charge) -->
+        <g id="sack-open-mouth-back" opacity="0" transform="translate(0, -155) scale(0.4)">
+          <ellipse cx="0" cy="0" rx="148" ry="38" fill="#52ffcf" stroke="#ffe066" stroke-width="5"/>
+          <ellipse id="sack-interior-dark" cx="0" cy="4" rx="122" ry="28" fill="#230942" stroke="#b84dff" stroke-width="4"/>
+        </g>
+
+        <!-- Giant Forged Copper & Brass Cauldron Belly -->
+        <path id="sack-main-shape" d="M-142 -148
+                 C-195 -65, -185 25, -95 42
+                 C-35 54, 35 54, 95 42
+                 C185 25, 195 -65, 142 -148
+                 C75 -128, -75 -128, -142 -148 Z"
+              fill="url(#cauldronMetal)" stroke="#290f02" stroke-width="5.5" stroke-linejoin="round"/>
+
+        <!-- Dragon-Claw Brass Legs Supporting the Cauldron -->
+        <path d="M-115 24 C-140 42, -135 64, -105 62 L-85 38 Z" fill="url(#brassGradBtn)" stroke="#291402" stroke-width="4"/>
+        <path d="M115 24 C140 42, 135 64, 105 62 L85 38 Z" fill="url(#brassGradBtn)" stroke="#291402" stroke-width="4"/>
+
+        <!-- Heavy Brass Ring Handles on Cauldron Sides -->
+        <circle cx="-164" cy="-68" r="24" fill="none" stroke="url(#brassGradBtn)" stroke-width="10"/>
+        <circle cx="164" cy="-68" r="24" fill="none" stroke="url(#brassGradBtn)" stroke-width="10"/>
+
+        <!-- Dynamic Rummaging / Swirling Magic Glow Inside the Cauldron -->
+        <g id="sack-rummage-lump" opacity="0" transform="translate(0, -75)">
+          <ellipse cx="0" cy="0" rx="75" ry="52" fill="rgba(82, 255, 207, 0.38)"/>
+          <circle cx="-25" cy="-10" r="18" fill="rgba(255, 224, 102, 0.55)"/>
+          <circle cx="28" cy="8" r="14" fill="rgba(255, 105, 220, 0.55)"/>
+        </g>
+
+        <!-- 3 Glowing Arcane Runes on the Cauldron Front -->
+        <g transform="translate(0, -62)">
+          <circle cx="-68" cy="0" r="22" fill="#1b0933" stroke="#e0a938" stroke-width="4"/>
+          <polygon id="cauldron-rune-0" points="-68,-12 -58,8 -78,8" fill="#3a1c5e"/>
+          <circle cx="0" cy="8" r="26" fill="#1b0933" stroke="#e0a938" stroke-width="4"/>
+          <polygon id="cauldron-rune-1" points="0,-8 12,12 -12,12" fill="#3a1c5e"/>
+          <circle cx="68" cy="0" r="22" fill="#1b0933" stroke="#e0a938" stroke-width="4"/>
+          <polygon id="cauldron-rune-2" points="68,-12 78,8 58,8" fill="#3a1c5e"/>
+        </g>
+
+        <!-- Front Lip of Open Cauldron Rim -->
+        <g id="sack-open-mouth-front" opacity="0" transform="translate(0, -155) scale(0.4)">
+          <path d="M-142 0 C-85 36, 85 36, 142 0 C148 22, 85 44, 0 44 C-85 44, -148 22, -142 0 Z"
+                fill="url(#cauldronMetal)" stroke="#ffba6b" stroke-width="4.5"/>
+        </g>
+
+        <!-- Brass Conduit Intake Valve on the Left Side of the Cauldron -->
+        <g id="sack-neck-knot" transform="translate(-152, 8)">
+          <rect x="-18" y="-22" width="36" height="44" rx="8" fill="url(#brassGradBtn)" stroke="#291402" stroke-width="3.5"/>
+          <circle cx="0" cy="0" r="11" fill="#2bf5c2" stroke="#140626" stroke-width="2.5"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- ================= EXTRACTED ITEM GROUP (ON MAGIC PEDESTAL IN FRONT OF CAULDRON!) ================= -->
+    <g id="extracted-item-group">
+      <ellipse id="extracted-item-shadow" cx="920" cy="838" rx="95" ry="22" fill="rgba(0,0,0,0.65)" opacity="0"/>
+      <ellipse id="extracted-item-glow" cx="920" cy="760" rx="135" ry="115" fill="url(#lampGlow)" opacity="0" style="mix-blend-mode: screen;"/>
+      <g id="surprise-reveal-slot" transform="translate(920, 780) scale(0)"></g>
+    </g>
+
+    <!-- ================= ARM 2 (FOREGROUND ARM): ALCHEMIST'S REAL IK RIGHT ARM ================= -->
+    <g id="uncle-right-arm"></g>
+
+    <!-- Front Cauldron Rim Overlay (Covers Alchemist's paw while reaching inside the Cauldron) -->
+    <g id="sack-front-cuff-overlay" opacity="0" pointer-events="none">
+      <path d="M-142 0 C-85 36, 85 36, 142 0 C148 22, 85 44, 0 44 C-85 44, -148 22, -142 0 Z"
+            fill="url(#cauldronMetal)" stroke="#ffba6b" stroke-width="4.5"/>
+    </g>
+
+    <!-- ================= SWINGING CRYSTAL LANTERN & VOLUMETRIC LIGHT ================= -->
+    <g id="ceiling-lamp-group" transform="translate(960, 0)">
+      <line x1="0" y1="0" x2="0" y2="65" stroke="#140626" stroke-width="6"/>
+      <path d="M-55 65 C-45 35, 45 35, 55 65 L75 82 L-75 82 Z" fill="url(#brassGradBtn)" stroke="#382005" stroke-width="3.5"/>
+      <ellipse cx="0" cy="84" rx="26" ry="13" fill="#a8ffed"/>
+      <polygon points="-70,82 70,82 750,1080 -750,1080" fill="url(#lampGlow)" pointer-events="none" style="mix-blend-mode: screen;"/>
+    </g>
+  </svg>
+
+  <!-- Particle Effects & Magical Bubbles Canvas Overlay -->
+  <canvas id="fx-canvas"></canvas>
+
+  <!-- Tactile Alchemical Crystal Number Pad Dock at the Bottom -->
+  <div id="keypad-dock">
+    <button class="wood-key" data-digit="1">1</button>
+    <button class="wood-key" data-digit="2">2</button>
+    <button class="wood-key" data-digit="3">3</button>
+    <button class="wood-key" data-digit="4">4</button>
+    <button class="wood-key" data-digit="5">5</button>
+    <button class="wood-key" data-digit="6">6</button>
+    <button class="wood-key" data-digit="7">7</button>
+    <button class="wood-key" data-digit="8">8</button>
+    <button class="wood-key" data-digit="9">9</button>
+    <button class="wood-key" data-digit="0">0</button>
+    <button class="wood-key action-erase-key" id="key-erase" aria-label="Erase">
+      <svg viewBox="0 0 64 64">
+        <path d="M22 16 L54 16 L54 48 L22 48 L8 32 Z" fill="none" stroke="#ffd2a6" stroke-width="4.5" stroke-linejoin="round"/>
+        <path d="M28 24 L44 40 M44 24 L28 40" stroke="#ffd2a6" stroke-width="4.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <button class="wood-key action-check-key" id="key-submit" aria-label="Submit">
+      <svg viewBox="0 0 64 64">
+        <path d="M12 34 L26 48 L52 16" fill="none" stroke="#e6fff9" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- ================= THEME MANAGER BUTTON & MODAL (⚙️) ================= -->
+<button id="theme-settings-btn" title="Налаштування фону">⚙️</button>
+<div id="theme-modal-overlay">
+  <div id="theme-modal">
+    <div class="theme-modal-header">
+      <span>Оберіть фон гри</span>
+      <button class="theme-modal-close" id="theme-modal-close-btn">✕</button>
+    </div>
+    <div id="theme-gallery-grid"></div>
+  </div>
+</div>
+
+<!-- ================= GLOBAL DRAWING TOOL (✏️ Малювати) ================= -->
+<canvas id="global-draw-canvas"></canvas>
+<button id="toggle-draw-btn-global">✏️ Малювати</button>
+<div id="draw-panel-global">
+  <div id="draw-panel-header">
+    <div class="draw-drag-bars"></div>
+    <button id="close-draw-panel-btn">✕</button>
+  </div>
+  <div class="draw-panel-body">
+    <div class="draw-tools-row">
+      <button class="draw-tool-btn active" id="tool-pencil-btn">✏️ Олівець</button>
+      <button class="draw-tool-btn" id="tool-eraser-btn">🧽 Гумка</button>
+    </div>
+    <div class="draw-controls-row">
+      <input type="range" id="draw-size-slider" min="1" max="50" value="5">
+      <input type="color" id="draw-color-picker" value="#ffdf00">
+    </div>
+    <button id="draw-clear-btn">🗑️ Очистити</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  /* =========================================================================
+     0. КОНФІГУРАЦІЯ ГРИ ТА FIREBASE СИНХРОНІЗАЦІЯ
+     ========================================================================= */
+  const CONFIG = {
+    gameId: 'alchemy_cauldron_fractions_v1',
+    firebaseConfig: {
+      databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+      projectId: "lesson-13c44"
+    },
+    bgBaseUrl: "https://olgazheltvai2.github.io/images/backgrounds/"
+  };
+
+  let db = null;
+  let actionRef = null;
+  let themeRef = null;
+  const mySenderId = 'usr_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+  let isRemoteAction = false;
+  let lastProcessedTimestamp = Date.now();
+
+  try {
+    if (window.firebase) {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(CONFIG.firebaseConfig);
+      }
+      db = firebase.database();
+      actionRef = db.ref('game_action');
+      themeRef = db.ref('game_theme');
+    }
+  } catch (err) {
+    console.warn('Firebase працює в локальному режимі:', err);
+  }
+
+  function broadcastGameAction(type, payload = {}) {
+    if (!actionRef || isRemoteAction) return;
+    actionRef.set({
+      senderId: mySenderId,
+      timestamp: Date.now(),
+      gameId: CONFIG.gameId,
+      type,
+      ...payload
+    }).catch(() => {});
+  }
+
+  /* =========================================================================
+     0.1 СИСТЕМА ДИНАМІЧНИХ ФОНІВ (Theme Manager) З ПОСЛІДОВНИМ ЗАВАНТАЖЕННЯМ
+     ========================================================================= */
+  const themeBtn = document.getElementById('theme-settings-btn');
+  const themeOverlay = document.getElementById('theme-modal-overlay');
+  const themeCloseBtn = document.getElementById('theme-modal-close-btn');
+  const themeGrid = document.getElementById('theme-gallery-grid');
+  const savedBgKey = 'mySavedBg_' + CONFIG.gameId;
+  let currentBgValue = localStorage.getItem(savedBgKey) || 'none';
+  let galleryInitialized = false;
+
+  function applyBackgroundLocally(bgUrl) {
+    currentBgValue = bgUrl || 'none';
+    localStorage.setItem(savedBgKey, currentBgValue);
+    if (currentBgValue === 'none') {
+      document.body.style.backgroundImage = 'none';
+      document.body.classList.remove('has-custom-bg');
+    } else {
+      document.body.style.backgroundImage = `url("${currentBgValue}")`;
+      document.body.classList.add('has-custom-bg');
+    }
+    document.querySelectorAll('.theme-thumb-card').forEach(card => {
+      card.classList.toggle('active-theme', card.dataset.bgUrl === currentBgValue);
+    });
+  }
+
+  function selectBackgroundAndSync(bgUrl) {
+    applyBackgroundLocally(bgUrl);
+    if (themeRef) {
+      themeRef.set({
+        senderId: mySenderId,
+        timestamp: Date.now(),
+        gameId: CONFIG.gameId,
+        url: bgUrl
+      }).catch(() => {});
+    }
+  }
+
+  // Застосовуємо індивідуальний збережений фон гри при старті
+  applyBackgroundLocally(currentBgValue);
+
+  if (themeRef) {
+    let firstThemeLoad = true;
+    themeRef.on('value', (snap) => {
+      const data = snap.val();
+      if (!data) return;
+      if (firstThemeLoad) {
+        firstThemeLoad = false;
+        // Якщо для цієї гри вже є свій збережений фон у localStorage — не перезаписуємо його чужим стартовим
+        if (localStorage.getItem(savedBgKey)) return;
+      }
+      if (data.url) {
+        applyBackgroundLocally(data.url);
+      }
+    });
+  }
+
+  function createThemeCard(url, labelText, isNoBg = false) {
+    const card = document.createElement('div');
+    card.className = 'theme-thumb-card' + (isNoBg ? ' no-bg-card' : '');
+    card.dataset.bgUrl = url;
+    if (currentBgValue === url) card.classList.add('active-theme');
+    if (!isNoBg) {
+      card.style.backgroundImage = `url("${url}")`;
+    }
+    const title = document.createElement('div');
+    title.className = 'theme-thumb-title';
+    title.textContent = labelText;
+    card.appendChild(title);
+    card.addEventListener('click', () => {
+      selectBackgroundAndSync(url);
+    });
+    themeGrid.appendChild(card);
+  }
+
+  // Строго послідовне завантаження фонів по одному до першої помилки 404
+  function loadBackgroundsSequentially(index = 1) {
+    if (index > 1000) return;
+    const url = `${CONFIG.bgBaseUrl}background_${index}.webp`;
+    const img = new Image();
+    img.onload = () => {
+      createThemeCard(url, `Фон ${index}`, false);
+      loadBackgroundsSequentially(index + 1);
+    };
+    img.onerror = () => {
+      // Негайно зупиняємо перевірку при отриманні 404
+      return;
+    };
+    img.src = url;
+  }
+
+  function initThemeGallery() {
+    if (galleryInitialized) return;
+    galleryInitialized = true;
+    themeGrid.innerHTML = '';
+    createThemeCard('none', 'Без фону', true);
+    loadBackgroundsSequentially(1);
+  }
+
+  themeBtn.addEventListener('click', () => {
+    initThemeGallery();
+    themeOverlay.classList.add('open');
+  });
+  themeCloseBtn.addEventListener('click', () => {
+    themeOverlay.classList.remove('open');
+  });
+  themeOverlay.addEventListener('click', (e) => {
+    if (e.target === themeOverlay) themeOverlay.classList.remove('open');
+  });
+
+  /* =========================================================================
+     0.2 ІНСТРУМЕНТ МАСШТАБУВАННЯ (Лупа+ та Лупа-)
+     ========================================================================= */
+  let currentZoom = 1;
+  const stageWrapperEl = document.getElementById('stage-wrapper');
+  document.getElementById('zoom-in-btn').addEventListener('click', () => {
+    currentZoom = Math.min(1.45, +(currentZoom + 0.1).toFixed(2));
+    stageWrapperEl.style.transform = `scale(${currentZoom})`;
+  });
+  document.getElementById('zoom-out-btn').addEventListener('click', () => {
+    currentZoom = Math.max(0.65, +(currentZoom - 0.1).toFixed(2));
+    stageWrapperEl.style.transform = `scale(${currentZoom})`;
+  });
+
+  /* =========================================================================
+     1. 6 КУМЕДНИХ МАГІЧНИХ СТВОРІНЬ З АЛХІМІЧНОГО КОТЛА
+     ========================================================================= */
+  const SURPRISE_ITEMS_SVG = [
+    // 1) Сонний пухкенький Дракончик у нічному ковпаку, який обіймає золотий будильник
+    `<g class="surprise-art" id="item-dragon">
+      <path d="M45 25 C95 20, 105 -25, 72 -42 C55 -48, 48 -24, 62 -12" fill="none" stroke="#32c978" stroke-width="20" stroke-linecap="round"/>
+      <polygon points="-56,-18 -95,-45 -72,-2 -92,15 -52,12" fill="#ff944d" stroke="#5c2404" stroke-width="3.5" stroke-linejoin="round"/>
+      <polygon points="56,-18 95,-45 72,-2 92,15 52,12" fill="#ff944d" stroke="#5c2404" stroke-width="3.5" stroke-linejoin="round"/>
+      <ellipse cx="0" cy="12" rx="62" ry="52" fill="#38d983" stroke="#0d4a28" stroke-width="4"/>
+      <ellipse cx="0" cy="18" rx="40" ry="36" fill="#fff099"/>
+      <circle cx="0" cy="-42" r="42" fill="#38d983" stroke="#0d4a28" stroke-width="4"/>
+      <!-- Sleepy Eyes & Nightcap -->
+      <path d="M-26 -42 Q-16 -34 -6 -42" fill="none" stroke="#0d4a28" stroke-width="4" stroke-linecap="round"/>
+      <path d="M6 -42 Q16 -34 26 -42" fill="none" stroke="#0d4a28" stroke-width="4" stroke-linecap="round"/>
+      <path d="M-38 -68 C-10 -115, 45 -105, 68 -62 C35 -68, -10 -65, -38 -68 Z" fill="#7a38d9" stroke="#280952" stroke-width="3.5"/>
+      <circle cx="70" cy="-60" r="11" fill="#fff8c4"/>
+      <!-- Golden Alarm Clock Held on Belly -->
+      <circle cx="0" cy="18" r="22" fill="#ffd83b" stroke="#6e4804" stroke-width="3.5"/>
+      <circle cx="0" cy="18" r="16" fill="#ffffff"/>
+      <line x1="0" y1="18" x2="0" y2="8" stroke="#111" stroke-width="3"/>
+      <line x1="0" y1="18" x2="9" y2="18" stroke="#111" stroke-width="3"/>
+    </g>`,
+
+    // 2) Літаючий Чайник-Джин у східному тюрбані з кумедною ящіркою в окулярах
+    `<g class="surprise-art" id="item-teapot-genie">
+      <path d="M-55 -10 C-92 -28, -92 32, -55 22" fill="none" stroke="#ffd23b" stroke-width="12" stroke-linecap="round"/>
+      <path d="M52 8 C85 0, 95 -38, 108 -34" fill="none" stroke="#ffd23b" stroke-width="16" stroke-linecap="round"/>
+      <ellipse cx="0" cy="12" rx="64" ry="48" fill="#9b38ff" stroke="#31085c" stroke-width="4"/>
+      <ellipse cx="0" cy="14" rx="46" ry="22" fill="none" stroke="#ffd84d" stroke-width="4" stroke-dasharray="10 6"/>
+      <!-- Sultan Turban on Teapot Lid -->
+      <ellipse cx="0" cy="-36" rx="44" ry="24" fill="#ff4d94" stroke="#5c082b" stroke-width="3.5"/>
+      <circle cx="0" cy="-46" r="9" fill="#2bf5c2" stroke="#ffd84d" stroke-width="3"/>
+      <!-- Funny Gecko Peeking from Spout -->
+      <g transform="translate(106, -54)">
+        <circle cx="0" cy="0" r="16" fill="#52ff88" stroke="#0d4d22" stroke-width="3"/>
+        <circle cx="-6" cy="-3" r="6" fill="#fff" stroke="#111" stroke-width="2"/>
+        <circle cx="6" cy="-3" r="6" fill="#fff" stroke="#111" stroke-width="2"/>
+        <circle cx="-6" cy="-3" r="2.5" fill="#111"/>
+        <circle cx="6" cy="-3" r="2.5" fill="#111"/>
+      </g>
+    </g>`,
+
+    // 3) Сяюча Алхімічна Колба з Коронованим Веселим Грибочком-Мухомором
+    `<g class="surprise-art" id="item-mushroom-flask">
+      <ellipse cx="0" cy="16" rx="58" ry="52" fill="rgba(82, 255, 207, 0.28)" stroke="#ffffff" stroke-width="4"/>
+      <path d="M-48 26 Q0 36 48 26 C42 54, -42 54, -48 26 Z" fill="#2bf5c2"/>
+      <!-- Cute Crowned Mushroom Inside -->
+      <rect x="-16" y="-8" width="32" height="38" rx="12" fill="#fff5d6" stroke="#5c4314" stroke-width="3"/>
+      <path d="M-44 -4 C-48 -46, 48 -46, 44 -4 Z" fill="#ff384c" stroke="#610812" stroke-width="3.5"/>
+      <circle cx="-18" cy="-22" r="6" fill="#fff"/>
+      <circle cx="16" cy="-24" r="7" fill="#fff"/>
+      <circle cx="0" cy="-12" r="5" fill="#fff"/>
+      <circle cx="-8" cy="6" r="3" fill="#111"/>
+      <circle cx="8" cy="6" r="3" fill="#111"/>
+      <path d="M-6 14 Q0 20 6 14" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round"/>
+      <polygon points="-14,-40 -18,-60 -6,-48 0,-64 6,-48 18,-60 14,-40" fill="#ffd83b" stroke="#6e4b00" stroke-width="2.5"/>
+    </g>`,
+
+    // 4) Магічний Грамофон-Квітка зі Співаючою Жабкою всередині
+    `<g class="surprise-art" id="item-flower-gramophone">
+      <rect x="-46" y="22" width="92" height="38" rx="8" fill="#7a3e12" stroke="#2e1402" stroke-width="3.5"/>
+      <path d="M0 22 C-25 10, -25 -35, 12 -52" fill="none" stroke="#d49b35" stroke-width="12" stroke-linecap="round"/>
+      <ellipse cx="26" cy="-58" rx="52" ry="38" fill="#ff66b5" stroke="#6e0d40" stroke-width="4"/>
+      <ellipse cx="26" cy="-58" rx="22" ry="16" fill="#4a0829"/>
+      <!-- Singing Frog in the Flower Bell -->
+      <g transform="translate(26, -62)">
+        <ellipse cx="0" cy="6" rx="22" ry="15" fill="#4ce638" stroke="#124d09" stroke-width="3"/>
+        <circle cx="-10" cy="-8" r="8" fill="#fff" stroke="#124d09" stroke-width="2.5"/>
+        <circle cx="-10" cy="-8" r="3.5" fill="#111"/>
+        <circle cx="10" cy="-8" r="8" fill="#fff" stroke="#124d09" stroke-width="2.5"/>
+        <circle cx="10" cy="-8" r="3.5" fill="#111"/>
+        <ellipse cx="0" cy="8" rx="9" ry="6" fill="#ff4d6d"/>
+      </g>
+    </g>`,
+
+    // 5) Зачарований Лицарський Шолом з Ромашкою, з якого визирають очі совеняти
+    `<g class="surprise-art" id="item-owl-helmet">
+      <path d="M-52 38 C-62 -38, 62 -38, 52 38 Z" fill="#99aabf" stroke="#253140" stroke-width="4"/>
+      <rect x="-38" y="-12" width="76" height="28" rx="8" fill="#160b29" stroke="#e0a938" stroke-width="3.5"/>
+      <!-- Glowing Owl Eyes Inside Visor -->
+      <circle cx="-16" cy="2" r="10" fill="#ffe04d"/>
+      <circle cx="-16" cy="2" r="4.5" fill="#111"/>
+      <circle cx="16" cy="2" r="10" fill="#ffe04d"/>
+      <circle cx="16" cy="2" r="4.5" fill="#111"/>
+      <!-- Plume & Daisy on Top -->
+      <path d="M0 -24 C-25 -68, 35 -78, 42 -42" fill="#ff477e" stroke="#660826" stroke-width="3.5"/>
+      <circle cx="0" cy="-52" r="10" fill="#ffe03b" stroke="#fff" stroke-width="6" stroke-dasharray="6 4"/>
+    </g>`,
+
+    // 6) Триповерховий Кристалічний Торт-Еліксир зі Світлячком у короні
+    `<g class="surprise-art" id="item-crystal-cake">
+      <ellipse cx="0" cy="58" rx="76" ry="14" fill="#ffd24d" stroke="#6e4b08" stroke-width="3.5"/>
+      <rect x="-60" y="14" width="120" height="42" rx="8" fill="#9c4dff" stroke="#310866" stroke-width="3.5"/>
+      <path d="M-62 14 Q-45 34 -30 18 Q-15 34 0 18 Q15 34 30 18 Q45 34 62 18 L62 10 L-62 10 Z" fill="#2bf5c2" stroke="#085944" stroke-width="3"/>
+      <rect x="-44" y="-26" width="88" height="38" rx="7" fill="#ff59b8" stroke="#5c0a38" stroke-width="3.5"/>
+      <path d="M-46 -26 Q-30 -8 -15 -22 Q0 -8 15 -22 Q30 -8 46 -22 L46 -30 L-46 -30 Z" fill="#fff8eb" stroke="#5c0a38" stroke-width="3"/>
+      <rect x="-28" y="-60" width="56" height="32" rx="6" fill="#9c4dff" stroke="#310866" stroke-width="3.5"/>
+      <!-- Glowing Firefly on Top -->
+      <circle cx="0" cy="-78" r="16" fill="#ffe84d" stroke="#ff9900" stroke-width="3"/>
+      <ellipse cx="-16" cy="-84" rx="10" ry="5" fill="#e6ffff" transform="rotate(-25,-16,-84)"/>
+      <ellipse cx="16" cy="-84" rx="10" ry="5" fill="#e6ffff" transform="rotate(25,16,-84)"/>
+      <circle cx="-5" cy="-80" r="2.5" fill="#111"/>
+      <circle cx="5" cy="-80" r="2.5" fill="#111"/>
+    </g>`
+  ];
+
+  /* =========================================================================
+     2. TRUE 2-BONE INVERSE KINEMATICS (IK) SOLVER FOR ALCHEMIST'S TWO REAL ARMS
+     ========================================================================= */
+  function solveArmIK(shoulderX, shoulderY, handX, handY, upperLen, foreLen, flipElbow = false) {
+    let dx = handX - shoulderX;
+    let dy = handY - shoulderY;
+    let dist = Math.hypot(dx, dy);
+    const maxReach = upperLen + foreLen - 2;
+    const minReach = Math.abs(upperLen - foreLen) + 8;
+
+    if (dist > maxReach) {
+      const scale = maxReach / dist;
+      dx *= scale;
+      dy *= scale;
+      handX = shoulderX + dx;
+      handY = shoulderY + dy;
+      dist = maxReach;
+    } else if (dist < minReach) {
+      const scale = minReach / (dist || 1);
+      dx *= scale;
+      dy *= scale;
+      handX = shoulderX + dx;
+      handY = shoulderY + dy;
+      dist = minReach;
+    }
+
+    const baseAngle = Math.atan2(dy, dx);
+    const cosAngle = Math.max(-1, Math.min(1, (upperLen * upperLen + dist * dist - foreLen * foreLen) / (2 * upperLen * dist)));
+    const bendAngle = Math.acos(cosAngle);
+    const shoulderAngle = flipElbow ? (baseAngle - bendAngle) : (baseAngle + bendAngle);
+
+    const elbowX = shoulderX + Math.cos(shoulderAngle) * upperLen;
+    const elbowY = shoulderY + Math.sin(shoulderAngle) * upperLen;
+    const foreAngle = Math.atan2(handY - elbowY, handX - elbowX);
+
+    return {
+      shoulderX,
+      shoulderY,
+      elbowX,
+      elbowY,
+      handX,
+      handY,
+      upperDeg: (shoulderAngle * 180) / Math.PI,
+      foreDeg: (foreAngle * 180) / Math.PI
+    };
+  }
+
+  function renderIKArmSVG(ik, pose = 'grip', isLeftArm = false) {
+    const { shoulderX, shoulderY, elbowX, elbowY, handX, handY, upperDeg, foreDeg } = ik;
+    const sleeveLen = 68;
+    const cuffX = shoulderX + Math.cos((upperDeg * Math.PI) / 180) * sleeveLen;
+    const cuffY = shoulderY + Math.sin((upperDeg * Math.PI) / 180) * sleeveLen;
+    const opacityAttr = isLeftArm ? '0.94' : '1';
+
+    let handMarkup = '';
+    if (pose === 'shock') {
+      handMarkup = `
+        <g transform="translate(${handX.toFixed(1)}, ${handY.toFixed(1)}) rotate(${(foreDeg - 15).toFixed(1)})">
+          <ellipse cx="0" cy="0" rx="22" ry="19" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="3.5"/>
+          <ellipse cx="2" cy="1" rx="10" ry="8" fill="#e8b5ce"/>
+          <ellipse cx="14" cy="-14" rx="11" ry="5.5" transform="rotate(-32, 14, -14)" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8"/>
+          <ellipse cx="19" cy="-5" rx="12" ry="5.5" transform="rotate(-12, 19, -5)" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8"/>
+          <ellipse cx="19" cy="5" rx="12" ry="5.5" transform="rotate(8, 19, 5)" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8"/>
+          <ellipse cx="14" cy="14" rx="10" ry="5" transform="rotate(26, 14, 14)" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8"/>
+        </g>`;
+    } else if (pose === 'rummage') {
+      handMarkup = `
+        <g transform="translate(${handX.toFixed(1)}, ${handY.toFixed(1)}) rotate(${foreDeg.toFixed(1)})">
+          <ellipse cx="0" cy="0" rx="22" ry="18" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="3.5"/>
+          <circle cx="14" cy="-8" r="7.5" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8"/>
+          <circle cx="17" cy="2" r="7.5" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8"/>
+          <circle cx="13" cy="11" r="7" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8"/>
+        </g>`;
+    } else {
+      handMarkup = `
+        <g transform="translate(${handX.toFixed(1)}, ${handY.toFixed(1)}) rotate(${foreDeg.toFixed(1)})">
+          <ellipse cx="0" cy="0" rx="23" ry="19" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="3.8"/>
+          <rect x="-8" y="-17" width="13" height="19" rx="6" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8" transform="rotate(12)"/>
+          <rect x="0" y="-16" width="13" height="20" rx="6" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8" transform="rotate(12)"/>
+          <rect x="8" y="-14" width="13" height="20" rx="6" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8" transform="rotate(12)"/>
+          <ellipse cx="-4" cy="10" rx="11" ry="7.5" fill="url(#skinGrad)" stroke="#2e2040" stroke-width="2.8" transform="rotate(-18)"/>
+        </g>`;
+    }
+
+    return `
+      <g opacity="${opacityAttr}">
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${elbowX.toFixed(1)}" y2="${elbowY.toFixed(1)}"
+              stroke="#2e2040" stroke-width="52" stroke-linecap="round"/>
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${elbowX.toFixed(1)}" y2="${elbowY.toFixed(1)}"
+              stroke="url(#skinGrad)" stroke-width="44" stroke-linecap="round"/>
+
+        <line x1="${elbowX.toFixed(1)}" y1="${elbowY.toFixed(1)}"
+              x2="${handX.toFixed(1)}" y2="${handY.toFixed(1)}"
+              stroke="#2e2040" stroke-width="44" stroke-linecap="round"/>
+        <line x1="${elbowX.toFixed(1)}" y1="${elbowY.toFixed(1)}"
+              x2="${handX.toFixed(1)}" y2="${handY.toFixed(1)}"
+              stroke="url(#skinGrad)" stroke-width="36" stroke-linecap="round"/>
+
+        <circle cx="${elbowX.toFixed(1)}" cy="${elbowY.toFixed(1)}" r="17" fill="url(#skinGrad)"/>
+
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${cuffX.toFixed(1)}" y2="${cuffY.toFixed(1)}"
+              stroke="#1c0836" stroke-width="62" stroke-linecap="round"/>
+        <line x1="${shoulderX.toFixed(1)}" y1="${shoulderY.toFixed(1)}"
+              x2="${cuffX.toFixed(1)}" y2="${cuffY.toFixed(1)}"
+              stroke="url(#plaidShirt)" stroke-width="54" stroke-linecap="round"/>
+
+        <g transform="translate(${cuffX.toFixed(1)}, ${cuffY.toFixed(1)}) rotate(${upperDeg.toFixed(1)})">
+          <rect x="-12" y="-28" width="22" height="56" rx="9" fill="#3a1466" stroke="#ffd84d" stroke-width="4"/>
+        </g>
+
+        ${handMarkup}
+      </g>
+    `;
+  }
+
+  /* =========================================================================
+     3. 18 STRUCTURED PROBLEMS (EASY -> HARD) + ENDLESS GENERATOR
+     ========================================================================= */
+  function gcd(a, b) {
+    a = Math.abs(a);
+    b = Math.abs(b);
+    while (b) { let t = b; b = a % b; a = t; }
+    return a || 1;
+  }
+
+  const CURRICULUM_18 = [
+    // Рівні 1-3: 1 - a/b (Ціла частина відповіді = 0, лише дріб)
+    { W: 1, M: 0, num: 2, den: 5 },
+    { W: 1, M: 0, num: 4, den: 7 },
+    { W: 1, M: 0, num: 7, den: 9 },
+    // Рівні 4-6: Малі цілі числа мінус правильний дріб
+    { W: 2, M: 0, num: 3, den: 5 },
+    { W: 3, M: 0, num: 3, den: 4 },
+    { W: 4, M: 0, num: 5, den: 8 },
+    // Рівні 7-9: Середні цілі числа мінус правильний дріб
+    { W: 6, M: 0, num: 3, den: 10 },
+    { W: 8, M: 0, num: 2, den: 9 },
+    { W: 9, M: 0, num: 7, den: 12 },
+    // Рівні 10-12: Цілі числа мінус невелике мішане число
+    { W: 5, M: 2, num: 1, den: 3 },
+    { W: 7, M: 3, num: 4, den: 5 },
+    { W: 9, M: 4, num: 2, den: 7 },
+    // Рівні 13-15: Більші цілі числа мінус мішане число
+    { W: 11, M: 5, num: 4, den: 9 },
+    { W: 14, M: 6, num: 8, den: 11 },
+    { W: 16, M: 9, num: 5, den: 12 },
+    // Рівні 16-18: Двоцифрові цілі числа мінус мішані числа
+    { W: 19, M: 8, num: 11, den: 15 },
+    { W: 23, M: 12, num: 5, den: 14 },
+    { W: 27, M: 14, num: 9, den: 20 }
+  ];
+
+  function generateEndlessProblem() {
+    const denPool = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 18, 20];
+    const den = denPool[Math.floor(Math.random() * denPool.length)];
+    let num = 1 + Math.floor(Math.random() * (den - 1));
+    while (gcd(num, den) !== 1) {
+      num = 1 + Math.floor(Math.random() * (den - 1));
+    }
+    const useMixed = Math.random() > 0.3;
+    const M = useMixed ? (1 + Math.floor(Math.random() * 8)) : 0;
+    const W = M + 2 + Math.floor(Math.random() * 12);
+    return { W, M, num, den };
+  }
+
+  function buildProblemData(raw) {
+    const { W, M, num, den } = raw;
+    const ansW = W - M - 1;
+    const ansNum = den - num;
+    const ansDen = den;
+    return { W, M, num, den, ansW, ansNum, ansDen };
+  }
+
+  function renderFractionHTML(w, n, d, clickableWhole = false) {
+    let html = `<span class="mixed-wrap">`;
+    if (w > 0) {
+      const cls = clickableWhole ? 'whole-num borrow-clickable' : 'whole-num';
+      const idAttr = clickableWhole ? 'id="board-whole-num"' : '';
+      html += `<span class="${cls}" ${idAttr}>${w}</span>`;
+    }
+    if (n > 0) {
+      html += `<span class="frac-box">
+        <span class="frac-num">${n}</span>
+        <span class="frac-bar"></span>
+        <span class="frac-den">${d}</span>
+      </span>`;
+    } else if (w === 0) {
+      html += `<span class="whole-num">0</span>`;
+    }
+    html += `</span>`;
+    return html;
+  }
+
+  /* =========================================================================
+     4. WEB AUDIO API SOUND SYNTHESIZER
+     ========================================================================= */
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+      this.muted = false;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    toggleMute() {
+      this.init();
+      this.muted = !this.muted;
+      document.getElementById('sound-mute-line').style.display = this.muted ? 'block' : 'none';
+      document.getElementById('sound-waves').style.opacity = this.muted ? '0.25' : '1';
+      if (!this.muted) this.playWoodClick();
+    }
+
+    playWoodClick() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(340, now);
+      osc.frequency.exponentialRampToValueAtTime(125, now + 0.065);
+      gain.gain.setValueAtTime(0.24, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+      osc.connect(gain).connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.07);
+    }
+
+    playRopeCreak(intensity = 0.5) {
+      if (this.muted || !this.ctx || this.ctx.state !== 'running') return;
+      const now = this.ctx.currentTime;
+      for (let i = 0; i < 3; i++) {
+        const t = now + i * 0.055;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(280 + i * 90, t);
+        osc.frequency.exponentialRampToValueAtTime(520 + i * 60, t + 0.04);
+        g.gain.setValueAtTime(0.028 * intensity, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.05);
+      }
+    }
+
+    playHeaveSuccess(stepInTrio) {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const baseNotes = [392, 493.88, 587.33, 783.99];
+      baseNotes.forEach((freq, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        const pitchMult = 1 + stepInTrio * 0.12;
+        osc.frequency.setValueAtTime(freq * pitchMult, now + 0.05 + idx * 0.06);
+        g.gain.setValueAtTime(0.16, now + 0.05 + idx * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.5 + idx * 0.06);
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(now + 0.05 + idx * 0.06);
+        osc.stop(now + 0.55 + idx * 0.06);
+      });
+    }
+
+    playWrongSlip() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(240, now);
+      osc.frequency.exponentialRampToValueAtTime(95, now + 0.48);
+      g.gain.setValueAtTime(0.2, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc.connect(g).connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.52);
+    }
+
+    playUntieAndRummage() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      [0.1, 0.3, 0.5, 0.7, 0.9, 1.1].forEach((off, i) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(240 + (i % 3) * 140, now + off);
+        osc.frequency.exponentialRampToValueAtTime(620 + i * 50, now + off + 0.12);
+        g.gain.setValueAtTime(0.15, now + off);
+        g.gain.exponentialRampToValueAtTime(0.001, now + off + 0.14);
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(now + off);
+        osc.stop(now + off + 0.15);
+      });
+    }
+
+    playHeavyLiftStrain() {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const liftOsc = this.ctx.createOscillator();
+      const lg = this.ctx.createGain();
+      liftOsc.type = 'triangle';
+      liftOsc.frequency.setValueAtTime(180, now);
+      liftOsc.frequency.exponentialRampToValueAtTime(640, now + 0.55);
+      lg.gain.setValueAtTime(0.24, now);
+      lg.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+      liftOsc.connect(lg).connect(this.ctx.destination);
+      liftOsc.start(now);
+      liftOsc.stop(now + 0.6);
+    }
+
+    playSurpriseReveal(itemIndex) {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+
+      const fanfare = [523.25, 659.25, 783.99, 1046.5, 987.77, 1046.5];
+      fanfare.forEach((f, idx) => {
+        const t = now + 0.08 + idx * 0.085;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, t);
+        g.gain.setValueAtTime(0.2, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + (idx === fanfare.length - 1 ? 0.55 : 0.15));
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.6);
+      });
+
+      this.playItemSignatureSound(itemIndex, now + 0.55);
+    }
+
+    playItemSignatureSound(itemIndex, startTime) {
+      if (this.muted) return;
+      this.init();
+      if (!this.ctx) return;
+      const t0 = startTime || this.ctx.currentTime;
+      const freqs = [587.33, 698.46, 880, 1046.5, 783.99, 1174.66];
+      const base = freqs[itemIndex % 6];
+      [0, 0.14].forEach((off, i) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(base * (1 + i * 0.25), t0 + off);
+        g.gain.setValueAtTime(0.2, t0 + off);
+        g.gain.exponentialRampToValueAtTime(0.001, t0 + off + 0.18);
+        osc.connect(g).connect(this.ctx.destination);
+        osc.start(t0 + off);
+        osc.stop(t0 + off + 0.2);
+      });
+    }
+  }
+
+  const sfx = new SoundEngine();
+
+  /* =========================================================================
+     5. PARTICLE & MAGICAL BUBBLES CANVAS ENGINE
+     ========================================================================= */
+  const canvas = document.getElementById('fx-canvas');
+  const ctx = canvas.getContext('2d');
+  const cw = 1920, ch = 1080;
+  canvas.width = cw;
+  canvas.height = ch;
+
+  const dustMotes = Array.from({ length: 42 }, () => ({
+    x: Math.random() * cw,
+    y: Math.random() * ch * 0.82,
+    r: 2 + Math.random() * 3.5,
+    vx: (Math.random() - 0.5) * 0.35,
+    vy: -0.35 - Math.random() * 0.45,
+    alpha: 0.25 + Math.random() * 0.55,
+    phase: Math.random() * Math.PI * 2
+  }));
+
+  const activeParticles = [];
+
+  function spawnFloorDust(x, y, count = 22) {
+    for (let i = 0; i < count; i++) {
+      activeParticles.push({
+        type: 'dust',
+        x: x + (Math.random() - 0.5) * 90,
+        y: y + (Math.random() - 0.5) * 20,
+        vx: (Math.random() - 0.5) * 6,
+        vy: -2.5 - Math.random() * 6,
+        r: 7 + Math.random() * 15,
+        alpha: 0.75,
+        decay: 0.015 + Math.random() * 0.012,
+        color: `rgba(82, 255, 207, `
+      });
+    }
+  }
+
+  function spawnGoldenSparks(x, y, count = 32) {
+    const hues = ['#52ffcf', '#ffe866', '#ff75d8', '#b86bff'];
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2.5 + Math.random() * 11;
+      activeParticles.push({
+        type: 'spark',
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 3,
+        r: 3.5 + Math.random() * 5.5,
+        alpha: 1,
+        decay: 0.018 + Math.random() * 0.015,
+        color: hues[Math.floor(Math.random() * hues.length)]
+      });
+    }
+  }
+
+  function spawnSweatBurst(x, y) {
+    for (let i = 0; i < 7; i++) {
+      activeParticles.push({
+        type: 'sweat',
+        x,
+        y,
+        vx: -2 - Math.random() * 5,
+        vy: -4 - Math.random() * 5,
+        r: 4 + Math.random() * 3,
+        alpha: 0.9,
+        decay: 0.025,
+        color: '#52ffcf'
+      });
+    }
+  }
+
+  /* =========================================================================
+     6. GAME STATE, INPUT SLOTS, VISUAL BORROW HELPER & CAULDRON ENGINE
+     ========================================================================= */
+  let problemIndex = 0;
+  let pullStep = 0;
+  let surprisesUnlocked = 0;
+  let currentProblem = null;
+  let isLocked = false;
+
+  let activeSlotName = 'whole';
+  let userValues = { whole: '', num: '', den: '' };
+  let borrowHelperOpen = false;
+
+  // Cauldron Position in Center-Right of the Cave
+  const SACK_POSITIONS = [1310, 1310, 1310, 1210];
+  let sackCurrentX = SACK_POSITIONS[0];
+  let sackTargetX = SACK_POSITIONS[0];
+  let uncleSlideOffset = 0;
+  let uncleTargetSlide = 0;
+
+  let extractionHandOverride = null;
+  let uncleMode = 'straining_loop';
+  let modeTimer = 0;
+  let lastCreakCycle = -1;
+
+  // DOM References
+  const problemMathEl = document.getElementById('problem-math');
+  const problemBoardEl = document.getElementById('problem-board-container');
+  const borrowBtnEl = document.getElementById('borrow-helper-btn');
+  const borrowTrayEl = document.getElementById('visual-borrow-tray');
+
+  const sackMasterEl = document.getElementById('sack-master-group');
+  const sackBodyEl = document.getElementById('sack-body-group');
+  const sackClosedFrillEl = document.getElementById('sack-closed-back-frill');
+  const sackNeckKnotEl = document.getElementById('sack-neck-knot');
+  const sackOpenBackEl = document.getElementById('sack-open-mouth-back');
+  const sackOpenFrontEl = document.getElementById('sack-open-mouth-front');
+  const sackFrontCuffOverlayEl = document.getElementById('sack-front-cuff-overlay');
+  const sackRummageLumpEl = document.getElementById('sack-rummage-lump');
+  const surpriseSlotEl = document.getElementById('surprise-reveal-slot');
+  const extractedShadowEl = document.getElementById('extracted-item-shadow');
+  const extractedGlowEl = document.getElementById('extracted-item-glow');
+  const trophiesLayerEl = document.getElementById('discovered-trophies-layer');
+
+  const uncleMasterEl = document.getElementById('uncle-master-group');
+  const uncleTorsoEl = document.getElementById('uncle-torso-pivot');
+  const uncleBellyEl = document.getElementById('uncle-belly-breath');
+  const uncleHeadEl = document.getElementById('uncle-head-group');
+  const uncleLeftArmEl = document.getElementById('uncle-left-arm');
+  const uncleRightArmEl = document.getElementById('uncle-right-arm');
+  const pumpPlungerEl = document.getElementById('pump-plunger-group');
+  const pumpLiquidEl = document.getElementById('pump-liquid-column');
+  const cauldronPotionSurfaceEl = document.getElementById('cauldron-potion-surface');
+
+  const browLeftEl = document.getElementById('brow-left');
+  const browRightEl = document.getElementById('brow-right');
+  const pupilLeftEl = document.getElementById('pupil-l');
+  const pupilRightEl = document.getElementById('pupil-r');
+  const eyelidLeftEl = document.getElementById('eyelid-l-top');
+  const eyelidRightEl = document.getElementById('eyelid-r-top');
+  const mouthShapeEl = document.getElementById('mouth-shape');
+  const mouthTeethEl = document.getElementById('mouth-teeth');
+  const mouthTongueEl = document.getElementById('mouth-tongue');
+  const mustacheEl = document.getElementById('uncle-mustache');
+  const veinEl = document.getElementById('forehead-vein');
+  const cheekPuffEl = document.getElementById('cheek-puff-line');
+  const flushEls = Array.from(document.querySelectorAll('.strain-flush'));
+  const sweat1El = document.getElementById('sweat-1');
+  const sweat2El = document.getElementById('sweat-2');
+  const strainingBtnEl = document.getElementById('straining-button');
+
+  const ropeMainEl = document.getElementById('main-tension-rope');
+  const ropeOutlineEl = document.getElementById('main-tension-rope-outline');
+  const ropeShadowEl = document.getElementById('rope-shadow-line');
+  const coil2El = document.getElementById('coil-path-2');
+  const coil3El = document.getElementById('coil-path-3');
+  const lampGroupEl = document.getElementById('ceiling-lamp-group');
+  const paintingLeftEl = document.getElementById('painting-left');
+  const wallMouseEl = document.getElementById('wall-mouse');
+
+  function updateStageIndicators() {
+    const potionColors = ['#2bf5c2', '#38d9ff', '#ff66d9', '#ffe066'];
+    if (cauldronPotionSurfaceEl) {
+      cauldronPotionSurfaceEl.setAttribute('fill', potionColors[Math.min(3, pullStep)]);
+    }
+    for (let i = 0; i < 3; i++) {
+      const gem = document.getElementById(`gem-${i}`);
+      const floorMark = document.getElementById(`floor-mark-${i}`);
+      const cauldronRune = document.getElementById(`cauldron-rune-${i}`);
+      if (i < pullStep) {
+        gem.classList.add('lit');
+        floorMark.setAttribute('fill', '#2bf5c2');
+        floorMark.setAttribute('stroke', '#e6fff9');
+        if (cauldronRune) cauldronRune.setAttribute('fill', '#2bf5c2');
+      } else {
+        gem.classList.remove('lit');
+        floorMark.setAttribute('fill', '#230e40');
+        floorMark.setAttribute('stroke', '#c9952c');
+        if (cauldronRune) cauldronRune.setAttribute('fill', '#3a1c5e');
+      }
+    }
+    coil2El.style.opacity = pullStep >= 1 ? '1' : '0.2';
+    coil3El.style.opacity = pullStep >= 2 ? '1' : '0.1';
+  }
+
+  function buildSlicedPieSVG(num, den) {
+    const r = 28;
+    const cx = 34, cy = 34;
+    let paths = '';
+    for (let i = 0; i < den; i++) {
+      const a1 = (i / den) * Math.PI * 2 - Math.PI / 2;
+      const a2 = ((i + 1) / den) * Math.PI * 2 - Math.PI / 2;
+      const x1 = cx + Math.cos(a1) * r;
+      const y1 = cy + Math.sin(a1) * r;
+      const x2 = cx + Math.cos(a2) * r;
+      const y2 = cy + Math.sin(a2) * r;
+      const isSubtracted = i >= (den - num);
+      const fill = isSubtracted ? 'rgba(32, 10, 56, 0.65)' : '#2bf5c2';
+      paths += `<path d="M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 0 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z"
+                      fill="${fill}" stroke="#140626" stroke-width="2"/>`;
+    }
+    return `<svg width="68" height="68" viewBox="0 0 68 68" style="vertical-align:middle; filter:drop-shadow(0 3px 5px rgba(0,0,0,0.7));">${paths}</svg>`;
+  }
+
+  function renderVisualBorrowTray() {
+    if (!currentProblem) return;
+    const { W, M, num, den } = currentProblem;
+    const remWholeAfterBorrow = W - 1;
+    const pieSVG = buildSlicedPieSVG(num, den);
+
+    borrowTrayEl.innerHTML = `
+      <div class="math-expr" style="font-size:clamp(14px, 2vw, 28px);">
+        <span class="whole-num">${W}</span>
+        <span class="op-sign">=</span>
+        ${remWholeAfterBorrow > 0 ? `<span class="whole-num">${remWholeAfterBorrow}</span><span class="op-sign">+</span>` : ''}
+        ${renderFractionHTML(0, den, den)}
+        <span style="margin-left:8px;">${pieSVG}</span>
+        ${M > 0 ? `<span class="op-sign">&minus;</span><span class="whole-num">${M}</span>` : ''}
+        <span class="op-sign">&minus;</span>
+        ${renderFractionHTML(0, num, den)}
+      </div>
+    `;
+  }
+
+  function toggleBorrowHelper(forceState, fromRemote = false) {
+    borrowHelperOpen = typeof forceState === 'boolean' ? forceState : !borrowHelperOpen;
+    borrowBtnEl.classList.toggle('active', borrowHelperOpen);
+    borrowTrayEl.classList.toggle('open', borrowHelperOpen);
+    if (borrowHelperOpen) renderVisualBorrowTray();
+    if (!fromRemote) {
+      broadcastGameAction('toggle_borrow', { open: borrowHelperOpen });
+    }
+  }
+
+  function getSlotOrder() {
+    if (!currentProblem) return ['num', 'den'];
+    return currentProblem.ansW > 0 ? ['whole', 'num', 'den'] : ['num', 'den'];
+  }
+
+  function updateSlotDOM() {
+    const wEl = document.getElementById('slot-whole');
+    const nEl = document.getElementById('slot-num');
+    const dEl = document.getElementById('slot-den');
+
+    if (wEl) {
+      wEl.textContent = userValues.whole;
+      wEl.classList.toggle('active-slot', activeSlotName === 'whole');
+    }
+    if (nEl) {
+      nEl.textContent = userValues.num;
+      nEl.classList.toggle('active-slot', activeSlotName === 'num');
+    }
+    if (dEl) {
+      dEl.textContent = userValues.den;
+      dEl.classList.toggle('active-slot', activeSlotName === 'den');
+    }
+  }
+
+  function setActiveSlot(slotName, fromRemote = false) {
+    if (isLocked) return;
+    activeSlotName = slotName;
+    updateSlotDOM();
+    if (!fromRemote) {
+      broadcastGameAction('select_slot', { slot: slotName });
+    }
+  }
+
+  function loadProblem(idx, customRaw = null) {
+    const raw = customRaw || (idx < CURRICULUM_18.length
+      ? CURRICULUM_18[idx]
+      : generateEndlessProblem());
+
+    currentProblem = buildProblemData(raw);
+    userValues = { whole: '', num: '', den: '' };
+    const order = getSlotOrder();
+    activeSlotName = order[0];
+    toggleBorrowHelper(false, true);
+
+    const subtrahendHTML = renderFractionHTML(currentProblem.M, currentProblem.num, currentProblem.den, false);
+    const showWholeSlot = currentProblem.ansW > 0;
+
+    problemMathEl.innerHTML = `
+      <span class="whole-num borrow-clickable" id="board-whole-num">${currentProblem.W}</span>
+      <span class="op-sign">&minus;</span>
+      ${subtrahendHTML}
+      <span class="op-sign">=</span>
+      <span class="answer-slots-wrap">
+        ${showWholeSlot ? `<span class="carved-slot" id="slot-whole" data-slot="whole"></span>` : ''}
+        <span class="slot-frac-stack">
+          <span class="carved-slot frac-slot" id="slot-num" data-slot="num"></span>
+          <span class="slot-frac-bar"></span>
+          <span class="carved-slot frac-slot" id="slot-den" data-slot="den"></span>
+        </span>
+      </span>
+    `;
+
+    document.querySelectorAll('.carved-slot').forEach(slotEl => {
+      slotEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sfx.playWoodClick();
+        setActiveSlot(slotEl.dataset.slot, false);
+      });
+    });
+
+    const boardWholeEl = document.getElementById('board-whole-num');
+    if (boardWholeEl) {
+      boardWholeEl.addEventListener('click', () => {
+        sfx.playWoodClick();
+        toggleBorrowHelper(undefined, false);
+      });
+    }
+
+    updateSlotDOM();
+
+    problemBoardEl.classList.remove('swing', 'wrong-shake');
+    void problemBoardEl.offsetWidth;
+    problemBoardEl.classList.add('swing');
+
+    updateStageIndicators();
+  }
+
+  borrowBtnEl.addEventListener('click', () => {
+    sfx.playWoodClick();
+    toggleBorrowHelper(undefined, false);
+  });
+
+  function handleDigitInput(digitStr, fromRemote = false) {
+    if (isLocked || !currentProblem) return;
+    sfx.playWoodClick();
+
+    const targetExpected = activeSlotName === 'whole'
+      ? String(currentProblem.ansW)
+      : activeSlotName === 'num'
+        ? String(currentProblem.ansNum)
+        : String(currentProblem.ansDen);
+
+    const maxLen = Math.max(2, targetExpected.length);
+    if (userValues[activeSlotName].length >= maxLen) {
+      userValues[activeSlotName] = digitStr;
+    } else {
+      userValues[activeSlotName] += digitStr;
+    }
+
+    updateSlotDOM();
+
+    if (userValues[activeSlotName].length >= targetExpected.length) {
+      const order = getSlotOrder();
+      const curIdx = order.indexOf(activeSlotName);
+      if (curIdx >= 0 && curIdx < order.length - 1) {
+        activeSlotName = order[curIdx + 1];
+        updateSlotDOM();
+      }
+    }
+
+    if (!fromRemote) {
+      broadcastGameAction('digit', { digit: digitStr, userValues, activeSlotName });
+    }
+  }
+
+  function handleBackspace(fromRemote = false) {
+    if (isLocked || !currentProblem) return;
+    sfx.playWoodClick();
+    if (userValues[activeSlotName].length > 0) {
+      userValues[activeSlotName] = userValues[activeSlotName].slice(0, -1);
+    } else {
+      const order = getSlotOrder();
+      const curIdx = order.indexOf(activeSlotName);
+      if (curIdx > 0) {
+        activeSlotName = order[curIdx - 1];
+        userValues[activeSlotName] = userValues[activeSlotName].slice(0, -1);
+      }
+    }
+    updateSlotDOM();
+    if (!fromRemote) {
+      broadcastGameAction('backspace', { userValues, activeSlotName });
+    }
+  }
+
+  function evaluateSubmission(fromRemote = false) {
+    if (isLocked || !currentProblem) return;
+
+    if (!fromRemote) {
+      broadcastGameAction('submit_answer', { userValues });
+    }
+
+    const enteredW = currentProblem.ansW > 0
+      ? (userValues.whole === '' ? -1 : parseInt(userValues.whole, 10))
+      : (userValues.whole === '' ? 0 : parseInt(userValues.whole, 10));
+    const enteredN = userValues.num === '' ? -1 : parseInt(userValues.num, 10);
+    const enteredD = userValues.den === '' ? -1 : parseInt(userValues.den, 10);
+
+    const isCorrect = (
+      enteredW === currentProblem.ansW &&
+      enteredN === currentProblem.ansNum &&
+      enteredD === currentProblem.ansDen
+    );
+
+    if (isCorrect) {
+      isLocked = true;
+      toggleBorrowHelper(false, true);
+      document.querySelectorAll('.carved-slot').forEach(el => {
+        el.classList.remove('active-slot');
+        el.classList.add('correct-slot');
+      });
+
+      spawnGoldenSparks(900, 160, 38);
+
+      pullStep++;
+      sackTargetX = SACK_POSITIONS[pullStep];
+      uncleMode = 'heaving';
+      modeTimer = 0;
+
+      sfx.playHeaveSuccess(pullStep);
+      spawnFloorDust(sackCurrentX, 635, 34);
+      spawnSweatBurst(460, 480);
+      updateStageIndicators();
+
+      if (pullStep >= 3) {
+        setTimeout(() => {
+          triggerSurpriseReveal();
+        }, 680);
+      } else {
+        setTimeout(() => {
+          uncleMode = 'straining_loop';
+          isLocked = false;
+          problemIndex++;
+          loadProblem(problemIndex);
+        }, 760);
+      }
+    } else {
+      problemBoardEl.classList.remove('wrong-shake');
+      void problemBoardEl.offsetWidth;
+      problemBoardEl.classList.add('wrong-shake');
+
+      sfx.playWrongSlip();
+      uncleMode = 'slipping';
+      modeTimer = 0;
+      uncleTargetSlide = -28;
+      spawnFloorDust(620, 795, 20);
+
+      setTimeout(() => {
+        uncleTargetSlide = 0;
+        if (uncleMode === 'slipping') uncleMode = 'straining_loop';
+      }, 620);
+    }
+  }
+
+  document.querySelectorAll('.wood-key[data-digit]').forEach(btn => {
+    btn.addEventListener('click', () => handleDigitInput(btn.dataset.digit, false));
+  });
+  document.getElementById('key-erase').addEventListener('click', () => handleBackspace(false));
+  document.getElementById('key-submit').addEventListener('click', () => evaluateSubmission(false));
+
+  window.addEventListener('keydown', (e) => {
+    if (isLocked) return;
+    if (e.key >= '0' && e.key <= '9') {
+      e.preventDefault();
+      handleDigitInput(e.key, false);
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+      e.preventDefault();
+      handleBackspace(false);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      evaluateSubmission(false);
+    } else if (e.key === 'Tab' || e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const order = getSlotOrder();
+      const nextIdx = (order.indexOf(activeSlotName) + 1) % order.length;
+      setActiveSlot(order[nextIdx], false);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const order = getSlotOrder();
+      const prevIdx = (order.indexOf(activeSlotName) - 1 + order.length) % order.length;
+      setActiveSlot(order[prevIdx], false);
+    }
+  });
+
+  function addTrophyToShelf(itemIdx) {
+    const slot = itemIdx % 6;
+    const existing = document.getElementById(`shelf-slot-${slot}`);
+    if (existing) existing.remove();
+
+    const col = slot % 3;
+    const row = Math.floor(slot / 3);
+    const xPos = [102, 304, 504][col];
+    const yPos = [110, 258][row];
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('id', `shelf-slot-${slot}`);
+    g.setAttribute('class', 'shelf-trophy');
+    g.setAttribute('transform', `translate(${xPos}, ${yPos}) scale(0.55)`);
+    g.innerHTML = SURPRISE_ITEMS_SVG[slot];
+
+    g.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sfx.playItemSignatureSound(slot);
+      g.style.transform = 'scale(0.68) translateY(-10px)';
+      setTimeout(() => { g.style.transform = ''; }, 320);
+      broadcastGameAction('trophy_click', { slot });
+    });
+
+    trophiesLayerEl.appendChild(g);
+  }
+
+  function setSackMouthState(openProgress, rummageProgress = 0, t = 0, showFrontCuffOverlay = false) {
+    const closedOpacity = Math.max(0, 1 - openProgress * 2.2);
+    sackClosedFrillEl.setAttribute('opacity', closedOpacity.toFixed(2));
+
+    const openScale = 0.4 + openProgress * 0.62;
+    sackOpenBackEl.setAttribute('opacity', openProgress.toFixed(2));
+    sackOpenBackEl.setAttribute('transform', `translate(0, -155) scale(${openScale.toFixed(2)})`);
+    sackOpenFrontEl.setAttribute('opacity', openProgress.toFixed(2));
+    sackOpenFrontEl.setAttribute('transform', `translate(0, -155) scale(${openScale.toFixed(2)})`);
+
+    if (showFrontCuffOverlay && openProgress > 0.5) {
+      const worldCuffX = sackCurrentX;
+      const worldCuffY = 775 - 155;
+      sackFrontCuffOverlayEl.setAttribute('opacity', '1');
+      sackFrontCuffOverlayEl.setAttribute('transform', `translate(${worldCuffX.toFixed(1)}, ${worldCuffY.toFixed(1)}) scale(${openScale.toFixed(2)})`);
+    } else {
+      sackFrontCuffOverlayEl.setAttribute('opacity', '0');
+    }
+
+    if (rummageProgress > 0) {
+      const lumpX = Math.sin(t * 19) * 45;
+      const lumpY = -75 + Math.cos(t * 23) * 24;
+      const lumpScale = 0.85 + Math.sin(t * 27) * 0.22;
+      sackRummageLumpEl.setAttribute('opacity', rummageProgress.toFixed(2));
+      sackRummageLumpEl.setAttribute('transform', `translate(${lumpX.toFixed(1)}, ${lumpY.toFixed(1)}) scale(${lumpScale.toFixed(2)})`);
+    } else {
+      sackRummageLumpEl.setAttribute('opacity', '0');
+    }
+  }
+
+  /* =========================================================================
+     7. MULTI-STAGE CAULDRON EXTRACTION SEQUENCE
+     ========================================================================= */
+  function triggerSurpriseReveal() {
+    isLocked = true;
+    modeTimer = 0;
+
+    const itemIdx = surprisesUnlocked % 6;
+    surprisesUnlocked++;
+
+    surpriseSlotEl.innerHTML = SURPRISE_ITEMS_SVG[itemIdx];
+    surpriseSlotEl.setAttribute('transform', 'translate(1210, 620) scale(0)');
+    extractedShadowEl.setAttribute('opacity', '0');
+    extractedGlowEl.setAttribute('opacity', '0');
+
+    sfx.playUntieAndRummage();
+    spawnFloorDust(1210, 630, 18);
+
+    let liftSoundPlayed = false;
+    let revealSoundPlayed = false;
+
+    const slot = itemIdx % 6;
+    const shelfTargetX = 1255 + [102, 304, 504][slot % 3];
+    const shelfTargetY = 115 + [110, 258][Math.floor(slot / 3)];
+
+    const seqStart = performance.now();
+
+    function animateExtractionSequence(now) {
+      const elapsed = (now - seqStart) / 1000;
+
+      if (elapsed < 0.45) {
+        uncleMode = 'untying_sack';
+        const p = elapsed / 0.45;
+        setSackMouthState(p, 0, elapsed, false);
+
+        extractionHandOverride = {
+          leftX: 1020 + p * 55,
+          leftY: 635 - p * 15,
+          leftPose: 'grip',
+          rightX: 1060 + p * 110,
+          rightY: 635 - p * 12,
+          rightPose: 'grip'
+        };
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 1.65) {
+        uncleMode = 'rummaging_sack';
+        setSackMouthState(1, 1, elapsed, true);
+
+        const rummageX = sackCurrentX + Math.sin(elapsed * 22) * 32;
+        const rummageY = 635 + Math.abs(Math.cos(elapsed * 18)) * 28;
+
+        extractionHandOverride = {
+          leftX: sackCurrentX - 135,
+          leftY: 625 + Math.sin(elapsed * 12) * 5,
+          leftPose: 'grip',
+          rightX: rummageX,
+          rightY: rummageY,
+          rightPose: 'rummage'
+        };
+
+        if (Math.random() < 0.25) {
+          spawnGoldenSparks(sackCurrentX + (Math.random() - 0.5) * 80, 615, 2);
+        }
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 2.35) {
+        uncleMode = 'lifting_from_sack';
+        if (!liftSoundPlayed) {
+          liftSoundPlayed = true;
+          sfx.playHeavyLiftStrain();
+          spawnSweatBurst(880, 490);
+        }
+
+        const p = (elapsed - 1.65) / 0.7;
+        const ease = 1 - Math.pow(1 - p, 3);
+        setSackMouthState(1, Math.max(0, 1 - p * 2), elapsed, false);
+
+        const itemX = sackCurrentX - ease * 290;
+        const itemY = 620 - Math.sin(p * Math.PI) * 155 + ease * 135;
+        const itemScale = 0.28 + ease * 1.12;
+        const itemRot = (1 - ease) * 14 + Math.sin(elapsed * 16) * 4;
+
+        surpriseSlotEl.setAttribute('transform', `translate(${itemX.toFixed(1)}, ${itemY.toFixed(1)}) rotate(${itemRot.toFixed(1)}) scale(${itemScale.toFixed(2)})`);
+
+        extractionHandOverride = {
+          leftX: sackCurrentX - 140,
+          leftY: 635,
+          leftPose: 'grip',
+          rightX: itemX - 24,
+          rightY: itemY - 28,
+          rightPose: 'grip'
+        };
+
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 4.45) {
+        uncleMode = 'amazed_reveal';
+        extractionHandOverride = null;
+
+        if (!revealSoundPlayed) {
+          revealSoundPlayed = true;
+          sfx.playSurpriseReveal(itemIdx);
+          spawnGoldenSparks(920, 735, 60);
+          spawnFloorDust(920, 830, 28);
+
+          paintingLeftEl.setAttribute('transform', 'translate(185, 205) rotate(-6.5)');
+          setTimeout(() => {
+            paintingLeftEl.setAttribute('transform', 'translate(185, 205) rotate(-1.5)');
+          }, 650);
+        }
+
+        const p = (elapsed - 2.35) / 2.1;
+        const bounce = Math.exp(-p * 5) * Math.cos(p * 22) * 22;
+        const idleBob = Math.sin(elapsed * 6.5) * 6;
+        const itemX = 920;
+        const itemY = 755 - Math.abs(bounce) + idleBob;
+        const wobbleRot = Math.sin(elapsed * 5.5) * 5.5;
+        const scaleX = 1.40 + Math.sin(elapsed * 11) * 0.04;
+        const scaleY = 1.40 - Math.sin(elapsed * 11) * 0.04;
+
+        surpriseSlotEl.setAttribute('transform', `translate(${itemX}, ${itemY.toFixed(1)}) rotate(${wobbleRot.toFixed(1)}) scale(${scaleX.toFixed(2)}, ${scaleY.toFixed(2)})`);
+
+        extractedShadowEl.setAttribute('cx', itemX);
+        extractedShadowEl.setAttribute('cy', '838');
+        extractedShadowEl.setAttribute('rx', (98 - Math.abs(bounce) * 0.6).toFixed(1));
+        extractedShadowEl.setAttribute('opacity', '0.78');
+
+        extractedGlowEl.setAttribute('cx', itemX);
+        extractedGlowEl.setAttribute('cy', (itemY - 15).toFixed(1));
+        extractedGlowEl.setAttribute('opacity', '0.85');
+
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else if (elapsed < 5.05) {
+        const p = (elapsed - 4.45) / 0.6;
+        const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+
+        const startX = 920;
+        const startY = 755;
+        const curX = startX + (shelfTargetX - startX) * ease;
+        const curY = startY + (shelfTargetY - startY) * ease - Math.sin(p * Math.PI) * 140;
+        const curScale = 1.40 + (0.55 - 1.40) * ease;
+        const curRot = Math.sin(p * Math.PI * 2) * 12 * (1 - ease);
+
+        surpriseSlotEl.setAttribute('transform', `translate(${curX.toFixed(1)}, ${curY.toFixed(1)}) rotate(${curRot.toFixed(1)}) scale(${curScale.toFixed(2)})`);
+        extractedShadowEl.setAttribute('opacity', ((1 - ease) * 0.78).toFixed(2));
+        extractedGlowEl.setAttribute('opacity', ((1 - ease) * 0.85).toFixed(2));
+        setSackMouthState(1 - ease, 0, elapsed, false);
+
+        requestAnimationFrame(animateExtractionSequence);
+
+      } else {
+        addTrophyToShelf(itemIdx);
+        sfx.playWoodClick();
+        surpriseSlotEl.setAttribute('transform', 'translate(920, 780) scale(0)');
+        extractedShadowEl.setAttribute('opacity', '0');
+        extractedGlowEl.setAttribute('opacity', '0');
+        setSackMouthState(0, 0, 0, false);
+        extractionHandOverride = null;
+
+        pullStep = 0;
+        sackTargetX = SACK_POSITIONS[0];
+        uncleMode = 'straining_loop';
+        isLocked = false;
+
+        problemIndex++;
+        loadProblem(problemIndex);
+      }
+    }
+
+    requestAnimationFrame(animateExtractionSequence);
+  }
+
+  function performSkipLevel(fromRemote = false) {
+    if (isLocked) return;
+    sfx.playWoodClick();
+    if (!fromRemote) {
+      broadcastGameAction('skip_level', { problemIndex: problemIndex + 1 });
+    }
+    pullStep++;
+    if (pullStep >= 3) {
+      sackTargetX = SACK_POSITIONS[3];
+      updateStageIndicators();
+      triggerSurpriseReveal();
+    } else {
+      sackTargetX = SACK_POSITIONS[pullStep];
+      spawnFloorDust(sackCurrentX, 635, 16);
+      problemIndex++;
+      loadProblem(problemIndex);
+    }
+  }
+
+  document.getElementById('skip-btn').addEventListener('click', () => performSkipLevel(false));
+  document.getElementById('sound-btn').addEventListener('click', () => sfx.toggleMute());
+
+  /* =========================================================================
+     8. CONTINUOUS REAL-TIME PHYSICS, VERTICAL PUMP & CAULDRON LOOP
+     ========================================================================= */
+  const startTimeAnim = performance.now();
+
+  function localTorsoToWorld(lx, ly, uncleX, uncleY, torsoAngleDeg) {
+    const rad = (torsoAngleDeg * Math.PI) / 180;
+    return {
+      x: uncleX + lx * Math.cos(rad) - ly * Math.sin(rad),
+      y: uncleY + lx * Math.sin(rad) + ly * Math.cos(rad)
+    };
+  }
+
+  function animateScene(now) {
+    const t = (now - startTimeAnim) / 1000;
+    modeTimer += 0.016;
+
+    sackCurrentX += (sackTargetX - sackCurrentX) * 0.12;
+    uncleSlideOffset += (uncleTargetSlide - uncleSlideOffset) * 0.18;
+
+    let torsoAngle = 2;
+    let bellyScaleX = 1;
+    let bellyScaleY = 1;
+    let headRot = 0;
+    let flushOpacity = 0.2;
+    let veinOpacity = 0;
+    let cheekPuffOpacity = 0;
+    let sackWobbleRot = 0;
+    let sackSquashX = 1;
+    let sackSquashY = 1;
+    let plungerOffsetY = -165;
+
+    if (uncleMode === 'straining_loop') {
+      // Vertical Up-and-Down Pumping Motion on the Alchemical Press!
+      const pumpWave = (Math.sin(t * 3.8) + 1) * 0.5; // 0 (top) to 1 (pressed down)
+      plungerOffsetY = -195 + pumpWave * 58;
+
+      const creakIdx = Math.floor(t / 1.5);
+      if (creakIdx !== lastCreakCycle && pumpWave > 0.65) {
+        lastCreakCycle = creakIdx;
+        sfx.playRopeCreak(0.45);
+      }
+
+      torsoAngle = -2 + pumpWave * 12;
+      bellyScaleX = 1 + pumpWave * 0.04;
+      bellyScaleY = 1 - pumpWave * 0.025;
+      headRot = pumpWave * 6;
+
+      flushOpacity = 0.15 + pumpWave * 0.45;
+      veinOpacity = pumpWave > 0.78 ? (pumpWave - 0.7) * 2 : 0;
+      cheekPuffOpacity = pumpWave > 0.65 ? 0.85 : 0;
+
+      if (pumpWave > 0.55) {
+        browLeftEl.setAttribute('d', 'M-42 -2 C-30 -2, -14 4, -4 10');
+        browRightEl.setAttribute('d', 'M8 10 C18 4, 34 -2, 44 -2');
+        eyelidLeftEl.setAttribute('d', 'M-17 -3 Q0 4 17 -3');
+        eyelidRightEl.setAttribute('d', 'M-16 -7 Q0 -2 16 -7');
+        pupilLeftEl.setAttribute('transform', 'translate(6, 3)');
+        pupilRightEl.setAttribute('transform', 'translate(6, 3)');
+        mouthShapeEl.setAttribute('d', 'M-24 2 C-10 -6, 14 -6, 26 2 C18 14, -12 14, -24 2 Z');
+        mouthTeethEl.style.opacity = '1';
+        mouthTongueEl.style.opacity = '0';
+      } else {
+        browLeftEl.setAttribute('d', 'M-42 6 C-32 -10, -12 -10, -4 2');
+        browRightEl.setAttribute('d', 'M8 2 C18 -10, 36 -10, 44 6');
+        eyelidLeftEl.setAttribute('d', 'M-17 -12 Q0 -18 17 -12');
+        eyelidRightEl.setAttribute('d', 'M-16 -12 Q0 -18 16 -12');
+        pupilLeftEl.setAttribute('transform', 'translate(5, 1)');
+        pupilRightEl.setAttribute('transform', 'translate(5, 1)');
+        mouthShapeEl.setAttribute('d', 'M-14 0 C-6 -6, 8 -6, 16 0 C12 14, -8 14, -14 0 Z');
+        mouthTeethEl.style.opacity = '0';
+        mouthTongueEl.style.opacity = '0.85';
+      }
+
+      mustacheEl.setAttribute('transform', `translate(26, -10) rotate(${Math.sin(t * 9) * 2})`);
+      sackWobbleRot = Math.sin(t * 8) * (0.8 + pullStep * 0.6);
+      sackSquashX = 1 + Math.sin(t * 7) * 0.02 * (1 + pullStep * 0.4);
+      sackSquashY = 1 - Math.sin(t * 7) * 0.02 * (1 + pullStep * 0.4);
+
+    } else if (uncleMode === 'heaving') {
+      // Deep Power-Press Down on Correct Answer!
+      plungerOffsetY = -125;
+      torsoAngle = 16;
+      bellyScaleX = 1.08;
+      bellyScaleY = 0.94;
+      headRot = 10;
+      flushOpacity = 0.85;
+      veinOpacity = 0.9;
+      cheekPuffOpacity = 1;
+
+      sackWobbleRot = -5 * Math.sin(modeTimer * 20);
+      sackSquashX = 1.07;
+      sackSquashY = 0.93;
+
+    } else if (uncleMode === 'slipping') {
+      // Plunger Pops Up on Wrong Answer!
+      plungerOffsetY = -205;
+      torsoAngle = -10 + Math.sin(modeTimer * 24) * 5;
+      bellyScaleX = 0.95;
+      bellyScaleY = 1.05;
+      headRot = -10;
+      flushOpacity = 0.45;
+
+      mouthShapeEl.setAttribute('d', 'M-14 -4 C-6 -14, 10 -14, 16 -4 C18 18, -14 18, -14 -4 Z');
+      mouthTeethEl.style.opacity = '0';
+      mouthTongueEl.style.opacity = '0.9';
+
+    } else if (uncleMode === 'untying_sack' || uncleMode === 'rummaging_sack' || uncleMode === 'lifting_from_sack') {
+      plungerOffsetY = -155;
+      torsoAngle = 22 + Math.sin(t * 16) * 2.5;
+      bellyScaleX = 1.04;
+      bellyScaleY = 0.96;
+      headRot = 14;
+      flushOpacity = 0.45;
+      sackWobbleRot = Math.sin(t * 20) * 4.5;
+      sackSquashX = 1 + Math.sin(t * 22) * 0.05;
+      sackSquashY = 1 - Math.sin(t * 22) * 0.05;
+
+    } else if (uncleMode === 'amazed_reveal') {
+      plungerOffsetY = -175;
+      torsoAngle = -6 + Math.sin(t * 6) * 2.5;
+      bellyScaleX = 1 + Math.sin(t * 8) * 0.04;
+      bellyScaleY = 1 - Math.sin(t * 8) * 0.03;
+      headRot = 5 + Math.sin(t * 5) * 3;
+      flushOpacity = 0.3;
+
+      browLeftEl.setAttribute('d', 'M-44 -16 C-30 -28, -12 -26, -2 -14');
+      browRightEl.setAttribute('d', 'M6 -14 C16 -26, 34 -28, 46 -16');
+      eyelidLeftEl.setAttribute('d', 'M-17 -16 Q0 -22 17 -16');
+      eyelidRightEl.setAttribute('d', 'M-16 -16 Q0 -22 16 -16');
+      pupilLeftEl.setAttribute('transform', 'translate(7, 2) scale(1.14)');
+      pupilRightEl.setAttribute('transform', 'translate(7, 2) scale(1.14)');
+      mouthShapeEl.setAttribute('d', 'M-22 -4 C-8 -12, 12 -12, 24 -4 C26 28, -20 28, -22 -4 Z');
+      mouthTeethEl.style.opacity = '0.3';
+      mouthTongueEl.style.opacity = '1';
+    }
+
+    const isLeaningIntoSack = (uncleMode === 'untying_sack' || uncleMode === 'rummaging_sack' || uncleMode === 'lifting_from_sack');
+    const uncleX = 465 + uncleSlideOffset + (isLeaningIntoSack ? 540 : 0);
+    const uncleY = 760;
+
+    uncleMasterEl.setAttribute('transform', `translate(${uncleX.toFixed(1)}, ${uncleY})`);
+    uncleTorsoEl.setAttribute('transform', `rotate(${torsoAngle.toFixed(2)})`);
+    uncleBellyEl.setAttribute('transform', `scale(${bellyScaleX.toFixed(3)}, ${bellyScaleY.toFixed(3)})`);
+    uncleHeadEl.setAttribute('transform', `translate(-8, -248) rotate(${headRot.toFixed(2)})`);
+
+    if (pumpPlungerEl) {
+      pumpPlungerEl.setAttribute('transform', `translate(0, ${plungerOffsetY.toFixed(1)})`);
+    }
+    if (pumpLiquidEl) {
+      const liqH = Math.max(30, 120 + (plungerOffsetY + 165) * 1.1);
+      pumpLiquidEl.setAttribute('y', (-15 - liqH).toFixed(1));
+      pumpLiquidEl.setAttribute('height', liqH.toFixed(1));
+    }
+
+    // Solve 2-Bone IK for Both Arms of the Raccoon Alchemist
+    const rightShoulderWorld = localTorsoToWorld(-24, -148, uncleX, uncleY, torsoAngle);
+    const leftShoulderWorld = localTorsoToWorld(44, -152, uncleX, uncleY, torsoAngle);
+
+    let leftHandTargetX, leftHandTargetY, leftPose = 'grip';
+    let rightHandTargetX, rightHandTargetY, rightPose = 'grip';
+    let flipRightElbow = false;
+
+    if (extractionHandOverride) {
+      leftHandTargetX = extractionHandOverride.leftX;
+      leftHandTargetY = extractionHandOverride.leftY;
+      leftPose = extractionHandOverride.leftPose;
+      rightHandTargetX = extractionHandOverride.rightX;
+      rightHandTargetY = extractionHandOverride.rightY;
+      rightPose = extractionHandOverride.rightPose;
+      flipRightElbow = true;
+    } else if (uncleMode === 'amazed_reveal') {
+      const rightCheekWorld = localTorsoToWorld(-48, -242 + Math.sin(t * 10) * 5, uncleX, uncleY, torsoAngle);
+      const leftCheekWorld = localTorsoToWorld(38, -248 - Math.sin(t * 10) * 5, uncleX, uncleY, torsoAngle);
+      rightHandTargetX = rightCheekWorld.x;
+      rightHandTargetY = rightCheekWorld.y;
+      rightPose = 'shock';
+      leftHandTargetX = leftCheekWorld.x;
+      leftHandTargetY = leftCheekWorld.y;
+      leftPose = 'shock';
+    } else {
+      // Both paws hold the horizontal T-bar handle of the vertical Alchemy Pump!
+      const pumpWorldX = uncleX + 155;
+      const pumpWorldY = uncleY + plungerOffsetY - 4;
+      rightHandTargetX = pumpWorldX - 42;
+      rightHandTargetY = pumpWorldY;
+      leftHandTargetX = pumpWorldX + 42;
+      leftHandTargetY = pumpWorldY;
+    }
+
+    const leftIK = solveArmIK(
+      leftShoulderWorld.x,
+      leftShoulderWorld.y,
+      leftHandTargetX,
+      leftHandTargetY,
+      115,
+      115,
+      false
+    );
+    const rightIK = solveArmIK(
+      rightShoulderWorld.x,
+      rightShoulderWorld.y,
+      rightHandTargetX,
+      rightHandTargetY,
+      120,
+      120,
+      flipRightElbow
+    );
+
+    uncleLeftArmEl.innerHTML = renderIKArmSVG(leftIK, leftPose, true);
+    uncleRightArmEl.innerHTML = renderIKArmSVG(rightIK, rightPose, false);
+
+    flushEls.forEach(el => el.setAttribute('opacity', flushOpacity.toFixed(2)));
+    veinEl.setAttribute('opacity', veinOpacity.toFixed(2));
+    cheekPuffEl.setAttribute('opacity', cheekPuffOpacity.toFixed(2));
+
+    const sweatDrop1Y = (t * 28) % 34;
+    const sweatDrop2Y = ((t * 28) + 17) % 34;
+    sweat1El.setAttribute('transform', `translate(0, ${sweatDrop1Y.toFixed(1)}) scale(${(1.3 - sweatDrop1Y * 0.025).toFixed(2)})`);
+    sweat2El.setAttribute('transform', `translate(0, ${sweatDrop2Y.toFixed(1)}) scale(${(1.2 - sweatDrop2Y * 0.025).toFixed(2)})`);
+
+    // Apply Cauldron Transforms
+    sackMasterEl.setAttribute('transform', `translate(${sackCurrentX.toFixed(1)}, 775)`);
+    sackBodyEl.setAttribute('transform', `rotate(${sackWobbleRot.toFixed(2)}) scale(${sackSquashX.toFixed(3)}, ${sackSquashY.toFixed(3)})`);
+
+    // Update Glowing Elixir Conduit Pipe Connecting Pump Base to Cauldron Valve
+    const pumpOutletX = 465 + 155 + 36;
+    const pumpOutletY = 785;
+    const cauldronValveX = sackCurrentX - 152;
+    const cauldronValveY = 783;
+    const pipeMidX = (pumpOutletX + cauldronValveX) / 2;
+    const pipeMidY = 822 + Math.sin(t * 10) * 4;
+
+    const ropePathD = `M ${pumpOutletX} ${pumpOutletY} Q ${pipeMidX.toFixed(1)} ${pipeMidY.toFixed(1)} ${cauldronValveX.toFixed(1)} ${cauldronValveY}`;
+    ropeMainEl.setAttribute('d', ropePathD);
+    ropeOutlineEl.setAttribute('d', ropePathD);
+    ropeShadowEl.setAttribute('d', `M ${pumpOutletX} 825 L ${cauldronValveX.toFixed(1)} 825`);
+
+    // Ambient Cave Animations
+    const lampAngle = Math.sin(t * 1.35) * 2.2;
+    lampGroupEl.setAttribute('transform', `translate(960, 0) rotate(${lampAngle.toFixed(2)})`);
+
+    const mousePeekY = Math.sin(t * 1.8) > 0.2 ? -6 + Math.sin(t * 7) * 1.5 : 18;
+    wallMouseEl.setAttribute('transform', `translate(0, ${mousePeekY.toFixed(1)})`);
+
+    // Render Particle & Magical Cauldron Bubbles Canvas
+    ctx.clearRect(0, 0, cw, ch);
+
+    // Continuous rising bubbles from the Cauldron
+    if (Math.random() < (0.12 + pullStep * 0.08)) {
+      activeParticles.push({
+        type: 'sweat',
+        x: sackCurrentX + (Math.random() - 0.5) * 190,
+        y: 620,
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: -1.8 - Math.random() * 2.5,
+        r: 4 + Math.random() * 7,
+        alpha: 0.85,
+        decay: 0.012,
+        color: pullStep === 0 ? '#52ffcf' : pullStep === 1 ? '#38d9ff' : '#ff75d8'
+      });
+    }
+
+    for (const m of dustMotes) {
+      m.x += m.vx + Math.sin(t + m.phase) * 0.18;
+      m.y += m.vy;
+      if (m.y < 0) { m.y = ch * 0.82; m.x = Math.random() * cw; }
+      if (m.x < 0) m.x = cw;
+      if (m.x > cw) m.x = 0;
+
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(145, 255, 225, ${m.alpha * (0.6 + 0.4 * Math.sin(t * 2 + m.phase))})`;
+      ctx.fill();
+    }
+
+    for (let i = activeParticles.length - 1; i >= 0; i--) {
+      const p = activeParticles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.alpha -= p.decay;
+
+      if (p.type === 'dust') {
+        p.r += 0.45;
+        p.vx *= 0.96;
+        p.vy *= 0.95;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `${p.color}${Math.max(0, p.alpha)})`;
+        ctx.fill();
+      } else if (p.type === 'spark') {
+        p.vy += 0.28;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(t * 8);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.beginPath();
+        ctx.moveTo(0, -p.r * 1.6);
+        ctx.lineTo(p.r * 0.6, -p.r * 0.6);
+        ctx.lineTo(p.r * 1.6, 0);
+        ctx.lineTo(p.r * 0.6, p.r * 0.6);
+        ctx.lineTo(0, p.r * 1.6);
+        ctx.lineTo(-p.r * 0.6, p.r * 0.6);
+        ctx.lineTo(-p.r * 1.6, 0);
+        ctx.lineTo(-p.r * 0.6, -p.r * 0.6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      } else if (p.type === 'sweat') {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+
+      if (p.alpha <= 0) {
+        activeParticles.splice(i, 1);
+      }
+    }
+
+    requestAnimationFrame(animateScene);
+  }
+
+  /* =========================================================================
+     9. ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ (Олівець / Гумка) З FIREBASE СИНХРОНІЗАЦІЄЮ
+     ========================================================================= */
+  const drawCanvas = document.getElementById('global-draw-canvas');
+  const drawCtx = drawCanvas.getContext('2d');
+  const toggleDrawBtn = document.getElementById('toggle-draw-btn-global');
+  const drawPanel = document.getElementById('draw-panel-global');
+  const closeDrawBtn = document.getElementById('close-draw-panel-btn');
+  const pencilBtn = document.getElementById('tool-pencil-btn');
+  const eraserBtn = document.getElementById('tool-eraser-btn');
+  const sizeSlider = document.getElementById('draw-size-slider');
+  const colorPicker = document.getElementById('draw-color-picker');
+  const clearDrawBtn = document.getElementById('draw-clear-btn');
+  const drawHeader = document.getElementById('draw-panel-header');
+
+  let isDrawingMode = false;
+  let isPainting = false;
+  let drawTool = 'pencil';
+  let lastNormPt = null;
+
+  function resizeDrawCanvas() {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = drawCanvas.width;
+    tempCanvas.height = drawCanvas.height;
+    if (tempCanvas.width > 0 && tempCanvas.height > 0) {
+      tempCanvas.getContext('2d').drawImage(drawCanvas, 0, 0);
+    }
+    drawCanvas.width = window.innerWidth;
+    drawCanvas.height = window.innerHeight;
+    if (tempCanvas.width > 0 && tempCanvas.height > 0) {
+      drawCtx.drawImage(tempCanvas, 0, 0, drawCanvas.width, drawCanvas.height);
+    }
+  }
+  window.addEventListener('resize', resizeDrawCanvas);
+  resizeDrawCanvas();
+
+  // Нормалізація координат відносно ігрової сцени (#stage-wrapper), щоб лінії ідеально збігалися на всіх екранах
+  function clientToStageNorm(clientX, clientY) {
+    const rect = stageWrapperEl.getBoundingClientRect();
+    return {
+      nx: (clientX - rect.left) / (rect.width || 1),
+      ny: (clientY - rect.top) / (rect.height || 1)
+    };
+  }
+
+  function stageNormToClient(nx, ny) {
+    const rect = stageWrapperEl.getBoundingClientRect();
+    return {
+      x: rect.left + nx * rect.width,
+      y: rect.top + ny * rect.height
+    };
+  }
+
+  function renderStrokeSegment(x0, y0, x1, y1, color, size, tool) {
+    drawCtx.save();
+    drawCtx.lineCap = 'round';
+    drawCtx.lineJoin = 'round';
+    drawCtx.lineWidth = size;
+    if (tool === 'eraser') {
+      drawCtx.globalCompositeOperation = 'destination-out';
+      drawCtx.strokeStyle = 'rgba(0,0,0,1)';
+    } else {
+      drawCtx.globalCompositeOperation = 'source-over';
+      drawCtx.strokeStyle = color;
+    }
+    drawCtx.beginPath();
+    drawCtx.moveTo(x0, y0);
+    drawCtx.lineTo(x1, y1);
+    drawCtx.stroke();
+    drawCtx.restore();
+  }
+
+  // Відкриття панелі одразу активує режим малювання олівцем
+  toggleDrawBtn.addEventListener('click', () => {
+    drawPanel.style.display = 'flex';
+    isDrawingMode = true;
+    drawCanvas.style.pointerEvents = 'auto';
+  });
+
+  // Закриття панелі на ✕ ховає панель і вимикає малювання
+  closeDrawBtn.addEventListener('click', () => {
+    drawPanel.style.display = 'none';
+    isDrawingMode = false;
+    isPainting = false;
+    drawCanvas.style.pointerEvents = 'none';
+  });
+
+  pencilBtn.addEventListener('click', () => {
+    drawTool = 'pencil';
+    pencilBtn.classList.add('active');
+    eraserBtn.classList.remove('active');
+  });
+
+  eraserBtn.addEventListener('click', () => {
+    drawTool = 'eraser';
+    eraserBtn.classList.add('active');
+    pencilBtn.classList.remove('active');
+  });
+
+  clearDrawBtn.addEventListener('click', () => {
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    broadcastGameAction('clear_canvas', {});
+  });
+
+  function startDrawPointer(e) {
+    if (!isDrawingMode) return;
+    isPainting = true;
+    const pt = e.touches ? e.touches[0] : e;
+    lastNormPt = clientToStageNorm(pt.clientX, pt.clientY);
+  }
+
+  function moveDrawPointer(e) {
+    if (!isDrawingMode || !isPainting || !lastNormPt) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const curNormPt = clientToStageNorm(pt.clientX, pt.clientY);
+    const p0 = stageNormToClient(lastNormPt.nx, lastNormPt.ny);
+    const p1 = stageNormToClient(curNormPt.nx, curNormPt.ny);
+    const size = parseInt(sizeSlider.value, 10) || 5;
+    const color = colorPicker.value;
+
+    renderStrokeSegment(p0.x, p0.y, p1.x, p1.y, color, size, drawTool);
+
+    broadcastGameAction('draw_line', {
+      nx0: +lastNormPt.nx.toFixed(4),
+      ny0: +lastNormPt.ny.toFixed(4),
+      nx1: +curNormPt.nx.toFixed(4),
+      ny1: +curNormPt.ny.toFixed(4),
+      color,
+      size,
+      tool: drawTool
+    });
+
+    lastNormPt = curNormPt;
+  }
+
+  function endDrawPointer() {
+    isPainting = false;
+    lastNormPt = null;
+  }
+
+  drawCanvas.addEventListener('mousedown', startDrawPointer);
+  drawCanvas.addEventListener('mousemove', moveDrawPointer);
+  window.addEventListener('mouseup', endDrawPointer);
+  drawCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrawPointer(e); }, { passive: false });
+  drawCanvas.addEventListener('touchmove', (e) => { e.preventDefault(); moveDrawPointer(e); }, { passive: false });
+  window.addEventListener('touchend', endDrawPointer);
+
+  // Перетягування панелі малювання за шапку
+  let isDraggingPanel = false;
+  let dragOffsetX = 0, dragOffsetY = 0;
+  function startPanelDrag(e) {
+    if (e.target === closeDrawBtn) return;
+    isDraggingPanel = true;
+    const pt = e.touches ? e.touches[0] : e;
+    const rect = drawPanel.getBoundingClientRect();
+    dragOffsetX = pt.clientX - rect.left;
+    dragOffsetY = pt.clientY - rect.top;
+  }
+  function movePanelDrag(e) {
+    if (!isDraggingPanel) return;
+    const pt = e.touches ? e.touches[0] : e;
+    const left = Math.max(0, Math.min(window.innerWidth - drawPanel.offsetWidth, pt.clientX - dragOffsetX));
+    const top = Math.max(0, Math.min(window.innerHeight - drawPanel.offsetHeight, pt.clientY - dragOffsetY));
+    drawPanel.style.left = left + 'px';
+    drawPanel.style.top = top + 'px';
+    drawPanel.style.right = 'auto';
+    drawPanel.style.bottom = 'auto';
+  }
+  function stopPanelDrag() {
+    isDraggingPanel = false;
+  }
+  drawHeader.addEventListener('mousedown', startPanelDrag);
+  window.addEventListener('mousemove', movePanelDrag);
+  window.addEventListener('mouseup', stopPanelDrag);
+  drawHeader.addEventListener('touchstart', startPanelDrag, { passive: true });
+  window.addEventListener('touchmove', movePanelDrag, { passive: true });
+  window.addEventListener('touchend', stopPanelDrag);
+
+  /* =========================================================================
+     10. СЛУХАЧ ВХІДНИХ ПОДІЙ FIREBASE (game_action)
+     ========================================================================= */
+  if (actionRef) {
+    actionRef.on('value', (snap) => {
+      const data = snap.val();
+      if (!data || data.senderId === mySenderId) return;
+      if (data.timestamp && data.timestamp <= lastProcessedTimestamp) return;
+      lastProcessedTimestamp = data.timestamp || Date.now();
+
+      isRemoteAction = true;
+      try {
+        if (data.type === 'draw_line') {
+          const p0 = stageNormToClient(data.nx0, data.ny0);
+          const p1 = stageNormToClient(data.nx1, data.ny1);
+          renderStrokeSegment(p0.x, p0.y, p1.x, p1.y, data.color, data.size, data.tool);
+        } else if (data.type === 'clear_canvas') {
+          drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        } else if (data.type === 'digit') {
+          if (data.userValues) userValues = { ...data.userValues };
+          if (data.activeSlotName) activeSlotName = data.activeSlotName;
+          sfx.playWoodClick();
+          updateSlotDOM();
+        } else if (data.type === 'backspace') {
+          if (data.userValues) userValues = { ...data.userValues };
+          if (data.activeSlotName) activeSlotName = data.activeSlotName;
+          sfx.playWoodClick();
+          updateSlotDOM();
+        } else if (data.type === 'select_slot') {
+          setActiveSlot(data.slot, true);
+        } else if (data.type === 'toggle_borrow') {
+          toggleBorrowHelper(data.open, true);
+        } else if (data.type === 'submit_answer') {
+          if (data.userValues) userValues = { ...data.userValues };
+          updateSlotDOM();
+          evaluateSubmission(true);
+        } else if (data.type === 'skip_level') {
+          performSkipLevel(true);
+        } else if (data.type === 'trophy_click') {
+          const el = document.getElementById(`shelf-slot-${data.slot}`);
+          if (el) {
+            sfx.playItemSignatureSound(data.slot);
+            el.style.transform = 'scale(0.68) translateY(-10px)';
+            setTimeout(() => { el.style.transform = ''; }, 320);
+          }
+        }
+      } finally {
+        isRemoteAction = false;
+      }
+    });
+  }
+
+  window.addEventListener('load', () => {
+    loadProblem(0);
+    requestAnimationFrame(animateScene);
+  });
+})();
+</script>
+
+<!-- ================= УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (Ідентифікація, Радар та Блокування) ================= -->
+<div id="block-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.88); z-index: 999999; align-items: center; justify-content: center; text-align: center; font-family: Arial, sans-serif;">
+  <div style="color: #ff3333; font-size: clamp(24px, 4vw, 48px); font-weight: bold; padding: 24px; text-shadow: 0 4px 12px rgba(0,0,0,0.9);">
+    Зачекай! Зараз не твій урок.
+  </div>
+</div>
+
+<script>
+(function() {
+  // 1. Отримання та збереження імені користувача
+  const urlParams = new URLSearchParams(window.location.search);
+  let myName = urlParams.get('user');
+  if (myName && myName.trim() !== '') {
+    myName = myName.trim();
+    sessionStorage.setItem('myUserName', myName);
+  } else {
+    myName = sessionStorage.getItem('myUserName');
+    if (!myName) {
+      myName = 'Гість_' + Math.floor(Math.random() * 1000);
+      sessionStorage.setItem('myUserName', myName);
+    }
+  }
+
+  // 2. Унікальний ідентифікатор вкладки та імунітет першої секунди
+  const tabId = 'tab_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+  const pageStartTime = Date.now();
+
+  if (!window.firebase) return;
+  try {
+    if (!firebase.apps.length) {
+      firebase.initializeApp({
+        databaseURL: "https://lesson-13c44-default-rtdb.firebaseio.com/",
+        projectId: "lesson-13c44"
+      });
+    }
+    const db = firebase.database();
+    const safeName = myName.replace(/[.#$\[\]\/]/g, '_');
+    const myTabRef = db.ref('online_users/' + safeName + '/' + tabId);
+
+    // 3. Радар присутності та автоматичне видалення при закритті
+    db.ref('.info/connected').on('value', function(snap) {
+      if (snap.val() === true) {
+        myTabRef.onDisconnect().remove();
+        myTabRef.set({
+          name: myName,
+          page: document.title || 'Алхімічний Реактор',
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+      }
+    });
+
+    window.addEventListener('beforeunload', function() {
+      myTabRef.remove();
+    });
+
+    // 4. Слухаємо примусове оновлення списку (force_refresh)
+    let initialRefreshSnap = true;
+    db.ref('force_refresh').on('value', function(snap) {
+      if (initialRefreshSnap) {
+        initialRefreshSnap = false;
+        return;
+      }
+      if (snap.val()) {
+        myTabRef.set({
+          name: myName,
+          page: document.title || 'Алхімічний Реактор',
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+      }
+    });
+
+    // 5. Слухаємо блокування користувача (blocked_users/ім'я)
+    const blockOverlay = document.getElementById('block-overlay');
+    db.ref('blocked_users/' + safeName).on('value', function(snap) {
+      if (snap.val() === true) {
+        blockOverlay.style.display = 'flex';
+      } else {
+        blockOverlay.style.display = 'none';
+      }
+    });
+
+    // 6. Повернення в Лобі (з імунітетом першої секунди при старті)
+    db.ref('current_activity').on('value', function(snap) {
+      const val = snap.val();
+      if (Date.now() - pageStartTime < 1000) return;
+      if (val === 'lobby' || (val && val.status === 'lobby')) {
+        window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+      }
+    });
+  } catch (e) {
+    console.warn('Control block offline mode:', e);
+  }
+})();
+</script>
+</body>
+</html>
