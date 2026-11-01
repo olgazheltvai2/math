@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bazaar</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #140a07;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+  #game-wrap {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #scene-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+
+  /* Minimalist Next Button */
+  #next-btn {
+    position: absolute;
+    top: 2.2vh;
+    right: 2vw;
+    z-index: 30;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 3px solid #f5b942;
+    background: radial-gradient(circle at 30% 30%, #4e2a14, #1f0d05);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.7), inset 0 0 12px rgba(245,185,66,0.4);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  #next-btn:hover {
+    transform: scale(1.1) rotate(5deg);
+  }
+  #next-btn:active {
+    transform: scale(0.94);
+  }
+
+  /* Bottom Answers Bar */
+  #answers-bar {
+    position: absolute;
+    bottom: 2.4vh;
+    left: 2.8vw;
+    right: 2.8vw;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.8vw;
+    height: 16.5vh;
+    min-height: 92px;
+    max-height: 140px;
+  }
+  .ans-card {
+    position: relative;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    padding: 0;
+    outline: none;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .ans-card:hover {
+    transform: translateY(-7px) scale(1.03);
+    filter: drop-shadow(0 12px 18px rgba(255, 190, 60, 0.35));
+  }
+  .ans-card:active {
+    transform: translateY(-1px) scale(0.98);
+  }
+  .ans-card svg.plate-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .ans-text {
+    position: relative;
+    z-index: 2;
+    font-size: clamp(2rem, 3.4vw, 3.4rem);
+    font-weight: 900;
+    color: #fff8e7;
+    text-shadow: 0 4px 0 #261105, 0 6px 14px rgba(0,0,0,0.9);
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+
+  @keyframes wrongShake {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    20% { transform: translateX(-15px) rotate(-3deg); }
+    40% { transform: translateX(15px) rotate(3deg); }
+    60% { transform: translateX(-10px) rotate(-2deg); }
+    80% { transform: translateX(10px) rotate(2deg); }
+  }
+  .shake-wrong {
+    animation: wrongShake 0.42s ease-in-out;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrap">
+  <button id="next-btn" aria-label="Next">
+    <svg width="34" height="34" viewBox="0 0 40 40">
+      <path d="M8 15 H23 V8 L36 20 L23 32 V25 H8 Z" fill="#ffd54f" stroke="#3e1e04" stroke-width="2.5" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <radialGradient id="bazaarBg" cx="50%" cy="40%" r="75%">
+        <stop offset="0%" stop-color="#3d2214"/>
+        <stop offset="55%" stop-color="#22120a"/>
+        <stop offset="100%" stop-color="#0f0704"/>
+      </radialGradient>
+      <linearGradient id="brassGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#ffe57f"/>
+        <stop offset="45%" stop-color="#d49a2a"/>
+        <stop offset="80%" stop-color="#784705"/>
+        <stop offset="100%" stop-color="#f5c35b"/>
+      </linearGradient>
+      <linearGradient id="woodCounterTop" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#7a4928"/>
+        <stop offset="35%" stop-color="#593118"/>
+        <stop offset="100%" stop-color="#361b0b"/>
+      </linearGradient>
+      <linearGradient id="counterFront" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#381d0e"/>
+        <stop offset="100%" stop-color="#170a04"/>
+      </linearGradient>
+      <radialGradient id="keeperSkin" cx="40%" cy="35%" r="65%">
+        <stop offset="0%" stop-color="#38d9a9"/>
+        <stop offset="65%" stop-color="#128268"/>
+        <stop offset="100%" stop-color="#08473a"/>
+      </radialGradient>
+      <linearGradient id="keeperBelly" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#a3f7bf"/>
+        <stop offset="100%" stop-color="#2eb872"/>
+      </linearGradient>
+      <linearGradient id="velvetVest" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#880e4f"/>
+        <stop offset="50%" stop-color="#4a072a"/>
+        <stop offset="100%" stop-color="#290216"/>
+      </linearGradient>
+      <linearGradient id="emeraldTablet" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#0f4c3a"/>
+        <stop offset="50%" stop-color="#072a20"/>
+        <stop offset="100%" stop-color="#135c47"/>
+      </linearGradient>
+      <radialGradient id="lanternLight" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ffea79" stop-opacity="0.85"/>
+        <stop offset="40%" stop-color="#ff8f00" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#ff8f00" stop-opacity="0"/>
+      </radialGradient>
+      <pattern id="wallCarving" width="90" height="90" patternUnits="userSpaceOnUse">
+        <path d="M45 5 L85 45 L45 85 L5 45 Z" fill="none" stroke="#54301c" stroke-width="2" stroke-opacity="0.4"/>
+        <circle cx="45" cy="45" r="14" fill="none" stroke="#6e4026" stroke-width="1.5" stroke-opacity="0.35"/>
+      </pattern>
+      <pattern id="counterCarving" width="110" height="110" patternUnits="userSpaceOnUse">
+        <rect x="8" y="8" width="94" height="94" rx="14" fill="none" stroke="#a66c38" stroke-width="2" stroke-opacity="0.28"/>
+        <path d="M55 18 L82 55 L55 92 L28 55 Z" fill="#5e3419" fill-opacity="0.3" stroke="#d49a2a" stroke-width="1.5" stroke-opacity="0.25"/>
+      </pattern>
+      <filter id="dropSh" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#000" flood-opacity="0.6"/>
+      </filter>
+    </defs>
+
+    <!-- Carved Canyon Bazaar Background -->
+    <rect width="1920" height="1080" fill="url(#bazaarBg)"/>
+    <rect width="1920" height="720" fill="url(#wallCarving)"/>
+
+    <!-- Background Stone Archways & Bazaar Shelves -->
+    <g opacity="0.88">
+      <path d="M90 640 V200 A200 180 0 0 1 490 200 V640 Z" fill="#170b06" stroke="#6b3e23" stroke-width="8"/>
+      <path d="M1420 640 V200 A200 180 0 0 1 1820 200 V640 Z" fill="#170b06" stroke="#6b3e23" stroke-width="8"/>
+      <!-- Left Shelf Goods -->
+      <rect x="115" y="340" width="350" height="20" rx="5" fill="#4a2612" stroke="#8c580c" stroke-width="2"/>
+      <rect x="115" y="490" width="350" height="20" rx="5" fill="#4a2612" stroke="#8c580c" stroke-width="2"/>
+      <!-- Glowing Swamp Jar -->
+      <g transform="translate(160, 225)">
+        <rect x="0" y="15" width="78" height="98" rx="22" fill="#00bfa5" fill-opacity="0.4" stroke="#80cbc4" stroke-width="3"/>
+        <rect x="12" y="2" width="54" height="15" rx="4" fill="url(#brassGrad)"/>
+        <circle cx="39" cy="68" r="18" fill="#ffd54f">
+          <animate attributeName="cy" values="72;54;72" dur="3.2s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx="34" cy="64" r="5" fill="#1b0904">
+          <animate attributeName="cy" values="68;50;68" dur="3.2s" repeatCount="indefinite"/>
+        </circle>
+      </g>
+      <!-- Copper Jugs & Spices -->
+      <path d="M310 340 C285 290, 305 245, 335 235 L330 210 H365 L360 235 C390 245, 410 290, 385 340 Z" fill="#c86428" stroke="url(#brassGrad)" stroke-width="3"/>
+      <path d="M150 490 L170 420 H240 L260 490 Z" fill="#b71c1c" stroke="#f5b942" stroke-width="3"/>
+      <path d="M295 490 C285 435, 375 435, 365 490 Z" fill="#00897b" stroke="#f5b942" stroke-width="3"/>
+
+      <!-- Right Shelf Goods -->
+      <rect x="1445" y="350" width="350" height="20" rx="5" fill="#4a2612" stroke="#8c580c" stroke-width="2"/>
+      <rect x="1445" y="500" width="350" height="20" rx="5" fill="#4a2612" stroke="#8c580c" stroke-width="2"/>
+      <!-- Steaming Brass Kettle -->
+      <g transform="translate(1500, 230)">
+        <ellipse cx="60" cy="75" rx="46" ry="42" fill="#b85d19" stroke="url(#brassGrad)" stroke-width="4"/>
+        <path d="M104 70 Q130 65 134 42" fill="none" stroke="url(#brassGrad)" stroke-width="8" stroke-linecap="round"/>
+        <ellipse cx="60" cy="32" rx="28" ry="9" fill="url(#brassGrad)"/>
+        <circle cx="136" cy="28" r="8" fill="#fff8e1" opacity="0.45">
+          <animate attributeName="cy" values="32;2" dur="2.4s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.5;0" dur="2.4s" repeatCount="indefinite"/>
+          <animate attributeName="r" values="6;18" dur="2.4s" repeatCount="indefinite"/>
+        </circle>
+      </g>
+      <!-- Hanging Bazaar Lanterns -->
+      <g transform="translate(300, 0)">
+        <line x1="0" y1="0" x2="0" y2="80" stroke="#784705" stroke-width="5"/>
+        <circle cx="0" cy="118" r="85" fill="url(#lanternLight)"/>
+        <polygon points="-28,80 28,80 42,120 22,155 -22,155 -42,120" fill="#ffab00" stroke="url(#brassGrad)" stroke-width="4"/>
+      </g>
+      <g transform="translate(1620, 0)">
+        <line x1="0" y1="0" x2="0" y2="80" stroke="#784705" stroke-width="5"/>
+        <circle cx="0" cy="118" r="85" fill="url(#lanternLight)"/>
+        <polygon points="-28,80 28,80 42,120 22,155 -22,155 -42,120" fill="#ff6d00" stroke="url(#brassGrad)" stroke-width="4"/>
+      </g>
+    </g>
+
+    <!-- ==================== SHOPKEEPER ALIEN (BEHIND COUNTER) ==================== -->
+    <g id="shopkeeper" transform="translate(610, 175)" filter="url(#dropSh)">
+      <g id="keeper-body-rig">
+        <!-- Back Left Arm (Reaches to sweep coins or hold item) -->
+        <g id="keeper-arm-l" transform="translate(-85, 225)">
+          <path d="M0 0 C-45 35, -35 90, 20 115" fill="none" stroke="#0f6e58" stroke-width="34" stroke-linecap="round"/>
+          <path d="M0 0 C-45 35, -35 90, 20 115" fill="none" stroke="url(#keeperSkin)" stroke-width="28" stroke-linecap="round"/>
+          <circle cx="24" cy="116" r="18" fill="url(#keeperSkin)" stroke="#08473a" stroke-width="3"/>
+        </g>
+
+        <!-- Seamless Thick Reptilian Neck & Shoulders (NO GAP) -->
+        <path d="M-55 120 C-58 165, -115 190, -115 245 L115 245 C115 190, 58 165, 55 120 Z" fill="url(#keeperSkin)" stroke="#08473a" stroke-width="4"/>
+        <!-- Neck throat ridges -->
+        <path d="M-32 148 Q0 162 32 148 M-38 170 Q0 185 38 170 M-44 192 Q0 208 44 192" fill="none" stroke="#0c5947" stroke-width="4" stroke-linecap="round"/>
+
+        <!-- Torso & Merchant Robe -->
+        <path d="M-115 235 C-128 310, -115 390, -105 420 H105 C115 390, 128 310, 115 235 Z" fill="url(#keeperSkin)" stroke="#08473a" stroke-width="4"/>
+        <ellipse cx="0" cy="325" rx="68" ry="85" fill="url(#keeperBelly)" opacity="0.8"/>
+        <!-- Ornate Merchant Vest -->
+        <path d="M-118 230 C-130 305, -118 395, -110 420 L-42 420 L-52 215 L-95 205 Z" fill="url(#velvetVest)" stroke="url(#brassGrad)" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M118 230 C130 305, 118 395, 110 420 L42 420 L52 215 L95 205 Z" fill="url(#velvetVest)" stroke="url(#brassGrad)" stroke-width="5" stroke-linejoin="round"/>
+        <!-- Gold Chain Across Chest -->
+        <path d="M-68 245 Q0 295 68 245" fill="none" stroke="url(#brassGrad)" stroke-width="9" stroke-dasharray="12 6" stroke-linecap="round"/>
+        <circle cx="0" cy="272" r="18" fill="#d50000" stroke="url(#brassGrad)" stroke-width="4"/>
+
+        <!-- Head Group (Connected deeply to neck) -->
+        <g id="keeper-head" transform="translate(0, 85)">
+          <!-- Amphibian Fin-Ears -->
+          <path d="M-88 -5 C-145 -35, -155 35, -92 48 Z" fill="url(#keeperSkin)" stroke="#08473a" stroke-width="4"/>
+          <path d="M-128 -2 L-92 15 M-130 22 L-92 30" stroke="#ffd54f" stroke-width="3"/>
+          <path d="M88 -5 C145 -35, 155 35, 92 48 Z" fill="url(#keeperSkin)" stroke="#08473a" stroke-width="4"/>
+          <path d="M128 -2 L92 15 M130 22 L92 30" stroke="#ffd54f" stroke-width="3"/>
+
+          <!-- Head Tentacle/Horns -->
+          <path d="M-48 -68 C-75 -115, -115 -95, -105 -58" fill="none" stroke="url(#keeperSkin)" stroke-width="18" stroke-linecap="round"/>
+          <circle cx="-105" cy="-55" r="12" fill="#ffab00"/>
+          <path d="M48 -68 C75 -115, 115 -95, 105 -58" fill="none" stroke="url(#keeperSkin)" stroke-width="18" stroke-linecap="round"/>
+          <circle cx="105" cy="-55" r="12" fill="#ffab00"/>
+
+          <!-- Cranium -->
+          <path d="M-96 10 C-108 -95, 108 -95, 96 10 C102 68, 55 88, 0 88 C-55 88, -102 68, -96 10 Z" fill="url(#keeperSkin)" stroke="#08473a" stroke-width="4"/>
+          <!-- Scales texture on forehead -->
+          <circle cx="-45" cy="-48" r="8" fill="#08473a" opacity="0.35"/>
+          <circle cx="45" cy="-48" r="8" fill="#08473a" opacity="0.35"/>
+          <circle cx="-62" cy="-28" r="6" fill="#08473a" opacity="0.35"/>
+          <circle cx="62" cy="-28" r="6" fill="#08473a" opacity="0.35"/>
+
+          <!-- 3 Realistic Non-Blinking Eyes with Smooth Saccades -->
+          <g id="keeper-eyes">
+            <!-- Left Eye -->
+            <ellipse cx="-44" cy="4" rx="23" ry="26" fill="#fff8e1" stroke="#06382c" stroke-width="3.5"/>
+            <g class="k-pupil" transform="translate(0,0)">
+              <circle cx="-44" cy="4" r="13" fill="#e65100"/>
+              <circle cx="-44" cy="4" r="7" fill="#120500"/>
+              <circle cx="-48" cy="-1" r="4" fill="#ffffff"/>
+            </g>
+            <path d="M-68 -14 Q-44 -28 -20 -12" fill="none" stroke="#06382c" stroke-width="5" stroke-linecap="round"/>
+
+            <!-- Right Eye -->
+            <ellipse cx="44" cy="4" rx="23" ry="26" fill="#fff8e1" stroke="#06382c" stroke-width="3.5"/>
+            <g class="k-pupil" transform="translate(0,0)">
+              <circle cx="44" cy="4" r="13" fill="#e65100"/>
+              <circle cx="44" cy="4" r="7" fill="#120500"/>
+              <circle cx="40" cy="-1" r="4" fill="#ffffff"/>
+            </g>
+            <path d="M20 -12 Q44 -28 68 -14" fill="none" stroke="#06382c" stroke-width="5" stroke-linecap="round"/>
+
+            <!-- Top Center Eye -->
+            <ellipse cx="0" cy="-38" rx="18" ry="20" fill="#fff8e1" stroke="#06382c" stroke-width="3.5"/>
+            <g class="k-pupil" transform="translate(0,0)">
+              <circle cx="0" cy="-38" r="10" fill="#d50000"/>
+              <circle cx="0" cy="-38" r="5" fill="#120500"/>
+              <circle cx="-3" cy="-42" r="3" fill="#ffffff"/>
+            </g>
+          </g>
+
+          <!-- Animated Talking Mouth / Jaw -->
+          <path id="keeper-mouth" d="M-38 50 Q0 68 38 50 Q0 56 -38 50 Z" fill="#3e0918" stroke="#06382c" stroke-width="4" stroke-linejoin="round"/>
+        </g>
+
+        <!-- Front Right Arm (Holds the item out to the customer) -->
+        <g id="keeper-arm-r" transform="translate(88, 230)">
+          <path id="keeper-arm-r-path" d="M0 0 C55 25, 95 65, 145 55" fill="none" stroke="#08473a" stroke-width="36" stroke-linecap="round"/>
+          <path id="keeper-arm-r-skin" d="M0 0 C55 25, 95 65, 145 55" fill="none" stroke="url(#keeperSkin)" stroke-width="30" stroke-linecap="round"/>
+          <!-- Shopkeeper's Hand Holding Item -->
+          <g id="keeper-hand-r" transform="translate(150, 52)">
+            <ellipse cx="0" cy="6" rx="22" ry="15" fill="url(#keeperSkin)" stroke="#08473a" stroke-width="3"/>
+            <!-- The item currently in the shopkeeper's hands -->
+            <g id="keeper-held-item" transform="translate(15, -32)"></g>
+            <!-- Fingers overlapping bottom of item -->
+            <path d="M-8 12 C5 22, 24 20, 30 8" fill="none" stroke="url(#keeperSkin)" stroke-width="10" stroke-linecap="round"/>
+          </g>
+        </g>
+      </g>
+    </g>
+
+    <!-- ==================== CUSTOMER ALIEN LAYER (RIGHT SIDE) ==================== -->
+    <g id="customer-layer" transform="translate(1350, 175)" filter="url(#dropSh)"></g>
+
+    <!-- ==================== SOLID WOOD & BRASS BAZAAR COUNTER ==================== -->
+    <g id="shop-counter" transform="translate(0, 560)">
+      <ellipse cx="960" cy="330" rx="920" ry="50" fill="#050200" opacity="0.85"/>
+      <!-- Counter Front Body -->
+      <path d="M45 38 L1875 38 L1835 325 L85 325 Z" fill="url(#counterFront)" stroke="url(#brassGrad)" stroke-width="5"/>
+      <path d="M65 42 L1855 42 L1820 320 L100 320 Z" fill="url(#counterCarving)"/>
+
+      <!-- Heavy Brass Pillars -->
+      <rect x="80" y="38" width="36" height="287" fill="url(#brassGrad)" rx="5"/>
+      <rect x="635" y="38" width="26" height="287" fill="url(#brassGrad)" rx="4"/>
+      <rect x="1260" y="38" width="26" height="287" fill="url(#brassGrad)" rx="4"/>
+      <rect x="1800" y="38" width="36" height="287" fill="url(#brassGrad)" rx="5"/>
+
+      <!-- 3D Counter Top Plank -->
+      <polygon points="15,46 1905,46 1845,-16 75,-16" fill="url(#woodCounterTop)" stroke="url(#brassGrad)" stroke-width="6" stroke-linejoin="round"/>
+      <!-- Wood grain lines on top -->
+      <line x1="140" y1="12" x2="1780" y2="12" stroke="#261105" stroke-width="2" opacity="0.45"/>
+      <line x1="95" y1="28" x2="1825" y2="28" stroke="#261105" stroke-width="2" opacity="0.45"/>
+
+      <!-- Merchant's Open Gold Drawer/Tray on Left-Center of Counter -->
+      <g transform="translate(550, 16)">
+        <polygon points="-75,14 75,14 60,-8 -60,-8" fill="#2b1408" stroke="url(#brassGrad)" stroke-width="3.5"/>
+      </g>
+
+      <!-- Carved Leather/Stone Mat on Counter where Coins Roll & Pile Up -->
+      <g transform="translate(1065, 16)">
+        <ellipse cx="0" cy="0" rx="155" ry="22" fill="#3e1f10" stroke="url(#brassGrad)" stroke-width="4"/>
+        <ellipse cx="0" cy="-2" rx="135" ry="16" fill="#291207"/>
+      </g>
+    </g>
+
+    <!-- ==================== ROLLING & PILING GOLD COINS LAYER ==================== -->
+    <g id="coins-layer"></g>
+    <g id="fx-layer"></g>
+
+    <!-- ==================== CENTRAL CARVED TARGET BOARD ==================== -->
+    <g id="target-board" transform="translate(960, 705)" filter="url(#dropSh)">
+      <!-- Ornate Brass & Carved Frame -->
+      <path d="M-255 -105 L-215 -135 L215 -135 L255 -105 L270 72 L220 112 L-220 112 L-270 72 Z" fill="url(#brassGrad)" stroke="#2b1202" stroke-width="6"/>
+      <path d="M-235 -92 L-198 -118 L198 -118 L235 -92 L248 62 L204 95 L-204 95 L-248 62 Z" fill="url(#emeraldTablet)" stroke="#ffd54f" stroke-width="3.5"/>
+      <!-- Ornamental Filigree Inside Tablet -->
+      <g stroke="#ffd54f" stroke-width="2" opacity="0.3" fill="none">
+        <path d="M-215 -50 H-145 L-120 -82 H120 L145 -50 H215"/>
+        <path d="M-220 48 H-140 L-115 76 H115 L140 48 H220"/>
+        <circle cx="-188" cy="-2" r="18"/>
+        <circle cx="188" cy="-2" r="18"/>
+      </g>
+      <circle cx="-205" cy="-94" r="9" fill="#ff3d00" stroke="#fff" stroke-width="2"/>
+      <circle cx="205" cy="-94" r="9" fill="#ff3d00" stroke="#fff" stroke-width="2"/>
+      <circle cx="-215" cy="72" r="9" fill="#00e676" stroke="#fff" stroke-width="2"/>
+      <circle cx="215" cy="72" r="9" fill="#00e676" stroke="#fff" stroke-width="2"/>
+
+      <text id="target-number-text" x="0" y="26" text-anchor="middle"
+            font-size="114" font-weight="900" fill="#ffea79"
+            stroke="#140802" stroke-width="11" paint-order="stroke"
+            style="letter-spacing: 3px;">
+        0,23
+      </text>
+    </g>
+  </svg>
+
+  <div id="answers-bar"></div>
+</div>
+
+<script>
+(() => {
+  // ==================== WEB AUDIO SYNTHESIZER & ALIEN SPEECH ENGINE ====================
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  window.addEventListener('pointerdown', ensureAudio, { once: true });
+
+  // Active mouth talk state for lip-sync
+  let keeperTalkUntil = 0;
+  let customerTalkUntil = 0;
+
+  // Procedural Alien Chatter ("Прибульська мова" - formant warble synthesis)
+  function playAlienSpeech(who = 'keeper', mood = 'neutral') {
+    if (!audioCtx) return;
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const syllables = mood === 'angry' ? 4 : (2 + Math.floor(Math.random() * 4));
+    const basePitch = who === 'keeper' ? 165 : (210 + Math.random() * 75);
+    let totalDur = 0;
+
+    for (let s = 0; s < syllables; s++) {
+      const sylDur = 0.08 + Math.random() * 0.09;
+      const gap = 0.025 + Math.random() * 0.03;
+      const t0 = now + totalDur;
+      totalDur += sylDur + gap;
+
+      const osc = audioCtx.createOscillator();
+      const sub = audioCtx.createOscillator();
+      const filter = audioCtx.createBiquadFilter();
+      const gain = audioCtx.createGain();
+
+      osc.type = mood === 'angry' ? 'sawtooth' : 'triangle';
+      sub.type = 'sine';
+
+      const fStart = basePitch * (0.85 + Math.random() * 0.35);
+      const fMid = fStart * (mood === 'happy' ? 1.35 : (mood === 'angry' ? 0.72 : (0.8 + Math.random() * 0.5)));
+      const fEnd = fStart * (0.9 + Math.random() * 0.25);
+
+      osc.frequency.setValueAtTime(fStart, t0);
+      osc.frequency.exponentialRampToValueAtTime(fMid, t0 + sylDur * 0.5);
+      osc.frequency.exponentialRampToValueAtTime(fEnd, t0 + sylDur);
+
+      sub.frequency.setValueAtTime(fStart * 0.5, t0);
+
+      // Vowel formant filter
+      filter.type = 'bandpass';
+      filter.Q.value = 4.5;
+      filter.frequency.setValueAtTime(500 + Math.random() * 900, t0);
+      filter.frequency.exponentialRampToValueAtTime(400 + Math.random() * 1100, t0 + sylDur);
+
+      gain.gain.setValueAtTime(0.001, t0);
+      gain.gain.linearRampToValueAtTime(0.11, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, t0 + sylDur);
+
+      osc.connect(filter);
+      sub.connect(filter);
+      filter.connect(gain).connect(audioCtx.destination);
+
+      osc.start(t0);
+      sub.start(t0);
+      osc.stop(t0 + sylDur + 0.01);
+      sub.stop(t0 + sylDur + 0.01);
+    }
+
+    const endMs = performance.now() + totalDur * 1000;
+    if (who === 'keeper') keeperTalkUntil = Math.max(keeperTalkUntil, endMs);
+    else customerTalkUntil = Math.max(customerTalkUntil, endMs);
+  }
+
+  function playCoinClink(pitchShift = 1, volume = 0.07) {
+    if (!audioCtx) return;
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const freqs = [2250 * pitchShift, 3420 * pitchShift, 4880 * pitchShift];
+    freqs.forEach((f, idx) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = idx === 0 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(f, now);
+      osc.frequency.exponentialRampToValueAtTime(f * 1.03, now + 0.11);
+      gain.gain.setValueAtTime(volume / (idx + 1), now);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.12);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.13);
+    });
+  }
+
+  function playHoverTick() {
+    if (!audioCtx) return;
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(480, now);
+    osc.frequency.exponentialRampToValueAtTime(720, now + 0.05);
+    gain.gain.setValueAtTime(0.04, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.06);
+  }
+
+  function playFootstep() {
+    if (!audioCtx) return;
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(115, now);
+    osc.frequency.exponentialRampToValueAtTime(42, now + 0.085);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.095);
+  }
+
+  // ==================== 16 UNIQUE DETAILED SVG ITEMS (SHUFFLE BAG WITHOUT REPEATS) ====================
+  const ITEMS_CATALOG = [
+    // 1. Armored Hunting Boots
+    () => `<g transform="scale(0.95)">
+      <path d="M-55 -45 H-5 L5 25 L55 40 C70 45 70 68 50 68 H-55 C-65 68 -68 55 -65 35 Z" fill="#d84315" stroke="#3e1204" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M-58 -45 H-2" stroke="#ffd54f" stroke-width="12" stroke-linecap="round"/>
+      <rect x="-48" y="-22" width="38" height="10" rx="5" fill="#ffb300" stroke="#3e1204" stroke-width="2"/>
+      <rect x="-45" y="-4" width="42" height="10" rx="5" fill="#ffb300" stroke="#3e1204" stroke-width="2"/>
+      <path d="M-65 65 H62 C68 65 68 78 58 78 H-62 C-70 78 -70 65 -65 65 Z" fill="#5d4037" stroke="#271815" stroke-width="3"/>
+    </g>`,
+    // 2. Crystal Coil Crossbow-Rifle
+    () => `<g transform="scale(0.95)">
+      <path d="M-65 5 L-45 62 L-18 62 L-28 15 Z" fill="#5d4037" stroke="#271815" stroke-width="4"/>
+      <rect x="-75" y="-25" width="115" height="42" rx="14" fill="#8e24aa" stroke="#290533" stroke-width="4"/>
+      <rect x="-50" y="-17" width="60" height="24" rx="10" fill="#00e676" stroke="#004d40" stroke-width="3"/>
+      <path d="M40 -16 H70 V8 H40 Z" fill="#ffd54f" stroke="#4e2c00" stroke-width="3"/>
+      <ellipse cx="76" cy="-4" rx="9" ry="18" fill="#ff3d00" stroke="#fff" stroke-width="2"/>
+    </g>`,
+    // 3. Double Exotic Burger
+    () => `<g transform="scale(1.0)">
+      <path d="M-65 32 C-65 58, 65 58, 65 32 Z" fill="#d4883a" stroke="#5c3108" stroke-width="4"/>
+      <path d="M-72 22 Q-45 38 -20 20 Q5 38 30 20 Q55 38 72 22" fill="none" stroke="#00e676" stroke-width="11" stroke-linecap="round"/>
+      <rect x="-64" y="6" width="128" height="18" rx="9" fill="#6d4c41" stroke="#271815" stroke-width="3"/>
+      <polygon points="-55,6 -30,22 0,6 30,24 58,6" fill="#ffea00"/>
+      <path d="M-65 4 C-68 -48, 68 -48, 65 4 Z" fill="#e59849" stroke="#5c3108" stroke-width="4"/>
+      <ellipse cx="-22" cy="-20" rx="6" ry="3" fill="#fff8e1"/>
+      <ellipse cx="18" cy="-24" rx="6" ry="3" fill="#fff8e1"/>
+      <ellipse cx="2" cy="-12" rx="6" ry="3" fill="#fff8e1"/>
+    </g>`,
+    // 4. Three-Toed Swamp Sneakers
+    () => `<g transform="scale(0.95)">
+      <path d="M-60 -25 L-15 -30 L20 15 C45 15 72 22 72 42 C72 52 55 56 35 54 H-60 Z" fill="#00c853" stroke="#003d16" stroke-width="4"/>
+      <circle cx="66" cy="28" r="12" fill="#b9f6ca" stroke="#003d16" stroke-width="3"/>
+      <circle cx="72" cy="42" r="12" fill="#b9f6ca" stroke="#003d16" stroke-width="3"/>
+      <circle cx="62" cy="54" r="11" fill="#b9f6ca" stroke="#003d16" stroke-width="3"/>
+      <path d="M-64 46 H55 C65 46 65 62 52 62 H-64 Z" fill="#ffab00" stroke="#4e2c00" stroke-width="3"/>
+    </g>`,
+    // 5. Curved Bone & Jade Scimitar
+    () => `<g transform="scale(0.95) rotate(-18)">
+      <rect x="-12" y="22" width="24" height="58" rx="8" fill="#ffb300" stroke="#4e2600" stroke-width="4"/>
+      <path d="M-32 22 H32 L22 8 H-22 Z" fill="#8d6e63" stroke="#271815" stroke-width="3"/>
+      <path d="M-8 8 C-15 -55, 25 -85, 55 -65 C32 -45, 22 -10, 12 8 Z" fill="#1de9b6" stroke="#004d40" stroke-width="4"/>
+    </g>`,
+    // 6. Spiky Ruby Dragon-Fruit
+    () => `<g transform="scale(0.98)">
+      <ellipse cx="0" cy="10" rx="48" ry="54" fill="#d50000" stroke="#4a0707" stroke-width="4"/>
+      <path d="M-45 -5 Q-72 -25 -55 -42 M45 -5 Q72 -25 55 -42 M0 -44 Q0 -72 22 -65" fill="none" stroke="#00c853" stroke-width="8" stroke-linecap="round"/>
+      <circle cx="-18" cy="-6" r="7" fill="#ffea00"/>
+      <circle cx="20" cy="-10" r="8" fill="#ffea00"/>
+      <circle cx="0" cy="18" r="9" fill="#ffea00"/>
+      <circle cx="-20" cy="30" r="6" fill="#ffea00"/>
+      <circle cx="22" cy="26" r="7" fill="#ffea00"/>
+    </g>`,
+    // 7. Twin-Barrel Brass Backpack Tank
+    () => `<g transform="scale(0.92)">
+      <rect x="-56" y="-48" width="44" height="92" rx="20" fill="#d49a2a" stroke="#4e2c00" stroke-width="4"/>
+      <rect x="12" y="-48" width="44" height="92" rx="20" fill="#d49a2a" stroke="#4e2c00" stroke-width="4"/>
+      <rect x="-28" y="-22" width="56" height="48" rx="10" fill="#bf360c" stroke="#3e1204" stroke-width="4"/>
+      <circle cx="0" cy="2" r="15" fill="#fff8e1" stroke="#271815" stroke-width="3"/>
+      <line x1="0" y1="2" x2="9" y2="-6" stroke="#d50000" stroke-width="3"/>
+    </g>`,
+    // 8. Horned Gladiator Helmet
+    () => `<g transform="scale(0.95)">
+      <path d="M-48 -10 Q-88 -45 -72 -72 Q-45 -55 -32 -28" fill="#fff8e1" stroke="#4e2c00" stroke-width="4"/>
+      <path d="M48 -10 Q88 -45 72 -72 Q45 -55 32 -28" fill="#fff8e1" stroke="#4e2c00" stroke-width="4"/>
+      <path d="M-54 28 C-60 -48, 60 -48, 54 28 Z" fill="#b87333" stroke="#3e1e04" stroke-width="4"/>
+      <rect x="-38" y="-8" width="76" height="18" rx="8" fill="#00e676" stroke="#004d40" stroke-width="3"/>
+    </g>`,
+    // 9. Hot Noodle Box with Tentacles
+    () => `<g transform="scale(0.95)">
+      <line x1="-15" y1="-62" x2="55" y2="-15" stroke="#8d6e63" stroke-width="7" stroke-linecap="round"/>
+      <line x1="-25" y1="-46" x2="55" y2="-5" stroke="#8d6e63" stroke-width="7" stroke-linecap="round"/>
+      <path d="M-42 -15 Q-58 -52 -28 -48 Q-12 -45 -18 -15" fill="none" stroke="#ec407a" stroke-width="12" stroke-linecap="round"/>
+      <path d="M18 -15 Q38 -58 8 -52 Q-5 -48 5 -15" fill="none" stroke="#00e676" stroke-width="11" stroke-linecap="round"/>
+      <polygon points="-52,-12 52,-12 38,60 -38,60" fill="#d84315" stroke="#3e1204" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="0" cy="24" r="17" fill="#ffd54f"/>
+    </g>`,
+    // 10. Hunter's Heavy Crossbow
+    () => `<g transform="scale(0.95)">
+      <path d="M-65 15 L45 -15 L52 2 L-58 32 Z" fill="#6d4c41" stroke="#271815" stroke-width="4"/>
+      <path d="M15 -58 Q75 -8 35 48" fill="none" stroke="#ffd54f" stroke-width="9" stroke-linecap="round"/>
+      <line x1="15" y1="-55" x2="-28" y2="12" stroke="#fff8e1" stroke-width="3"/>
+      <line x1="35" y1="45" x2="-28" y2="12" stroke="#fff8e1" stroke-width="3"/>
+      <line x1="-25" y1="8" x2="65" y2="-18" stroke="#ff3d00" stroke-width="6" stroke-linecap="round"/>
+    </g>`,
+    // 11. Fanged Fur Slippers
+    () => `<g transform="scale(0.98)">
+      <path d="M-65 35 C-68 -18, 65 -22, 65 35 C65 52, -65 52, -65 35 Z" fill="#8e24aa" stroke="#290533" stroke-width="4"/>
+      <ellipse cx="10" cy="18" rx="35" ry="14" fill="#311b92"/>
+      <polygon points="-15,10 -8,24 0,10" fill="#fff"/>
+      <polygon points="8,10 15,24 22,10" fill="#fff"/>
+      <polygon points="28,12 34,24 40,12" fill="#fff"/>
+      <circle cx="-30" cy="-6" r="10" fill="#fff" stroke="#290533" stroke-width="3"/>
+      <circle cx="-28" cy="-6" r="4" fill="#000"/>
+      <circle cx="0" cy="-12" r="10" fill="#fff" stroke="#290533" stroke-width="3"/>
+      <circle cx="2" cy="-12" r="4" fill="#000"/>
+    </g>`,
+    // 12. Jar of Pickled Swamp Berries
+    () => `<g transform="scale(0.95)">
+      <rect x="-42" y="-36" width="84" height="94" rx="20" fill="#ffb300" fill-opacity="0.6" stroke="#ffe082" stroke-width="4"/>
+      <rect x="-32" y="-52" width="64" height="18" rx="6" fill="#6d4c41" stroke="#271815" stroke-width="3"/>
+      <circle cx="-14" cy="-6" r="15" fill="#00e676" stroke="#004d40" stroke-width="2"/>
+      <circle cx="16" cy="8" r="15" fill="#ff4081" stroke="#880e4f" stroke-width="2"/>
+      <circle cx="-10" cy="30" r="14" fill="#ffea00" stroke="#4e2c00" stroke-width="2"/>
+    </g>`,
+    // 13. Bronze Tribal Shield
+    () => `<g transform="scale(0.95)">
+      <polygon points="0,-62 56,-30 56,30 0,62 -56,30 -56,-30" fill="#b85d19" stroke="#ffd54f" stroke-width="7" stroke-linejoin="round"/>
+      <polygon points="0,-40 36,-18 36,18 0,40 -36,18 -36,-18" fill="none" stroke="#ffe082" stroke-width="3"/>
+      <circle cx="0" cy="0" r="16" fill="#00e676" stroke="#004d40" stroke-width="3"/>
+    </g>`,
+    // 14. Spiced Lava Flask
+    () => `<g transform="scale(0.95)">
+      <path d="M34 -22 C60 -22, 60 28, 34 28" fill="none" stroke="#ffb300" stroke-width="9" stroke-linecap="round"/>
+      <rect x="-36" y="-46" width="72" height="102" rx="22" fill="#5d4037" stroke="#271815" stroke-width="4"/>
+      <rect x="-22" y="-24" width="44" height="60" rx="12" fill="#ff3d00" stroke="#ffcc80" stroke-width="3"/>
+      <path d="M-28 -46 C-28 -70, 28 -70, 28 -46 Z" fill="#ffb300" stroke="#4e2c00" stroke-width="4"/>
+    </g>`,
+    // 15. Three-Lens Brass Goggles
+    () => `<g transform="scale(1.0)">
+      <path d="M-68 5 Q0 -18 68 5" fill="none" stroke="#4e2600" stroke-width="14" stroke-linecap="round"/>
+      <circle cx="-38" cy="8" r="21" fill="#ffb300" stroke="#271815" stroke-width="4"/>
+      <circle cx="-38" cy="8" r="13" fill="#00e676"/>
+      <circle cx="38" cy="8" r="21" fill="#ffb300" stroke="#271815" stroke-width="4"/>
+      <circle cx="38" cy="8" r="13" fill="#00e676"/>
+      <circle cx="0" cy="-12" r="21" fill="#ffb300" stroke="#271815" stroke-width="4"/>
+      <circle cx="0" cy="-12" r="13" fill="#ff3d00"/>
+    </g>`,
+    // 16. Roasted Fin-Roast on Platter
+    () => `<g transform="scale(0.95)">
+      <ellipse cx="0" cy="36" rx="72" ry="18" fill="#d7ccc8" stroke="#4e342e" stroke-width="4"/>
+      <path d="M-55 24 C-35 -25, 35 -25, 58 24 C30 42, -30 42, -55 24 Z" fill="#e67e22" stroke="#5c2a04" stroke-width="4"/>
+      <path d="M-5 5 L-28 -36 L18 -24 Z" fill="#ffca28" stroke="#5c2a04" stroke-width="3"/>
+      <polygon points="52,22 75,4 70,38" fill="#d35400" stroke="#5c2a04" stroke-width="3"/>
+    </g>`
+  ];
+
+  let itemDeck = [];
+  function getNextUniqueItemSVG() {
+    if (itemDeck.length === 0) {
+      itemDeck = ITEMS_CATALOG.map((_, idx) => idx);
+      for (let i = itemDeck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [itemDeck[i], itemDeck[j]] = [itemDeck[j], itemDeck[i]];
+      }
+    }
+    return ITEMS_CATALOG[itemDeck.pop()]();
+  }
+
+  // ==================== REALISTIC ANATOMICAL CUSTOMER BUILDER ====================
+  const CUST_PALETTES = [
+    { skin: '#e66740', belly: '#f7b299', dark: '#6e2109', vest: '#1565c0', iris: '#ffea00' },
+    { skin: '#9c4dcc', belly: '#e1bee7', dark: '#380659', vest: '#00838f', iris: '#69f0ae' },
+    { skin: '#689f38', belly: '#dcedc8', dark: '#264709', vest: '#ad1457', iris: '#ffca28' },
+    { skin: '#d88c27', belly: '#ffe0b2', dark: '#593302', vest: '#4527a0', iris: '#40c4ff' },
+    { skin: '#c2185b', belly: '#f8bbd0', dark: '#4a041f', vest: '#2e7d32', iris: '#ffee58' }
+  ];
+
+  function createCustomerSVG() {
+    const p = CUST_PALETTES[Math.floor(Math.random() * CUST_PALETTES.length)];
+    const hasThreeEyes = Math.random() < 0.5;
+
+    const eyesMarkup = hasThreeEyes ? `
+      <ellipse cx="-42" cy="4" rx="17" ry="20" fill="#fff8e1" stroke="${p.dark}" stroke-width="3"/>
+      <g class="c-pupil"><circle cx="-44" cy="4" r="9" fill="${p.iris}"/><circle cx="-44" cy="4" r="5" fill="#111"/><circle cx="-47" cy="0" r="2.5" fill="#fff"/></g>
+      <ellipse cx="14" cy="4" rx="17" ry="20" fill="#fff8e1" stroke="${p.dark}" stroke-width="3"/>
+      <g class="c-pupil"><circle cx="12" cy="4" r="9" fill="${p.iris}"/><circle cx="12" cy="4" r="5" fill="#111"/><circle cx="9" cy="0" r="2.5" fill="#fff"/></g>
+      <ellipse cx="-14" cy="-32" rx="15" ry="17" fill="#fff8e1" stroke="${p.dark}" stroke-width="3"/>
+      <g class="c-pupil"><circle cx="-16" cy="-32" r="8" fill="${p.iris}"/><circle cx="-16" cy="-32" r="4.5" fill="#111"/><circle cx="-18" cy="-35" r="2.5" fill="#fff"/></g>
+    ` : `
+      <ellipse cx="-40" cy="0" rx="22" ry="25" fill="#fff8e1" stroke="${p.dark}" stroke-width="3.5"/>
+      <g class="c-pupil"><circle cx="-43" cy="0" r="12" fill="${p.iris}"/><circle cx="-43" cy="0" r="6" fill="#111"/><circle cx="-46" cy="-4" r="3.5" fill="#fff"/></g>
+      <ellipse cx="16" cy="0" rx="22" ry="25" fill="#fff8e1" stroke="${p.dark}" stroke-width="3.5"/>
+      <g class="c-pupil"><circle cx="13" cy="0" r="12" fill="${p.iris}"/><circle cx="13" cy="0" r="6" fill="#111"/><circle cx="10" cy="-4" r="3.5" fill="#fff"/></g>
+    `;
+
+    return `
+      <g id="cust-rig">
+        <!-- Back Leg (Connected to pelvis at y=360) -->
+        <g id="cust-leg-b" transform="translate(-26, 360)">
+          <path d="M0 0 L-12 65 L-4 125" fill="none" stroke="${p.dark}" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M0 0 L-12 65 L-4 125" fill="none" stroke="${p.skin}" stroke-width="31" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M-32 132 C-32 114, 18 114, 18 132 Z" fill="${p.dark}"/>
+        </g>
+
+        <!-- Back Left Arm (Reaches forward to take item from shopkeeper) -->
+        <g id="cust-arm-take" transform="translate(-52, 232)">
+          <path d="M0 0 C-45 25, -85 30, -125 15" fill="none" stroke="${p.dark}" stroke-width="32" stroke-linecap="round"/>
+          <path d="M0 0 C-45 25, -85 30, -125 15" fill="none" stroke="${p.skin}" stroke-width="26" stroke-linecap="round"/>
+          <circle cx="-128" cy="15" r="16" fill="${p.skin}" stroke="${p.dark}" stroke-width="3"/>
+          <g id="cust-carried-item" transform="translate(-155, -18) scale(0.92)"></g>
+        </g>
+
+        <!-- Front Leg (Connected to pelvis at y=365) -->
+        <g id="cust-leg-f" transform="translate(24, 365)">
+          <path d="M0 0 L10 65 L16 125" fill="none" stroke="${p.dark}" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M0 0 L10 65 L16 125" fill="none" stroke="${p.skin}" stroke-width="31" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M-12 132 C-12 114, 38 114, 38 132 Z" fill="${p.dark}"/>
+        </g>
+
+        <!-- SOLID MUSCULAR NECK & TORSO (Overlapping from y=95 to y=385 -> ZERO GAP!) -->
+        <g id="cust-body-core">
+          <!-- Thick Neck firmly connecting head (y=95) into chest (y=215) -->
+          <path d="M-44 95 C-46 145, -75 180, -82 220 L82 220 C75 180, 48 145, 44 95 Z" fill="${p.skin}" stroke="${p.dark}" stroke-width="4"/>
+          <path d="M-26 135 Q-5 146 18 135 M-30 158 Q-5 170 22 158" fill="none" stroke="${p.dark}" stroke-width="3.5" opacity="0.55"/>
+
+          <!-- Main Torso & Pelvis -->
+          <path d="M-82 200 C-98 265, -92 355, -55 385 H55 C92 355, 98 265, 82 200 Z" fill="${p.skin}" stroke="${p.dark}" stroke-width="4"/>
+          <!-- Belly Plates -->
+          <ellipse cx="-8" cy="295" rx="48" ry="68" fill="${p.belly}" opacity="0.85"/>
+          <path d="M-45 265 Q-8 278 30 265 M-48 298 Q-8 312 32 298 M-42 330 Q-8 342 26 330" fill="none" stroke="${p.dark}" stroke-width="3" opacity="0.35"/>
+
+          <!-- Tunic / Vest -->
+          <path d="M-84 198 C-98 260, -90 340, -68 365 L-28 365 L-35 205 Z" fill="${p.vest}" stroke="#f5b942" stroke-width="4"/>
+          <path d="M84 198 C98 260, 90 340, 68 365 L18 365 L25 205 Z" fill="${p.vest}" stroke="#f5b942" stroke-width="4"/>
+
+          <!-- Leather Belt & Heavy Coin Satchel -->
+          <rect x="-78" y="345" width="156" height="20" rx="6" fill="#4e2600" stroke="#f5b942" stroke-width="3"/>
+          <rect x="18" y="340" width="56" height="52" rx="14" fill="#6d4c41" stroke="#271815" stroke-width="3.5"/>
+          <circle cx="46" cy="362" r="7" fill="#ffd54f"/>
+
+          <!-- Head (Seated directly on neck at y=95) -->
+          <g id="cust-head" transform="translate(0, 82)">
+            <!-- Back Head Crest / Ears -->
+            <path d="M55 -15 C105 -38, 112 18, 62 32 Z" fill="${p.skin}" stroke="${p.dark}" stroke-width="4"/>
+            <path d="M-25 -68 C-20 -112, 25 -112, 35 -72" fill="none" stroke="${p.skin}" stroke-width="16" stroke-linecap="round"/>
+            <circle cx="36" cy="-72" r="11" fill="#ffd54f"/>
+
+            <!-- Cranium & Snout -->
+            <path d="M-86 10 C-94 -82, 82 -82, 76 10 C80 58, 42 76, -8 76 C-58 76, -90 55, -86 10 Z" fill="${p.skin}" stroke="${p.dark}" stroke-width="4"/>
+
+            ${eyesMarkup}
+
+            <!-- Customer Talking Mouth -->
+            <path id="cust-mouth" d="M-42 42 Q-14 56 14 42 Q-14 47 -42 42 Z" fill="#3e0918" stroke="${p.dark}" stroke-width="3.5" stroke-linejoin="round"/>
+          </g>
+        </g>
+
+        <!-- Front Right Arm (Holds leather gold pouch & pours coins onto counter) -->
+        <g id="cust-arm-pay" transform="translate(48, 232)">
+          <path id="cust-pay-limb" d="M0 0 C25 45, 10 95, -20 118" fill="none" stroke="${p.dark}" stroke-width="32" stroke-linecap="round"/>
+          <path id="cust-pay-skin" d="M0 0 C25 45, 10 95, -20 118" fill="none" stroke="${p.skin}" stroke-width="26" stroke-linecap="round"/>
+          <g id="cust-pay-hand" transform="translate(-22, 118)">
+            <circle cx="0" cy="0" r="16" fill="${p.skin}" stroke="${p.dark}" stroke-width="3"/>
+            <!-- Bulging Gold Pouch (Visible when pouring coins) -->
+            <g id="cust-gold-pouch" opacity="0" transform="translate(-18, 8)">
+              <path d="M-12 -18 L12 -18 L24 12 C24 28, -24 28, -24 12 Z" fill="#8d5524" stroke="#3e1e04" stroke-width="3"/>
+              <ellipse cx="0" cy="-18" rx="14" ry="6" fill="#ffd54f"/>
+            </g>
+          </g>
+        </g>
+      </g>
+    `;
+  }
+
+  // ==================== DECIMAL MATH GENERATOR ====================
+  function fmtDec(num) {
+    return num.toString().replace('.', ',');
+  }
+  function rInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function generateDecimalQuestion() {
+    const mode = rInt(1, 4);
+    let targetVal = 0;
+    let correctExpr = '';
+    let distractors = [];
+
+    if (mode === 1) {
+      const whole = Math.random() < 0.35 ? rInt(1, 3) : 0;
+      let a = rInt(1, 8);
+      let b = rInt(1, 9);
+      if (a === b) b = (b % 9) + 1;
+      targetVal = Number((whole + a / 10 + b / 100).toFixed(2));
+      const p1 = whole + a / 10;
+      const p2 = b / 100;
+      const swap = Math.random() < 0.5;
+      correctExpr = swap ? `${fmtDec(p2)}+${fmtDec(p1)}` : `${fmtDec(p1)}+${fmtDec(p2)}`;
+      distractors = [
+        swap ? `${fmtDec(b / 10)}+${fmtDec(whole + a / 100)}` : `${fmtDec(whole + a / 100)}+${fmtDec(b / 10)}`,
+        `${fmtDec(whole + a / 10)}+${fmtDec(b / 10)}`,
+        `${fmtDec(b / 10)}+${fmtDec(whole + a / 10)}0`,
+        `${fmtDec(a / 100)}+${fmtDec(whole + b / 100)}`
+      ];
+    } else if (mode === 2) {
+      const whole = Math.random() < 0.3 ? rInt(1, 2) : 0;
+      const tenths = rInt(3, 9);
+      const subHund = rInt(1, 8);
+      const startNum = Number((whole + tenths / 10).toFixed(1));
+      targetVal = Number((startNum - subHund / 100).toFixed(2));
+      correctExpr = `${fmtDec(startNum)}-${fmtDec(subHund / 100)}`;
+      distractors = [
+        `${fmtDec(startNum)}-${fmtDec(subHund / 10)}`,
+        `${fmtDec(Number((whole + tenths / 100).toFixed(2)))}-${fmtDec(subHund / 100)}`,
+        `${fmtDec(startNum)}+${fmtDec(subHund / 100)}`,
+        `${fmtDec(startNum)}0-${fmtDec(subHund / 10)}`
+      ];
+    } else if (mode === 3) {
+      const t1 = rInt(1, 5);
+      const t2 = rInt(1, 3);
+      const h2 = rInt(1, 9);
+      targetVal = Number(((t1 + t2) / 10 + h2 / 100).toFixed(2));
+      const left = t1 / 10;
+      const right = Number((t2 / 10 + h2 / 100).toFixed(2));
+      const swap = Math.random() < 0.5;
+      correctExpr = swap ? `${fmtDec(right)}+${fmtDec(left)}` : `${fmtDec(left)}+${fmtDec(right)}`;
+      distractors = [
+        swap ? `${fmtDec(right)}+${fmtDec(t1 / 100)}` : `${fmtDec(t1 / 100)}+${fmtDec(right)}`,
+        `${fmtDec(left)}+${fmtDec(h2 / 100)}`,
+        `${fmtDec((t1 + t2) / 10)}+${fmtDec(h2 / 10)}`,
+        `${fmtDec(Number((t1 / 10 + h2 / 100).toFixed(2)))}+${fmtDec(t2 / 100)}`
+      ];
+    } else {
+      const resT = rInt(1, 6);
+      const resH = rInt(1, 8);
+      const diffT = rInt(1, 3);
+      targetVal = Number((resT / 10 + resH / 100).toFixed(2));
+      const minuend = Number(((resT + diffT) / 10 + resH / 100).toFixed(2));
+      correctExpr = `${fmtDec(minuend)}-${fmtDec(diffT / 10)}`;
+      distractors = [
+        `${fmtDec(minuend)}-${fmtDec(diffT / 100)}`,
+        `${fmtDec((resT + diffT) / 10)}-${fmtDec(resH / 100)}`,
+        `${fmtDec(minuend)}+${fmtDec(diffT / 100)}`,
+        `${fmtDec(minuend)}-${fmtDec(diffT / 10)}0`
+      ];
+    }
+
+    const uniqueDistractors = [];
+    for (const d of distractors) {
+      if (d !== correctExpr && !uniqueDistractors.includes(d)) uniqueDistractors.push(d);
+      if (uniqueDistractors.length === 3) break;
+    }
+
+    const options = uniqueDistractors.map(expr => ({ expr, isCorrect: false }));
+    const correctInsertPos = Math.floor(Math.random() * (options.length + 1));
+    options.splice(correctInsertPos, 0, { expr: correctExpr, isCorrect: true });
+    return { targetText: fmtDec(targetVal), options };
+  }
+
+  // ==================== CONTINUOUS LIFE ENGINE (GAZE SACCADES, CHATTER, BREATHING) ====================
+  const keeperGaze = { x: 0, y: 0, tx: 3, ty: 1, nextChange: 0 };
+  const custGaze = { x: 0, y: 0, tx: -3, ty: 1, nextChange: 0 };
+  let nextAmbientTalk = performance.now() + 2400;
+
+  function updateLivingWorld(now) {
+    // 1. Non-blinking random eye gaze shifts for Shopkeeper
+    if (now > keeperGaze.nextChange) {
+      const targets = [
+        { x: 6, y: 1 },   // Looking at customer
+        { x: 4, y: 5 },   // Looking at item in hand
+        { x: 5, y: 7 },   // Looking at counter coin mat
+        { x: -3, y: -2 }, // Glancing at shelves
+        { x: 0, y: 6 }    // Glancing at number tablet
+      ];
+      const pick = targets[Math.floor(Math.random() * targets.length)];
+      keeperGaze.tx = pick.x + (Math.random() - 0.5) * 2;
+      keeperGaze.ty = pick.y + (Math.random() - 0.5) * 2;
+      keeperGaze.nextChange = now + 900 + Math.random() * 1700;
+    }
+    keeperGaze.x += (keeperGaze.tx - keeperGaze.x) * 0.14;
+    keeperGaze.y += (keeperGaze.ty - keeperGaze.y) * 0.14;
+    document.querySelectorAll('#keeper-eyes .k-pupil').forEach(el => {
+      el.setAttribute('transform', `translate(${keeperGaze.x.toFixed(2)}, ${keeperGaze.y.toFixed(2)})`);
+    });
+
+    // 2. Non-blinking random eye gaze shifts for Customer
+    if (now > custGaze.nextChange) {
+      const targets = [
+        { x: -6, y: 0 },  // Looking at shopkeeper
+        { x: -5, y: 5 },  // Looking at the item on offer
+        { x: -3, y: 7 },  // Looking at counter
+        { x: 2, y: -2 }   // Looking around bazaar
+      ];
+      const pick = targets[Math.floor(Math.random() * targets.length)];
+      custGaze.tx = pick.x + (Math.random() - 0.5) * 2;
+      custGaze.ty = pick.y + (Math.random() - 0.5) * 2;
+      custGaze.nextChange = now + 800 + Math.random() * 1600;
+    }
+    custGaze.x += (custGaze.tx - custGaze.x) * 0.14;
+    custGaze.y += (custGaze.ty - custGaze.y) * 0.14;
+    document.querySelectorAll('#customer-layer .c-pupil').forEach(el => {
+      el.setAttribute('transform', `translate(${custGaze.x.toFixed(2)}, ${custGaze.y.toFixed(2)})`);
+    });
+
+    // 3. Procedural Alien Chatter while idle
+    if (!isBusy && now > nextAmbientTalk) {
+      const speaker = Math.random() < 0.5 ? 'keeper' : 'customer';
+      playAlienSpeech(speaker, 'neutral');
+      nextAmbientTalk = now + 3200 + Math.random() * 3500;
+    }
+
+    // 4. Mouth lip-sync animation
+    const keeperMouth = document.getElementById('keeper-mouth');
+    if (keeperMouth) {
+      if (now < keeperTalkUntil) {
+        const open = 58 + Math.sin(now * 0.045) * 14;
+        keeperMouth.setAttribute('d', `M-38 48 Q0 ${open} 38 48 Q0 ${open - 22} -38 48 Z`);
+      } else {
+        keeperMouth.setAttribute('d', `M-38 50 Q0 64 38 50 Q0 54 -38 50 Z`);
+      }
+    }
+
+    const custMouth = document.getElementById('cust-mouth');
+    if (custMouth) {
+      if (now < customerTalkUntil) {
+        const open = 52 + Math.sin(now * 0.05) * 13;
+        custMouth.setAttribute('d', `M-42 40 Q-14 ${open} 14 40 Q-14 ${open - 20} -42 40 Z`);
+      } else {
+        custMouth.setAttribute('d', `M-42 42 Q-14 54 14 42 Q-14 46 -42 42 Z`);
+      }
+    }
+
+    // 5. Subtle breathing for Shopkeeper
+    const kRig = document.getElementById('keeper-body-rig');
+    if (kRig) {
+      const breath = Math.sin(now * 0.0025) * 4;
+      kRig.setAttribute('transform', `translate(0, ${breath.toFixed(2)})`);
+    }
+
+    requestAnimationFrame(updateLivingWorld);
+  }
+
+  // ==================== SCENE INTERACTION & REALISTIC TRANSACTION CHOREOGRAPHY ====================
+  const keeperHeldItem = document.getElementById('keeper-held-item');
+  const keeperArmR = document.getElementById('keeper-arm-r');
+  const keeperArmL = document.getElementById('keeper-arm-l');
+  const customerLayer = document.getElementById('customer-layer');
+  const coinsLayer = document.getElementById('coins-layer');
+  const fxLayer = document.getElementById('fx-layer');
+  const targetNumberText = document.getElementById('target-number-text');
+  const answersBar = document.getElementById('answers-bar');
+
+  let currentItemSVG = '';
+  let isBusy = false;
+  let walkFrame = null;
+
+  function walkCustomer(startX, endX, durationMs, dirScaleX, onComplete) {
+    if (walkFrame) cancelAnimationFrame(walkFrame);
+    const t0 = performance.now();
+    let lastFootstep = 0;
+
+    function step(now) {
+      const p = Math.min(1, (now - t0) / durationMs);
+      const ease = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+      const x = startX + (endX - startX) * ease;
+      const cycle = Math.sin(p * Math.PI * 9);
+      const bobY = Math.abs(cycle) * -13;
+
+      customerLayer.setAttribute('transform', `translate(${x.toFixed(1)}, ${(175 + bobY).toFixed(1)}) scale(${dirScaleX}, 1)`);
+
+      const legB = document.getElementById('cust-leg-b');
+      const legF = document.getElementById('cust-leg-f');
+      const armTake = document.getElementById('cust-arm-take');
+      if (legB && legF) {
+        legB.setAttribute('transform', `translate(-26, 360) rotate(${(cycle * 24).toFixed(1)})`);
+        legF.setAttribute('transform', `translate(24, 365) rotate(${(-cycle * 24).toFixed(1)})`);
+      }
+      if (armTake) {
+        armTake.setAttribute('transform', `translate(-52, 232) rotate(${(cycle * 10).toFixed(1)})`);
+      }
+
+      if (now - lastFootstep > 180 && p < 0.94) {
+        playFootstep();
+        lastFootstep = now;
+      }
+
+      if (p < 1) {
+        walkFrame = requestAnimationFrame(step);
+      } else {
+        if (legB && legF) {
+          legB.setAttribute('transform', `translate(-26, 360) rotate(0)`);
+          legF.setAttribute('transform', `translate(24, 365) rotate(0)`);
+        }
+        customerLayer.setAttribute('transform', `translate(${endX}, 175) scale(${dirScaleX}, 1)`);
+        if (onComplete) onComplete();
+      }
+    }
+    walkFrame = requestAnimationFrame(step);
+  }
+
+  // Realistic physics simulation: Customer lifts pouch and pours bouncing, rolling gold coins onto counter
+  function pourAndRollGoldCoins(onFinishedRolling) {
+    coinsLayer.innerHTML = '';
+    const payLimb = document.getElementById('cust-pay-limb');
+    const paySkin = document.getElementById('cust-pay-skin');
+    const payHand = document.getElementById('cust-pay-hand');
+    const pouch = document.getElementById('cust-gold-pouch');
+
+    // Raise customer's right arm over the counter and tilt leather pouch
+    if (payLimb && paySkin && payHand && pouch) {
+      payLimb.setAttribute('d', 'M0 0 C-55 5, -135 20, -195 35');
+      paySkin.setAttribute('d', 'M0 0 C-55 5, -135 20, -195 35');
+      payHand.setAttribute('transform', 'translate(-198, 35) rotate(-115)');
+      pouch.setAttribute('opacity', '1');
+    }
+
+    const TOTAL_COINS = 32;
+    const coins = [];
+
+    for (let i = 0; i < TOTAL_COINS; i++) {
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      const r = 13 + (i % 3) * 1.5;
+      g.innerHTML = `
+        <g class="coin-spin">
+          <ellipse cx="0" cy="3" rx="${r}" ry="${r * 0.72}" fill="#8c580c"/>
+          <ellipse cx="0" cy="0" rx="${r}" ry="${r * 0.72}" fill="#ffd54f" stroke="#784705" stroke-width="2"/>
+          <ellipse cx="0" cy="0" rx="${r * 0.62}" ry="${r * 0.42}" fill="none" stroke="#fff8e1" stroke-width="1.5"/>
+        </g>
+      `;
+      g.setAttribute('opacity', '0');
+      coinsLayer.appendChild(g);
+
+      // Coins pour from pouch mouth at (1175, 435) down onto the counter mat (y ~ 565..584)
+      const targetSpread = (Math.random() - 0.58) * 5.2;
+      coins.push({
+        el: g,
+        inner: g.firstElementChild,
+        spawnTime: i * 24,
+        x: 1175 + (Math.random() - 0.5) * 18,
+        y: 438 + (Math.random() - 0.5) * 10,
+        vx: targetSpread - 1.1,
+        vy: 1.5 + Math.random() * 2.2,
+        floorY: 562 + (Math.random() - 0.5) * 24,
+        rot: Math.random() * 360,
+        vRot: (targetSpread >= 0 ? 1 : -1) * (10 + Math.random() * 12),
+        bounces: 0,
+        settled: false
+      });
+    }
+
+    const startT = performance.now();
+    function stepCoins(now) {
+      const elapsed = now - startT;
+      let allSettled = true;
+
+      // Shake pouring pouch while coins stream out
+      if (elapsed < 820 && payHand) {
+        const shake = Math.sin(elapsed * 0.05) * 6;
+        payHand.setAttribute('transform', `translate(-198, ${35 + shake}) rotate(-120)`);
+      } else if (payLimb && paySkin && payHand && pouch) {
+        // Return arm to side after pouring
+        payLimb.setAttribute('d', 'M0 0 C25 45, 10 95, -20 118');
+        paySkin.setAttribute('d', 'M0 0 C25 45, 10 95, -20 118');
+        payHand.setAttribute('transform', 'translate(-22, 118) rotate(0)');
+        pouch.setAttribute('opacity', '0');
+      }
+
+      for (let i = 0; i < coins.length; i++) {
+        const c = coins[i];
+        if (elapsed < c.spawnTime) {
+          allSettled = false;
+          continue;
+        }
+        c.el.setAttribute('opacity', '1');
+
+        if (!c.settled) {
+          allSettled = false;
+          c.vy += 0.72; // Gravity
+          c.x += c.vx;
+          c.y += c.vy;
+          c.rot += c.vRot;
+
+          // Hit counter surface
+          if (c.y >= c.floorY) {
+            c.y = c.floorY;
+            if (Math.abs(c.vy) > 2.1 && c.bounces < 3) {
+              c.vy = -c.vy * (0.46 + Math.random() * 0.12);
+              c.bounces++;
+              if (i % 2 === 0 || c.bounces === 1) {
+                playCoinClink(0.92 + (i % 7) * 0.05, 0.065 / c.bounces);
+              }
+            } else {
+              // Roll along the wooden counter before lying flat
+              c.vy = 0;
+              c.vx *= 0.91;
+              c.vRot = c.vx * 5.5;
+              if (Math.abs(c.vx) < 0.08) {
+                c.settled = true;
+              }
+            }
+          }
+
+          // While falling or rolling fast, stand slightly on edge; when settled, lie flat on counter
+          const tiltScaleY = c.settled ? 1 : (0.65 + Math.abs(Math.sin(c.rot * Math.PI / 180)) * 0.35);
+          c.el.setAttribute('transform', `translate(${c.x.toFixed(1)}, ${c.y.toFixed(1)})`);
+          c.inner.setAttribute('transform', `rotate(${(c.rot * 0.35).toFixed(1)}) scale(1, ${tiltScaleY.toFixed(2)})`);
+        }
+      }
+
+      if (!allSettled && elapsed < 1750) {
+        requestAnimationFrame(stepCoins);
+      } else if (onFinishedRolling) {
+        onFinishedRolling(coins);
+      }
+    }
+    requestAnimationFrame(stepCoins);
+  }
+
+  function runFullTransactionSequence() {
+    isBusy = true;
+    playAlienSpeech('customer', 'happy');
+
+    // Step 1: Customer pours gold coins onto counter; coins bounce and roll into a pile
+    pourAndRollGoldCoins((settledCoins) => {
+      playAlienSpeech('keeper', 'happy');
+
+      // Step 2: Shopkeeper extends right arm forward offering the item AND Customer reaches out to grab it
+      const armTake = document.getElementById('cust-arm-take');
+      keeperArmR.style.transition = 'transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      keeperArmR.setAttribute('transform', 'translate(135, 222) rotate(-10)');
+
+      if (armTake) {
+        armTake.style.transition = 'transform 0.38s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        armTake.setAttribute('transform', 'translate(-95, 225) rotate(14)');
+      }
+
+      setTimeout(() => {
+        // Step 3: Transfer item directly from Shopkeeper's hand into Customer's hand!
+        keeperHeldItem.innerHTML = '';
+        const carriedSlot = document.getElementById('cust-carried-item');
+        if (carriedSlot) carriedSlot.innerHTML = currentItemSVG;
+
+        // Return arms to carry pose
+        keeperArmR.setAttribute('transform', 'translate(88, 230) rotate(0)');
+        if (armTake) {
+          armTake.setAttribute('transform', 'translate(-52, 232) rotate(6)');
+        }
+
+        // Simultaneously, Shopkeeper sweeps the gold coins into the counter drawer
+        keeperArmL.style.transition = 'transform 0.42s ease-in-out';
+        keeperArmL.setAttribute('transform', 'translate(45, 240) rotate(-25)');
+
+        const sweepStart = performance.now();
+        function sweepCoinsAnim(now) {
+          const p = Math.min(1, (now - sweepStart) / 380);
+          settledCoins.forEach((c, idx) => {
+            const cx = c.x + (560 - c.x) * p;
+            const cy = c.y + (572 - c.y) * p - Math.sin(p * Math.PI) * 18;
+            c.el.setAttribute('transform', `translate(${cx.toFixed(1)}, ${cy.toFixed(1)}) scale(${(1 - p * 0.6).toFixed(2)})`);
+            if (p > 0.85) c.el.setAttribute('opacity', String((1 - p) * 6));
+          });
+          if (p < 1) {
+            requestAnimationFrame(sweepCoinsAnim);
+          } else {
+            coinsLayer.innerHTML = '';
+            keeperArmL.setAttribute('transform', 'translate(-85, 225) rotate(0)');
+          }
+        }
+        playCoinClink(1.15, 0.08);
+        requestAnimationFrame(sweepCoinsAnim);
+
+        // Step 4: Customer turns around holding the item and walks off-screen right
+        setTimeout(() => {
+          walkCustomer(1350, 2220, 1050, -1, () => {
+            loadNextRound();
+          });
+        }, 260);
+      }, 400);
+    });
+  }
+
+  function triggerWrongAnswerFX(btnEl) {
+    playAlienSpeech('keeper', 'angry');
+    btnEl.classList.remove('shake-wrong');
+    void btnEl.offsetWidth;
+    btnEl.classList.add('shake-wrong');
+
+    // Sparks around the target tablet
+    fxLayer.innerHTML = '';
+    for (let i = 0; i < 10; i++) {
+      const ang = (Math.PI * 2 * i) / 10;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const x1 = 960 + Math.cos(ang) * 150;
+      const y1 = 705 + Math.sin(ang) * 75;
+      const x2 = 960 + Math.cos(ang) * 260;
+      const y2 = 705 + Math.sin(ang) * 135;
+      path.setAttribute('d', `M${x1} ${y1} L${(x1 + x2) / 2 + (Math.random() - 0.5) * 28} ${(y1 + y2) / 2 + (Math.random() - 0.5) * 28} L${x2} ${y2}`);
+      path.setAttribute('stroke', i % 2 === 0 ? '#ff3d00' : '#ffea00');
+      path.setAttribute('stroke-width', '5');
+      path.setAttribute('fill', 'none');
+      fxLayer.appendChild(path);
+    }
+    setTimeout(() => { fxLayer.innerHTML = ''; }, 360);
+  }
+
+  function buildAnswerButtons(options) {
+    answersBar.innerHTML = '';
+    options.forEach((opt, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'ans-card';
+      const tones = [
+        ['#5c2c16', '#361608', '#1f0b03'],
+        ['#4a2511', '#2b1306', '#170902'],
+        ['#633219', '#3b1909', '#210c03'],
+        ['#522813', '#301407', '#1a0a03']
+      ][idx % 4];
+
+      btn.innerHTML = `
+        <svg class="plate-bg" viewBox="0 0 420 140" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="bGrad${idx}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="${tones[0]}"/>
+              <stop offset="55%" stop-color="${tones[1]}"/>
+              <stop offset="100%" stop-color="${tones[2]}"/>
+            </linearGradient>
+          </defs>
+          <polygon points="24,8 396,8 414,35 414,105 396,132 24,132 6,105 6,35"
+                   fill="url(#bGrad${idx})" stroke="#f5b942" stroke-width="5" stroke-linejoin="round"/>
+          <polygon points="32,18 388,18 402,40 402,100 388,122 32,122 18,100 18,40"
+                   fill="none" stroke="#ffd54f" stroke-width="2" stroke-opacity="0.4"/>
+          <circle cx="28" cy="70" r="6" fill="#ffd54f" opacity="0.8"/>
+          <circle cx="392" cy="70" r="6" fill="#ffd54f" opacity="0.8"/>
+        </svg>
+        <span class="ans-text">${opt.expr}</span>
+      `;
+
+      btn.addEventListener('mouseenter', () => {
+        if (!isBusy) playHoverTick();
+      });
+
+      btn.addEventListener('click', () => {
+        ensureAudio();
+        if (isBusy) return;
+        if (opt.isCorrect) {
+          runFullTransactionSequence();
+        } else {
+          triggerWrongAnswerFX(btn);
+        }
+      });
+
+      answersBar.appendChild(btn);
+    });
+  }
+
+  function loadNextRound() {
+    isBusy = true;
+    coinsLayer.innerHTML = '';
+    fxLayer.innerHTML = '';
+
+    // Place new unique item directly in Shopkeeper's hands
+    currentItemSVG = getNextUniqueItemSVG();
+    keeperHeldItem.innerHTML = currentItemSVG;
+
+    const q = generateDecimalQuestion();
+    targetNumberText.textContent = q.targetText;
+    buildAnswerButtons(q.options);
+
+    // Spawn new customer off-screen right and walk to counter
+    customerLayer.innerHTML = createCustomerSVG();
+    walkCustomer(2160, 1350, 920, 1, () => {
+      isBusy = false;
+      playAlienSpeech('keeper', 'neutral');
+    });
+  }
+
+  document.getElementById('next-btn').addEventListener('click', () => {
+    ensureAudio();
+    playHoverTick();
+    if (walkFrame) cancelAnimationFrame(walkFrame);
+    loadNextRound();
+  });
+
+  // Start life engine & first round
+  requestAnimationFrame(updateLivingWorld);
+  loadNextRound();
+})();
+</script>
+</body>
+</html>
