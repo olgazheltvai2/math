@@ -1,0 +1,2135 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Котик і Песик</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #2a1b12;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    #stage-wrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at center, #3d271a 0%, #1d110a 100%);
+    }
+    /* 16:9 responsive stage container */
+    #game-stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      max-width: 177.78vh;
+      max-height: 56.25vw;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      box-shadow: 0 25px 70px rgba(0, 0, 0, 0.75);
+      border-radius: 12px;
+      background: #4a3222;
+    }
+    @media (max-aspect-ratio: 16/9) {
+      #game-stage {
+        max-width: 100vw;
+        max-height: 100vh;
+        aspect-ratio: auto;
+        border-radius: 0;
+      }
+    }
+
+    #scene-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #toys-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 15;
+    }
+
+    /* Interactive hit zones over the pets */
+    .pet-hitzone {
+      position: absolute;
+      z-index: 20;
+      cursor: pointer;
+      border-radius: 50%;
+      transition: filter 0.25s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #cat-hitzone {
+      left: 7%;
+      top: 34%;
+      width: 34%;
+      height: 56%;
+    }
+    #dog-hitzone {
+      right: 7%;
+      top: 32%;
+      width: 35%;
+      height: 58%;
+    }
+
+    /* Carved Wooden Control Panel (Top-Left) - No white boxes! */
+    #range-pendant {
+      position: absolute;
+      top: 2.2%;
+      left: 2.2%;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 28px;
+      background: linear-gradient(145deg, #6e4726 0%, #4d2f16 55%, #38200d 100%);
+      border: 3px solid #8c5d34;
+      box-shadow:
+        0 8px 20px rgba(0,0,0,0.45),
+        inset 0 2px 3px rgba(255, 215, 160, 0.35),
+        inset 0 -3px 6px rgba(20, 10, 4, 0.7);
+    }
+    .wood-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid #a57243;
+      background: radial-gradient(circle at 35% 30%, #8c5a32, #4e2f15 80%);
+      box-shadow:
+        0 4px 8px rgba(0,0,0,0.4),
+        inset 0 2px 2px rgba(255,220,175,0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.12s ease, filter 0.15s ease;
+      padding: 0;
+    }
+    .wood-btn:hover {
+      filter: brightness(1.12);
+      transform: scale(1.06);
+    }
+    .wood-btn:active {
+      transform: scale(0.93);
+    }
+    #max-display {
+      min-width: 44px;
+      height: 38px;
+      border-radius: 19px;
+      background: radial-gradient(circle at 50% 35%, #3a2210, #241307);
+      border: 2px solid #784d28;
+      box-shadow: inset 0 3px 6px rgba(0,0,0,0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 10px;
+      color: #ffdca8;
+      font-weight: 800;
+      font-size: 22px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+      letter-spacing: 0.5px;
+    }
+    #pip-dots {
+      display: grid;
+      grid-template-columns: repeat(5, 8px);
+      gap: 4px;
+      padding: 0 4px;
+    }
+    .pip-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #2b180b;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+      transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .pip-dot.active {
+      background: radial-gradient(circle at 35% 35%, #ffe699, #f59e0b 70%, #b45309);
+      box-shadow: 0 0 6px rgba(245, 158, 11, 0.75);
+      transform: scale(1.12);
+    }
+
+    /* Minimalist Next Button (Top-Right) */
+    #next-btn {
+      position: absolute;
+      top: 2.2%;
+      right: 2.2%;
+      z-index: 30;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 3px solid #b57c43;
+      background: radial-gradient(circle at 35% 30%, #9c6635 0%, #5e3919 65%, #3d230d 100%);
+      box-shadow:
+        0 8px 20px rgba(0,0,0,0.5),
+        inset 0 2px 4px rgba(255, 226, 185, 0.45),
+        inset 0 -4px 6px rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.16s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #next-btn:hover {
+      transform: scale(1.08) rotate(4deg);
+      filter: brightness(1.12);
+    }
+    #next-btn:active {
+      transform: scale(0.92);
+    }
+  </style>
+</head>
+<body>
+  <div id="stage-wrapper">
+    <div id="game-stage">
+      <!-- Top-Left Carved Wooden Quantity Range Selector (1..10, default 5) -->
+      <div id="range-pendant">
+        <button class="wood-btn" id="btn-dec" aria-label="Decrease">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12H19" stroke="#ffe0b2" stroke-width="3.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <div id="max-display">5</div>
+        <div id="pip-dots"></div>
+        <button class="wood-btn" id="btn-inc" aria-label="Increase">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 5V19M5 12H19" stroke="#ffe0b2" stroke-width="3.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Top-Right Minimalist "Next" Button -->
+      <button id="next-btn" aria-label="Next">
+        <svg width="30" height="30" viewBox="0 0 32 32" fill="none">
+          <path d="M7 16H24M24 16L17 9M24 16L17 23" stroke="#ffdfad" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+
+      <!-- Hit Zones for Clicking Cat & Dog -->
+      <div id="cat-hitzone" class="pet-hitzone"></div>
+      <div id="dog-hitzone" class="pet-hitzone"></div>
+
+      <!-- High-Detail Physics Canvas for Yarn Balls, Bouncy Balls & Particles -->
+      <canvas id="toys-canvas" width="1920" height="1080"></canvas>
+
+      <!-- Rich Story Environment & Articulated Realistic Pets SVG -->
+      <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- Room Wall Warm Damask / Plaster Gradient -->
+          <linearGradient id="wallGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#c99563"/>
+            <stop offset="48%" stop-color="#b57d4a"/>
+            <stop offset="100%" stop-color="#7c4e29"/>
+          </linearGradient>
+
+          <!-- Subtle Wallpaper Botanical Pattern -->
+          <pattern id="wallPattern" width="120" height="120" patternUnits="userSpaceOnUse">
+            <rect width="120" height="120" fill="none"/>
+            <path d="M60 15 C75 35, 75 55, 60 75 C45 55, 45 35, 60 15 Z" fill="#d9a977" fill-opacity="0.09"/>
+            <path d="M0 75 C15 95, 15 115, 0 135 C-15 115, -15 95, 0 75 Z" fill="#d9a977" fill-opacity="0.09"/>
+            <path d="M120 75 C135 95, 135 115, 120 135 C105 115, 105 95, 120 75 Z" fill="#d9a977" fill-opacity="0.09"/>
+            <circle cx="60" cy="95" r="4" fill="#efd0aa" fill-opacity="0.1"/>
+          </pattern>
+
+          <!-- Outdoor Sky Gradient -->
+          <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#6ec3f5"/>
+            <stop offset="60%" stop-color="#aee2ff"/>
+            <stop offset="100%" stop-color="#fef3c7"/>
+          </linearGradient>
+
+          <!-- Sunbeam Gradient -->
+          <linearGradient id="sunbeamGrad" x1="30%" y1="0%" x2="70%" y2="100%">
+            <stop offset="0%" stop-color="#fff7d6" stop-opacity="0.28"/>
+            <stop offset="55%" stop-color="#ffe79e" stop-opacity="0.12"/>
+            <stop offset="100%" stop-color="#ffd56b" stop-opacity="0"/>
+          </linearGradient>
+
+          <!-- Wooden Floor Gradient -->
+          <linearGradient id="floorGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#6e4121"/>
+            <stop offset="35%" stop-color="#87522b"/>
+            <stop offset="100%" stop-color="#4e2c14"/>
+          </linearGradient>
+
+          <!-- Wood Plank Pattern -->
+          <pattern id="woodPlanks" width="240" height="48" patternUnits="userSpaceOnUse">
+            <rect width="240" height="48" fill="none"/>
+            <line x1="0" y1="0" x2="240" y2="0" stroke="#3b200d" stroke-width="2.2" stroke-opacity="0.55"/>
+            <line x1="120" y1="0" x2="120" y2="24" stroke="#3b200d" stroke-width="2" stroke-opacity="0.5"/>
+            <line x1="0" y1="24" x2="240" y2="24" stroke="#3b200d" stroke-width="2.2" stroke-opacity="0.55"/>
+            <line x1="60" y1="24" x2="60" y2="48" stroke="#3b200d" stroke-width="2" stroke-opacity="0.5"/>
+            <path d="M20 12 Q60 6 105 14 M140 36 Q185 30 225 38" stroke="#a66c3e" stroke-width="1.3" stroke-opacity="0.25" fill="none"/>
+          </pattern>
+
+          <!-- Ornate Woven Rug Gradients -->
+          <radialGradient id="rugMainGrad" cx="50%" cy="50%" r="55%">
+            <stop offset="0%" stop-color="#9e2f2b"/>
+            <stop offset="55%" stop-color="#7d201d"/>
+            <stop offset="82%" stop-color="#581513"/>
+            <stop offset="83%" stop-color="#d99b4e"/>
+            <stop offset="89%" stop-color="#3c5a5c"/>
+            <stop offset="95%" stop-color="#b87632"/>
+            <stop offset="100%" stop-color="#471210"/>
+          </radialGradient>
+
+          <radialGradient id="floorShadowGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#1a0c05" stop-opacity="0.65"/>
+            <stop offset="65%" stop-color="#291308" stop-opacity="0.32"/>
+            <stop offset="100%" stop-color="#291308" stop-opacity="0"/>
+          </radialGradient>
+
+          <!-- ================= WHITE CAT GRADIENTS ================= -->
+          <!-- Realistic 3D White Fur with warm cream light and cool silver-blue/lavender shadow -->
+          <radialGradient id="catFurBody" cx="38%" cy="28%" r="68%">
+            <stop offset="0%" stop-color="#fffdf9"/>
+            <stop offset="48%" stop-color="#f5efe6"/>
+            <stop offset="78%" stop-color="#dce2ea"/>
+            <stop offset="100%" stop-color="#b8c2d1"/>
+          </radialGradient>
+
+          <radialGradient id="catFurHead" cx="42%" cy="32%" r="62%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="52%" stop-color="#f7f3eb"/>
+            <stop offset="82%" stop-color="#dfe4ec"/>
+            <stop offset="100%" stop-color="#c1cad8"/>
+          </radialGradient>
+
+          <radialGradient id="catChestFluff" cx="50%" cy="35%" r="60%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="65%" stop-color="#f9f6f0"/>
+            <stop offset="100%" stop-color="#d6dde7"/>
+          </radialGradient>
+
+          <linearGradient id="catEarInner" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#f7b2be"/>
+            <stop offset="60%" stop-color="#e58698"/>
+            <stop offset="100%" stop-color="#c46275"/>
+          </linearGradient>
+
+          <radialGradient id="catEyeIris" cx="45%" cy="40%" r="55%">
+            <stop offset="0%" stop-color="#76e5c8"/>
+            <stop offset="45%" stop-color="#2eb899"/>
+            <stop offset="80%" stop-color="#177868"/>
+            <stop offset="100%" stop-color="#0b453d"/>
+          </radialGradient>
+
+          <radialGradient id="catEyeSclera" cx="50%" cy="45%" r="55%">
+            <stop offset="0%" stop-color="#fbfcfa"/>
+            <stop offset="75%" stop-color="#e5ece8"/>
+            <stop offset="100%" stop-color="#b7c7c0"/>
+          </radialGradient>
+
+          <radialGradient id="catNoseGrad" cx="40%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#ffbfd1"/>
+            <stop offset="55%" stop-color="#ea859c"/>
+            <stop offset="100%" stop-color="#b55369"/>
+          </radialGradient>
+
+          <!-- ================= GREY-BROWN DOG GRADIENTS ================= -->
+          <radialGradient id="dogFurBody" cx="58%" cy="28%" r="68%">
+            <stop offset="0%" stop-color="#a88c76"/>
+            <stop offset="45%" stop-color="#876d58"/>
+            <stop offset="78%" stop-color="#644e3d"/>
+            <stop offset="100%" stop-color="#453427"/>
+          </radialGradient>
+
+          <radialGradient id="dogFurHead" cx="52%" cy="30%" r="64%">
+            <stop offset="0%" stop-color="#b59880"/>
+            <stop offset="48%" stop-color="#8d725c"/>
+            <stop offset="82%" stop-color="#685140"/>
+            <stop offset="100%" stop-color="#4a382b"/>
+          </radialGradient>
+
+          <radialGradient id="dogChestPatch" cx="50%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#e3ceb5"/>
+            <stop offset="65%" stop-color="#c7ab8c"/>
+            <stop offset="100%" stop-color="#96795c"/>
+          </radialGradient>
+
+          <radialGradient id="dogMuzzleGrad" cx="48%" cy="35%" r="62%">
+            <stop offset="0%" stop-color="#ebd8c3"/>
+            <stop offset="58%" stop-color="#cfb295"/>
+            <stop offset="88%" stop-color="#9e7f63"/>
+            <stop offset="100%" stop-color="#755b44"/>
+          </radialGradient>
+
+          <linearGradient id="dogEarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#6e5644"/>
+            <stop offset="55%" stop-color="#4d3a2c"/>
+            <stop offset="100%" stop-color="#33251b"/>
+          </linearGradient>
+
+          <radialGradient id="dogNoseGrad" cx="38%" cy="30%" r="65%">
+            <stop offset="0%" stop-color="#5c4d46"/>
+            <stop offset="35%" stop-color="#2b211d"/>
+            <stop offset="100%" stop-color="#120c0a"/>
+          </radialGradient>
+
+          <radialGradient id="dogEyeIris" cx="45%" cy="40%" r="55%">
+            <stop offset="0%" stop-color="#d48c46"/>
+            <stop offset="48%" stop-color="#99581d"/>
+            <stop offset="82%" stop-color="#5c310a"/>
+            <stop offset="100%" stop-color="#2e1603"/>
+          </radialGradient>
+
+          <radialGradient id="dogEyeSclera" cx="50%" cy="45%" r="55%">
+            <stop offset="0%" stop-color="#f7f2eb"/>
+            <stop offset="78%" stop-color="#dfd4c5"/>
+            <stop offset="100%" stop-color="#b5a48e"/>
+          </radialGradient>
+        </defs>
+
+        <!-- ==================== BACKGROUND ROOM ==================== -->
+        <!-- Wall -->
+        <rect x="0" y="0" width="1920" height="650" fill="url(#wallGrad)"/>
+        <rect x="0" y="0" width="1920" height="650" fill="url(#wallPattern)"/>
+
+        <!-- Wainscoting / Wooden Wall Trim -->
+        <rect x="0" y="510" width="1920" height="140" fill="#5e391c"/>
+        <line x1="0" y1="510" x2="1920" y2="510" stroke="#8c5830" stroke-width="8"/>
+        <line x1="0" y1="516" x2="1920" y2="516" stroke="#3b210d" stroke-width="3"/>
+        <!-- Wainscoting recessed panels -->
+        <g stroke="#422610" stroke-width="4" fill="#523117">
+          <rect x="40" y="532" width="260" height="90" rx="6"/>
+          <rect x="340" y="532" width="260" height="90" rx="6"/>
+          <rect x="640" y="532" width="640" height="90" rx="6"/>
+          <rect x="1320" y="532" width="260" height="90" rx="6"/>
+          <rect x="1620" y="532" width="260" height="90" rx="6"/>
+        </g>
+
+        <!-- Panoramic Garden Window in Center -->
+        <g id="panoramic-window">
+          <!-- Outer wooden frame -->
+          <rect x="560" y="45" width="800" height="445" rx="18" fill="#4a2b13" stroke="#2e1909" stroke-width="6"/>
+          <!-- Sky inside window -->
+          <rect x="582" y="65" width="756" height="405" rx="10" fill="url(#skyGrad)"/>
+
+          <!-- Sun glow -->
+          <circle cx="740" cy="145" r="58" fill="#fff7cc" fill-opacity="0.85"/>
+          <circle cx="740" cy="145" r="95" fill="#fffbeb" fill-opacity="0.3"/>
+
+          <!-- Drifting clouds -->
+          <g id="window-clouds" opacity="0.85">
+            <g transform="translate(650, 120)">
+              <ellipse cx="40" cy="25" rx="45" ry="20" fill="#fff8eb"/>
+              <ellipse cx="70" cy="18" rx="35" ry="24" fill="#fffdf7"/>
+              <ellipse cx="100" cy="26" rx="38" ry="18" fill="#fff8eb"/>
+            </g>
+            <g transform="translate(1030, 155) scale(0.85)">
+              <ellipse cx="40" cy="25" rx="48" ry="20" fill="#fff8eb"/>
+              <ellipse cx="78" cy="16" rx="38" ry="25" fill="#fffdf7"/>
+              <ellipse cx="112" cy="26" rx="40" ry="18" fill="#fff8eb"/>
+            </g>
+          </g>
+
+          <!-- Distant Rolling Garden Hills & Bushes -->
+          <path d="M582 365 Q750 300 960 350 T1338 335 L1338 470 L582 470 Z" fill="#74b868"/>
+          <path d="M582 395 Q830 345 1080 390 T1338 380 L1338 470 L582 470 Z" fill="#4f9649"/>
+
+          <!-- Swaying Garden Trees in Window -->
+          <g id="outside-tree-left" transform="translate(650, 360)">
+            <path d="M-8 90 L-4 -20 L6 -20 L10 90 Z" fill="#6b4428"/>
+            <circle cx="0" cy="-55" r="56" fill="#3f853c"/>
+            <circle cx="-35" cy="-30" r="44" fill="#4c9947"/>
+            <circle cx="35" cy="-32" r="42" fill="#337331"/>
+            <circle cx="5" cy="-82" r="42" fill="#63b058"/>
+          </g>
+          <g id="outside-tree-right" transform="translate(1235, 350)">
+            <path d="M-10 100 L-4 -30 L6 -30 L12 100 Z" fill="#5e3a20"/>
+            <circle cx="0" cy="-65" r="64" fill="#377a35"/>
+            <circle cx="-42" cy="-38" r="48" fill="#4d9c49"/>
+            <circle cx="38" cy="-35" r="45" fill="#2d692b"/>
+            <circle cx="-8" cy="-95" r="46" fill="#68b55b"/>
+          </g>
+
+          <!-- Window Mullions (Wooden Bars) -->
+          <rect x="953" y="65" width="14" height="405" fill="#4a2b13"/>
+          <rect x="582" y="260" width="756" height="12" fill="#4a2b13"/>
+          <!-- Window Sill -->
+          <rect x="536" y="476" width="848" height="24" rx="8" fill="#754621" stroke="#3b200c" stroke-width="3"/>
+          <rect x="548" y="500" width="824" height="12" fill="#42240d" opacity="0.65"/>
+
+          <!-- Draped Warm Terracotta/Gold Curtains on Window Sides -->
+          <path d="M555 45 Q635 160 615 290 Q595 390 625 485 L548 485 Q535 260 555 45 Z" fill="#9c382b" stroke="#691f16" stroke-width="3"/>
+          <path d="M575 45 Q610 175 592 290 Q580 390 600 485" stroke="#bf5343" stroke-width="4" fill="none" opacity="0.6"/>
+          <path d="M1365 45 Q1285 160 1305 290 Q1325 390 1295 485 L1372 485 Q1385 260 1365 45 Z" fill="#9c382b" stroke="#691f16" stroke-width="3"/>
+          <path d="M1345 45 Q1310 175 1328 290 Q1340 390 1320 485" stroke="#bf5343" stroke-width="4" fill="none" opacity="0.6"/>
+          <!-- Curtain Rod -->
+          <rect x="515" y="34" width="890" height="14" rx="7" fill="#543115" stroke="#2d1808" stroke-width="2"/>
+          <circle cx="515" cy="41" r="14" fill="#8f5c30"/>
+          <circle cx="1405" cy="41" r="14" fill="#8f5c30"/>
+        </g>
+
+        <!-- Decorative Left Wall Shelf with Books & Teapot -->
+        <g transform="translate(120, 180)">
+          <rect x="0" y="95" width="290" height="18" rx="6" fill="#633a1a" stroke="#361d0a" stroke-width="2.5"/>
+          <path d="M25 113 L45 140 L55 113 Z" fill="#3d220e"/>
+          <path d="M235 113 L255 140 L265 113 Z" fill="#3d220e"/>
+          <!-- Stacked colorful vintage books -->
+          <rect x="30" y="25" width="24" height="70" rx="3" fill="#386641" stroke="#1e3b24" stroke-width="2"/>
+          <rect x="55" y="15" width="28" height="80" rx="3" fill="#bc4749" stroke="#6e2224" stroke-width="2"/>
+          <rect x="84" y="30" width="22" height="65" rx="3" fill="#d4a373" stroke="#855f39" stroke-width="2"/>
+          <rect x="112" y="22" width="26" height="73" rx="3" transform="rotate(10 125 95)" fill="#457b9d" stroke="#224459" stroke-width="2"/>
+          <!-- Ceramic decorative pot -->
+          <ellipse cx="220" cy="68" rx="32" ry="27" fill="#e09f3e" stroke="#9e6819" stroke-width="2.5"/>
+          <ellipse cx="220" cy="43" rx="18" ry="6" fill="#b57921"/>
+        </g>
+
+        <!-- Decorative Right Wall Framed Landscape Painting (Warm Autumn Hills, NO white) -->
+        <g transform="translate(1510, 145)">
+          <rect x="0" y="0" width="260" height="185" rx="12" fill="#5c3618" stroke="#331c0a" stroke-width="4"/>
+          <rect x="14" y="14" width="232" height="157" rx="6" fill="#804d27"/>
+          <rect x="24" y="24" width="212" height="137" rx="4" fill="#e8b878"/>
+          <circle cx="175" cy="65" r="24" fill="#f5853f" opacity="0.85"/>
+          <path d="M24 125 Q95 82 155 115 T236 105 L236 161 L24 161 Z" fill="#8c4a27"/>
+          <path d="M24 140 Q120 112 236 135 L236 161 L24 161 Z" fill="#4f5d2f"/>
+        </g>
+
+        <!-- ==================== WOODEN PARQUET FLOOR ==================== -->
+        <rect x="0" y="640" width="1920" height="440" fill="url(#floorGrad)"/>
+        <rect x="0" y="640" width="1920" height="440" fill="url(#woodPlanks)"/>
+        <!-- Baseboard trim -->
+        <rect x="0" y="625" width="1920" height="22" fill="#3d220e" stroke="#241306" stroke-width="2"/>
+
+        <!-- Potted Indoor Plant Left -->
+        <g id="plant-left" transform="translate(82, 585)">
+          <ellipse cx="0" cy="85" rx="58" ry="18" fill="#261306" opacity="0.45"/>
+          <!-- Terracotta Pot -->
+          <path d="M-46 5 L46 5 L34 82 Q0 90 -34 82 Z" fill="#b3542d" stroke="#6e2e14" stroke-width="3"/>
+          <rect x="-52" y="-8" width="104" height="16" rx="6" fill="#c9643b" stroke="#6e2e14" stroke-width="3"/>
+          <!-- Swaying Leaves Group -->
+          <g id="plant-left-leaves">
+            <path d="M0 -5 Q-65 -55 -85 -120 Q-30 -95 0 -5 Z" fill="#2d6a4f" stroke="#1b4332" stroke-width="2"/>
+            <path d="M0 -5 Q-35 -95 -25 -165 Q20 -110 0 -5 Z" fill="#40916c" stroke="#1b4332" stroke-width="2"/>
+            <path d="M0 -5 Q45 -85 75 -140 Q45 -65 0 -5 Z" fill="#52b788" stroke="#2d6a4f" stroke-width="2"/>
+            <path d="M0 -5 Q75 -45 102 -80 Q55 -25 0 -5 Z" fill="#3b7a57" stroke="#1b4332" stroke-width="2"/>
+          </g>
+        </g>
+
+        <!-- Potted Indoor Plant Right -->
+        <g id="plant-right" transform="translate(1835, 590)">
+          <ellipse cx="0" cy="85" rx="58" ry="18" fill="#261306" opacity="0.45"/>
+          <path d="M-46 5 L46 5 L34 82 Q0 90 -34 82 Z" fill="#b3542d" stroke="#6e2e14" stroke-width="3"/>
+          <rect x="-52" y="-8" width="104" height="16" rx="6" fill="#c9643b" stroke="#6e2e14" stroke-width="3"/>
+          <g id="plant-right-leaves">
+            <path d="M0 -5 Q-75 -45 -105 -90 Q-50 -30 0 -5 Z" fill="#3b7a57" stroke="#1b4332" stroke-width="2"/>
+            <path d="M0 -5 Q-40 -95 -65 -150 Q-20 -95 0 -5 Z" fill="#52b788" stroke="#2d6a4f" stroke-width="2"/>
+            <path d="M0 -5 Q25 -105 20 -170 Q55 -105 0 -5 Z" fill="#40916c" stroke="#1b4332" stroke-width="2"/>
+            <path d="M0 -5 Q65 -60 88 -125 Q40 -85 0 -5 Z" fill="#2d6a4f" stroke="#1b4332" stroke-width="2"/>
+          </g>
+        </g>
+
+        <!-- ==================== ORNATE WOVEN RUG ==================== -->
+        <g id="woven-rug" transform="translate(960, 865)">
+          <!-- Rug Drop Shadow -->
+          <ellipse cx="0" cy="14" rx="825" ry="178" fill="#1f0f06" opacity="0.65"/>
+          <!-- Fringe tassels left & right -->
+          <g stroke="#d4b483" stroke-width="5" stroke-linecap="round" opacity="0.85">
+            <line x1="-815" y1="-35" x2="-845" y2="-38"/><line x1="-822" y1="-18" x2="-852" y2="-20"/>
+            <line x1="-825" y1="0" x2="-856" y2="0"/><line x1="-822" y1="18" x2="-852" y2="20"/>
+            <line x1="-815" y1="35" x2="-845" y2="38"/><line x1="-802" y1="52" x2="-830" y2="56"/>
+            <line x1="815" y1="-35" x2="845" y2="-38"/><line x1="822" y1="-18" x2="852" y2="-20"/>
+            <line x1="825" y1="0" x2="856" y2="0"/><line x1="822" y1="18" x2="852" y2="20"/>
+            <line x1="815" y1="35" x2="845" y2="38"/><line x1="802" y1="52" x2="830" y2="56"/>
+          </g>
+          <!-- Main Rug Body -->
+          <ellipse cx="0" cy="0" rx="815" ry="168" fill="url(#rugMainGrad)" stroke="#d99b4e" stroke-width="5"/>
+          <!-- Decorative Woven Geometric Medallions on Rug -->
+          <ellipse cx="0" cy="0" rx="650" ry="125" fill="none" stroke="#e6b875" stroke-width="3" stroke-dasharray="18 10" opacity="0.65"/>
+          <ellipse cx="0" cy="0" rx="480" ry="88" fill="none" stroke="#48787a" stroke-width="5" opacity="0.6"/>
+          <!-- Subtle Left Zone & Right Zone Medallions where toys land -->
+          <ellipse cx="-260" cy="12" rx="235" ry="72" fill="#8f2824" fill-opacity="0.45" stroke="#e0a958" stroke-width="2.5" stroke-dasharray="10 8" opacity="0.6"/>
+          <ellipse cx="260" cy="12" rx="235" ry="72" fill="#8f2824" fill-opacity="0.45" stroke="#e0a958" stroke-width="2.5" stroke-dasharray="10 8" opacity="0.6"/>
+          <!-- Center Diamond Motif -->
+          <polygon points="0,-48 68,0 0,48 -68,0" fill="#d99b4e" fill-opacity="0.35" stroke="#f3cf98" stroke-width="2" opacity="0.65"/>
+        </g>
+
+        <!-- Warm Sunbeams Streaming from Window -->
+        <polygon points="620,65 1300,65 1620,1080 300,1080" fill="url(#sunbeamGrad)" pointer-events="none"/>
+
+        <!-- =================================================================== -->
+        <!--                LEFT CHARACTER: REALISTIC WHITE CAT                  -->
+        <!-- =================================================================== -->
+        <g id="cat-root" transform="translate(360, 790)">
+          <!-- Ground Shadow -->
+          <ellipse id="cat-shadow" cx="0" cy="48" rx="145" ry="36" fill="url(#floorShadowGrad)"/>
+
+          <!-- Articulated Fluffy White Tail (behind body) -->
+          <g id="cat-tail-group" transform="translate(-85, 10)">
+            <path id="cat-tail-path"
+                  d="M 0 0 C -95 -10, -145 -95, -105 -165 C -82 -205, -38 -185, -55 -140 C -70 -100, -45 -45, 5 -18 Z"
+                  fill="url(#catFurBody)" stroke="#aeb9c9" stroke-width="3" stroke-linejoin="round"/>
+            <!-- Fluffy fur lines on tail -->
+            <path d="M -98 -115 Q -118 -135 -102 -158" stroke="#ffffff" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.8"/>
+          </g>
+
+          <!-- Cat Body Group (breathes, crouches, leaps) -->
+          <g id="cat-body-group">
+            <!-- Hind Legs / Haunches -->
+            <ellipse cx="-68" cy="-35" rx="62" ry="72" fill="url(#catFurBody)" stroke="#b4bfcf" stroke-width="2.5"/>
+            <ellipse cx="68" cy="-35" rx="62" ry="72" fill="url(#catFurBody)" stroke="#b4bfcf" stroke-width="2.5"/>
+
+            <!-- Back Paws -->
+            <ellipse cx="-88" cy="24" rx="34" ry="18" fill="url(#catFurHead)" stroke="#b4bfcf" stroke-width="2.5"/>
+            <ellipse cx="88" cy="24" rx="34" ry="18" fill="url(#catFurHead)" stroke="#b4bfcf" stroke-width="2.5"/>
+
+            <!-- Main Torso -->
+            <path d="M -78 -25 C -88 -125, -55 -210, 0 -215 C 55 -210, 88 -125, 78 -25 C 68 25, -68 25, -78 -25 Z"
+                  fill="url(#catFurBody)" stroke="#b4bfcf" stroke-width="2.5"/>
+
+            <!-- Luxurious Fluffy Chest Ruff (Jabot) -->
+            <path d="M -58 -165 Q -72 -135 -54 -115 Q -68 -95 -44 -78 Q 0 -55 44 -78 Q 68 -95 54 -115 Q 72 -135 58 -165 Q 0 -140 -58 -165 Z"
+                  fill="url(#catChestFluff)" stroke="#cbd3e0" stroke-width="2"/>
+            <!-- Subtle fur tuft details on chest -->
+            <path d="M -22 -118 Q -10 -102 0 -114 Q 12 -102 24 -118" stroke="#cfd7e3" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <path d="M -16 -92 Q 0 -78 16 -92" stroke="#cfd7e3" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+            <!-- Articulated Front Left Leg & Paw -->
+            <g id="cat-paw-left" transform="translate(-40, -75)">
+              <path d="M -22 0 C -26 42, -24 78, -20 98 C -15 112, 18 112, 22 98 C 24 78, 22 42, 18 0 Z"
+                    fill="url(#catFurHead)" stroke="#b4bfcf" stroke-width="2.5"/>
+              <!-- Sculpted Paw Toes -->
+              <ellipse cx="0" cy="100" rx="28" ry="16" fill="url(#catFurHead)" stroke="#aeb9c9" stroke-width="2.5"/>
+              <path d="M -10 95 Q -12 108 -8 113 M 9 95 Q 11 108 7 113" stroke="#9aa7ba" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            </g>
+
+            <!-- Articulated Front Right Leg & Paw -->
+            <g id="cat-paw-right" transform="translate(40, -75)">
+              <path d="M -18 0 C -22 42, -24 78, -22 98 C -18 112, 15 112, 20 98 C 24 78, 26 42, 22 0 Z"
+                    fill="url(#catFurHead)" stroke="#b4bfcf" stroke-width="2.5"/>
+              <ellipse cx="0" cy="100" rx="28" ry="16" fill="url(#catFurHead)" stroke="#aeb9c9" stroke-width="2.5"/>
+              <path d="M -9 95 Q -11 108 -7 113 M 10 95 Q 12 108 8 113" stroke="#9aa7ba" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+            </g>
+
+            <!-- ================= CAT HEAD GROUP ================= -->
+            <g id="cat-head-group" transform="translate(0, -225)">
+              <!-- Left Ear -->
+              <g id="cat-ear-left" transform="translate(-58, -58)">
+                <path d="M -32 22 C -45 -22, -32 -65, -8 -78 C 14 -64, 32 -25, 28 12 Z"
+                      fill="url(#catFurHead)" stroke="#b0bccd" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M -22 14 C -30 -18, -22 -48, -7 -60 C 8 -48, 18 -20, 16 8 Z"
+                      fill="url(#catEarInner)"/>
+                <!-- Ear furnishings (fluffy white inner ear hairs) -->
+                <path d="M -18 8 Q -4 -2 6 4 M -20 -4 Q -6 -12 8 -6" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
+              </g>
+
+              <!-- Right Ear -->
+              <g id="cat-ear-right" transform="translate(58, -58)">
+                <path d="M -28 12 C -32 -25, -14 -64, 8 -78 C 32 -65, 45 -22, 32 22 Z"
+                      fill="url(#catFurHead)" stroke="#b0bccd" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M -16 8 C -18 -20, -8 -48, 7 -60 C 22 -48, 30 -18, 22 14 Z"
+                      fill="url(#catEarInner)"/>
+                <path d="M 18 8 Q 4 -2 -6 4 M 20 -4 Q 6 -12 -8 -6" stroke="#ffffff" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.85"/>
+              </g>
+
+              <!-- Main Head Shape with Fluffy Cheek Ruffs -->
+              <path d="M 0 -86
+                       C 52 -86, 86 -52, 92 -10
+                       C 108 4, 114 22, 98 36
+                       C 106 46, 92 64, 72 68
+                       C 48 82, 24 86, 0 86
+                       C -24 86, -48 82, -72 68
+                       C -92 64, -106 46, -98 36
+                       C -114 22, -108 4, -92 -10
+                       C -86 -52, -52 -86, 0 -86 Z"
+                    fill="url(#catFurHead)" stroke="#b4bfcf" stroke-width="2.8" stroke-linejoin="round"/>
+
+              <!-- Subtle Forehead Crown Fur Tufts -->
+              <path d="M -14 -84 Q -6 -96 0 -86 Q 7 -97 14 -84" stroke="#d5dce6" stroke-width="3" fill="none" stroke-linecap="round"/>
+              <path d="M -26 -56 Q 0 -48 26 -56" stroke="#dce2eb" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+
+              <!-- CAT EYES (NEVER BLINK — ALWAYS OPEN & SHIFTING GAZE) -->
+              <!-- Left Eye Socket -->
+              <g transform="translate(-38, -8)">
+                <ellipse cx="0" cy="0" rx="23" ry="21" fill="url(#catEyeSclera)" stroke="#5b6675" stroke-width="2.5"/>
+                <!-- Moving Iris & Pupil Group -->
+                <g id="cat-iris-left">
+                  <circle cx="0" cy="0" r="14.5" fill="url(#catEyeIris)"/>
+                  <!-- Vertical elliptical cat pupil -->
+                  <ellipse id="cat-pupil-left" cx="0" cy="0" rx="5.2" ry="12.2" fill="#091412"/>
+                  <!-- Specular eye highlights -->
+                  <circle cx="-5" cy="-5" r="4.2" fill="#ffffff" opacity="0.95"/>
+                  <circle cx="5" cy="4" r="2" fill="#ffffff" opacity="0.75"/>
+                </g>
+                <!-- Upper lash rim (never closes) -->
+                <path d="M -24 -2 Q -2 -25 23 -2" stroke="#3c4654" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+              </g>
+
+              <!-- Right Eye Socket -->
+              <g transform="translate(38, -8)">
+                <ellipse cx="0" cy="0" rx="23" ry="21" fill="url(#catEyeSclera)" stroke="#5b6675" stroke-width="2.5"/>
+                <g id="cat-iris-right">
+                  <circle cx="0" cy="0" r="14.5" fill="url(#catEyeIris)"/>
+                  <ellipse id="cat-pupil-right" cx="0" cy="0" rx="5.2" ry="12.2" fill="#091412"/>
+                  <circle cx="-5" cy="-5" r="4.2" fill="#ffffff" opacity="0.95"/>
+                  <circle cx="5" cy="4" r="2" fill="#ffffff" opacity="0.75"/>
+                </g>
+                <path d="M -23 -2 Q 2 -25 24 -2" stroke="#3c4654" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+              </g>
+
+              <!-- Expressive Cat Eyebrows (for curiosity, joy, sadness) -->
+              <path id="cat-brow-left" d="M -60 -28 Q -38 -40 -16 -30" stroke="#9aa7ba" stroke-width="4" fill="none" stroke-linecap="round"/>
+              <path id="cat-brow-right" d="M 16 -30 Q 38 -40 60 -28" stroke="#9aa7ba" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+              <!-- Muzzle / Whisker Pads & Mouth -->
+              <g id="cat-muzzle" transform="translate(0, 26)">
+                <!-- Open Happy Mouth / Pink Tongue (modulated by emotion) -->
+                <path id="cat-mouth-open" d="M -14 14 Q 0 36 14 14 Z" fill="#c95b72" stroke="#7d3242" stroke-width="2" opacity="0"/>
+                <!-- Plump White Whisker Pads -->
+                <ellipse cx="-16" cy="4" rx="20" ry="14" fill="#ffffff" stroke="#cbd3e0" stroke-width="2"/>
+                <ellipse cx="16" cy="4" rx="20" ry="14" fill="#ffffff" stroke="#cbd3e0" stroke-width="2"/>
+                <!-- Expressive Mouth Line -->
+                <path id="cat-mouth-line" d="M -22 12 Q -11 21 0 11 Q 11 21 22 12" stroke="#6e4753" stroke-width="3" fill="none" stroke-linecap="round"/>
+                <!-- Delicate Pink Nose -->
+                <path d="M -13 -6 Q 0 -12 13 -6 C 14 2, 6 9, 0 11 C -6 9, -14 2, -13 -6 Z"
+                      fill="url(#catNoseGrad)" stroke="#a3485d" stroke-width="1.8"/>
+                <ellipse cx="-3" cy="-4" rx="4" ry="2" fill="#ffe3eb" opacity="0.7"/>
+              </g>
+
+              <!-- Articulated Long White Whiskers -->
+              <g id="cat-whiskers-left" transform="translate(-32, 30)" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" fill="none">
+                <path d="M 0 -4 Q -48 -14 -92 -8" stroke="#d0d8e3" stroke-width="3"/>
+                <path d="M 0 -4 Q -48 -14 -92 -8"/>
+                <path d="M -2 2 Q -52 0 -98 10"/>
+                <path d="M 0 8 Q -45 14 -86 28"/>
+              </g>
+              <g id="cat-whiskers-right" transform="translate(32, 30)" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" fill="none">
+                <path d="M 0 -4 Q 48 -14 92 -8" stroke="#d0d8e3" stroke-width="3"/>
+                <path d="M 0 -4 Q 48 -14 92 -8"/>
+                <path d="M 2 2 Q 52 0 98 10"/>
+                <path d="M 0 8 Q 45 14 86 28"/>
+              </g>
+            </g>
+          </g>
+        </g>
+
+        <!-- =================================================================== -->
+        <!--             RIGHT CHARACTER: GREY-BROWN REALISTIC DOG               -->
+        <!-- =================================================================== -->
+        <g id="dog-root" transform="translate(1560, 790)">
+          <!-- Ground Shadow -->
+          <ellipse id="dog-shadow" cx="0" cy="48" rx="158" ry="38" fill="url(#floorShadowGrad)"/>
+
+          <!-- Articulated Wagging Tail (behind body) -->
+          <g id="dog-tail-group" transform="translate(82, -10)">
+            <path id="dog-tail-path"
+                  d="M 0 0 C 75 -25, 130 -95, 108 -160 C 96 -188, 68 -172, 74 -135 C 80 -92, 45 -40, -10 -15 Z"
+                  fill="url(#dogFurBody)" stroke="#3d2d20" stroke-width="3" stroke-linejoin="round"/>
+            <!-- Lighter tan tip on dog tail -->
+            <path d="M 105 -135 C 112 -162, 92 -180, 76 -152 C 86 -142, 96 -138, 105 -135 Z" fill="url(#dogChestPatch)"/>
+          </g>
+
+          <!-- Dog Body Group -->
+          <g id="dog-body-group">
+            <!-- Hind Haunches -->
+            <ellipse cx="-74" cy="-42" rx="66" ry="78" fill="url(#dogFurBody)" stroke="#3d2d20" stroke-width="2.8"/>
+            <ellipse cx="74" cy="-42" rx="66" ry="78" fill="url(#dogFurBody)" stroke="#3d2d20" stroke-width="2.8"/>
+
+            <!-- Back Paws (Warm Tan) -->
+            <ellipse cx="-96" cy="24" rx="38" ry="20" fill="url(#dogChestPatch)" stroke="#4f3b2b" stroke-width="2.5"/>
+            <ellipse cx="96" cy="24" rx="38" ry="20" fill="url(#dogChestPatch)" stroke="#4f3b2b" stroke-width="2.5"/>
+
+            <!-- Sturdy Torso -->
+            <path d="M -86 -25 C -96 -135, -62 -230, 0 -235 C 62 -230, 96 -135, 86 -25 C 74 28, -74 28, -86 -25 Z"
+                  fill="url(#dogFurBody)" stroke="#3d2d20" stroke-width="2.8"/>
+
+            <!-- Warm Tan / Cream Chest Patch -->
+            <path d="M -54 -182 C -65 -135, -52 -65, 0 -48 C 52 -65, 65 -135, 54 -182 Q 0 -158 -54 -182 Z"
+                  fill="url(#dogChestPatch)" stroke="#7a5f45" stroke-width="2"/>
+            <!-- Fur texture lines on chest -->
+            <path d="M -22 -135 Q 0 -118 22 -135 M -16 -102 Q 0 -86 16 -102" stroke="#9e8164" stroke-width="2.8" fill="none" stroke-linecap="round"/>
+
+            <!-- Elegant Leather Collar with Brass Tag -->
+            <path d="M -66 -196 Q 0 -168 66 -196 Q 70 -180 62 -172 Q 0 -146 -62 -172 Q -70 -180 -66 -196 Z"
+                  fill="#8c2d23" stroke="#4f150f" stroke-width="2.5"/>
+            <circle cx="0" cy="-152" r="13" fill="#f5b841" stroke="#9e6b11" stroke-width="2.5"/>
+            <circle cx="-3" cy="-155" r="4" fill="#fff0b8" opacity="0.8"/>
+
+            <!-- Articulated Front Left Leg & Paw -->
+            <g id="dog-paw-left" transform="translate(-46, -82)">
+              <path d="M -24 0 C -28 45, -26 82, -22 104 C -16 118, 20 118, 24 104 C 26 82, 24 45, 20 0 Z"
+                    fill="url(#dogFurHead)" stroke="#3d2d20" stroke-width="2.6"/>
+              <ellipse cx="0" cy="105" rx="32" ry="18" fill="url(#dogChestPatch)" stroke="#4f3b2b" stroke-width="2.6"/>
+              <path d="M -11 98 Q -13 114 -9 119 M 10 98 Q 12 114 8 119" stroke="#4f3b2b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+            </g>
+
+            <!-- Articulated Front Right Leg & Paw -->
+            <g id="dog-paw-right" transform="translate(46, -82)">
+              <path d="M -20 0 C -24 45, -26 82, -24 104 C -20 118, 16 118, 22 104 C 26 82, 28 45, 24 0 Z"
+                    fill="url(#dogFurHead)" stroke="#3d2d20" stroke-width="2.6"/>
+              <ellipse cx="0" cy="105" rx="32" ry="18" fill="url(#dogChestPatch)" stroke="#4f3b2b" stroke-width="2.6"/>
+              <path d="M -10 98 Q -12 114 -8 119 M 11 98 Q 13 114 9 119" stroke="#4f3b2b" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+            </g>
+
+            <!-- ================= DOG HEAD GROUP ================= -->
+            <g id="dog-head-group" transform="translate(0, -248)">
+              <!-- Floppy Left Ear -->
+              <g id="dog-ear-left" transform="translate(-74, -52)">
+                <path d="M 10 -12 C -28 -22, -62 15, -66 72 C -68 112, -42 132, -20 116 C -2 102, 8 52, 16 12 Z"
+                      fill="url(#dogEarGrad)" stroke="#2b1e14" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M -18 18 Q -42 55 -35 95" stroke="#856953" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.45"/>
+              </g>
+
+              <!-- Floppy Right Ear -->
+              <g id="dog-ear-right" transform="translate(74, -52)">
+                <path d="M -10 -12 C 28 -22, 62 15, 66 72 C 68 112, 42 132, 20 116 C 2 102, -8 52, -16 12 Z"
+                      fill="url(#dogEarGrad)" stroke="#2b1e14" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M 18 18 Q 42 55 35 95" stroke="#856953" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.45"/>
+              </g>
+
+              <!-- Main Dog Head Shape -->
+              <path d="M 0 -92
+                       C 58 -92, 92 -52, 92 -4
+                       C 102 22, 96 56, 70 72
+                       C 46 88, 24 92, 0 92
+                       C -24 92, -46 88, -70 72
+                       C -96 56, -102 22, -92 -4
+                       C -92 -52, -58 -92, 0 -92 Z"
+                    fill="url(#dogFurHead)" stroke="#3d2d20" stroke-width="3" stroke-linejoin="round"/>
+
+              <!-- Lighter Tan Facial Markings & Center Blaze -->
+              <path d="M 0 -75 C -14 -45, -12 -10, 0 15 C 12 -10, 14 -45, 0 -75 Z" fill="#cfb295" opacity="0.45"/>
+              <!-- Warm Tan Eyebrow Spots (Classic Expressive Dog Markings) -->
+              <ellipse cx="-36" cy="-36" rx="14" ry="8" transform="rotate(-12 -36 -36)" fill="#debfa0" opacity="0.85"/>
+              <ellipse cx="36" cy="-36" rx="14" ry="8" transform="rotate(12 36 -36)" fill="#debfa0" opacity="0.85"/>
+
+              <!-- Top Head Fur Tuft -->
+              <path d="M -16 -90 Q -4 -105 2 -92 Q 12 -104 20 -88" stroke="#685140" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+
+              <!-- DOG EYES (NEVER BLINK — ALWAYS OPEN & SHIFTING GAZE) -->
+              <!-- Left Eye Socket -->
+              <g transform="translate(-40, -10)">
+                <ellipse cx="0" cy="0" rx="22" ry="20" fill="url(#dogEyeSclera)" stroke="#332419" stroke-width="2.8"/>
+                <g id="dog-iris-left">
+                  <circle cx="0" cy="0" r="13.5" fill="url(#dogEyeIris)"/>
+                  <circle cx="0" cy="0" r="7.5" fill="#140b04"/>
+                  <circle cx="-4.5" cy="-4.5" r="4" fill="#ffffff" opacity="0.95"/>
+                  <circle cx="4.5" cy="4" r="1.8" fill="#ffffff" opacity="0.75"/>
+                </g>
+                <path d="M -23 -2 Q 0 -24 22 -2" stroke="#261910" stroke-width="3.8" fill="none" stroke-linecap="round"/>
+              </g>
+
+              <!-- Right Eye Socket -->
+              <g transform="translate(40, -10)">
+                <ellipse cx="0" cy="0" rx="22" ry="20" fill="url(#dogEyeSclera)" stroke="#332419" stroke-width="2.8"/>
+                <g id="dog-iris-right">
+                  <circle cx="0" cy="0" r="13.5" fill="url(#dogEyeIris)"/>
+                  <circle cx="0" cy="0" r="7.5" fill="#140b04"/>
+                  <circle cx="-4.5" cy="-4.5" r="4" fill="#ffffff" opacity="0.95"/>
+                  <circle cx="4.5" cy="4" r="1.8" fill="#ffffff" opacity="0.75"/>
+                </g>
+                <path d="M -22 -2 Q 0 -24 23 -2" stroke="#261910" stroke-width="3.8" fill="none" stroke-linecap="round"/>
+              </g>
+
+              <!-- Expressive Dog Eyebrow Ridges -->
+              <path id="dog-brow-left" d="M -62 -30 Q -38 -44 -16 -32" stroke="#3b2b1e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+              <path id="dog-brow-right" d="M 16 -32 Q 38 -44 62 -30" stroke="#3b2b1e" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+
+              <!-- Sculpted Tan Muzzle, Wet Nose & Panting Tongue -->
+              <g id="dog-muzzle" transform="translate(0, 28)">
+                <!-- Broad Muzzle Base -->
+                <ellipse cx="0" cy="12" rx="48" ry="34" fill="url(#dogMuzzleGrad)" stroke="#4f3b2b" stroke-width="2.5"/>
+
+                <!-- Happy Panting Pink Tongue (shown when happy/playing) -->
+                <g id="dog-tongue-group" opacity="0">
+                  <path d="M -16 20 C -18 46, -10 58, 0 58 C 10 58, 18 46, 16 20 Z"
+                        fill="#eb788b" stroke="#9e3b4d" stroke-width="2.2"/>
+                  <line x1="0" y1="22" x2="0" y2="48" stroke="#c95367" stroke-width="2" stroke-linecap="round"/>
+                </g>
+
+                <!-- Jowls / Upper Lip Pads -->
+                <path d="M -38 8 C -38 26, -12 30, 0 14 C 12 30, 38 26, 38 8" fill="url(#dogMuzzleGrad)"/>
+                <path id="dog-mouth-line" d="M -32 16 Q -16 28 0 14 Q 16 28 32 16" stroke="#2e1f14" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+
+                <!-- Whisker Follicle Dots -->
+                <circle cx="-24" cy="8" r="2.2" fill="#4a3728"/>
+                <circle cx="-30" cy="14" r="2.2" fill="#4a3728"/>
+                <circle cx="24" cy="8" r="2.2" fill="#4a3728"/>
+                <circle cx="30" cy="14" r="2.2" fill="#4a3728"/>
+
+                <!-- Glossy Dark Dog Nose -->
+                <path d="M -22 -10 C -24 -22, 24 -22, 22 -10 C 20 4, 8 12, 0 14 C -8 12, -20 4, -22 -10 Z"
+                      fill="url(#dogNoseGrad)" stroke="#120c0a" stroke-width="2"/>
+                <!-- Wet Nose Highlight -->
+                <ellipse cx="-6" cy="-12" rx="8" ry="3.5" fill="#9c8c84" opacity="0.65"/>
+                <circle cx="7" cy="-10" r="2.2" fill="#9c8c84" opacity="0.45"/>
+              </g>
+            </g>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    /********************************************************************
+     * PROCEDURAL WEB AUDIO SYNTHESIZER (NO EXTERNAL FILES, NO WORDS)
+     ********************************************************************/
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Soft wooden UI click
+      playWoodClick(pitch = 520) {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(pitch, now);
+        osc.frequency.exponentialRampToValueAtTime(pitch * 0.45, now + 0.065);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+      }
+
+      // Realistic expressive Cat Meow / Trill
+      playCatMeow(mood = 'curious') {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'sawtooth';
+        filter.type = 'bandpass';
+        filter.Q.value = 3.2;
+
+        if (mood === 'excited') {
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.14);
+          osc.frequency.exponentialRampToValueAtTime(640, now + 0.34);
+          filter.frequency.setValueAtTime(1100, now);
+          filter.frequency.exponentialRampToValueAtTime(1900, now + 0.16);
+          filter.frequency.exponentialRampToValueAtTime(1200, now + 0.34);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+          osc.start(now);
+          osc.stop(now + 0.38);
+        } else if (mood === 'sad') {
+          // Plaintive downward sad mew
+          osc.frequency.setValueAtTime(660, now);
+          osc.frequency.exponentialRampToValueAtTime(420, now + 0.35);
+          osc.frequency.exponentialRampToValueAtTime(330, now + 0.72);
+          filter.frequency.setValueAtTime(1300, now);
+          filter.frequency.exponentialRampToValueAtTime(750, now + 0.72);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.12, now + 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.74);
+          osc.start(now);
+          osc.stop(now + 0.76);
+        } else {
+          // Curious gentle meow
+          osc.frequency.setValueAtTime(480, now);
+          osc.frequency.exponentialRampToValueAtTime(760, now + 0.15);
+          osc.frequency.exponentialRampToValueAtTime(580, now + 0.32);
+          filter.frequency.setValueAtTime(1200, now);
+          filter.frequency.exponentialRampToValueAtTime(1650, now + 0.15);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.12, now + 0.05);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+          osc.start(now);
+          osc.stop(now + 0.36);
+        }
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+      }
+
+      // Realistic Dog Bark / Yip / Sad Whimper
+      playDogSound(mood = 'happy') {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        if (mood === 'sad') {
+          // Soft sympathetic dog whimper
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(590, now);
+          osc.frequency.exponentialRampToValueAtTime(380, now + 0.28);
+          osc.frequency.exponentialRampToValueAtTime(440, now + 0.42);
+          osc.frequency.exponentialRampToValueAtTime(290, now + 0.72);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.06);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.74);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.76);
+          return;
+        }
+
+        // Playful bark ("arf!")
+        const osc = this.ctx.createOscillator();
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1150, now);
+        filter.frequency.exponentialRampToValueAtTime(480, now + 0.16);
+
+        osc.frequency.setValueAtTime(240, now);
+        osc.frequency.exponentialRampToValueAtTime(420, now + 0.05);
+        osc.frequency.exponentialRampToValueAtTime(175, now + 0.17);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.2, now + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.19);
+      }
+
+      // Soft thump when yarn ball bounces on rug
+      playYarnBounce(intensity = 1) {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        const baseFreq = 140 + Math.random() * 45;
+        osc.frequency.setValueAtTime(baseFreq * 1.4, now);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.55, now + 0.09);
+        gain.gain.setValueAtTime(Math.min(0.22, 0.15 * intensity), now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.1);
+      }
+
+      // Lively rubber ball bounce ("boing-pop")
+      playBallBounce(intensity = 1) {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        const startF = 230 + Math.random() * 60;
+        osc.frequency.setValueAtTime(startF, now);
+        osc.frequency.exponentialRampToValueAtTime(startF * 1.65, now + 0.045);
+        osc.frequency.exponentialRampToValueAtTime(startF * 0.85, now + 0.12);
+        gain.gain.setValueAtTime(Math.min(0.25, 0.18 * intensity), now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.125);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.13);
+      }
+
+      // Joyful marimba/chime notes during active pet play
+      playJoyNote(stepIndex = 0) {
+        this.init();
+        if (!this.ctx) return;
+        const scale = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
+        const freq = scale[stepIndex % scale.length];
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.14, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+
+      // Gentle swoosh on round reset
+      playWhoosh() {
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.22);
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.23);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.24);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /********************************************************************
+     * GAME STATE & CONFIGURATION
+     ********************************************************************/
+    const state = {
+      maxCount: 5, // Teacher configurable max items (1..10, default 5)
+      catToysDropped: false,
+      dogToysDropped: false,
+      catCount: 0,
+      dogCount: 0,
+      phase: 'dropping', // 'dropping' | 'readyToPlay' | 'playing' | 'resetting'
+      playingPet: null,  // 'cat' | 'dog' | null
+      playTimer: 0,
+
+      // Continuous Eye Gaze (NEVER BLINKS)
+      catGaze: { x: 0, y: 0, tx: 2, ty: 0, nextShift: 0 },
+      dogGaze: { x: 0, y: 0, tx: -2, ty: 0, nextShift: 0 },
+
+      // Random Idle Emotions & Head/Body Pose
+      catEmotion: { type: 'curious', timer: 0, headTilt: 0, targetTilt: 0 },
+      dogEmotion: { type: 'happy', timer: 0, headTilt: 0, targetTilt: 0 },
+
+      // Physics Toys & Floating Dust Motes
+      yarnBalls: [],
+      rubberBalls: [],
+      sparkles: [],
+      dustMotes: []
+    };
+
+    // Initialize floating sunlit dust motes
+    for (let i = 0; i < 34; i++) {
+      state.dustMotes.push({
+        x: 350 + Math.random() * 1220,
+        y: 80 + Math.random() * 900,
+        r: 1.5 + Math.random() * 2.8,
+        vx: -0.15 + Math.random() * 0.3,
+        vy: -0.25 - Math.random() * 0.25,
+        alpha: 0.2 + Math.random() * 0.5,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+
+    /********************************************************************
+     * UI: TEACHER QUANTITY SELECTOR & NEXT BUTTON
+     ********************************************************************/
+    const maxDisplay = document.getElementById('max-display');
+    const pipDotsContainer = document.getElementById('pip-dots');
+
+    function renderMaxUI() {
+      maxDisplay.textContent = state.maxCount;
+      pipDotsContainer.innerHTML = '';
+      for (let i = 1; i <= 10; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'pip-dot' + (i <= state.maxCount ? ' active' : '');
+        pipDotsContainer.appendChild(dot);
+      }
+    }
+    renderMaxUI();
+
+    document.getElementById('btn-dec').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.maxCount > 1) {
+        state.maxCount--;
+        renderMaxUI();
+        sound.playWoodClick(440);
+      }
+    });
+
+    document.getElementById('btn-inc').addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (state.maxCount < 10) {
+        state.maxCount++;
+        renderMaxUI();
+        sound.playWoodClick(580);
+      }
+    });
+
+    document.getElementById('next-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      sound.playWoodClick(640);
+      resetRound(true);
+    });
+
+    /********************************************************************
+     * TOY SPAWNING & REALISTIC PHYSICS
+     ********************************************************************/
+    const YARN_PALETTES = [
+      { main: '#ff5d8f', light: '#ff9ebb', dark: '#b81d4e' },
+      { main: '#4ea8de', light: '#90dbf4', dark: '#1d5b87' },
+      { main: '#ffb703', light: '#ffe169', dark: '#b57300' },
+      { main: '#80ed99', light: '#b7f7c5', dark: '#2d8a47' },
+      { main: '#b56576', light: '#e8a5b3', dark: '#6d2e3c' },
+      { main: '#f77f00', light: '#fcbf49', dark: '#9e4700' },
+      { main: '#9b5de5', light: '#cdb4db', dark: '#562196' }
+    ];
+
+    const BALL_PALETTES = [
+      { base: '#ef476f', stripe: '#ffd166', shine: '#ff9ebb' },
+      { base: '#118ab2', stripe: '#06d6a0', shine: '#8ce0ff' },
+      { base: '#f77f00', stripe: '#eae2b7', shine: '#ffc971' },
+      { base: '#8338ec', stripe: '#ffbe0b', shine: '#c59bff' },
+      { base: '#06d6a0', stripe: '#ffffff', shine: '#9bfce2' },
+      { base: '#e63946', stripe: '#a8dadc', shine: '#ff99a0' }
+    ];
+
+    function pickRandomCount(otherCount) {
+      if (state.maxCount === 1) return 1;
+      let c = 1 + Math.floor(Math.random() * state.maxCount);
+      // Prefer a different count from the other pet when possible so comparisons are interesting
+      if (otherCount > 0 && c === otherCount && Math.random() < 0.78) {
+        c = ((c % state.maxCount) + 1);
+      }
+      return c;
+    }
+
+    function computeNonOverlappingSlots(count, centerX, centerY, spreadX, spreadY) {
+      const slots = [];
+      if (count === 1) {
+        slots.push({ x: centerX, y: centerY });
+        return slots;
+      }
+      // Arrange in two neat, natural staggered rows on the rug so every item is 100% visible
+      const topRow = Math.ceil(count / 2);
+      const bottomRow = count - topRow;
+
+      for (let i = 0; i < topRow; i++) {
+        const t = topRow === 1 ? 0 : (i / (topRow - 1)) * 2 - 1;
+        slots.push({
+          x: centerX + t * (spreadX * 0.85) + (Math.random() - 0.5) * 14,
+          y: centerY - spreadY * 0.45 + (Math.random() - 0.5) * 8
+        });
+      }
+      for (let i = 0; i < bottomRow; i++) {
+        const t = bottomRow === 1 ? 0 : (i / (bottomRow - 1)) * 2 - 1;
+        slots.push({
+          x: centerX + t * spreadX + (Math.random() - 0.5) * 14,
+          y: centerY + spreadY * 0.55 + (Math.random() - 0.5) * 8
+        });
+      }
+      return slots;
+    }
+
+    function spawnCatYarnBalls() {
+      if (state.catToysDropped || state.phase === 'playing' || state.phase === 'resetting') return;
+      state.catToysDropped = true;
+      state.catCount = pickRandomCount(state.dogCount);
+
+      sound.playCatMeow('excited');
+      state.catEmotion.type = 'excited';
+      state.catEmotion.timer = 140;
+
+      const slots = computeNonOverlappingSlots(state.catCount, 695, 868, 155, 52);
+
+      for (let i = 0; i < state.catCount; i++) {
+        const palette = YARN_PALETTES[i % YARN_PALETTES.length];
+        const target = slots[i];
+        state.yarnBalls.push({
+          x: target.x + (Math.random() - 0.5) * 55,
+          y: -80 - i * 95,
+          vx: (target.x - (target.x + (Math.random() - 0.5) * 55)) * 0.02,
+          vy: 2 + Math.random() * 2,
+          targetX: target.x,
+          groundY: target.y,
+          r: 33,
+          angle: Math.random() * Math.PI * 2,
+          vAngle: (Math.random() - 0.5) * 0.14,
+          squashX: 1,
+          squashY: 1,
+          palette,
+          bounces: 0,
+          settled: false,
+          tailPhase: Math.random() * Math.PI * 2
+        });
+      }
+
+      checkBothDropped();
+    }
+
+    function spawnDogBalls() {
+      if (state.dogToysDropped || state.phase === 'playing' || state.phase === 'resetting') return;
+      state.dogToysDropped = true;
+      state.dogCount = pickRandomCount(state.catCount);
+
+      sound.playDogSound('happy');
+      state.dogEmotion.type = 'excited';
+      state.dogEmotion.timer = 140;
+
+      const slots = computeNonOverlappingSlots(state.dogCount, 1225, 868, 155, 52);
+
+      for (let i = 0; i < state.dogCount; i++) {
+        const palette = BALL_PALETTES[i % BALL_PALETTES.length];
+        const target = slots[i];
+        state.rubberBalls.push({
+          x: target.x + (Math.random() - 0.5) * 60,
+          y: -80 - i * 95,
+          vx: 0,
+          vy: 2.5 + Math.random() * 2,
+          targetX: target.x,
+          groundY: target.y,
+          r: 32,
+          angle: Math.random() * Math.PI * 2,
+          vAngle: (Math.random() - 0.5) * 0.18,
+          squashX: 1,
+          squashY: 1,
+          palette,
+          bounces: 0,
+          settled: false
+        });
+      }
+
+      checkBothDropped();
+    }
+
+    function checkBothDropped() {
+      if (state.catToysDropped && state.dogToysDropped && state.phase === 'dropping') {
+        state.phase = 'readyToPlay';
+      }
+    }
+
+    function triggerPetPlay(pet) {
+      if (state.phase === 'playing' || state.phase === 'resetting') return;
+      state.phase = 'playing';
+      state.playingPet = pet;
+      state.playTimer = 0;
+
+      if (pet === 'cat') {
+        sound.playCatMeow('excited');
+        setTimeout(() => sound.playDogSound('sad'), 380);
+        // Kick yarn balls into playful bouncing motion
+        state.yarnBalls.forEach((yb, idx) => {
+          yb.settled = false;
+          yb.vy = -12 - Math.random() * 7;
+          yb.vx = (Math.random() - 0.5) * 9;
+          yb.vAngle = (Math.random() - 0.5) * 0.35;
+          spawnSparkles(yb.x, yb.y, yb.palette.light);
+          setTimeout(() => sound.playJoyNote(idx), idx * 110);
+        });
+      } else {
+        sound.playDogSound('happy');
+        setTimeout(() => sound.playCatMeow('sad'), 380);
+        // Kick rubber balls into high bouncy motion
+        state.rubberBalls.forEach((rb, idx) => {
+          rb.settled = false;
+          rb.vy = -14 - Math.random() * 8;
+          rb.vx = (Math.random() - 0.5) * 10;
+          rb.vAngle = (Math.random() - 0.5) * 0.4;
+          spawnSparkles(rb.x, rb.y, rb.palette.stripe);
+          setTimeout(() => sound.playJoyNote(idx + 1), idx * 110);
+        });
+      }
+    }
+
+    function spawnSparkles(x, y, color) {
+      for (let i = 0; i < 8; i++) {
+        const ang = (Math.PI * 2 * i) / 8 + Math.random() * 0.4;
+        const spd = 2.5 + Math.random() * 4.5;
+        state.sparkles.push({
+          x,
+          y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 1.5,
+          r: 4 + Math.random() * 4,
+          color,
+          life: 1.0
+        });
+      }
+    }
+
+    function resetRound(immediate = false) {
+      if (immediate) {
+        state.catToysDropped = false;
+        state.dogToysDropped = false;
+        state.catCount = 0;
+        state.dogCount = 0;
+        state.phase = 'dropping';
+        state.playingPet = null;
+        state.playTimer = 0;
+        state.yarnBalls = [];
+        state.rubberBalls = [];
+        state.sparkles = [];
+        state.catEmotion.type = 'curious';
+        state.dogEmotion.type = 'happy';
+        return;
+      }
+
+      state.phase = 'resetting';
+      state.playTimer = 0;
+      sound.playWhoosh();
+    }
+
+    /********************************************************************
+     * CLICK HANDLERS FOR CAT & DOG
+     ********************************************************************/
+    document.getElementById('cat-hitzone').addEventListener('click', () => {
+      if (state.phase === 'playing' || state.phase === 'resetting') return;
+
+      if (!state.catToysDropped) {
+        spawnCatYarnBalls();
+      } else if (!state.dogToysDropped) {
+        // Cat already has yarn balls; give a playful trill & tiny bounce while waiting for dog
+        sound.playCatMeow('curious');
+        state.yarnBalls.forEach((yb) => {
+          yb.vy = -5.5;
+          yb.settled = false;
+        });
+      } else {
+        // Both pets have their items on the rug -> Cat plays, Dog becomes sad!
+        triggerPetPlay('cat');
+      }
+    });
+
+    document.getElementById('dog-hitzone').addEventListener('click', () => {
+      if (state.phase === 'playing' || state.phase === 'resetting') return;
+
+      if (!state.dogToysDropped) {
+        spawnDogBalls();
+      } else if (!state.catToysDropped) {
+        // Dog already has balls; give a friendly bark & tiny bounce while waiting for cat
+        sound.playDogSound('happy');
+        state.rubberBalls.forEach((rb) => {
+          rb.vy = -6.5;
+          rb.settled = false;
+        });
+      } else {
+        // Both pets have their items on the rug -> Dog plays, Cat becomes sad!
+        triggerPetPlay('dog');
+      }
+    });
+
+    /********************************************************************
+     * DOM REFERENCES FOR ARTICULATED SVG PET PARTS
+     ********************************************************************/
+    const catRoot = document.getElementById('cat-root');
+    const catBodyGroup = document.getElementById('cat-body-group');
+    const catHeadGroup = document.getElementById('cat-head-group');
+    const catEarLeft = document.getElementById('cat-ear-left');
+    const catEarRight = document.getElementById('cat-ear-right');
+    const catIrisLeft = document.getElementById('cat-iris-left');
+    const catIrisRight = document.getElementById('cat-iris-right');
+    const catPupilLeft = document.getElementById('cat-pupil-left');
+    const catPupilRight = document.getElementById('cat-pupil-right');
+    const catBrowLeft = document.getElementById('cat-brow-left');
+    const catBrowRight = document.getElementById('cat-brow-right');
+    const catMouthLine = document.getElementById('cat-mouth-line');
+    const catMouthOpen = document.getElementById('cat-mouth-open');
+    const catWhiskersLeft = document.getElementById('cat-whiskers-left');
+    const catWhiskersRight = document.getElementById('cat-whiskers-right');
+    const catPawLeft = document.getElementById('cat-paw-left');
+    const catPawRight = document.getElementById('cat-paw-right');
+    const catTailGroup = document.getElementById('cat-tail-group');
+    const catShadow = document.getElementById('cat-shadow');
+
+    const dogRoot = document.getElementById('dog-root');
+    const dogBodyGroup = document.getElementById('dog-body-group');
+    const dogHeadGroup = document.getElementById('dog-head-group');
+    const dogEarLeft = document.getElementById('dog-ear-left');
+    const dogEarRight = document.getElementById('dog-ear-right');
+    const dogIrisLeft = document.getElementById('dog-iris-left');
+    const dogIrisRight = document.getElementById('dog-iris-right');
+    const dogBrowLeft = document.getElementById('dog-brow-left');
+    const dogBrowRight = document.getElementById('dog-brow-right');
+    const dogMouthLine = document.getElementById('dog-mouth-line');
+    const dogTongueGroup = document.getElementById('dog-tongue-group');
+    const dogPawLeft = document.getElementById('dog-paw-left');
+    const dogPawRight = document.getElementById('dog-paw-right');
+    const dogTailGroup = document.getElementById('dog-tail-group');
+    const dogShadow = document.getElementById('dog-shadow');
+
+    const outsideTreeLeft = document.getElementById('outside-tree-left');
+    const outsideTreeRight = document.getElementById('outside-tree-right');
+    const plantLeftLeaves = document.getElementById('plant-left-leaves');
+    const plantRightLeaves = document.getElementById('plant-right-leaves');
+    const windowClouds = document.getElementById('window-clouds');
+
+    const canvas = document.getElementById('toys-canvas');
+    const ctx = canvas.getContext('2d');
+
+    /********************************************************************
+     * EYE GAZE & EMOTION CONTROLLER (NO BLINKING!)
+     ********************************************************************/
+    function updateGazeAndEmotions(time) {
+      // 1. Update random gaze targets when not locked onto falling/playing toys
+      if (time > state.catGaze.nextShift) {
+        const glances = [
+          { x: 6.5, y: 1.5 },   // Look toward Dog / center rug
+          { x: 0, y: -6.5 },    // Look up toward ceiling/sunbeams
+          { x: -5.5, y: 2.0 },  // Look left toward plant
+          { x: 4.5, y: 5.5 },   // Look down at rug
+          { x: 0, y: 0 },       // Look directly at child
+          { x: 3.5, y: -4.0 }   // Look toward window
+        ];
+        const pick = glances[Math.floor(Math.random() * glances.length)];
+        state.catGaze.tx = pick.x;
+        state.catGaze.ty = pick.y;
+        state.catGaze.nextShift = time + 1100 + Math.random() * 1900;
+      }
+
+      if (time > state.dogGaze.nextShift) {
+        const glances = [
+          { x: -6.5, y: 1.5 },  // Look toward Cat / center rug
+          { x: 0, y: -6.5 },    // Look up toward ceiling
+          { x: 5.5, y: 2.0 },   // Look right
+          { x: -4.5, y: 5.5 },  // Look down at rug
+          { x: 0, y: 0 },       // Look directly at child
+          { x: -3.5, y: -4.0 }  // Look toward window
+        ];
+        const pick = glances[Math.floor(Math.random() * glances.length)];
+        state.dogGaze.tx = pick.x;
+        state.dogGaze.ty = pick.y;
+        state.dogGaze.nextShift = time + 1000 + Math.random() * 1800;
+      }
+
+      // Override gaze if toys are actively falling or playing
+      if (state.yarnBalls.length > 0 && !state.yarnBalls[0].settled) {
+        const yb = state.yarnBalls[state.yarnBalls.length - 1];
+        state.catGaze.tx = Math.max(-7, Math.min(8, (yb.x - 360) * 0.018));
+        state.catGaze.ty = Math.max(-7, Math.min(7, (yb.y - 565) * 0.018));
+      }
+      if (state.rubberBalls.length > 0 && !state.rubberBalls[0].settled) {
+        const rb = state.rubberBalls[state.rubberBalls.length - 1];
+        state.dogGaze.tx = Math.max(-8, Math.min(7, (rb.x - 1560) * 0.018));
+        state.dogGaze.ty = Math.max(-7, Math.min(7, (rb.y - 540) * 0.018));
+      }
+
+      if (state.phase === 'playing') {
+        if (state.playingPet === 'cat') {
+          // Sad dog looks down/across at the cat's yarn balls with puppy eyes
+          state.dogGaze.tx = -5.5;
+          state.dogGaze.ty = 5.5;
+        } else if (state.playingPet === 'dog') {
+          // Sad cat looks down/across at the dog's balls
+          state.catGaze.tx = 5.5;
+          state.catGaze.ty = 5.5;
+        }
+      }
+
+      // Smoothly interpolate iris coordinates (NO blinking ever)
+      state.catGaze.x += (state.catGaze.tx - state.catGaze.x) * 0.12;
+      state.catGaze.y += (state.catGaze.ty - state.catGaze.y) * 0.12;
+      state.dogGaze.x += (state.dogGaze.tx - state.dogGaze.x) * 0.12;
+      state.dogGaze.y += (state.dogGaze.ty - state.dogGaze.y) * 0.12;
+
+      catIrisLeft.setAttribute('transform', `translate(${state.catGaze.x.toFixed(2)}, ${state.catGaze.y.toFixed(2)})`);
+      catIrisRight.setAttribute('transform', `translate(${state.catGaze.x.toFixed(2)}, ${state.catGaze.y.toFixed(2)})`);
+      dogIrisLeft.setAttribute('transform', `translate(${state.dogGaze.x.toFixed(2)}, ${state.dogGaze.y.toFixed(2)})`);
+      dogIrisRight.setAttribute('transform', `translate(${state.dogGaze.x.toFixed(2)}, ${state.dogGaze.y.toFixed(2)})`);
+
+      // Cycle random idle emotions when not in climax
+      if (state.phase !== 'playing') {
+        state.catEmotion.timer--;
+        if (state.catEmotion.timer <= 0) {
+          const moods = ['curious', 'happy', 'playful', 'intrigued'];
+          state.catEmotion.type = moods[Math.floor(Math.random() * moods.length)];
+          state.catEmotion.targetTilt = (Math.random() - 0.5) * 13;
+          state.catEmotion.timer = 110 + Math.floor(Math.random() * 140);
+        }
+
+        state.dogEmotion.timer--;
+        if (state.dogEmotion.timer <= 0) {
+          const moods = ['happy', 'curious', 'playful', 'expectant'];
+          state.dogEmotion.type = moods[Math.floor(Math.random() * moods.length)];
+          state.dogEmotion.targetTilt = (Math.random() - 0.5) * 15;
+          state.dogEmotion.timer = 100 + Math.floor(Math.random() * 140);
+        }
+      }
+    }
+
+    /********************************************************************
+     * ANIMATE CAT & DOG ANATOMY (IDLE, EXCITED, PLAYING, SAD)
+     ********************************************************************/
+    function animatePets(time) {
+      const t = time * 0.001;
+
+      // -------------------- WHITE CAT ANIMATION --------------------
+      let catJumpX = 0;
+      let catJumpY = 0;
+      let catScaleX = 1;
+      let catScaleY = 1 + Math.sin(t * 2.6) * 0.016;
+      let catHeadRot = state.catEmotion.headTilt + Math.sin(t * 1.7) * 2.5;
+      let catHeadY = -225;
+      let catEarLRot = Math.sin(t * 3.2) * 4;
+      let catEarRRot = -Math.sin(t * 2.9) * 4;
+      let catTailRot = Math.sin(t * 2.4) * 14;
+      let catPawLY = -75, catPawLRot = 0;
+      let catPawRY = -75, catPawRRot = 0;
+      let catPupilRx = 5.2;
+
+      const isCatPlaying = state.phase === 'playing' && state.playingPet === 'cat';
+      const isCatSad = state.phase === 'playing' && state.playingPet === 'dog';
+
+      if (isCatPlaying) {
+        // Joyful leaping, pouncing toward the yarn balls, batting with front paws!
+        const playCycle = t * 7.5;
+        catJumpX = 95 + Math.sin(playCycle * 0.7) * 55;
+        catJumpY = -Math.abs(Math.sin(playCycle)) * 62;
+        catScaleX = 1 + Math.cos(playCycle * 2) * 0.04;
+        catScaleY = 1 - Math.cos(playCycle * 2) * 0.04;
+        catHeadRot = Math.sin(playCycle * 0.8) * 14;
+        catEarLRot = 8 + Math.sin(playCycle * 2) * 6;
+        catEarRRot = -8 - Math.sin(playCycle * 2) * 6;
+        catTailRot = 25 + Math.sin(playCycle * 2.2) * 28;
+        // Batting paws
+        catPawLY = -92 + Math.sin(playCycle * 2.2) * 22;
+        catPawLRot = -28 + Math.sin(playCycle * 2.2) * 25;
+        catPawRY = -92 + Math.cos(playCycle * 2.2) * 22;
+        catPawRRot = -22 + Math.cos(playCycle * 2.2) * 25;
+        catPupilRx = 7.8; // Dilated excited pupils
+
+        catBrowLeft.setAttribute('d', 'M -60 -34 Q -38 -48 -16 -34');
+        catBrowRight.setAttribute('d', 'M 16 -34 Q 38 -48 60 -34');
+        catMouthLine.setAttribute('d', 'M -24 10 Q -12 24 0 11 Q 12 24 24 10');
+        catMouthOpen.setAttribute('opacity', '1');
+        catWhiskersLeft.setAttribute('transform', 'translate(-32, 28) rotate(6)');
+        catWhiskersRight.setAttribute('transform', 'translate(32, 28) rotate(-6)');
+      } else if (isCatSad) {
+        // Deeply sad cat: slumped posture, flattened ears, drooping whiskers, quivering sad mouth
+        catScaleX = 1.04;
+        catScaleY = 0.91 + Math.sin(t * 2) * 0.008;
+        catHeadY = -206 + Math.sin(t * 3) * 1.5;
+        catHeadRot = -8 + Math.sin(t * 4) * 1.2;
+        catEarLRot = -38;
+        catEarRRot = 38;
+        catTailRot = -28 + Math.sin(t * 1.2) * 3;
+        catPupilRx = 6.8;
+
+        // Sad angled eyebrows
+        catBrowLeft.setAttribute('d', 'M -62 -20 Q -38 -26 -14 -36');
+        catBrowRight.setAttribute('d', 'M 14 -36 Q 38 -26 62 -20');
+        // Sad frown
+        catMouthLine.setAttribute('d', 'M -18 20 Q 0 9 18 20');
+        catMouthOpen.setAttribute('opacity', '0');
+        catWhiskersLeft.setAttribute('transform', 'translate(-32, 33) rotate(-14)');
+        catWhiskersRight.setAttribute('transform', 'translate(32, 33) rotate(14)');
+      } else {
+        // Expressive Idle Emotions
+        state.catEmotion.headTilt += (state.catEmotion.targetTilt - state.catEmotion.headTilt) * 0.06;
+        catHeadRot = state.catEmotion.headTilt + Math.sin(t * 1.8) * 2.2;
+
+        if (state.catEmotion.type === 'happy' || state.catEmotion.type === 'excited') {
+          catBrowLeft.setAttribute('d', 'M -60 -32 Q -38 -45 -16 -32');
+          catBrowRight.setAttribute('d', 'M 16 -32 Q 38 -45 60 -32');
+          catMouthLine.setAttribute('d', 'M -24 10 Q -12 22 0 11 Q 12 22 24 10');
+          catMouthOpen.setAttribute('opacity', state.catEmotion.type === 'excited' ? '0.9' : '0.4');
+          catPupilRx = 6.6;
+        } else if (state.catEmotion.type === 'playful') {
+          catScaleY = 0.96 + Math.sin(t * 3.5) * 0.02;
+          catTailRot = Math.sin(t * 4.5) * 22;
+          catBrowLeft.setAttribute('d', 'M -60 -30 Q -38 -42 -16 -30');
+          catBrowRight.setAttribute('d', 'M 16 -30 Q 38 -42 60 -30');
+          catMouthLine.setAttribute('d', 'M -22 12 Q -11 21 0 11 Q 11 21 22 12');
+          catMouthOpen.setAttribute('opacity', '0');
+          catPupilRx = 6.2;
+        } else {
+          // Curious / Intrigued
+          catBrowLeft.setAttribute('d', 'M -60 -28 Q -38 -40 -16 -30');
+          catBrowRight.setAttribute('d', 'M 16 -32 Q 38 -44 60 -30');
+          catMouthLine.setAttribute('d', 'M -21 13 Q -10 20 0 11 Q 10 20 21 13');
+          catMouthOpen.setAttribute('opacity', '0');
+          catPupilRx = 5.0;
+        }
+        catWhiskersLeft.setAttribute('transform', `translate(-32, 30) rotate(${Math.sin(t * 2.7) * 3})`);
+        catWhiskersRight.setAttribute('transform', `translate(32, 30) rotate(${-Math.sin(t * 2.7) * 3})`);
+      }
+
+      catPupilLeft.setAttribute('rx', catPupilRx.toFixed(1));
+      catPupilRight.setAttribute('rx', catPupilRx.toFixed(1));
+      catRoot.setAttribute('transform', `translate(${(360 + catJumpX).toFixed(1)}, ${(790 + catJumpY).toFixed(1)})`);
+      catShadow.setAttribute('rx', (145 - Math.abs(catJumpY) * 0.45).toFixed(1));
+      catBodyGroup.setAttribute('transform', `scale(${catScaleX.toFixed(3)}, ${catScaleY.toFixed(3)})`);
+      catHeadGroup.setAttribute('transform', `translate(0, ${catHeadY.toFixed(1)}) rotate(${catHeadRot.toFixed(2)})`);
+      catEarLeft.setAttribute('transform', `translate(-58, -58) rotate(${catEarLRot.toFixed(2)})`);
+      catEarRight.setAttribute('transform', `translate(58, -58) rotate(${catEarRRot.toFixed(2)})`);
+      catPawLeft.setAttribute('transform', `translate(-40, ${catPawLY.toFixed(1)}) rotate(${catPawLRot.toFixed(2)})`);
+      catPawRight.setAttribute('transform', `translate(40, ${catPawRY.toFixed(1)}) rotate(${catPawRRot.toFixed(2)})`);
+      catTailGroup.setAttribute('transform', `translate(-85, 10) rotate(${catTailRot.toFixed(2)})`);
+
+      // -------------------- GREY-BROWN DOG ANIMATION --------------------
+      let dogJumpX = 0;
+      let dogJumpY = 0;
+      let dogScaleX = 1;
+      let dogScaleY = 1 + Math.sin(t * 3.2 + 1) * 0.018;
+      let dogHeadRot = state.dogEmotion.headTilt + Math.cos(t * 1.9) * 2.8;
+      let dogHeadY = -248;
+      let dogEarLRot = Math.sin(t * 2.8) * 4;
+      let dogEarRRot = -Math.sin(t * 2.8) * 4;
+      let dogTailRot = Math.sin(t * 5.5) * 18;
+      let dogPawLY = -82, dogPawLRot = 0;
+      let dogPawRY = -82, dogPawRRot = 0;
+
+      const isDogPlaying = state.phase === 'playing' && state.playingPet === 'dog';
+      const isDogSad = state.phase === 'playing' && state.playingPet === 'cat';
+
+      if (isDogPlaying) {
+        // Joyful bounding, playful hops, tossing balls with nose & paws, rapid tail wag!
+        const playCycle = t * 8.0;
+        dogJumpX = -95 - Math.sin(playCycle * 0.7) * 55;
+        dogJumpY = -Math.abs(Math.sin(playCycle)) * 68;
+        dogScaleX = 1 + Math.cos(playCycle * 2) * 0.045;
+        dogScaleY = 1 - Math.cos(playCycle * 2) * 0.045;
+        dogHeadRot = Math.sin(playCycle * 0.9) * 15;
+        dogEarLRot = 18 + Math.abs(Math.sin(playCycle)) * 22;
+        dogEarRRot = -18 - Math.abs(Math.sin(playCycle)) * 22;
+        dogTailRot = Math.sin(t * 18) * 32; // Super fast happy wag
+        dogPawLY = -98 + Math.sin(playCycle * 2) * 24;
+        dogPawLRot = 24 + Math.sin(playCycle * 2) * 22;
+        dogPawRY = -98 + Math.cos(playCycle * 2) * 24;
+        dogPawRRot = 20 + Math.cos(playCycle * 2) * 22;
+
+        dogBrowLeft.setAttribute('d', 'M -62 -36 Q -38 -50 -16 -36');
+        dogBrowRight.setAttribute('d', 'M 16 -36 Q 38 -50 62 -36');
+        dogMouthLine.setAttribute('d', 'M -36 12 Q -16 32 0 14 Q 16 32 36 12');
+        dogTongueGroup.setAttribute('opacity', '1');
+        dogTongueGroup.setAttribute('transform', `translate(0, ${Math.sin(t * 12) * 3})`);
+      } else if (isDogSad) {
+        // Deeply sad dog: head hangs low, floppy ears droop heavily inward, sad whimpering pout, tucked motionless tail
+        dogScaleX = 1.05;
+        dogScaleY = 0.90 + Math.sin(t * 2.2) * 0.008;
+        dogHeadY = -224 + Math.sin(t * 3.2) * 1.5;
+        dogHeadRot = 9 + Math.sin(t * 4) * 1.2;
+        dogEarLRot = -18;
+        dogEarRRot = 18;
+        dogTailRot = 36 + Math.sin(t * 1.2) * 2; // Tucked down low
+
+        // Sympathetic puppy-dog sad eyebrows
+        dogBrowLeft.setAttribute('d', 'M -62 -20 Q -38 -26 -14 -38');
+        dogBrowRight.setAttribute('d', 'M 14 -38 Q 38 -26 62 -20');
+        // Sad quivering pout
+        dogMouthLine.setAttribute('d', 'M -26 24 Q 0 11 26 24');
+        dogTongueGroup.setAttribute('opacity', '0');
+      } else {
+        // Expressive Idle Emotions
+        state.dogEmotion.headTilt += (state.dogEmotion.targetTilt - state.dogEmotion.headTilt) * 0.06;
+        dogHeadRot = state.dogEmotion.headTilt + Math.cos(t * 1.8) * 2.5;
+
+        if (state.dogEmotion.type === 'happy' || state.dogEmotion.type === 'excited') {
+          dogTailRot = Math.sin(t * 9.5) * 24;
+          dogBrowLeft.setAttribute('d', 'M -62 -33 Q -38 -47 -16 -34');
+          dogBrowRight.setAttribute('d', 'M 16 -34 Q 38 -47 62 -33');
+          dogMouthLine.setAttribute('d', 'M -34 14 Q -16 30 0 14 Q 16 30 34 14');
+          dogTongueGroup.setAttribute('opacity', '1');
+          dogTongueGroup.setAttribute('transform', `translate(0, ${Math.sin(t * 8) * 2.2})`);
+        } else if (state.dogEmotion.type === 'playful') {
+          dogScaleY = 0.95 + Math.sin(t * 4) * 0.025;
+          dogTailRot = Math.sin(t * 11) * 26;
+          dogEarLRot = 10 + Math.sin(t * 4) * 5;
+          dogEarRRot = -10 - Math.sin(t * 4) * 5;
+          dogBrowLeft.setAttribute('d', 'M -62 -32 Q -38 -46 -16 -32');
+          dogBrowRight.setAttribute('d', 'M 16 -32 Q 38 -46 62 -32');
+          dogMouthLine.setAttribute('d', 'M -32 16 Q -16 28 0 14 Q 16 28 32 16');
+          dogTongueGroup.setAttribute('opacity', '0.85');
+        } else {
+          // Curious head tilt, tongue tucked in
+          dogTailRot = Math.sin(t * 4.2) * 14;
+          dogBrowLeft.setAttribute('d', 'M -62 -34 Q -38 -46 -16 -32');
+          dogBrowRight.setAttribute('d', 'M 16 -30 Q 38 -42 62 -28');
+          dogMouthLine.setAttribute('d', 'M -30 17 Q -15 26 0 14 Q 15 26 30 17');
+          dogTongueGroup.setAttribute('opacity', '0');
+        }
+      }
+
+      dogRoot.setAttribute('transform', `translate(${(1560 + dogJumpX).toFixed(1)}, ${(790 + dogJumpY).toFixed(1)})`);
+      dogShadow.setAttribute('rx', (158 - Math.abs(dogJumpY) * 0.45).toFixed(1));
+      dogBodyGroup.setAttribute('transform', `scale(${dogScaleX.toFixed(3)}, ${dogScaleY.toFixed(3)})`);
+      dogHeadGroup.setAttribute('transform', `translate(0, ${dogHeadY.toFixed(1)}) rotate(${dogHeadRot.toFixed(2)})`);
+      dogEarLeft.setAttribute('transform', `translate(-74, -52) rotate(${dogEarLRot.toFixed(2)})`);
+      dogEarRight.setAttribute('transform', `translate(74, -52) rotate(${dogEarRRot.toFixed(2)})`);
+      dogPawLeft.setAttribute('transform', `translate(-46, ${dogPawLY.toFixed(1)}) rotate(${dogPawLRot.toFixed(2)})`);
+      dogPawRight.setAttribute('transform', `translate(46, ${dogPawRY.toFixed(1)}) rotate(${dogPawRRot.toFixed(2)})`);
+      dogTailGroup.setAttribute('transform', `translate(82, -10) rotate(${dogTailRot.toFixed(2)})`);
+
+      // -------------------- LIVING ROOM AMBIENT MOTION --------------------
+      outsideTreeLeft.setAttribute('transform', `translate(650, 360) rotate(${Math.sin(t * 1.1) * 2.2})`);
+      outsideTreeRight.setAttribute('transform', `translate(1235, 350) rotate(${Math.cos(t * 0.95) * 2.4})`);
+      plantLeftLeaves.setAttribute('transform', `rotate(${Math.sin(t * 1.4) * 1.8})`);
+      plantRightLeaves.setAttribute('transform', `rotate(${Math.cos(t * 1.3) * 1.8})`);
+      windowClouds.setAttribute('transform', `translate(${Math.sin(t * 0.18) * 28}, 0)`);
+    }
+
+    /********************************************************************
+     * CANVAS RENDERING: YARN BALLS, RUBBER BALLS, THREADS & MOTES
+     ********************************************************************/
+    function updateAndDrawCanvas(time) {
+      ctx.clearRect(0, 0, 1920, 1080);
+      const t = time * 0.001;
+
+      // 1. Draw floating golden dust motes in the sunbeams
+      for (const m of state.dustMotes) {
+        m.x += m.vx + Math.sin(t + m.phase) * 0.15;
+        m.y += m.vy;
+        if (m.y < 70) {
+          m.y = 960;
+          m.x = 380 + Math.random() * 1160;
+        }
+        ctx.save();
+        ctx.fillStyle = `rgba(255, 244, 196, ${m.alpha * (0.65 + 0.35 * Math.sin(t * 2 + m.phase))})`;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 2. Handle active playing phase & automatic round reset
+      if (state.phase === 'playing') {
+        state.playTimer++;
+        // Periodically bat/bounce the active pet's toys during the play sequence
+        if (state.playingPet === 'cat' && state.playTimer % 36 === 0 && state.playTimer < 220) {
+          const yb = state.yarnBalls[Math.floor(Math.random() * state.yarnBalls.length)];
+          if (yb) {
+            yb.vy = -10 - Math.random() * 6;
+            yb.vx = (695 - yb.x) * 0.06 + (Math.random() - 0.5) * 8;
+            yb.vAngle = (Math.random() - 0.5) * 0.35;
+            yb.settled = false;
+            sound.playYarnBounce(0.9);
+            sound.playJoyNote(Math.floor(state.playTimer / 36));
+            spawnSparkles(yb.x, yb.y, yb.palette.light);
+          }
+        } else if (state.playingPet === 'dog' && state.playTimer % 34 === 0 && state.playTimer < 220) {
+          const rb = state.rubberBalls[Math.floor(Math.random() * state.rubberBalls.length)];
+          if (rb) {
+            rb.vy = -12 - Math.random() * 7;
+            rb.vx = (1225 - rb.x) * 0.06 + (Math.random() - 0.5) * 9;
+            rb.vAngle = (Math.random() - 0.5) * 0.4;
+            rb.settled = false;
+            sound.playBallBounce(0.95);
+            sound.playJoyNote(Math.floor(state.playTimer / 34));
+            spawnSparkles(rb.x, rb.y, rb.palette.stripe);
+          }
+        }
+
+        // After ~4.6 seconds of play & contrasting sadness, transition to reset
+        if (state.playTimer > 275) {
+          resetRound(false);
+        }
+      } else if (state.phase === 'resetting') {
+        state.playTimer++;
+        // Roll toys smoothly off screen
+        state.yarnBalls.forEach((yb) => {
+          yb.x -= 14;
+          yb.angle -= 0.25;
+        });
+        state.rubberBalls.forEach((rb) => {
+          rb.x += 14;
+          rb.angle += 0.25;
+        });
+        if (state.playTimer > 42) {
+          resetRound(true);
+        }
+      }
+
+      // 3. Update & Draw Cat's Yarn Balls (Клубочки ниток)
+      const sortedYarn = [...state.yarnBalls].sort((a, b) => a.groundY - b.groundY);
+      for (const yb of sortedYarn) {
+        if (state.phase !== 'resetting' && !yb.settled) {
+          yb.vy += 0.62; // Gravity
+          yb.x += yb.vx;
+          yb.y += yb.vy;
+          yb.angle += yb.vAngle;
+
+          // Steer gently toward designated rug slot while falling
+          if (state.phase !== 'playing') {
+            yb.x += (yb.targetX - yb.x) * 0.04;
+          } else {
+            // Keep within left carpet play zone
+            if (yb.x < 460) { yb.x = 460; yb.vx = Math.abs(yb.vx) * 0.8; }
+            if (yb.x > 910) { yb.x = 910; yb.vx = -Math.abs(yb.vx) * 0.8; }
+          }
+
+          // Recover squash & stretch
+          yb.squashX += (1 - yb.squashX) * 0.18;
+          yb.squashY += (1 - yb.squashY) * 0.18;
+
+          if (yb.y >= yb.groundY) {
+            yb.y = yb.groundY;
+            if (Math.abs(yb.vy) > 2.2) {
+              sound.playYarnBounce(Math.min(1, Math.abs(yb.vy) / 14));
+              yb.vy = -yb.vy * 0.46;
+              yb.vx *= 0.72;
+              yb.vAngle = yb.vx * 0.03;
+              yb.squashX = 1.22;
+              yb.squashY = 0.80;
+              yb.bounces++;
+            } else {
+              yb.vy = 0;
+              yb.vx = 0;
+              yb.vAngle = 0;
+              yb.squashX = 1;
+              yb.squashY = 1;
+              yb.settled = true;
+            }
+          }
+        }
+
+        drawYarnBall(ctx, yb, t);
+      }
+
+      // 4. Update & Draw Dog's Bouncy Balls (М'ячики)
+      const sortedBalls = [...state.rubberBalls].sort((a, b) => a.groundY - b.groundY);
+      for (const rb of sortedBalls) {
+        if (state.phase !== 'resetting' && !rb.settled) {
+          rb.vy += 0.68; // Gravity
+          rb.x += rb.vx;
+          rb.y += rb.vy;
+          rb.angle += rb.vAngle;
+
+          if (state.phase !== 'playing') {
+            rb.x += (rb.targetX - rb.x) * 0.04;
+          } else {
+            // Keep within right carpet play zone
+            if (rb.x < 1010) { rb.x = 1010; rb.vx = Math.abs(rb.vx) * 0.85; }
+            if (rb.x > 1460) { rb.x = 1460; rb.vx = -Math.abs(rb.vx) * 0.85; }
+          }
+
+          rb.squashX += (1 - rb.squashX) * 0.2;
+          rb.squashY += (1 - rb.squashY) * 0.2;
+
+          if (rb.y >= rb.groundY) {
+            rb.y = rb.groundY;
+            if (Math.abs(rb.vy) > 2.0) {
+              sound.playBallBounce(Math.min(1, Math.abs(rb.vy) / 15));
+              rb.vy = -rb.vy * 0.64; // Bouncier rubber restitution
+              rb.vx *= 0.78;
+              rb.vAngle = rb.vx * 0.035;
+              rb.squashX = 1.28;
+              rb.squashY = 0.75;
+              rb.bounces++;
+            } else {
+              rb.vy = 0;
+              rb.vx = 0;
+              rb.vAngle = 0;
+              rb.squashX = 1;
+              rb.squashY = 1;
+              rb.settled = true;
+            }
+          }
+        }
+
+        drawRubberBall(ctx, rb);
+      }
+
+      // 5. Update & Draw Playful Sparkle Bursts
+      for (let i = state.sparkles.length - 1; i >= 0; i--) {
+        const sp = state.sparkles[i];
+        sp.x += sp.vx;
+        sp.y += sp.vy;
+        sp.vy += 0.12;
+        sp.life -= 0.028;
+        if (sp.life <= 0) {
+          state.sparkles.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.globalAlpha = sp.life;
+        ctx.fillStyle = sp.color;
+        ctx.translate(sp.x, sp.y);
+        ctx.rotate(sp.life * 4);
+        ctx.beginPath();
+        for (let p = 0; p < 4; p++) {
+          ctx.lineTo(Math.cos((p * Math.PI) / 2) * sp.r * 1.7, Math.sin((p * Math.PI) / 2) * sp.r * 1.7);
+          ctx.lineTo(
+            Math.cos(((p + 0.5) * Math.PI) / 2) * sp.r * 0.5,
+            Math.sin(((p + 0.5) * Math.PI) / 2) * sp.r * 0.5
+          );
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // Custom Detailed Yarn Ball Renderer (Клубочок ниток з хвостиком нитки)
+    function drawYarnBall(ctx, yb, t) {
+      const r = yb.r;
+      const heightAboveGround = Math.max(0, yb.groundY - yb.y);
+      const shadowScale = Math.max(0.35, 1 - heightAboveGround / 450);
+
+      // Shadow on rug
+      ctx.save();
+      ctx.fillStyle = `rgba(30, 12, 5, ${0.42 * shadowScale})`;
+      ctx.beginPath();
+      ctx.ellipse(yb.x, yb.groundY + r * 0.82, r * 1.05 * shadowScale, r * 0.34 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Trailing loose yarn thread on the rug
+      ctx.save();
+      ctx.strokeStyle = yb.palette.main;
+      ctx.lineWidth = 4.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const wave = Math.sin(t * 4 + yb.tailPhase) * (yb.settled ? 2 : 10);
+      ctx.moveTo(yb.x, yb.y + r * 0.5);
+      ctx.quadraticCurveTo(yb.x - 32, yb.y + r * 0.85 + wave, yb.x - 56, yb.y + r * 0.65 - wave * 0.6);
+      ctx.stroke();
+      ctx.strokeStyle = yb.palette.light;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+
+      // Main Yarn Sphere
+      ctx.save();
+      ctx.translate(yb.x, yb.y);
+      ctx.scale(yb.squashX, yb.squashY);
+      ctx.rotate(yb.angle);
+
+      // Clip to circle
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.clip();
+
+      // 3D Spherical shading base
+      const grad = ctx.createRadialGradient(-r * 0.32, -r * 0.32, r * 0.1, 0, 0, r);
+      grad.addColorStop(0, yb.palette.light);
+      grad.addColorStop(0.55, yb.palette.main);
+      grad.addColorStop(1, yb.palette.dark);
+      ctx.fillStyle = grad;
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+
+      // Crisscrossed wound yarn strands texture
+      ctx.strokeStyle = yb.palette.dark;
+      ctx.lineWidth = 3.2;
+      ctx.globalAlpha = 0.55;
+      for (let b = -3; b <= 3; b++) {
+        ctx.beginPath();
+        ctx.arc(b * 9, 0, r * 0.92, -1.2, 1.2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = yb.palette.light;
+      ctx.lineWidth = 2.4;
+      ctx.globalAlpha = 0.7;
+      for (let b = -3; b <= 3; b++) {
+        ctx.beginPath();
+        ctx.arc(0, b * 9, r * 0.92, 0.3, 2.8);
+        ctx.stroke();
+      }
+      for (let b = -2; b <= 2; b++) {
+        ctx.beginPath();
+        ctx.moveTo(-r, b * 10 - 12);
+        ctx.quadraticCurveTo(0, b * 10 + 16, r, b * 10 - 8);
+        ctx.stroke();
+      }
+
+      // Outer rim contour
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = yb.palette.dark;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, r - 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // Custom Detailed Bouncy Rubber Ball Renderer (М'ячик)
+    function drawRubberBall(ctx, rb) {
+      const r = rb.r;
+      const heightAboveGround = Math.max(0, rb.groundY - rb.y);
+      const shadowScale = Math.max(0.32, 1 - heightAboveGround / 480);
+
+      // Shadow on rug
+      ctx.save();
+      ctx.fillStyle = `rgba(30, 12, 5, ${0.44 * shadowScale})`;
+      ctx.beginPath();
+      ctx.ellipse(rb.x, rb.groundY + r * 0.84, r * 1.05 * shadowScale, r * 0.34 * shadowScale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(rb.x, rb.y);
+      ctx.scale(rb.squashX, rb.squashY);
+      ctx.rotate(rb.angle);
+
+      // Circular clip
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.clip();
+
+      // Base sphere gradient
+      const grad = ctx.createRadialGradient(-r * 0.35, -r * 0.35, r * 0.08, 0, 0, r);
+      grad.addColorStop(0, rb.palette.shine);
+      grad.addColorStop(0.5, rb.palette.base);
+      grad.addColorStop(1, '#1f1424');
+      ctx.fillStyle = grad;
+      ctx.fillRect(-r, -r, r * 2, r * 2);
+
+      // Decorative curved stripe band around ball
+      ctx.strokeStyle = rb.palette.stripe;
+      ctx.lineWidth = 9;
+      ctx.beginPath();
+      ctx.arc(0, r * 0.15, r * 0.88, Math.PI * 1.1, Math.PI * 1.9);
+      ctx.stroke();
+
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(0, -r * 0.18, r * 0.88, Math.PI * 0.1, Math.PI * 0.9);
+      ctx.stroke();
+
+      // Glossy specular highlight (unrotated feel)
+      ctx.rotate(-rb.angle);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.58)';
+      ctx.beginPath();
+      ctx.ellipse(-r * 0.34, -r * 0.36, r * 0.26, r * 0.14, -Math.PI / 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Crisp border
+      ctx.strokeStyle = 'rgba(25, 12, 18, 0.55)';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.arc(0, 0, r - 1.4, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    /********************************************************************
+     * MAIN 60FPS ANIMATION LOOP
+     ********************************************************************/
+    function gameLoop(timestamp) {
+      updateGazeAndEmotions(timestamp);
+      animatePets(timestamp);
+      updateAndDrawCanvas(timestamp);
+      requestAnimationFrame(gameLoop);
+    }
+
+    window.onload = function () {
+      requestAnimationFrame(gameLoop);
+    };
+  </script>
+</body>
+</html>
