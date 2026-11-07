@@ -1,0 +1,2091 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Географічні Біоми — Дріб від числа</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #091318;
+      font-family: 'Montserrat', sans-serif;
+    }
+
+    /* Fullscreen Interactive Biome Canvas */
+    #biomeCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      cursor: pointer;
+      z-index: 1;
+    }
+
+    /* UI Layer */
+    #uiLayer {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(10px, 2vw, 24px);
+    }
+
+    .interactive-el {
+      pointer-events: auto;
+    }
+
+    /* Realistic Carved Stone & Brass Plaque Styling - NO WHITE BOXES */
+    .expedition-plaque {
+      position: relative;
+      background: 
+        radial-gradient(circle at 20% 20%, rgba(255, 215, 130, 0.14), transparent 60%),
+        radial-gradient(circle at 80% 80%, rgba(20, 40, 50, 0.8), transparent 70%),
+        linear-gradient(145deg, #2b231d 0%, #1c1613 55%, #120e0c 100%);
+      border: 3px solid #8c6d46;
+      box-shadow: 
+        0 14px 35px rgba(0, 0, 0, 0.78),
+        inset 0 2px 4px rgba(255, 224, 166, 0.35),
+        inset 0 -4px 8px rgba(0, 0, 0, 0.85),
+        0 0 0 2px #3a2a18;
+      border-radius: 22px;
+      color: #f3e5ab;
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.4s ease, box-shadow 0.4s ease;
+      overflow: hidden;
+    }
+
+    .expedition-plaque::before {
+      content: "";
+      position: absolute;
+      inset: 4px;
+      border-radius: 16px;
+      border: 1px dashed rgba(212, 175, 55, 0.32);
+      pointer-events: none;
+    }
+
+    /* Corner Brass Rivets */
+    .rivet {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ffe89e, #8f6826 70%, #3d2b0c 100%);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.9);
+      pointer-events: none;
+    }
+    .rivet-tl { top: 8px; left: 8px; }
+    .rivet-tr { top: 8px; right: 8px; }
+    .rivet-bl { bottom: 8px; left: 8px; }
+    .rivet-br { bottom: 8px; right: 8px; }
+
+    /* Answer Medallions (Carved Compass / Geological Stones) */
+    .answer-medallion {
+      position: relative;
+      width: clamp(68px, 8.5vw, 108px);
+      height: clamp(68px, 8.5vw, 108px);
+      border-radius: 50%;
+      background: 
+        radial-gradient(circle at 32% 28%, rgba(255, 236, 179, 0.28) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, #322920 0%, #1d1712 72%, #110d0a 100%);
+      border: 3px solid #a68249;
+      box-shadow: 
+        0 10px 25px rgba(0, 0, 0, 0.8),
+        inset 0 3px 6px rgba(255, 230, 170, 0.4),
+        inset 0 -6px 10px rgba(0, 0, 0, 0.9),
+        0 0 0 3px #2d2012;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+      color: #f8ecd1;
+      font-weight: 800;
+      font-size: clamp(1.35rem, 2.5vw, 2.2rem);
+      text-shadow: 0 3px 6px rgba(0, 0, 0, 0.95);
+    }
+
+    .answer-medallion::after {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(226, 188, 106, 0.35);
+      pointer-events: none;
+    }
+
+    .answer-medallion:hover {
+      transform: translateY(-7px) scale(1.07);
+      border-color: #f5d076;
+      box-shadow: 
+        0 16px 32px rgba(0, 0, 0, 0.85),
+        0 0 22px rgba(245, 208, 118, 0.45),
+        inset 0 3px 8px rgba(255, 240, 190, 0.6),
+        inset 0 -5px 10px rgba(0, 0, 0, 0.9),
+        0 0 0 3px #5c4322;
+    }
+
+    .answer-medallion:active {
+      transform: translateY(1px) scale(0.96);
+    }
+
+    .answer-medallion.wrong-shake {
+      animation: wrongTremor 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+      border-color: #b8422b !important;
+      background: radial-gradient(circle at 50% 50%, #3d1814 0%, #1c0a08 85%) !important;
+      color: #aa766c !important;
+      opacity: 0.72;
+    }
+
+    .answer-medallion.correct-glow {
+      animation: correctPulse 0.9s ease-out infinite alternate;
+      border-color: #6ef7a7 !important;
+      background: radial-gradient(circle at 35% 30%, #487d49 0%, #1c3d24 70%, #0d2112 100%) !important;
+      box-shadow: 
+        0 0 35px rgba(110, 247, 167, 0.85),
+        inset 0 0 18px rgba(173, 255, 202, 0.75) !important;
+      color: #ffffff !important;
+    }
+
+    /* Action Buttons (Language & Next) */
+    .brass-btn {
+      position: relative;
+      background: 
+        linear-gradient(160deg, #4a3a28 0%, #2a2016 55%, #17110b 100%);
+      border: 2.5px solid #b58e52;
+      box-shadow: 
+        0 8px 20px rgba(0, 0, 0, 0.75),
+        inset 0 2px 3px rgba(255, 232, 179, 0.4),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.85),
+        0 0 0 2px #2b1e10;
+      border-radius: 16px;
+      color: #f6e7c1;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .brass-btn:hover {
+      transform: translateY(-2px);
+      border-color: #f5cf7b;
+      box-shadow: 
+        0 10px 24px rgba(0, 0, 0, 0.85),
+        0 0 15px rgba(245, 207, 123, 0.35),
+        inset 0 2px 4px rgba(255, 242, 204, 0.55);
+      color: #fff6db;
+    }
+
+    .brass-btn:active {
+      transform: translateY(1px) scale(0.97);
+    }
+
+    /* Habitat Cluster Gem Indicators on the Plaque */
+    .cluster-gem {
+      width: clamp(22px, 2.6vw, 32px);
+      height: clamp(22px, 2.6vw, 32px);
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #4a453d, #1f1b17 75%);
+      border: 2px solid #7d6746;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.8), 0 2px 5px rgba(0,0,0,0.7);
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: transparent;
+    }
+
+    .cluster-gem.active {
+      background: radial-gradient(circle at 32% 28%, #fff7b2 0%, #f5b935 48%, #9e5808 92%);
+      border-color: #fff0a8;
+      box-shadow: 0 0 14px rgba(255, 208, 80, 0.9), inset 0 2px 4px rgba(255, 255, 255, 0.8);
+      transform: scale(1.16);
+      color: #2b1600;
+      text-shadow: none;
+    }
+
+    .cluster-gem.target-match {
+      background: radial-gradient(circle at 32% 28%, #c8ffe0 0%, #3ce686 48%, #0c6b37 92%);
+      border-color: #b5ffd3;
+      box-shadow: 0 0 16px rgba(72, 255, 155, 0.95), inset 0 2px 4px rgba(255, 255, 255, 0.85);
+      color: #052914;
+    }
+
+    /* Fraction Display Typography */
+    .fraction-box {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      padding: 0 6px;
+    }
+    .fraction-num {
+      border-bottom: 3px solid #e7c873;
+      padding: 0 8px 3px 8px;
+      color: #ffdf85;
+      text-shadow: 0 2px 8px rgba(255, 200, 70, 0.45);
+    }
+    .fraction-den {
+      padding: 3px 8px 0 8px;
+      color: #f3e5ab;
+    }
+
+    @keyframes wrongTremor {
+      0%, 100% { transform: translateX(0) rotate(0deg); }
+      15% { transform: translateX(-11px) rotate(-5deg); }
+      30% { transform: translateX(10px) rotate(4deg); }
+      45% { transform: translateX(-8px) rotate(-3deg); }
+      60% { transform: translateX(7px) rotate(2deg); }
+      75% { transform: translateX(-4px) rotate(-1deg); }
+    }
+
+    @keyframes correctPulse {
+      0% { transform: scale(1.06); }
+      100% { transform: scale(1.16); }
+    }
+
+    @keyframes screenShake {
+      0%, 100% { transform: translate(0, 0); }
+      20% { transform: translate(-8px, 5px); }
+      40% { transform: translate(7px, -6px); }
+      60% { transform: translate(-6px, -4px); }
+      80% { transform: translate(5px, 4px); }
+    }
+
+    .shake-screen {
+      animation: screenShake 0.42s ease-in-out;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Procedural Living Biome Canvas -->
+  <canvas id="biomeCanvas"></canvas>
+
+  <!-- Minimalist Tactile Expedition Overlay -->
+  <div id="uiLayer">
+    
+    <!-- Top Row: Biome Compass Emblem (Non-verbal) + Task Plaque + Controls -->
+    <div class="w-full flex items-start justify-between gap-2 sm:gap-4">
+      
+      <!-- Left: Biome Visual Compass Rose (Interactive: click to pulse all habitats) -->
+      <button id="compassBtn" class="brass-btn interactive-el p-2.5 sm:p-3 rounded-full" title="">
+        <svg class="w-7 h-7 sm:w-9 sm:h-9" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" stroke="#d4af37" stroke-width="2.5" fill="rgba(15, 23, 30, 0.75)"/>
+          <circle cx="32" cy="32" r="23" stroke="#8c6d46" stroke-width="1" stroke-dasharray="3 3"/>
+          <polygon points="32,6 37,27 32,23 27,27" fill="#ffdf85"/>
+          <polygon points="32,58 37,37 32,41 27,37" fill="#9c7a44"/>
+          <polygon points="6,32 27,27 23,32 27,37" fill="#9c7a44"/>
+          <polygon points="58,32 37,27 41,32 37,37" fill="#9c7a44"/>
+          <circle cx="32" cy="32" r="4.5" fill="#ffe699" stroke="#3a2610" stroke-width="1.5"/>
+        </svg>
+      </button>
+
+      <!-- Center: Carved Stone Expedition Task Plaque -->
+      <div id="taskPlaque" class="expedition-plaque interactive-el px-5 py-2.5 sm:px-9 sm:py-3.5 flex flex-col items-center justify-center max-w-2xl">
+        <span class="rivet rivet-tl"></span>
+        <span class="rivet rivet-tr"></span>
+        <span class="rivet rivet-bl"></span>
+        <span class="rivet rivet-br"></span>
+
+        <!-- Fraction of a Number Task Row -->
+        <div class="flex items-center justify-center gap-3 sm:gap-5 text-2xl sm:text-4xl md:text-5xl font-extrabold tracking-wide">
+          <div class="fraction-box">
+            <span id="fracNum" class="fraction-num">3</span>
+            <span id="fracDen" class="fraction-den">5</span>
+          </div>
+          <span id="wordOf" class="text-amber-200/90 font-bold text-xl sm:text-3xl md:text-4xl lowercase">від</span>
+          <span id="wholeNum" class="text-white font-black drop-shadow-[0_3px_6px_rgba(0,0,0,0.9)]">20</span>
+        </div>
+
+        <!-- Interactive Cluster Gems synced with Biome Habitat Groups -->
+        <div id="clusterGemsContainer" class="flex items-center justify-center flex-wrap gap-2 sm:gap-2.5 mt-2.5 pt-2 border-t border-amber-500/25">
+          <!-- Dynamically populated b gems -->
+        </div>
+      </div>
+
+      <!-- Right: Single Language Toggle Button (УКР / РУС) + Minimalist Skip Button (Далі / Далее) -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <button id="langBtn" class="brass-btn interactive-el px-3.5 py-2 sm:px-4 sm:py-2.5 text-sm sm:text-base">
+          УКР
+        </button>
+        <button id="nextBtn" class="brass-btn interactive-el px-4 py-2 sm:px-5 sm:py-2.5 text-sm sm:text-base">
+          <span id="nextBtnText">Далі</span>
+          <svg class="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14"></path>
+            <path d="m13 5 7 7-7 7"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bottom Row: 5 Carved Geological/Compass Answer Medallions -->
+    <div class="w-full flex items-center justify-center pb-1 sm:pb-2">
+      <div id="answersContainer" class="interactive-el flex items-center justify-center gap-3 sm:gap-6 md:gap-8 flex-wrap">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /********************************************************************
+     * 1. BILINGUAL DICTIONARY & STATE (NO EXTRA WORDS)
+     ********************************************************************/
+    const I18N = {
+      uk: {
+        langLabel: 'УКР',
+        ofWord: 'від',
+        nextWord: 'Далі'
+      },
+      ru: {
+        langLabel: 'РУС',
+        ofWord: 'от',
+        nextWord: 'Далее'
+      }
+    };
+
+    let currentLang = 'uk';
+
+    /********************************************************************
+     * 2. PROCEDURAL WEB AUDIO SYNTHESIZER (NO EXTERNAL AUDIO FILES)
+     ********************************************************************/
+    class NatureAudioEngine {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Play tactile nature + harmonic sound when clicking a biome cluster
+      playClusterToggle(isActivating, activeCount, targetNumerator, biomeIndex) {
+        try {
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+
+          // Pentatonic scale frequencies
+          const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00];
+          const noteIdx = Math.min(scale.length - 1, Math.max(0, activeCount - 1));
+          const freq = isActivating ? scale[noteIdx] : scale[Math.max(0, noteIdx)] * 0.85;
+
+          // Harmonic marimba/kalimba tone
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = (biomeIndex % 2 === 0) ? 'triangle' : 'sine';
+          osc.frequency.setValueAtTime(freq, now);
+          osc.frequency.exponentialRampToValueAtTime(freq * (isActivating ? 1.02 : 0.96), now + 0.28);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.22, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.36);
+
+          // If activeCount matches the target numerator 'a', add a subtle magical shimmer chord
+          if (isActivating && activeCount === targetNumerator) {
+            const shimmerOsc = this.ctx.createOscillator();
+            const shimmerGain = this.ctx.createGain();
+            shimmerOsc.type = 'sine';
+            shimmerOsc.frequency.setValueAtTime(freq * 1.5, now + 0.05);
+            shimmerGain.gain.setValueAtTime(0.001, now + 0.05);
+            shimmerGain.gain.linearRampToValueAtTime(0.14, now + 0.09);
+            shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+            shimmerOsc.connect(shimmerGain);
+            shimmerGain.connect(this.ctx.destination);
+            shimmerOsc.start(now + 0.05);
+            shimmerOsc.stop(now + 0.56);
+          }
+
+          // Biome-specific subtle texture (water drop, bird chirp, crystal ping, bamboo knock)
+          this.playBiomeTexture(biomeIndex, now);
+        } catch (e) {}
+      }
+
+      playBiomeTexture(biomeIndex, now) {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        if (biomeIndex === 0 || biomeIndex === 3 || biomeIndex === 7) {
+          // Water droplet / reef bubble
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(600, now);
+          osc.frequency.exponentialRampToValueAtTime(1450, now + 0.11);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        } else if (biomeIndex === 2 || biomeIndex === 5) {
+          // Ice / Alpine quartz crystal chime
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1760, now);
+          osc.frequency.exponentialRampToValueAtTime(1780, now + 0.25);
+          gain.gain.setValueAtTime(0.06, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+        } else {
+          // Warm wooden / earth percussion
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(190, now);
+          osc.frequency.exponentialRampToValueAtTime(95, now + 0.09);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        }
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.28);
+      }
+
+      // Rich celebratory fanfare + nature swell on correct answer
+      playSuccessFanfare(biomeIndex) {
+        try {
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+
+          // Uplifting major 9th arpeggio
+          const notes = [261.63, 329.63, 392.00, 493.88, 587.33, 783.99, 1046.50];
+          notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+            const start = now + idx * 0.065;
+            osc.frequency.setValueAtTime(freq, start);
+            osc.frequency.exponentialRampToValueAtTime(freq * 1.006, start + 0.65);
+
+            gain.gain.setValueAtTime(0.001, start);
+            gain.gain.linearRampToValueAtTime(0.18, start + 0.025);
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.75);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(start);
+            osc.stop(start + 0.78);
+          });
+
+          // Filtered noise burst for waterfall / ocean wave / wind celebration
+          const bufferSize = this.ctx.sampleRate * 0.9;
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.sin((i / bufferSize) * Math.PI);
+          }
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(400, now);
+          filter.frequency.exponentialRampToValueAtTime(1600, now + 0.45);
+          filter.frequency.exponentialRampToValueAtTime(500, now + 0.9);
+          filter.Q.value = 1.8;
+
+          const nGain = this.ctx.createGain();
+          nGain.gain.setValueAtTime(0.01, now);
+          nGain.gain.linearRampToValueAtTime(0.12, now + 0.3);
+          nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+
+          noise.connect(filter);
+          filter.connect(nGain);
+          nGain.connect(this.ctx.destination);
+          noise.start(now);
+        } catch (e) {}
+      }
+
+      // Earthy low seismic rumble on wrong answer
+      playWrongFeedback() {
+        try {
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+
+          const osc1 = this.ctx.createOscillator();
+          const osc2 = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc1.type = 'sawtooth';
+          osc2.type = 'triangle';
+          osc1.frequency.setValueAtTime(115, now);
+          osc1.frequency.exponentialRampToValueAtTime(52, now + 0.38);
+          osc2.frequency.setValueAtTime(108, now);
+          osc2.frequency.exponentialRampToValueAtTime(48, now + 0.38);
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(340, now);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.24, now + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+
+          osc1.connect(filter);
+          osc2.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc1.start(now);
+          osc2.start(now);
+          osc1.stop(now + 0.44);
+          osc2.stop(now + 0.44);
+        } catch (e) {}
+      }
+
+      playClick() {
+        try {
+          this.init();
+          if (!this.ctx) return;
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(520, now);
+          osc.frequency.exponentialRampToValueAtTime(240, now + 0.06);
+          gain.gain.setValueAtTime(0.12, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.07);
+        } catch (e) {}
+      }
+    }
+
+    const audio = new NatureAudioEngine();
+
+    /********************************************************************
+     * 3. TEN REALISTIC GEOGRAPHICAL BIOMES DEFINITION
+     ********************************************************************/
+    const BIOMES = [
+      {
+        id: 'amazon',
+        skyTop: '#072227',
+        skyMid: '#134e4a',
+        skyBot: '#4ea885',
+        waterTop: '#0d5c56',
+        waterBot: '#042624',
+        plaqueBorder: '#529471',
+        particleType: 'mist',
+        celebrationType: 'rainbow'
+      },
+      {
+        id: 'savanna',
+        skyTop: '#2c0b2e',
+        skyMid: '#9a3412',
+        skyBot: '#fbbf24',
+        waterTop: '#b45309',
+        waterBot: '#3b1106',
+        plaqueBorder: '#d97706',
+        particleType: 'pollen',
+        celebrationType: 'sunburst'
+      },
+      {
+        id: 'arctic',
+        skyTop: '#030914',
+        skyMid: '#0f2942',
+        skyBot: '#38bdf8',
+        waterTop: '#0c314e',
+        waterBot: '#031221',
+        plaqueBorder: '#60a5fa',
+        particleType: 'snow',
+        celebrationType: 'aurora'
+      },
+      {
+        id: 'coral',
+        skyTop: '#022c43',
+        skyMid: '#055e7b',
+        skyBot: '#00a8cc',
+        waterTop: '#044a63',
+        waterBot: '#011c29',
+        plaqueBorder: '#2dd4bf',
+        particleType: 'bubbles',
+        celebrationType: 'vortex'
+      },
+      {
+        id: 'sahara',
+        skyTop: '#1e2952',
+        skyMid: '#c26d2d',
+        skyBot: '#fde08d',
+        waterTop: '#0f766e',
+        waterBot: '#063f3a',
+        plaqueBorder: '#eab308',
+        particleType: 'sand',
+        celebrationType: 'mirage'
+      },
+      {
+        id: 'alpine',
+        skyTop: '#0c1c38',
+        skyMid: '#345c8c',
+        skyBot: '#93c5fd',
+        waterTop: '#0d6575',
+        waterBot: '#062c38',
+        plaqueBorder: '#7dd3fc',
+        particleType: 'glint',
+        celebrationType: 'crystalwave'
+      },
+      {
+        id: 'karst',
+        skyTop: '#162623',
+        skyMid: '#37594f',
+        skyBot: '#99b898',
+        waterTop: '#24423b',
+        waterBot: '#0f1f1b',
+        plaqueBorder: '#84cc16',
+        particleType: 'fireflies',
+        celebrationType: 'lanterns'
+      },
+      {
+        id: 'mangrove',
+        skyTop: '#0c221b',
+        skyMid: '#1f4d39',
+        skyBot: '#74a878',
+        waterTop: '#173829',
+        waterBot: '#081710',
+        plaqueBorder: '#4ade80',
+        particleType: 'spores',
+        celebrationType: 'lotusbloom'
+      },
+      {
+        id: 'volcanic',
+        skyTop: '#0f101a',
+        skyMid: '#27293d',
+        skyBot: '#64748b',
+        waterTop: '#0891b2',
+        waterBot: '#083344',
+        plaqueBorder: '#f97316',
+        particleType: 'embers',
+        celebrationType: 'geyser'
+      },
+      {
+        id: 'autumn',
+        skyTop: '#1f162b',
+        skyMid: '#7c2d12',
+        skyBot: '#fdba74',
+        waterTop: '#1e3a5f',
+        waterBot: '#0b192c',
+        plaqueBorder: '#ea580c',
+        particleType: 'leaves',
+        celebrationType: 'salmonleap'
+      }
+    ];
+
+    /********************************************************************
+     * 4. INFINITE TASK & BIOME STATE GENERATOR
+     ********************************************************************/
+    let taskCounter = 0;
+    let currentBiomeIndex = 0;
+    let currentTask = null;
+    let habitatClusters = [];
+    let ambientParticles = [];
+    let celebrationParticles = [];
+    let shockwaves = [];
+    let celebrationState = { active: false, progress: 0, type: '' };
+    let cameraShake = { intensity: 0 };
+    let isTransitioning = false;
+    let terrainSeed = 1;
+
+    // Deterministic pseudo-random helper for terrain details
+    function seededRandom(seed) {
+      const x = Math.sin(seed++) * 10000;
+      return x - Math.floor(x);
+    }
+
+    function generateFractionTask() {
+      // Choose denominator b from 2..9
+      const denominators = [2, 3, 4, 5, 6, 7, 8, 9];
+      const b = denominators[Math.floor(Math.random() * denominators.length)];
+
+      // Choose numerator a from 1..(b-1)
+      const a = Math.floor(Math.random() * (b - 1)) + 1;
+
+      // Choose group size k (number of items per habitat cluster) so N = b * k is suitable for 3rd-4th grade
+      // Keep k between 2 and 7 so each cluster is visually clear and countable
+      const minK = 2;
+      const maxK = b <= 5 ? 7 : (b <= 7 ? 5 : 4);
+      const k = Math.floor(Math.random() * (maxK - minK + 1)) + minK;
+
+      const N = b * k;
+      const correctAnswer = a * k;
+
+      // Generate 4 plausible distractors
+      const distractors = new Set();
+      // Common student misconceptions: k (1/b of N), N - correctAnswer, (a+1)*k, (a-1)*k, N + a, etc.
+      const candidates = [
+        k,
+        N - correctAnswer,
+        (a + 1) * k,
+        Math.max(1, (a - 1) * k),
+        correctAnswer + b,
+        Math.max(1, correctAnswer - b),
+        correctAnswer + 2,
+        Math.max(1, correctAnswer - 2),
+        correctAnswer + k,
+        N
+      ];
+
+      for (const c of candidates) {
+        if (c > 0 && c !== correctAnswer && distractors.size < 4) {
+          distractors.add(c);
+        }
+      }
+      while (distractors.size < 4) {
+        const rand = Math.max(1, correctAnswer + Math.floor(Math.random() * 15) - 7);
+        if (rand !== correctAnswer) distractors.add(rand);
+      }
+
+      const options = [correctAnswer, ...Array.from(distractors)].sort((x, y) => x - y);
+
+      return { a, b, k, N, correctAnswer, options };
+    }
+
+    function setupNewLevel() {
+      isTransitioning = false;
+      celebrationState.active = false;
+      celebrationState.progress = 0;
+      celebrationParticles = [];
+      shockwaves = [];
+
+      currentBiomeIndex = taskCounter % BIOMES.length;
+      taskCounter++;
+      terrainSeed = taskCounter * 137.5;
+
+      currentTask = generateFractionTask();
+      layoutHabitatClusters();
+      initAmbientParticles();
+      renderUI();
+    }
+
+    // Position the 'b' habitat clusters naturally across the interactive biome region
+    function layoutHabitatClusters() {
+      habitatClusters = [];
+      const b = currentTask.b;
+      const k = currentTask.k;
+
+      // Arrange clusters in 1 or 2 organic staggered rows across the midground/foreground
+      const cols = b <= 5 ? b : Math.ceil(b / 2);
+      const rows = b <= 5 ? 1 : 2;
+
+      for (let i = 0; i < b; i++) {
+        const row = rows === 1 ? 0 : (i < cols ? 0 : 1);
+        const colsInThisRow = rows === 1 ? b : (row === 0 ? cols : b - cols);
+        const colIdx = row === 0 ? i : i - cols;
+
+        // Normalized coordinates (0..1) so it adapts seamlessly to any widescreen resize
+        const marginX = 0.14;
+        const usableW = 1 - marginX * 2;
+        const stepX = colsInThisRow > 1 ? usableW / (colsInThisRow - 1) : 0;
+        const baseX = colsInThisRow > 1 ? marginX + colIdx * stepX : 0.5;
+
+        // Add subtle natural offset
+        const jitterX = (Math.sin(i * 2.3 + terrainSeed) * 0.025);
+        const baseY = rows === 1
+          ? 0.57 + Math.sin(i * 1.7 + terrainSeed) * 0.07
+          : (row === 0 ? 0.49 + Math.sin(i * 1.9) * 0.035 : 0.66 + Math.cos(i * 2.1) * 0.035);
+
+        // Create the k sub-elements inside this cluster
+        const items = [];
+        for (let j = 0; j < k; j++) {
+          const angle = (j / k) * Math.PI * 2 + (i * 0.5);
+          const dist = k === 1 ? 0 : (0.34 + (j % 2) * 0.18);
+          items.push({
+            relX: Math.cos(angle) * dist,
+            relY: Math.sin(angle) * dist * 0.65,
+            phase: j * 1.1 + i * 0.7,
+            scale: 0.9 + (j % 3) * 0.08
+          });
+        }
+
+        habitatClusters.push({
+          index: i,
+          nx: Math.min(0.88, Math.max(0.12, baseX + jitterX)),
+          ny: baseY,
+          active: false,
+          hover: false,
+          animProgress: 0,
+          pulsePhase: i * 0.9,
+          items
+        });
+      }
+    }
+
+    /********************************************************************
+     * 5. UI SYNCHRONIZATION (NO WHITE BOXES, NO VERBAL FEEDBACK)
+     ********************************************************************/
+    function renderUI() {
+      const biome = BIOMES[currentBiomeIndex];
+      const plaque = document.getElementById('taskPlaque');
+      plaque.style.borderColor = biome.plaqueBorder;
+
+      document.getElementById('fracNum').textContent = currentTask.a;
+      document.getElementById('fracDen').textContent = currentTask.b;
+      document.getElementById('wholeNum').textContent = currentTask.N;
+      document.getElementById('wordOf').textContent = I18N[currentLang].ofWord;
+      document.getElementById('langBtn').textContent = I18N[currentLang].langLabel;
+      document.getElementById('nextBtnText').textContent = I18N[currentLang].nextWord;
+
+      // Render interactive cluster gems on the plaque
+      const gemsContainer = document.getElementById('clusterGemsContainer');
+      gemsContainer.innerHTML = '';
+      habitatClusters.forEach((cluster, idx) => {
+        const gem = document.createElement('button');
+        gem.className = 'cluster-gem';
+        gem.textContent = currentTask.k;
+        gem.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleCluster(idx);
+        });
+        gemsContainer.appendChild(gem);
+      });
+      updateClusterGemsUI();
+
+      // Render 5 Answer Medallions
+      const answersContainer = document.getElementById('answersContainer');
+      answersContainer.innerHTML = '';
+      currentTask.options.forEach((val) => {
+        const btn = document.createElement('button');
+        btn.className = 'answer-medallion';
+        btn.style.borderColor = biome.plaqueBorder;
+        btn.textContent = val;
+        btn.addEventListener('click', () => handleAnswerSelect(val, btn));
+        answersContainer.appendChild(btn);
+      });
+    }
+
+    function updateClusterGemsUI() {
+      const gems = document.querySelectorAll('.cluster-gem');
+      const activeCount = habitatClusters.filter(c => c.active).length;
+      const isTargetMatch = activeCount === currentTask.a;
+
+      gems.forEach((gem, idx) => {
+        const isActive = habitatClusters[idx] && habitatClusters[idx].active;
+        gem.classList.toggle('active', isActive);
+        gem.classList.toggle('target-match', isActive && isTargetMatch);
+      });
+    }
+
+    function toggleCluster(idx) {
+      if (isTransitioning) return;
+      const cluster = habitatClusters[idx];
+      if (!cluster) return;
+      cluster.active = !cluster.active;
+
+      const activeCount = habitatClusters.filter(c => c.active).length;
+      audio.playClusterToggle(cluster.active, activeCount, currentTask.a, currentBiomeIndex);
+
+      // Add visual shockwave at cluster position
+      const cx = cluster.nx * window.innerWidth;
+      const cy = cluster.ny * window.innerHeight;
+      shockwaves.push({
+        x: cx,
+        y: cy,
+        radius: 10,
+        maxRadius: 110,
+        alpha: 0.9,
+        color: activeCount === currentTask.a ? '#6ef7a7' : '#ffdf85'
+      });
+
+      updateClusterGemsUI();
+    }
+
+    function handleAnswerSelect(selectedValue, btnElement) {
+      if (isTransitioning) return;
+
+      if (selectedValue === currentTask.correctAnswer) {
+        // CORRECT ANSWER: Activate exactly 'a' clusters visually if not already, launch biome celebration
+        isTransitioning = true;
+        btnElement.classList.add('correct-glow');
+
+        let activated = 0;
+        habitatClusters.forEach((c) => {
+          if (activated < currentTask.a) {
+            c.active = true;
+            activated++;
+          } else {
+            c.active = false;
+          }
+        });
+        updateClusterGemsUI();
+
+        triggerBiomeCelebration();
+        audio.playSuccessFanfare(currentBiomeIndex);
+
+        setTimeout(() => {
+          setupNewLevel();
+        }, 2300);
+      } else {
+        // WRONG ANSWER: Non-verbal tactile feedback (seismic tremor, sound, shockwave)
+        btnElement.classList.remove('wrong-shake');
+        void btnElement.offsetWidth;
+        btnElement.classList.add('wrong-shake');
+
+        cameraShake.intensity = 14;
+        audio.playWrongFeedback();
+
+        // Spawn red/amber warning ripple from button
+        const rect = btnElement.getBoundingClientRect();
+        shockwaves.push({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+          radius: 15,
+          maxRadius: 130,
+          alpha: 0.85,
+          color: '#ef4444'
+        });
+      }
+    }
+
+    /********************************************************************
+     * 6. AMBIENT & CELEBRATION PARTICLE SYSTEMS
+     ********************************************************************/
+    function initAmbientParticles() {
+      ambientParticles = [];
+      const count = 55;
+      for (let i = 0; i < count; i++) {
+        ambientParticles.push({
+          x: Math.random(),
+          y: Math.random(),
+          vx: (Math.random() - 0.5) * 0.0006,
+          vy: (Math.random() - 0.5) * 0.0006,
+          size: 1.5 + Math.random() * 3.5,
+          alpha: 0.25 + Math.random() * 0.65,
+          phase: Math.random() * Math.PI * 2
+        });
+      }
+    }
+
+    function triggerBiomeCelebration() {
+      const biome = BIOMES[currentBiomeIndex];
+      celebrationState.active = true;
+      celebrationState.progress = 0;
+      celebrationState.type = biome.celebrationType;
+
+      // Spawn 90 rich biome-specific celebration particles from the active habitat clusters
+      const activeClusters = habitatClusters.filter(c => c.active);
+      activeClusters.forEach((cluster) => {
+        const cx = cluster.nx * window.innerWidth;
+        const cy = cluster.ny * window.innerHeight;
+
+        shockwaves.push({
+          x: cx,
+          y: cy,
+          radius: 12,
+          maxRadius: 220,
+          alpha: 1,
+          color: '#6ef7a7'
+        });
+
+        for (let i = 0; i < 24; i++) {
+          const angle = (Math.PI * 2 * i) / 24 + Math.random() * 0.3;
+          const speed = 2.5 + Math.random() * 6.5;
+          celebrationParticles.push({
+            x: cx,
+            y: cy,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2.2,
+            size: 4 + Math.random() * 6,
+            alpha: 1,
+            hue: (currentBiomeIndex * 36 + i * 8) % 360,
+            rotation: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 0.15
+          });
+        }
+      });
+    }
+
+    /********************************************************************
+     * 7. REALISTIC PROCEDURAL WIDESCREEN BIOME RENDERER (CANVAS 2D)
+     ********************************************************************/
+    const canvas = document.getElementById('biomeCanvas');
+    const ctx = canvas.getContext('2d');
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let dpr = Math.min(2, window.devicePixelRatio || 1);
+
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Helper: Draw realistic multi-layered mountain/ridge silhouettes with atmospheric haze
+    function drawMountainLayer(yBase, amp, freq, seedOffset, fillStyle, jaggedness = 1) {
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      const step = 12;
+      for (let x = 0; x <= width + step; x += step) {
+        const nx = x / width;
+        const n1 = Math.sin(nx * freq * Math.PI * 2 + seedOffset) * amp;
+        const n2 = Math.cos(nx * freq * 2.3 * Math.PI * 2 - seedOffset * 1.4) * (amp * 0.45 * jaggedness);
+        const n3 = Math.sin(nx * freq * 5.7 * Math.PI * 2 + seedOffset * 2.1) * (amp * 0.18 * jaggedness);
+        const y = yBase + n1 + n2 + n3;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(width, height);
+      ctx.closePath();
+      ctx.fillStyle = fillStyle;
+      ctx.fill();
+    }
+
+    // Helper: Draw realistic shimmering water surface with horizontal ripples
+    function drawWaterSurface(waterY, topColor, botColor, glintColor, time) {
+      const grad = ctx.createLinearGradient(0, waterY, 0, height);
+      grad.addColorStop(0, topColor);
+      grad.addColorStop(1, botColor);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, waterY, width, height - waterY);
+
+      // Specular water ripples
+      ctx.save();
+      ctx.strokeStyle = glintColor;
+      for (let i = 0; i < 28; i++) {
+        const ry = waterY + 8 + Math.pow(i / 28, 1.5) * (height - waterY - 15);
+        const waveOffset = Math.sin(time * 1.8 + i * 0.9) * 28;
+        const cx = (width * 0.5) + Math.sin(i * 3.1 + terrainSeed) * (width * 0.36) + waveOffset;
+        const len = 35 + (i * 4.5) + Math.sin(time * 2 + i) * 15;
+
+        ctx.globalAlpha = 0.12 + (1 - i / 28) * 0.25;
+        ctx.lineWidth = 1.2 + (i / 28) * 1.8;
+        ctx.beginPath();
+        ctx.moveTo(cx - len, ry);
+        ctx.lineTo(cx + len, ry);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Draw each of the 10 distinct realistic geographical biomes
+    function drawBiomeScenery(time) {
+      const biome = BIOMES[currentBiomeIndex];
+
+      // 1. Atmospheric Sky Gradient
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.65);
+      skyGrad.addColorStop(0, biome.skyTop);
+      skyGrad.addColorStop(0.55, biome.skyMid);
+      skyGrad.addColorStop(1, biome.skyBot);
+      ctx.fillStyle = skyGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // 2. Biome-Specific Background & Midground Architecture
+      switch (biome.id) {
+        case 'amazon':
+          drawAmazonRainforest(time);
+          break;
+        case 'savanna':
+          drawAfricanSavanna(time);
+          break;
+        case 'arctic':
+          drawArcticFjords(time);
+          break;
+        case 'coral':
+          drawCoralReef(time);
+          break;
+        case 'sahara':
+          drawSaharaOasis(time);
+          break;
+        case 'alpine':
+          drawAlpinePeaks(time);
+          break;
+        case 'karst':
+          drawAsianKarstBamboo(time);
+          break;
+        case 'mangrove':
+          drawMangroveBayou(time);
+          break;
+        case 'volcanic':
+          drawVolcanicGeysers(time);
+          break;
+        case 'autumn':
+          drawAutumnCanyon(time);
+          break;
+      }
+    }
+
+    /* --- BIOME 1: AMAZON TROPICAL RAINFOREST & WATERFALL --- */
+    function drawAmazonRainforest(time) {
+      // Distant misty canopy hills
+      drawMountainLayer(height * 0.34, 42, 1.5, terrainSeed, 'rgba(14, 62, 54, 0.7)', 0.8);
+      drawMountainLayer(height * 0.42, 35, 2.2, terrainSeed + 4, '#0c3b33', 0.9);
+
+      // Realistic multi-stream cascading waterfall in center-left cliff
+      const wfX = width * 0.28;
+      const wfTop = height * 0.27;
+      const wfBot = height * 0.62;
+
+      // Cliff face
+      ctx.fillStyle = '#182c25';
+      ctx.beginPath();
+      ctx.moveTo(wfX - 110, wfBot);
+      ctx.lineTo(wfX - 75, wfTop);
+      ctx.lineTo(wfX + 85, wfTop + 10);
+      ctx.lineTo(wfX + 120, wfBot);
+      ctx.closePath();
+      ctx.fill();
+
+      // Cascading water streams
+      const wfGrad = ctx.createLinearGradient(0, wfTop, 0, wfBot);
+      wfGrad.addColorStop(0, 'rgba(200, 250, 245, 0.85)');
+      wfGrad.addColorStop(0.5, 'rgba(115, 225, 210, 0.65)');
+      wfGrad.addColorStop(1, 'rgba(45, 165, 150, 0.2)');
+      ctx.fillStyle = wfGrad;
+      ctx.fillRect(wfX - 38, wfTop + 4, 76, wfBot - wfTop);
+
+      // Animated falling foam streaks
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 12; i++) {
+        const sx = wfX - 32 + i * 5.8;
+        const offset = ((time * 140 + i * 37) % (wfBot - wfTop));
+        ctx.beginPath();
+        ctx.moveTo(sx, wfTop + offset);
+        ctx.lineTo(sx, Math.min(wfBot, wfTop + offset + 35));
+        ctx.stroke();
+      }
+
+      // Celebratory Double Rainbow over the Waterfall
+      if (celebrationState.active) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.75, celebrationState.progress * 1.5);
+        const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6'];
+        colors.forEach((col, idx) => {
+          ctx.beginPath();
+          ctx.arc(width * 0.45, height * 0.65, width * 0.34 - idx * 6, Math.PI * 1.08, Math.PI * 1.92);
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 5;
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
+
+      // Emerald Lagoon Water
+      drawWaterSurface(height * 0.58, '#0f5c52', '#04221e', 'rgba(167, 243, 208, 0.45)', time);
+
+      // Rising waterfall mist clouds
+      for (let i = 0; i < 6; i++) {
+        const mx = wfX - 45 + i * 20 + Math.sin(time + i) * 12;
+        const my = wfBot - 10 + Math.cos(time * 1.3 + i) * 6;
+        const rad = 28 + (i % 3) * 12;
+        const mGrad = ctx.createRadialGradient(mx, my, 2, mx, my, rad);
+        mGrad.addColorStop(0, 'rgba(220, 255, 250, 0.38)');
+        mGrad.addColorStop(1, 'rgba(220, 255, 250, 0)');
+        ctx.fillStyle = mGrad;
+        ctx.beginPath();
+        ctx.arc(mx, my, rad, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Foreground hanging liana vines & broad tropical palm fronds on frame edges
+      ctx.strokeStyle = '#07221b';
+      ctx.lineWidth = 4;
+      for (let v = 0; v < 5; v++) {
+        const vx = (v < 3 ? 0.04 + v * 0.04 : 0.88 + (v - 3) * 0.05) * width;
+        const sway = Math.sin(time * 1.4 + v) * 14;
+        ctx.beginPath();
+        ctx.moveTo(vx, 0);
+        ctx.quadraticCurveTo(vx + sway, height * 0.22, vx + sway * 1.4, height * 0.42);
+        ctx.stroke();
+      }
+    }
+
+    /* --- BIOME 2: AFRICAN SAVANNA AT GOLDEN SUNSET --- */
+    function drawAfricanSavanna(time) {
+      // Huge glowing crimson-gold setting sun
+      const sunX = width * 0.65;
+      const sunY = height * 0.36;
+      const sunRad = Math.min(width, height) * (celebrationState.active ? 0.16 : 0.12);
+      const sunGrad = ctx.createRadialGradient(sunX, sunY, sunRad * 0.1, sunX, sunY, sunRad * 2.2);
+      sunGrad.addColorStop(0, '#fffbeb');
+      sunGrad.addColorStop(0.35, '#fde047');
+      sunGrad.addColorStop(0.7, 'rgba(249, 115, 22, 0.45)');
+      sunGrad.addColorStop(1, 'rgba(249, 115, 22, 0)');
+      ctx.fillStyle = sunGrad;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sunRad * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Distant Kilimanjaro-like mesa silhouette
+      drawMountainLayer(height * 0.43, 28, 1.1, terrainSeed, 'rgba(69, 18, 16, 0.78)', 0.5);
+
+      // Flat-topped Umbrella Acacia Trees on the horizon
+      const drawAcacia = (tx, ty, scale) => {
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.scale(scale, scale);
+        ctx.strokeStyle = '#1f0907';
+        ctx.fillStyle = '#1f0907';
+        ctx.lineWidth = 5;
+        // Trunk & forked branches
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(-6, -45, -2, -85);
+        ctx.moveTo(-2, -65);
+        ctx.lineTo(-48, -95);
+        ctx.moveTo(-2, -75);
+        ctx.lineTo(52, -100);
+        ctx.moveTo(-2, -85);
+        ctx.lineTo(-15, -105);
+        ctx.stroke();
+        // Flat canopy layers
+        ctx.beginPath();
+        ctx.ellipse(-45, -98, 38, 7, 0, 0, Math.PI * 2);
+        ctx.ellipse(45, -103, 44, 8, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, -108, 52, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      };
+
+      drawAcacia(width * 0.16, height * 0.48, 1.05);
+      drawAcacia(width * 0.84, height * 0.47, 0.9);
+
+      // Golden savanna plains & reflective watering hole
+      drawMountainLayer(height * 0.48, 14, 1.5, terrainSeed + 2, '#3d1508', 0.3);
+      drawWaterSurface(height * 0.54, '#c2410c', '#290b04', 'rgba(253, 224, 71, 0.5)', time);
+    }
+
+    /* --- BIOME 3: ARCTIC FJORDS & PACK ICE --- */
+    function drawArcticFjords(time) {
+      // Shimmering Aurora Borealis ribbons across the night/twilight sky
+      const auroraIntensity = celebrationState.active ? 0.85 : 0.42;
+      ctx.save();
+      for (let band = 0; band < 3; band++) {
+        ctx.beginPath();
+        const baseY = height * (0.14 + band * 0.07);
+        for (let x = 0; x <= width; x += 20) {
+          const wave = Math.sin(x * 0.005 + time * 1.4 + band) * 28 + Math.cos(x * 0.012 - time) * 14;
+          if (x === 0) ctx.moveTo(x, baseY + wave);
+          else ctx.lineTo(x, baseY + wave);
+        }
+        ctx.lineTo(width, baseY + 80);
+        ctx.lineTo(0, baseY + 80);
+        ctx.closePath();
+        const aGrad = ctx.createLinearGradient(0, baseY - 30, 0, baseY + 80);
+        aGrad.addColorStop(0, 'rgba(52, 211, 153, 0)');
+        aGrad.addColorStop(0.4, band === 1 ? `rgba(167, 139, 250, ${auroraIntensity})` : `rgba(52, 211, 153, ${auroraIntensity})`);
+        aGrad.addColorStop(1, 'rgba(16, 185, 129, 0)');
+        ctx.fillStyle = aGrad;
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Jagged glacial ice peaks
+      drawMountainLayer(height * 0.36, 65, 2.4, terrainSeed, '#1e3a5f', 1.5);
+      drawMountainLayer(height * 0.43, 48, 3.1, terrainSeed + 3, '#38bdf8', 1.4);
+      drawMountainLayer(height * 0.46, 35, 2.8, terrainSeed + 7, '#bae6fd', 1.2);
+
+      // Deep Arctic Sea
+      drawWaterSurface(height * 0.50, '#072a47', '#02101f', 'rgba(125, 211, 252, 0.45)', time);
+    }
+
+    /* --- BIOME 4: DEEP INDO-PACIFIC CORAL REEF --- */
+    function drawCoralReef(time) {
+      // Underwater surface waves at top
+      ctx.fillStyle = 'rgba(186, 230, 253, 0.22)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      for (let x = 0; x <= width; x += 25) {
+        ctx.lineTo(x, 22 + Math.sin(x * 0.015 + time * 2.2) * 8);
+      }
+      ctx.lineTo(width, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      // Piercing underwater sunbeams (God rays)
+      ctx.save();
+      for (let r = 0; r < 7; r++) {
+        const rx = width * (0.12 + r * 0.13) + Math.sin(time * 0.8 + r) * 25;
+        const rayGrad = ctx.createLinearGradient(rx, 0, rx + 70, height * 0.85);
+        rayGrad.addColorStop(0, 'rgba(165, 243, 252, 0.26)');
+        rayGrad.addColorStop(1, 'rgba(6, 182, 212, 0)');
+        ctx.fillStyle = rayGrad;
+        ctx.beginPath();
+        ctx.moveTo(rx - 25, 0);
+        ctx.lineTo(rx + 25, 0);
+        ctx.lineTo(rx + 140, height * 0.9);
+        ctx.lineTo(rx - 60, height * 0.9);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // Distant reef drop-off & sandy ocean floor ridges
+      drawMountainLayer(height * 0.45, 38, 1.8, terrainSeed, '#03384e', 0.9);
+      drawMountainLayer(height * 0.56, 26, 2.1, terrainSeed + 5, '#064e68', 0.7);
+      drawMountainLayer(height * 0.68, 22, 1.4, terrainSeed + 9, '#0a6c85', 0.5);
+    }
+
+    /* --- BIOME 5: SAHARA SAND DUNES & OASIS --- */
+    function drawSaharaOasis(time) {
+      // Sweeping wind-rippled golden erg sand dunes
+      drawMountainLayer(height * 0.38, 52, 1.2, terrainSeed, '#9a4e1c', 0.4);
+      drawMountainLayer(height * 0.46, 45, 1.5, terrainSeed + 2.5, '#c86f28', 0.35);
+      drawMountainLayer(height * 0.54, 38, 1.1, terrainSeed + 5.2, '#e08e36', 0.3);
+
+      // Shimmering turquoise oasis pool in the lower valley
+      drawWaterSurface(height * 0.57, '#0d9488', '#115e59', 'rgba(253, 230, 138, 0.5)', time);
+
+      // Date palms on the dune banks
+      const drawPalm = (px, py, scale) => {
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.scale(scale, scale);
+        ctx.strokeStyle = '#3b1d0a';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(14, -45, 8, -85);
+        ctx.stroke();
+
+        ctx.fillStyle = '#14532d';
+        for (let f = 0; f < 7; f++) {
+          const ang = -Math.PI * 0.15 + (f / 6) * Math.PI * 1.3 + Math.sin(time * 1.8 + f) * 0.04;
+          ctx.beginPath();
+          ctx.moveTo(8, -85);
+          ctx.quadraticCurveTo(8 + Math.cos(ang) * 28, -85 + Math.sin(ang) * 28 - 12, 8 + Math.cos(ang) * 52, -85 + Math.sin(ang) * 42 + 10);
+          ctx.quadraticCurveTo(8 + Math.cos(ang) * 25, -85 + Math.sin(ang) * 18, 8, -85);
+          ctx.fill();
+        }
+        ctx.restore();
+      };
+      drawPalm(width * 0.11, height * 0.56, 1.0);
+      drawPalm(width * 0.16, height * 0.58, 0.78);
+      drawPalm(width * 0.88, height * 0.55, 0.95);
+    }
+
+    /* --- BIOME 6: ALPINE GRANITE PEAKS & EMERALD LAKE --- */
+    function drawAlpinePeaks(time) {
+      // Towering snow-capped granite peaks
+      drawMountainLayer(height * 0.32, 78, 2.1, terrainSeed, '#1e293b', 1.6);
+      drawMountainLayer(height * 0.36, 64, 2.6, terrainSeed + 1.8, '#475569', 1.4);
+      drawMountainLayer(height * 0.39, 45, 3.2, terrainSeed + 3.4, '#cbd5e1', 1.3);
+
+      // Coniferous spruce forest line
+      const treeLineY = height * 0.51;
+      ctx.fillStyle = '#062c21';
+      ctx.beginPath();
+      ctx.moveTo(0, height);
+      for (let x = 0; x <= width; x += 14) {
+        const peak = (x % 28 === 0) ? -26 - (Math.sin(x) * 10) : 0;
+        ctx.lineTo(x, treeLineY + peak);
+      }
+      ctx.lineTo(width, height);
+      ctx.closePath();
+      ctx.fill();
+
+      // Mirror-like glacial emerald lake
+      drawWaterSurface(height * 0.52, '#0e7490', '#083344', 'rgba(186, 230, 253, 0.5)', time);
+    }
+
+    /* --- BIOME 7: MISTY ASIAN KARST MOUNTAINS & BAMBOO GROVE --- */
+    function drawAsianKarstBamboo(time) {
+      // Tall vertical limestone karst pillars in mist
+      for (let p = 0; p < 7; p++) {
+        const kx = width * (0.08 + p * 0.14);
+        const kw = 65 + (p % 3) * 28;
+        const kh = height * (0.28 + (p % 2) * 0.08);
+        const kGrad = ctx.createLinearGradient(kx, height * 0.18, kx, height * 0.58);
+        kGrad.addColorStop(0, `rgba(28, 53, 45, ${0.45 + (p % 3) * 0.18})`);
+        kGrad.addColorStop(1, 'rgba(153, 184, 152, 0.15)');
+        ctx.fillStyle = kGrad;
+        ctx.beginPath();
+        ctx.roundRect(kx - kw / 2, height * 0.55 - kh, kw, kh + 40, [35, 35, 0, 0]);
+        ctx.fill();
+      }
+
+      // Tranquil misty river
+      drawWaterSurface(height * 0.52, '#284b42', '#10241e', 'rgba(217, 249, 157, 0.35)', time);
+
+      // Segmented swaying bamboo stalks on left & right edges
+      const drawBamboo = (bx, swayFactor) => {
+        const sway = Math.sin(time * 1.5 + swayFactor) * 12;
+        ctx.strokeStyle = '#1a3826';
+        ctx.lineWidth = 7;
+        let curX = bx;
+        let curY = height;
+        for (let seg = 0; seg < 6; seg++) {
+          const nextX = curX + (sway * (seg + 1)) * 0.18;
+          const nextY = curY - height * 0.15;
+          ctx.beginPath();
+          ctx.moveTo(curX, curY);
+          ctx.lineTo(nextX, nextY);
+          ctx.stroke();
+          // Bamboo node ring
+          ctx.strokeStyle = '#3f6212';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(nextX - 5, nextY);
+          ctx.lineTo(nextX + 5, nextY);
+          ctx.stroke();
+          ctx.strokeStyle = '#1a3826';
+          ctx.lineWidth = 7 - seg * 0.6;
+          curX = nextX;
+          curY = nextY;
+        }
+      };
+      drawBamboo(width * 0.04, 0);
+      drawBamboo(width * 0.07, 1.2);
+      drawBamboo(width * 0.94, 2.4);
+      drawBamboo(width * 0.97, 3.1);
+    }
+
+    /* --- BIOME 8: MANGROVE DELTA & CYPRESS BAYOU --- */
+    function drawMangroveBayou(time) {
+      drawMountainLayer(height * 0.42, 22, 1.7, terrainSeed, '#143325', 0.6);
+      drawWaterSurface(height * 0.49, '#1b4332', '#081c15', 'rgba(134, 239, 172, 0.35)', time);
+
+      // Tangled arching mangrove prop roots & cypress trunks
+      const drawMangroveTree = (mx, my) => {
+        ctx.strokeStyle = '#1c1917';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(mx, my - 160);
+        ctx.lineTo(mx, my);
+        ctx.stroke();
+        // Arching prop roots into the water
+        ctx.lineWidth = 3.5;
+        for (let r = -3; r <= 3; r++) {
+          if (r === 0) continue;
+          ctx.beginPath();
+          ctx.moveTo(mx, my - 35 - Math.abs(r) * 8);
+          ctx.quadraticCurveTo(mx + r * 22, my - 20, mx + r * 32, my + 25);
+          ctx.stroke();
+        }
+      };
+      drawMangroveTree(width * 0.09, height * 0.52);
+      drawMangroveTree(width * 0.91, height * 0.52);
+    }
+
+    /* --- BIOME 9: ICELANDIC VOLCANIC BASALT HIGHLANDS & GEYSERS --- */
+    function drawVolcanicGeysers(time) {
+      // Distant volcanic cinder cones
+      drawMountainLayer(height * 0.38, 48, 1.6, terrainSeed, '#1e1b24', 1.1);
+
+      // Hexagonal basalt column cliffs
+      const colTop = height * 0.36;
+      const colBot = height * 0.53;
+      for (let c = 0; c < 26; c++) {
+        const cx = (c / 26) * width;
+        const cw = width / 26 - 1;
+        const ch = Math.sin(c * 0.9 + terrainSeed) * 28;
+        ctx.fillStyle = c % 2 === 0 ? '#1e293b' : '#0f172a';
+        ctx.fillRect(cx, colTop + ch, cw, colBot - (colTop + ch));
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(cx, colTop + ch, cw, colBot - (colTop + ch));
+      }
+
+      // Steaming mineral-rich blue geothermal lagoon
+      drawWaterSurface(height * 0.52, '#06b6d4', '#164e63', 'rgba(103, 232, 249, 0.55)', time);
+
+      // Celebratory Geyser Eruption
+      if (celebrationState.active) {
+        const gx = width * 0.5;
+        const gy = height * 0.52;
+        const gGrad = ctx.createLinearGradient(gx, gy - height * 0.42, gx, gy);
+        gGrad.addColorStop(0, 'rgba(224, 242, 254, 0)');
+        gGrad.addColorStop(0.4, 'rgba(186, 230, 253, 0.78)');
+        gGrad.addColorStop(1, 'rgba(56, 189, 248, 0.95)');
+        ctx.fillStyle = gGrad;
+        ctx.beginPath();
+        ctx.moveTo(gx - 25, gy);
+        ctx.lineTo(gx - 70, gy - height * 0.4);
+        ctx.lineTo(gx + 70, gy - height * 0.4);
+        ctx.lineTo(gx + 25, gy);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    /* --- BIOME 10: TEMPERATE AUTUMN RIVER CANYON --- */
+    function drawAutumnCanyon(time) {
+      // Steep canyon walls covered in amber, gold, and crimson maples
+      drawMountainLayer(height * 0.35, 58, 1.9, terrainSeed, '#431407', 1.2);
+      drawMountainLayer(height * 0.43, 44, 2.4, terrainSeed + 3, '#9a3412', 1.0);
+      drawMountainLayer(height * 0.49, 32, 2.8, terrainSeed + 6, '#d97706', 0.8);
+
+      // Rushing whitewater canyon river
+      drawWaterSurface(height * 0.53, '#1d4ed8', '#0f172a', 'rgba(255, 255, 255, 0.65)', time);
+    }
+
+    /********************************************************************
+     * 8. INTERACTIVE HABITAT CLUSTERS & NATURAL BIOME ELEMENTS
+     ********************************************************************/
+    function drawHabitatClusters(time) {
+      const activeCount = habitatClusters.filter(c => c.active).length;
+      const isTargetMatch = activeCount === currentTask.a;
+
+      habitatClusters.forEach((cluster) => {
+        const cx = cluster.nx * width;
+        const cy = cluster.ny * height;
+        const baseRadius = Math.min(width, height) * 0.072;
+
+        // Smooth animation interpolation
+        const targetAnim = cluster.active ? 1 : (cluster.hover ? 0.35 : 0);
+        cluster.animProgress += (targetAnim - cluster.animProgress) * 0.14;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+
+        // 1. Habitat Base Platform (Mossy Bough, Ice Floe, Coral Head, Oasis Island, Basalt Ledge, etc.)
+        drawHabitatBase(currentBiomeIndex, baseRadius, cluster.active, isTargetMatch, time + cluster.pulsePhase);
+
+        // 2. Active Aura Ring & Tactile Selection Glow
+        if (cluster.active || cluster.hover) {
+          ctx.save();
+          const auraColor = isTargetMatch
+            ? 'rgba(110, 247, 167, 0.88)'
+            : (cluster.active ? 'rgba(255, 215, 95, 0.85)' : 'rgba(255, 240, 180, 0.38)');
+          ctx.strokeStyle = auraColor;
+          ctx.lineWidth = cluster.active ? 3.5 : 2;
+          ctx.setLineDash(cluster.active ? [] : [6, 6]);
+          ctx.beginPath();
+          ctx.ellipse(0, 4, baseRadius * 1.12, baseRadius * 0.64, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // 3. Draw the k Individual Biome Elements inside this Habitat Cluster
+        cluster.items.forEach((item, idx) => {
+          const ix = item.relX * baseRadius * 1.35;
+          const iy = item.relY * baseRadius * 1.15 - (cluster.animProgress * 7);
+          const bounce = cluster.active ? Math.sin(time * 5 + item.phase) * 4 : Math.sin(time * 1.8 + item.phase) * 1.2;
+
+          ctx.save();
+          ctx.translate(ix, iy + bounce);
+          const s = item.scale * (1 + cluster.animProgress * 0.18);
+          ctx.scale(s, s);
+
+          drawBiomeItem(currentBiomeIndex, cluster.active, time + item.phase);
+
+          // Luminous counting pip on activated items so 3rd-4th graders can see each element clearly
+          if (cluster.active) {
+            ctx.fillStyle = isTargetMatch ? '#bbf7d0' : '#fef08a';
+            ctx.shadowColor = isTargetMatch ? '#22c55e' : '#eab308';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(0, -16, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+          }
+
+          ctx.restore();
+        });
+
+        // 4. Non-verbal Quantity Badge on Activated Habitat Cluster (shows k items in this group)
+        if (cluster.active) {
+          ctx.save();
+          ctx.translate(0, baseRadius * 0.56);
+          ctx.fillStyle = isTargetMatch ? '#064e3b' : '#2b1c0c';
+          ctx.strokeStyle = isTargetMatch ? '#6ee7b7' : '#fbbf24';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.roundRect(-18, -12, 36, 24, 12);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '800 14px Montserrat, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(currentTask.k, 0, 1);
+          ctx.restore();
+        }
+
+        ctx.restore();
+      });
+    }
+
+    // Draws the realistic natural base for each of the 10 biomes
+    function drawHabitatBase(biomeIdx, r, isActive, isTargetMatch, t) {
+      ctx.save();
+      // Subtle water/ground shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+      ctx.beginPath();
+      ctx.ellipse(0, 10, r * 1.08, r * 0.56, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      switch (biomeIdx) {
+        case 0: // Amazon: Mossy Tropical Log & Fern Pad
+          ctx.fillStyle = isActive ? '#15803d' : '#14532d';
+          ctx.strokeStyle = '#3f2e1e';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.ellipse(0, 4, r, r * 0.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 1: // Savanna: Golden Grass Mound & Sun-baked Earth
+          ctx.fillStyle = isActive ? '#d97706' : '#92400e';
+          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(0, 4, r, r * 0.48, 0, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 2: // Arctic: Floating Pack Ice Floe
+          ctx.fillStyle = isActive ? '#e0f2fe' : '#bae6fd';
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-r, 0);
+          ctx.lineTo(-r * 0.6, -r * 0.45);
+          ctx.lineTo(r * 0.65, -r * 0.42);
+          ctx.lineTo(r, 4);
+          ctx.lineTo(r * 0.55, r * 0.48);
+          ctx.lineTo(-r * 0.7, r * 0.44);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 3: // Coral Reef: Brain & Table Coral Head
+          ctx.fillStyle = isActive ? '#0d9488' : '#115e59';
+          ctx.strokeStyle = '#5eead4';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(0, 4, r * 1.02, r * 0.54, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 4: // Sahara: Sandstone Oasis Outcrop
+          ctx.fillStyle = isActive ? '#eab308' : '#b45309';
+          ctx.strokeStyle = '#fef08a';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(0, 4, r, r * 0.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 5: // Alpine: Granite Shelf
+          ctx.fillStyle = isActive ? '#64748b' : '#334155';
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.ellipse(0, 4, r, r * 0.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 6: // Karst: Mossy Jade Stepping Stone
+          ctx.fillStyle = isActive ? '#4d7c0f' : '#365314';
+          ctx.strokeStyle = '#bef264';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(0, 4, r, r * 0.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 7: // Mangrove: Giant Victoria Lotus Lily Pad
+          ctx.fillStyle = isActive ? '#22c55e' : '#15803d';
+          ctx.strokeStyle = '#86efac';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 4, r * 0.78, 0.15, Math.PI * 1.95);
+          ctx.lineTo(0, 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 8: // Volcanic: Hexagonal Basalt Atoll
+          ctx.fillStyle = isActive ? '#334155' : '#1e293b';
+          ctx.strokeStyle = isActive ? '#fb923c' : '#475569';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          for (let s = 0; s < 6; s++) {
+            const a = (s / 6) * Math.PI * 2;
+            const px = Math.cos(a) * r;
+            const py = Math.sin(a) * r * 0.54 + 4;
+            if (s === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 9: // Autumn Canyon: River Boulder
+          ctx.fillStyle = isActive ? '#78350f' : '#451a03';
+          ctx.strokeStyle = '#fb923c';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.ellipse(0, 4, r, r * 0.52, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          break;
+      }
+      ctx.restore();
+    }
+
+    // Draws each individual natural element (N items total, k per cluster)
+    function drawBiomeItem(biomeIdx, isActive, t) {
+      switch (biomeIdx) {
+        case 0: // Amazon: Exotic Blooming Orchid / Scarlet Macaw Feather Flower
+          ctx.fillStyle = isActive ? '#f43f5e' : '#be123c';
+          for (let p = 0; p < 5; p++) {
+            ctx.save();
+            ctx.rotate((p / 5) * Math.PI * 2 + (isActive ? Math.sin(t) * 0.1 : 0));
+            ctx.beginPath();
+            ctx.ellipse(0, -7, 4.5, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+          ctx.fillStyle = '#fde047';
+          ctx.beginPath();
+          ctx.arc(0, 0, 4, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 1: // Savanna: Golden Weaver Bird / Sun-Gem
+          ctx.fillStyle = isActive ? '#facc15' : '#ca8a04';
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 9, 6, -0.2, 0, Math.PI * 2);
+          ctx.fill();
+          // Wing
+          ctx.fillStyle = '#713f12';
+          ctx.beginPath();
+          ctx.ellipse(-1, -2 + (isActive ? Math.sin(t * 6) * 3 : 0), 6, 3.5, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+          // Head & beak
+          ctx.fillStyle = '#facc15';
+          ctx.beginPath();
+          ctx.arc(7, -4, 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 2: // Arctic: Harp Seal Pup on Ice
+          ctx.fillStyle = isActive ? '#f8fafc' : '#cbd5e1';
+          ctx.beginPath();
+          ctx.ellipse(0, 2, 10, 6.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.arc(7, -3, 5.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.arc(9, -4, 1.5, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 3: // Coral Reef: Giant Clam with Glowing Pearl
+          ctx.fillStyle = '#7c2d12';
+          ctx.beginPath();
+          ctx.ellipse(0, 3, 11, 6, 0, 0, Math.PI);
+          ctx.fill();
+          // Upper shell opens wider when active
+          ctx.fillStyle = '#9a3412';
+          ctx.beginPath();
+          ctx.ellipse(0, isActive ? -5 : -1, 11, 5, 0, Math.PI, Math.PI * 2);
+          ctx.fill();
+          // Pearl inside
+          ctx.fillStyle = isActive ? '#ffffff' : '#bae6fd';
+          ctx.beginPath();
+          ctx.arc(0, 0, isActive ? 5.5 : 4, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 4: // Sahara: Royal Turquoise & Gold Scarab Beetle
+          ctx.fillStyle = isActive ? '#2dd4bf' : '#0f766e';
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 7.5, 9.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 5: // Alpine: Luminous Quartz Crystal Cluster
+          ctx.fillStyle = isActive ? '#a5f3fc' : '#38bdf8';
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(0, -13);
+          ctx.lineTo(6, -3);
+          ctx.lineTo(4, 7);
+          ctx.lineTo(-4, 7);
+          ctx.lineTo(-6, -3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          break;
+
+        case 6: // Karst: Illuminated Stone Lantern / Firefly Orb
+          ctx.fillStyle = '#57534e';
+          ctx.fillRect(-6, -8, 12, 14);
+          ctx.fillStyle = isActive ? '#fef08a' : '#a8a29e';
+          ctx.fillRect(-4, -5, 8, 7);
+          ctx.beginPath();
+          ctx.moveTo(-9, -8);
+          ctx.lineTo(0, -15);
+          ctx.lineTo(9, -8);
+          ctx.closePath();
+          ctx.fillStyle = '#44403c';
+          ctx.fill();
+          break;
+
+        case 7: // Mangrove: Sacred Pink Water Lotus
+          ctx.fillStyle = isActive ? '#f472b6' : '#db2777';
+          for (let a = -2; a <= 2; a++) {
+            ctx.save();
+            ctx.rotate(a * 0.32);
+            ctx.beginPath();
+            ctx.ellipse(0, -5, 4, 9, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+          ctx.fillStyle = '#fde047';
+          ctx.beginPath();
+          ctx.arc(0, -1, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 8: // Volcanic: Glowing Magma Geode
+          ctx.fillStyle = '#1c1917';
+          ctx.beginPath();
+          ctx.arc(0, 0, 9, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = isActive ? '#fb923c' : '#ea580c';
+          ctx.beginPath();
+          ctx.arc(0, 0, isActive ? 6.5 : 4.5, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+
+        case 9: // Autumn: Golden Oak Acorn & Crimson Leaf
+          ctx.fillStyle = isActive ? '#f59e0b' : '#b45309';
+          ctx.beginPath();
+          ctx.ellipse(0, 2, 6.5, 8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#451a03';
+          ctx.beginPath();
+          ctx.ellipse(0, -4, 7.5, 4, 0, Math.PI, Math.PI * 2);
+          ctx.fill();
+          break;
+      }
+    }
+
+    /********************************************************************
+     * 9. CANVAS POINTER INTERACTION (CLICK & HOVER ON HABITAT CLUSTERS)
+     ********************************************************************/
+    function getClusterAtPoint(clientX, clientY) {
+      const hitRadius = Math.min(width, height) * 0.088;
+      for (let i = habitatClusters.length - 1; i >= 0; i--) {
+        const c = habitatClusters[i];
+        const cx = c.nx * width;
+        const cy = c.ny * height;
+        const dx = clientX - cx;
+        const dy = (clientY - cy) * 1.35; // Elliptical hit area matching perspective
+        if (dx * dx + dy * dy <= hitRadius * hitRadius) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    canvas.addEventListener('pointermove', (e) => {
+      const idx = getClusterAtPoint(e.clientX, e.clientY);
+      habitatClusters.forEach((c, i) => {
+        c.hover = (i === idx);
+      });
+      canvas.style.cursor = idx !== -1 ? 'pointer' : 'default';
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      const idx = getClusterAtPoint(e.clientX, e.clientY);
+      if (idx !== -1) {
+        toggleCluster(idx);
+      }
+    });
+
+    /********************************************************************
+     * 10. TOP BAR CONTROLS (COMPASS, LANGUAGE УКР/РУС, SKIP ДАЛІ/ДАЛЕЕ)
+     ********************************************************************/
+    document.getElementById('langBtn').addEventListener('click', () => {
+      audio.playClick();
+      currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+      renderUI();
+    });
+
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      audio.playClick();
+      setupNewLevel();
+    });
+
+    // Clicking the Compass Rose sequentially illuminates one more cluster as a tactile visual aid
+    document.getElementById('compassBtn').addEventListener('click', () => {
+      if (isTransitioning) return;
+      const inactiveIdx = habitatClusters.findIndex(c => !c.active);
+      if (inactiveIdx !== -1) {
+        toggleCluster(inactiveIdx);
+      } else {
+        habitatClusters.forEach(c => c.active = false);
+        audio.playClick();
+        updateClusterGemsUI();
+      }
+    });
+
+    /********************************************************************
+     * 11. MAIN ANIMATION LOOP
+     ********************************************************************/
+    function renderLoop(timestamp) {
+      const time = timestamp * 0.001;
+
+      ctx.save();
+
+      // Apply seismic camera shake if triggered by wrong answer
+      if (cameraShake.intensity > 0.2) {
+        const sx = (Math.random() - 0.5) * cameraShake.intensity;
+        const sy = (Math.random() - 0.5) * cameraShake.intensity;
+        ctx.translate(sx, sy);
+        cameraShake.intensity *= 0.86;
+      } else {
+        cameraShake.intensity = 0;
+      }
+
+      // 1. Draw Realistic Biome Scenery
+      drawBiomeScenery(time);
+
+      // 2. Draw Interactive Habitat Clusters & Elements
+      drawHabitatClusters(time);
+
+      // 3. Draw Ambient Atmospheric Particles (Snow, Bubbles, Fireflies, Mist, Embers, Leaves)
+      const pType = BIOMES[currentBiomeIndex].particleType;
+      ambientParticles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy + (pType === 'snow' || pType === 'leaves' ? 0.0008 : (pType === 'bubbles' || pType === 'embers' ? -0.0009 : 0));
+        if (p.x < 0) p.x = 1;
+        if (p.x > 1) p.x = 0;
+        if (p.y < 0) p.y = 1;
+        if (p.y > 1) p.y = 0;
+
+        const px = p.x * width;
+        const py = p.y * height;
+
+        ctx.save();
+        ctx.globalAlpha = p.alpha * (0.6 + 0.4 * Math.sin(time * 2.5 + p.phase));
+        if (pType === 'fireflies' || pType === 'glint') {
+          ctx.fillStyle = '#fef08a';
+        } else if (pType === 'embers' || pType === 'leaves') {
+          ctx.fillStyle = '#fb923c';
+        } else if (pType === 'bubbles') {
+          ctx.strokeStyle = '#bae6fd';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(px, py, p.size, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+          return;
+        } else {
+          ctx.fillStyle = '#f8fafc';
+        }
+
+        ctx.beginPath();
+        ctx.arc(px, py, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      // 4. Draw Expanding Shockwave Ripples
+      for (let i = shockwaves.length - 1; i >= 0; i--) {
+        const sw = shockwaves[i];
+        sw.radius += (sw.maxRadius - sw.radius) * 0.14;
+        sw.alpha *= 0.91;
+        if (sw.alpha < 0.03) {
+          shockwaves.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.strokeStyle = sw.color;
+        ctx.globalAlpha = sw.alpha;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.ellipse(sw.x, sw.y, sw.radius, sw.radius * 0.58, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 5. Draw Celebration Particles
+      if (celebrationState.active) {
+        celebrationState.progress = Math.min(1, celebrationState.progress + 0.02);
+      }
+      for (let i = celebrationParticles.length - 1; i >= 0; i--) {
+        const cp = celebrationParticles[i];
+        cp.x += cp.vx;
+        cp.y += cp.vy;
+        cp.vy += 0.12;
+        cp.alpha *= 0.975;
+        cp.rotation += cp.vRot;
+
+        if (cp.alpha < 0.04) {
+          celebrationParticles.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.translate(cp.x, cp.y);
+        ctx.rotate(cp.rotation);
+        ctx.globalAlpha = cp.alpha;
+        ctx.fillStyle = `hsl(${cp.hue}, 92%, 68%)`;
+        ctx.beginPath();
+        ctx.moveTo(0, -cp.size);
+        ctx.lineTo(cp.size * 0.7, 0);
+        ctx.lineTo(0, cp.size);
+        ctx.lineTo(-cp.size * 0.7, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      ctx.restore();
+      requestAnimationFrame(renderLoop);
+    }
+
+    window.onload = function () {
+      setupNewLevel();
+      requestAnimationFrame(renderLoop);
+    };
+  </script>
+</body>
+</html>
