@@ -1,0 +1,2402 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>1-10</title>
+  <style>
+    /* ==========================================================================
+       RESET & FULL-VIEWPORT WIDESCREEN SETUP
+       Two-layer SVG architecture:
+       1) #bg-svg (preserveAspectRatio="xMidYMid slice") fills 100vw x 100vh
+       2) #stage-svg (preserveAspectRatio="xMidYMid meet") keeps all interactive
+          yarn balls, cat, and buttons 100% inside the screen on any aspect ratio.
+       CRITICAL: Never apply CSS transform to SVG elements positioned via
+       transform="translate(X,Y)", so buttons and yarn balls NEVER jump/run away!
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #2a1810;
+      font-family: 'Georgia', 'Trebuchet MS', serif;
+      cursor: default;
+      touch-action: manipulation;
+    }
+
+    #game-viewport {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: radial-gradient(circle at 35% 30%, #4a2e1b 0%, #24130b 100%);
+    }
+
+    /* Layer 1: Full-bleed Cozy Room Background */
+    #bg-svg {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* Layer 2: Contained Interactive Stage (Cat, Yarn Balls, Wooden UI Controls) */
+    #stage-svg {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 10;
+      pointer-events: auto;
+    }
+
+    /* Layer 3: Particle & Sunbeam Dust Canvas overlay */
+    #fx-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    /* ==========================================================================
+       AMBIENT ROOM ANIMATIONS
+       ========================================================================== */
+    @keyframes pendulumSwing {
+      0%   { transform: rotate(-14deg); }
+      50%  { transform: rotate(14deg); }
+      100% { transform: rotate(-14deg); }
+    }
+
+    @keyframes curtainSwayLeft {
+      0%, 100% { transform: skewX(0deg) scaleX(1); }
+      50%      { transform: skewX(-1.8deg) scaleX(1.02); }
+    }
+
+    @keyframes curtainSwayRight {
+      0%, 100% { transform: skewX(0deg) scaleX(1); }
+      50%      { transform: skewX(-1.4deg) scaleX(0.98); }
+    }
+
+    @keyframes leafSway1 {
+      0%, 100% { transform: rotate(0deg); }
+      50%      { transform: rotate(3.2deg); }
+    }
+
+    @keyframes leafSway2 {
+      0%, 100% { transform: rotate(0deg); }
+      50%      { transform: rotate(-2.8deg); }
+    }
+
+    @keyframes cloudDrift {
+      0%   { transform: translateX(-35px); }
+      50%  { transform: translateX(35px); }
+      100% { transform: translateX(-35px); }
+    }
+
+    @keyframes sunbeamPulse {
+      0%, 100% { opacity: 0.48; }
+      50%      { opacity: 0.72; }
+    }
+
+    #clock-pendulum {
+      transform-origin: 1235px 225px;
+      animation: pendulumSwing 2.2s ease-in-out infinite;
+    }
+
+    #curtain-left {
+      transform-origin: 160px 50px;
+      animation: curtainSwayLeft 7s ease-in-out infinite;
+    }
+
+    #curtain-right {
+      transform-origin: 560px 50px;
+      animation: curtainSwayRight 8.5s ease-in-out infinite;
+    }
+
+    #plant-foliage-1 {
+      transform-origin: 375px 365px;
+      animation: leafSway1 5.5s ease-in-out infinite;
+    }
+
+    #plant-foliage-2 {
+      transform-origin: 375px 365px;
+      animation: leafSway2 6.8s ease-in-out infinite;
+    }
+
+    #window-clouds {
+      animation: cloudDrift 38s ease-in-out infinite;
+    }
+
+    .sunbeam-ray {
+      animation: sunbeamPulse 6s ease-in-out infinite;
+      mix-blend-mode: screen;
+    }
+
+    /* ==========================================================================
+       SAFE INTERACTIVE STATES (NO CSS TRANSFORM ON POSITIONED <g> ELEMENTS!)
+       All hover/active feedback uses filter on outer group or inner local visual
+       ========================================================================== */
+    .interactive-node {
+      cursor: pointer;
+      pointer-events: all;
+      transition: filter 0.2s ease;
+    }
+
+    .interactive-node:hover {
+      filter: brightness(1.12) drop-shadow(0 6px 14px rgba(255, 210, 110, 0.55));
+    }
+
+    .interactive-node:active {
+      filter: brightness(0.95) drop-shadow(0 2px 6px rgba(255, 190, 80, 0.4));
+    }
+
+    .hit-target {
+      fill: rgba(255, 255, 255, 0.001);
+      pointer-events: all;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-viewport">
+    <!-- ========================================================================
+         LAYER 1: BACKGROUND LIVING ROOM SVG (1600x900, slice to fill any screen)
+         ======================================================================== -->
+    <svg id="bg-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="bg-shadow-deep" x="-20%" y="-20%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#1a0d06" flood-opacity="0.55" />
+        </filter>
+        <filter id="bg-shadow-soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#231107" flood-opacity="0.45" />
+        </filter>
+        <filter id="bg-sun-blur" x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur stdDeviation="16" />
+        </filter>
+
+        <!-- Wallpaper & Room Gradients -->
+        <linearGradient id="wall-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#e8cbb1" />
+          <stop offset="45%" stop-color="#d5b08e" />
+          <stop offset="100%" stop-color="#9e7352" />
+        </linearGradient>
+
+        <pattern id="wallpaper-pattern" width="100" height="100" patternUnits="userSpaceOnUse">
+          <rect width="100" height="100" fill="none" />
+          <path d="M50 12 C62 28, 62 46, 50 62 C38 46, 38 28, 50 12 Z" fill="#c39873" fill-opacity="0.18" />
+          <path d="M50 20 C70 33, 78 20, 86 33 C74 46, 62 46, 50 37 Z" fill="#c39873" fill-opacity="0.14" />
+          <path d="M50 20 C30 33, 22 20, 14 33 C26 46, 38 46, 50 37 Z" fill="#c39873" fill-opacity="0.14" />
+          <circle cx="50" cy="80" r="4" fill="#b58863" fill-opacity="0.18" />
+          <path d="M0 0 Q50 25 100 0" stroke="#b88a64" stroke-width="1" fill="none" stroke-opacity="0.14" />
+        </pattern>
+
+        <linearGradient id="wainscot-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#8c5836" />
+          <stop offset="15%" stop-color="#724427" />
+          <stop offset="85%" stop-color="#59331b" />
+          <stop offset="100%" stop-color="#3d2110" />
+        </linearGradient>
+
+        <linearGradient id="wood-trim-gold" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ba8256" />
+          <stop offset="50%" stop-color="#875330" />
+          <stop offset="100%" stop-color="#4f2c16" />
+        </linearGradient>
+
+        <!-- Floor Perspective Gradient -->
+        <linearGradient id="floor-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#6b3d20" />
+          <stop offset="35%" stop-color="#844e2c" />
+          <stop offset="75%" stop-color="#693b1e" />
+          <stop offset="100%" stop-color="#472611" />
+        </linearGradient>
+
+        <pattern id="parquet-pattern" width="200" height="46" patternUnits="userSpaceOnUse">
+          <rect width="200" height="46" fill="none" stroke="#3d200e" stroke-width="1.6" stroke-opacity="0.55" />
+          <line x1="100" y1="0" x2="100" y2="46" stroke="#3d200e" stroke-width="1.4" stroke-opacity="0.45" />
+          <path d="M10 15 Q50 10 90 17 M110 30 Q150 36 190 27" stroke="#9e643c" stroke-width="1.1" fill="none" stroke-opacity="0.3" />
+        </pattern>
+
+        <linearGradient id="sky-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7ec8f5" />
+          <stop offset="55%" stop-color="#b8e5fc" />
+          <stop offset="100%" stop-color="#fef4c9" />
+        </linearGradient>
+
+        <linearGradient id="curtain-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#fff8eb" stop-opacity="0.88" />
+          <stop offset="35%" stop-color="#faeacc" stop-opacity="0.65" />
+          <stop offset="70%" stop-color="#fffdf7" stop-opacity="0.82" />
+          <stop offset="100%" stop-color="#ebd5b3" stop-opacity="0.45" />
+        </linearGradient>
+
+        <linearGradient id="sunbeam-grad" x1="0%" y1="0%" x2="60%" y2="100%">
+          <stop offset="0%" stop-color="#fff6cc" stop-opacity="0.42" />
+          <stop offset="50%" stop-color="#ffe484" stop-opacity="0.2" />
+          <stop offset="100%" stop-color="#ffcc4d" stop-opacity="0" />
+        </linearGradient>
+
+        <linearGradient id="armchair-fabric" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6b8e78" />
+          <stop offset="55%" stop-color="#4f6e5b" />
+          <stop offset="100%" stop-color="#334a3c" />
+        </linearGradient>
+      </defs>
+
+      <!-- Upper Wallpaper -->
+      <rect x="0" y="0" width="1600" height="525" fill="url(#wall-grad)" />
+      <rect x="0" y="0" width="1600" height="525" fill="url(#wallpaper-pattern)" />
+
+      <!-- Ambient Warm Sunlight Wash on Wall -->
+      <ellipse cx="520" cy="280" rx="480" ry="260" fill="#ffefc2" fill-opacity="0.22" filter="url(#bg-sun-blur)" />
+
+      <!-- Wooden Chair Rail & Lower Wainscoting Paneling -->
+      <rect x="0" y="415" width="1600" height="115" fill="url(#wainscot-grad)" />
+      <rect x="0" y="408" width="1600" height="12" fill="url(#wood-trim-gold)" filter="url(#bg-shadow-soft)" />
+
+      <!-- Carved Wainscot Recessed Panels -->
+      <g stroke="#3d2110" stroke-width="2.5" fill="#633a1f" fill-opacity="0.45">
+        <rect x="35" y="432" width="165" height="72" rx="4" />
+        <rect x="235" y="432" width="165" height="72" rx="4" />
+        <rect x="435" y="432" width="165" height="72" rx="4" />
+        <rect x="635" y="432" width="165" height="72" rx="4" />
+        <rect x="835" y="432" width="165" height="72" rx="4" />
+        <rect x="1035" y="432" width="165" height="72" rx="4" />
+        <rect x="1235" y="432" width="165" height="72" rx="4" />
+        <rect x="1435" y="432" width="130" height="72" rx="4" />
+      </g>
+
+      <!-- Baseboard Molding -->
+      <rect x="0" y="510" width="1600" height="22" fill="#472612" />
+      <line x1="0" y1="510" x2="1600" y2="510" stroke="#9e6740" stroke-width="2" />
+
+      <!-- SUNNY WINDOW WITH GARDEN, SONGBIRD, CURTAINS & HOUSEPLANT -->
+      <g id="window-unit" filter="url(#bg-shadow-deep)">
+        <rect x="150" y="45" width="430" height="365" rx="10" fill="#6e4124" stroke="#422411" stroke-width="4" />
+        <g clip-path="url(#window-clip)">
+          <clipPath id="window-clip">
+            <rect x="168" y="62" width="394" height="330" rx="5" />
+          </clipPath>
+          <rect x="168" y="62" width="394" height="330" fill="url(#sky-grad)" />
+          <circle cx="260" cy="130" r="48" fill="#fffbe0" fill-opacity="0.85" filter="url(#bg-sun-blur)" />
+          <circle cx="260" cy="130" r="28" fill="#fffdf2" />
+
+          <g id="window-clouds" fill="#ffffff" fill-opacity="0.82">
+            <path d="M210 158 Q225 140 245 148 Q265 132 290 146 Q310 142 320 160 Z" />
+            <path d="M390 120 Q408 104 432 110 Q452 98 478 112 Q498 110 506 126 Z" />
+          </g>
+
+          <path d="M160 340 Q260 275 385 320 Q485 280 580 325 L580 400 L160 400 Z" fill="#8cc96b" />
+          <path d="M160 362 Q300 310 430 350 Q505 320 580 355 L580 400 L160 400 Z" fill="#5da64e" />
+          <circle cx="205" cy="330" r="40" fill="#6ab856" />
+          <circle cx="238" cy="342" r="34" fill="#82cf67" />
+          <circle cx="518" cy="316" r="45" fill="#539944" />
+          <circle cx="480" cy="336" r="35" fill="#74c25e" />
+
+          <!-- Cute little songbird perched on outer branch -->
+          <g transform="translate(295, 328)">
+            <ellipse cx="0" cy="0" rx="11" ry="8" fill="#e07a47" />
+            <circle cx="8" cy="-5" r="6.5" fill="#d96534" />
+            <polygon points="14,-6 20,-4 14,-2" fill="#f5b841" />
+            <circle cx="10" cy="-6.5" r="1.5" fill="#1f0e06" />
+            <path d="M-8 0 L-17 -5 L-15 3 Z" fill="#8c3f1f" />
+          </g>
+        </g>
+
+        <!-- Window Mullions -->
+        <rect x="360" y="62" width="10" height="330" fill="#784727" stroke="#4a2a14" stroke-width="1.8" />
+        <rect x="168" y="212" width="394" height="10" fill="#784727" stroke="#4a2a14" stroke-width="1.8" />
+        <rect x="168" y="62" width="394" height="330" rx="5" fill="none" stroke="#4d2c16" stroke-width="5" />
+
+        <!-- Flowing Sheer Curtains -->
+        <path id="curtain-left" d="M160 54 L278 54 C262 158, 240 258, 216 394 C195 398, 170 394, 154 390 C152 265, 156 150, 160 54 Z" fill="url(#curtain-grad)" />
+        <path id="curtain-right" d="M462 54 L574 54 C580 158, 582 265, 578 392 C558 396, 534 396, 515 392 C495 262, 478 158, 462 54 Z" fill="url(#curtain-grad)" />
+
+        <!-- Curtain Rod -->
+        <rect x="130" y="40" width="470" height="10" rx="5" fill="#4f2c15" stroke="#2e180a" stroke-width="2" />
+        <circle cx="130" cy="45" r="9" fill="#b88244" />
+        <circle cx="600" cy="45" r="9" fill="#b88244" />
+
+        <!-- Windowsill -->
+        <rect x="134" y="392" width="462" height="22" rx="5" fill="url(#wood-trim-gold)" stroke="#3d2110" stroke-width="2.5" />
+
+        <!-- Potted Houseplant on Windowsill -->
+        <g id="windowsill-plant">
+          <g id="plant-foliage-1">
+            <path d="M375 362 C345 328, 308 324, 295 345 C316 360, 350 366, 375 362 Z" fill="#3c7a34" />
+            <path d="M375 358 C354 308, 328 286, 312 300 C325 328, 354 350, 375 358 Z" fill="#4f9644" />
+            <path d="M379 358 C404 308, 438 292, 450 310 C432 335, 400 352, 379 358 Z" fill="#468a3c" />
+            <path d="M376 354 C375 300, 388 274, 404 284 C402 316, 388 340, 376 354 Z" fill="#62ad53" />
+          </g>
+          <g id="plant-foliage-2">
+            <path d="M373 364 C338 345, 316 362, 308 378 C335 380, 358 372, 373 364 Z" fill="#549e48" />
+            <path d="M379 362 C412 336, 445 345, 454 364 C429 372, 402 368, 379 362 Z" fill="#5cad4e" />
+            <path d="M375 360 C360 318, 354 288, 368 279 C382 296, 380 328, 375 360 Z" fill="#74c263" />
+          </g>
+          <polygon points="348,354 404,354 394,396 358,396" fill="#c76743" stroke="#7d3920" stroke-width="2" />
+          <rect x="343" y="346" width="66" height="10" rx="3" fill="#d97852" stroke="#7d3920" stroke-width="2" />
+        </g>
+      </g>
+
+      <!-- FRAMED LANDSCAPE PAINTING ON THE WALL -->
+      <g id="wall-painting" transform="translate(880, 95)" filter="url(#bg-shadow-deep)">
+        <rect x="0" y="0" width="250" height="180" rx="8" fill="url(#wood-trim-gold)" stroke="#3b200e" stroke-width="3.5" />
+        <rect x="11" y="11" width="228" height="158" rx="3" fill="#d4a359" stroke="#5e3619" stroke-width="2.5" />
+        <g clip-path="url(#painting-clip)">
+          <clipPath id="painting-clip">
+            <rect x="18" y="18" width="214" height="144" rx="2" />
+          </clipPath>
+          <linearGradient id="paint-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#f7c588" />
+            <stop offset="60%" stop-color="#fae2b4" />
+            <stop offset="100%" stop-color="#e89d6b" />
+          </linearGradient>
+          <rect x="18" y="18" width="214" height="144" fill="url(#paint-sky)" />
+          <circle cx="165" cy="66" r="20" fill="#fff5d6" fill-opacity="0.8" />
+          <polygon points="18,130 75,75 142,130" fill="#8c7aa8" />
+          <polygon points="95,130 168,70 234,130" fill="#72628f" />
+          <path d="M18 130 Q80 102 145 122 T232 116 L232 162 L18 162 Z" fill="#6b8f56" />
+          <path d="M18 142 Q102 124 232 140 L232 162 L18 162 Z" fill="#486b3a" />
+        </g>
+      </g>
+
+      <!-- VINTAGE WOODEN PENDULUM WALL CLOCK -->
+      <g id="wall-clock" filter="url(#bg-shadow-deep)">
+        <path d="M1185 92 L1235 58 L1285 92 L1278 278 C1278 290, 1192 290, 1192 278 Z" fill="#5e3419" stroke="#331a0a" stroke-width="3.5" />
+        <path d="M1175 96 L1235 52 L1295 96" fill="none" stroke="#8f5630" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" />
+        <rect x="1205" y="192" width="60" height="76" rx="6" fill="#2b160a" stroke="#85512d" stroke-width="2.5" />
+        <g id="clock-pendulum">
+          <line x1="1235" y1="194" x2="1235" y2="246" stroke="#d4a24c" stroke-width="3" />
+          <circle cx="1235" cy="248" r="12.5" fill="#f5ca69" stroke="#9e6d1e" stroke-width="2" />
+        </g>
+        <circle cx="1235" cy="140" r="38" fill="#ba8543" stroke="#3b1f0c" stroke-width="2.5" />
+        <circle cx="1235" cy="140" r="33" fill="#faeed7" stroke="#875927" stroke-width="1.8" />
+        <g stroke="#4a2a12" stroke-width="2.2" stroke-linecap="round">
+          <line x1="1235" y1="111" x2="1235" y2="116" />
+          <line x1="1235" y1="164" x2="1235" y2="169" />
+          <line x1="1206" y1="140" x2="1211" y2="140" />
+          <line x1="1259" y1="140" x2="1264" y2="140" />
+        </g>
+        <line id="clock-hour-hand" x1="1235" y1="140" x2="1220" y2="128" stroke="#2b1608" stroke-width="3.5" stroke-linecap="round" />
+        <line id="clock-min-hand" x1="1235" y1="140" x2="1235" y2="116" stroke="#2b1608" stroke-width="2.4" stroke-linecap="round" />
+        <circle cx="1235" cy="140" r="4" fill="#b87e2e" />
+      </g>
+
+      <!-- COZY ARMCHAIR CORNER WITH KNITTED THROW PILLOW (Right background) -->
+      <g id="cozy-armchair" transform="translate(1330, 325)" filter="url(#bg-shadow-deep)">
+        <!-- Wooden Curved Legs -->
+        <path d="M35 205 L22 245 L36 245 L48 205 Z" fill="#4a250d" />
+        <path d="M195 205 L208 245 L194 245 L182 205 Z" fill="#4a250d" />
+        <!-- Tufted Backrest -->
+        <path d="M25 140 C15 45, 45 0, 115 0 C185 0, 215 45, 205 140 Z" fill="url(#armchair-fabric)" stroke="#27382e" stroke-width="3" />
+        <circle cx="78" cy="58" r="4" fill="#27382e" opacity="0.6" />
+        <circle cx="115" cy="52" r="4" fill="#27382e" opacity="0.6" />
+        <circle cx="152" cy="58" r="4" fill="#27382e" opacity="0.6" />
+        <circle cx="95" cy="95" r="4" fill="#27382e" opacity="0.6" />
+        <circle cx="135" cy="95" r="4" fill="#27382e" opacity="0.6" />
+        <!-- Knitted Cushion Pillow -->
+        <g transform="translate(95, 112) rotate(-12)">
+          <rect x="-38" y="-28" width="76" height="56" rx="16" fill="#d97b54" stroke="#7d391e" stroke-width="2.5" />
+          <path d="M-24 -12 Q0 -20 24 -12 M-26 2 Q0 -6 26 2 M-24 16 Q0 8 24 16" stroke="#fae3cf" stroke-width="2" stroke-dasharray="5 4" fill="none" opacity="0.65" />
+        </g>
+        <!-- Rolled Arms & Seat Cushion -->
+        <rect x="28" y="138" width="174" height="52" rx="18" fill="#587a65" stroke="#27382e" stroke-width="2.5" />
+        <path d="M6 105 C-8 105, -6 198, 22 208 L48 208 C46 155, 42 105, 6 105 Z" fill="url(#armchair-fabric)" stroke="#27382e" stroke-width="2.8" />
+        <path d="M224 105 C238 105, 236 198, 208 208 L182 208 C184 155, 188 105, 224 105 Z" fill="url(#armchair-fabric)" stroke="#27382e" stroke-width="2.8" />
+        <rect x="18" y="185" width="194" height="26" rx="8" fill="#3f5949" stroke="#27382e" stroke-width="2.5" />
+      </g>
+
+      <!-- WOODEN PARQUET FLOOR -->
+      <rect x="0" y="530" width="1600" height="370" fill="url(#floor-grad)" />
+      <rect x="0" y="530" width="1600" height="370" fill="url(#parquet-pattern)" />
+
+      <!-- Perspective Plank Lines -->
+      <g stroke="#2e1709" stroke-width="1.8" stroke-opacity="0.38">
+        <line x1="210" y1="530" x2="-100" y2="900" />
+        <line x1="460" y1="530" x2="260" y2="900" />
+        <line x1="710" y1="530" x2="635" y2="900" />
+        <line x1="960" y1="530" x2="1015" y2="900" />
+        <line x1="1210" y1="530" x2="1400" y2="900" />
+        <line x1="1460" y1="530" x2="1750" y2="900" />
+      </g>
+
+      <!-- Sunlit Floor Reflection Patch -->
+      <polygon points="200,545 635,545 985,870 350,870" fill="#ffe79e" fill-opacity="0.12" filter="url(#bg-sun-blur)" />
+
+      <!-- Volumetric Diagonal Golden Sunbeams -->
+      <g id="volumetric-sunbeams" pointer-events="none">
+        <polygon class="sunbeam-ray" points="175,65 360,65 875,900 430,900" fill="url(#sunbeam-grad)" />
+        <polygon class="sunbeam-ray" style="animation-delay: -2.5s;" points="370,65 562,65 1230,900 800,900" fill="url(#sunbeam-grad)" />
+      </g>
+    </svg>
+
+    <!-- ========================================================================
+         LAYER 2: INTERACTIVE STAGE & UI SVG (1600x900, preserveAspectRatio="xMidYMid meet")
+         Guaranteed 100% visible inside any screen aspect ratio!
+         ======================================================================== -->
+    <svg id="stage-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="shadow-deep" x="-20%" y="-20%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#1a0d06" flood-opacity="0.55" />
+        </filter>
+        <filter id="shadow-soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#231107" flood-opacity="0.45" />
+        </filter>
+        <filter id="glow-gold" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="6" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <!-- Cozy Braided Oval Rug Gradients -->
+        <radialGradient id="rug-base-grad" cx="50%" cy="48%" r="52%" fx="45%" fy="42%">
+          <stop offset="0%" stop-color="#f2dec4" />
+          <stop offset="35%" stop-color="#e3c39d" />
+          <stop offset="55%" stop-color="#c97b53" />
+          <stop offset="72%" stop-color="#6e8c74" />
+          <stop offset="86%" stop-color="#b85a43" />
+          <stop offset="96%" stop-color="#7d4732" />
+          <stop offset="100%" stop-color="#4d291a" />
+        </radialGradient>
+
+        <pattern id="rug-weave" width="22" height="12" patternUnits="userSpaceOnUse">
+          <path d="M0 6 Q5.5 1.5 11 6 T22 6" stroke="#5c3620" stroke-width="1.2" fill="none" stroke-opacity="0.18" />
+          <path d="M0 12 Q5.5 7.5 11 12 T22 12" stroke="#fff5e4" stroke-width="0.9" fill="none" stroke-opacity="0.2" />
+        </pattern>
+
+        <!-- Carved Wood Button Gradients -->
+        <radialGradient id="wood-btn-face" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#d99b66" />
+          <stop offset="55%" stop-color="#9e6234" />
+          <stop offset="90%" stop-color="#693b19" />
+          <stop offset="100%" stop-color="#47250d" />
+        </radialGradient>
+
+        <linearGradient id="wood-btn-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f0be8a" />
+          <stop offset="50%" stop-color="#874f25" />
+          <stop offset="100%" stop-color="#3b1d09" />
+        </linearGradient>
+
+        <linearGradient id="shelf-wood-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#8c5836" />
+          <stop offset="20%" stop-color="#724427" />
+          <stop offset="85%" stop-color="#59331b" />
+          <stop offset="100%" stop-color="#3d2110" />
+        </linearGradient>
+
+        <radialGradient id="felt-badge-grad" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#fff8eb" />
+          <stop offset="75%" stop-color="#ebd5b7" />
+          <stop offset="100%" stop-color="#c9a882" />
+        </radialGradient>
+
+        <!-- Kitten Fur Gradients (Realistic Ginger/Cream Tabby) -->
+        <radialGradient id="cat-body-grad" cx="42%" cy="38%" r="62%">
+          <stop offset="0%" stop-color="#f7a44c" />
+          <stop offset="55%" stop-color="#e07b28" />
+          <stop offset="88%" stop-color="#b85614" />
+          <stop offset="100%" stop-color="#8f3d08" />
+        </radialGradient>
+
+        <radialGradient id="cat-head-grad" cx="48%" cy="40%" r="58%">
+          <stop offset="0%" stop-color="#fcb465" />
+          <stop offset="58%" stop-color="#e68330" />
+          <stop offset="90%" stop-color="#bf5c15" />
+          <stop offset="100%" stop-color="#994309" />
+        </radialGradient>
+
+        <radialGradient id="cat-cream-fur" cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stop-color="#fff8eb" />
+          <stop offset="65%" stop-color="#f7dfc0" />
+          <stop offset="100%" stop-color="#d9b284" />
+        </radialGradient>
+
+        <linearGradient id="cat-ear-inner" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f7b2ad" />
+          <stop offset="60%" stop-color="#e3827e" />
+          <stop offset="100%" stop-color="#b85856" />
+        </linearGradient>
+
+        <radialGradient id="cat-eye-iris" cx="45%" cy="45%" r="55%">
+          <stop offset="0%" stop-color="#a8f065" />
+          <stop offset="45%" stop-color="#48b842" />
+          <stop offset="82%" stop-color="#197329" />
+          <stop offset="100%" stop-color="#0b3b15" />
+        </radialGradient>
+
+        <linearGradient id="cat-nose-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#fca8a7" />
+          <stop offset="60%" stop-color="#e06c70" />
+          <stop offset="100%" stop-color="#a84045" />
+        </linearGradient>
+      </defs>
+
+      <!-- ====================================================================
+           1. COZY BRAIDED OVAL RUG ON THE FLOOR
+           ==================================================================== -->
+      <g id="cozy-rug" filter="url(#shadow-deep)">
+        <ellipse cx="800" cy="730" rx="645" ry="142" fill="none" stroke="#d9c2a3" stroke-width="12" stroke-dasharray="6 9" stroke-linecap="round" />
+        <ellipse cx="800" cy="730" rx="634" ry="134" fill="url(#rug-base-grad)" stroke="#59311d" stroke-width="4.5" />
+        <ellipse cx="800" cy="730" rx="585" ry="120" fill="none" stroke="#f5e3c9" stroke-width="3.5" stroke-dasharray="11 7" stroke-opacity="0.55" />
+        <ellipse cx="800" cy="730" rx="515" ry="104" fill="none" stroke="#4a2c1d" stroke-width="3" stroke-dasharray="8 8" stroke-opacity="0.45" />
+        <ellipse cx="800" cy="730" rx="425" ry="85" fill="none" stroke="#f7e7cf" stroke-width="3.5" stroke-dasharray="14 9" stroke-opacity="0.6" />
+        <ellipse cx="800" cy="730" rx="315" ry="62" fill="none" stroke="#8c4a32" stroke-width="2.5" stroke-dasharray="9 6" stroke-opacity="0.45" />
+        <ellipse cx="800" cy="730" rx="630" ry="131" fill="url(#rug-weave)" />
+      </g>
+
+      <!-- ====================================================================
+           2. WOVEN RUG TASK EMBLEM (Shows Direction Arrow & Step Pips +1/+2/+3 or -1/-2/-3)
+           ==================================================================== -->
+      <g id="task-emblem-group" transform="translate(800, 616)" filter="url(#shadow-soft)">
+        <!-- Carved Wooden / Stitched Patch Plaque -->
+        <rect x="-118" y="-30" width="236" height="60" rx="30" fill="url(#wood-btn-rim)" stroke="#3b1d09" stroke-width="3" />
+        <rect x="-111" y="-23" width="222" height="46" rx="23" fill="url(#felt-badge-grad)" stroke="#8c5830" stroke-width="2" stroke-dasharray="6 4" />
+        <!-- Dynamic Arrow, +/- Step Digit, and Colorful Yarn Pips rendered by JS -->
+        <g id="task-emblem-content"></g>
+      </g>
+
+      <!-- ====================================================================
+           3. CONNECTING YARN STRAND & DIRECTIONAL PAW TRAIL ON RUG
+           ==================================================================== -->
+      <g id="yarn-connecting-layer"></g>
+      <g id="paw-trail-layer"></g>
+
+      <!-- ====================================================================
+           4. REALISTIC ANIMATED TABBY KITTEN
+           ==================================================================== -->
+      <g id="kitten-root" transform="translate(800, 645)">
+        <!-- Floor Shadow beneath Kitten -->
+        <ellipse id="kitten-shadow" cx="0" cy="44" rx="70" ry="19" fill="#211006" fill-opacity="0.48" filter="url(#shadow-soft)" />
+
+        <!-- Purr Ripple Waves (Visible when purring) -->
+        <g id="purr-ripples" opacity="0" pointer-events="none">
+          <circle id="purr-ring-1" cx="0" cy="-42" r="42" fill="none" stroke="#ffe596" stroke-width="2.5" stroke-dasharray="8 6" opacity="0.65" />
+          <circle id="purr-ring-2" cx="0" cy="-42" r="64" fill="none" stroke="#ffd275" stroke-width="2" stroke-dasharray="5 8" opacity="0.4" />
+        </g>
+
+        <!-- Flip Group (Scales X to 1 or -1 depending on walking direction) -->
+        <g id="kitten-flip-group" transform="scale(1, 1)">
+          <!-- Body Bounce / Breathing / Hop Group -->
+          <g id="kitten-body-rig" transform="translate(0, 0)">
+
+            <!-- FLUFFY STRIPED TAIL -->
+            <g id="cat-tail-group" transform="translate(-44, 10)">
+              <path id="cat-tail-path" d="M0 0 C-40 -10, -78 -50, -62 -86 C-50 -112, -22 -102, -28 -75 C-34 -50, -16 -22, 8 -4 Z" fill="url(#cat-body-grad)" stroke="#7a3205" stroke-width="2" />
+              <path d="M-62 -86 C-51 -108, -26 -102, -30 -80 C-41 -77, -53 -78, -62 -86 Z" fill="url(#cat-cream-fur)" />
+              <path d="M-50 -56 Q-38 -62 -30 -50" stroke="#7a3106" stroke-width="4.5" stroke-linecap="round" fill="none" opacity="0.75" />
+              <path d="M-40 -34 Q-27 -40 -20 -30" stroke="#7a3106" stroke-width="4.5" stroke-linecap="round" fill="none" opacity="0.75" />
+            </g>
+
+            <!-- BACK HIND LEGS / HAUNCHES -->
+            <g id="leg-bl" transform="translate(-34, 16)">
+              <ellipse cx="0" cy="0" rx="25" ry="27" fill="url(#cat-body-grad)" stroke="#7a3205" stroke-width="1.8" />
+              <path d="M-16 -5 Q0 -10 12 -2" stroke="#7d3206" stroke-width="3.6" stroke-linecap="round" fill="none" opacity="0.65" />
+              <ellipse cx="-5" cy="23" rx="16" ry="9" fill="url(#cat-cream-fur)" stroke="#8c4a19" stroke-width="1.5" />
+              <line x1="-10" y1="25" x2="-10" y2="31" stroke="#a66332" stroke-width="1.5" />
+              <line x1="-4" y1="26" x2="-4" y2="32" stroke="#a66332" stroke-width="1.5" />
+            </g>
+
+            <!-- PLUMP FLUFFY TORSO -->
+            <g id="cat-torso">
+              <path d="M-48 14 C-56 -32, -32 -62, 4 -62 C40 -62, 58 -28, 50 16 C42 38, -40 38, -48 14 Z" fill="url(#cat-body-grad)" stroke="#7a3205" stroke-width="2" />
+              <path d="M-28 -47 Q-16 -28 -25 -9" stroke="#7a3005" stroke-width="5.5" stroke-linecap="round" fill="none" opacity="0.65" />
+              <path d="M-10 -52 Q2 -32 -7 -7" stroke="#7a3005" stroke-width="5.5" stroke-linecap="round" fill="none" opacity="0.65" />
+              <path d="M9 -50 Q20 -32 12 -10" stroke="#7a3005" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.6" />
+              <!-- Soft Fluffy Cream Chest Ruff -->
+              <path d="M-14 -44 C-28 -22, -23 11, 4 18 C30 11, 38 -20, 22 -44 C11 -34, -4 -34, -14 -44 Z" fill="url(#cat-cream-fur)" />
+              <path d="M-9 -20 L-4 -12 L4 -18 L11 -12 L16 -20" fill="none" stroke="#d9ae7e" stroke-width="1.8" stroke-linecap="round" />
+            </g>
+
+            <!-- BACK RIGHT HAUNCH -->
+            <g id="leg-br" transform="translate(30, 18)">
+              <ellipse cx="0" cy="0" rx="20" ry="23" fill="url(#cat-body-grad)" stroke="#7a3205" stroke-width="1.8" />
+              <ellipse cx="5" cy="21" rx="14.5" ry="8.5" fill="url(#cat-cream-fur)" stroke="#8c4a19" stroke-width="1.5" />
+              <line x1="2" y1="23" x2="2" y2="29" stroke="#a66332" stroke-width="1.4" />
+              <line x1="8" y1="23" x2="8" y2="29" stroke="#a66332" stroke-width="1.4" />
+            </g>
+
+            <!-- FRONT LEFT LEG -->
+            <g id="leg-fl" transform="translate(-14, 11)">
+              <path d="M-11 -14 L-13 23 C-13 30, 11 30, 11 23 L9 -14 Z" fill="url(#cat-body-grad)" stroke="#7a3205" stroke-width="1.8" />
+              <path d="M-8 2 Q0 5 7 1" stroke="#7a3005" stroke-width="3.2" stroke-linecap="round" fill="none" opacity="0.65" />
+              <ellipse cx="-1" cy="27" rx="13.5" ry="8.5" fill="url(#cat-cream-fur)" stroke="#8c4a19" stroke-width="1.5" />
+              <line x1="-5" y1="29" x2="-5" y2="34" stroke="#a66332" stroke-width="1.5" />
+              <line x1="1" y1="30" x2="1" y2="35" stroke="#a66332" stroke-width="1.5" />
+              <line x1="6" y1="28" x2="6" y2="33" stroke="#a66332" stroke-width="1.5" />
+            </g>
+
+            <!-- FRONT RIGHT LEG -->
+            <g id="leg-fr" transform="translate(18, 11)">
+              <path d="M-10 -14 L-11 23 C-11 30, 12 30, 12 23 L10 -14 Z" fill="url(#cat-body-grad)" stroke="#7a3205" stroke-width="1.8" />
+              <path d="M-7 2 Q1 5 7 1" stroke="#7a3005" stroke-width="3.2" stroke-linecap="round" fill="none" opacity="0.65" />
+              <ellipse cx="1" cy="27" rx="13.5" ry="8.5" fill="url(#cat-cream-fur)" stroke="#8c4a19" stroke-width="1.5" />
+              <line x1="-4" y1="28" x2="-4" y2="33" stroke="#a66332" stroke-width="1.5" />
+              <line x1="2" y1="30" x2="2" y2="35" stroke="#a66332" stroke-width="1.5" />
+              <line x1="7" y1="29" x2="7" y2="34" stroke="#a66332" stroke-width="1.5" />
+            </g>
+
+            <!-- EXPRESSIVE KITTEN HEAD -->
+            <g id="cat-head" transform="translate(4, -68)">
+              <!-- LEFT EAR -->
+              <g id="ear-l" transform="translate(-32, -30)">
+                <path d="M-16 16 C-23 -14, -16 -34, -4 -38 C9 -32, 20 -11, 18 7 Z" fill="url(#cat-head-grad)" stroke="#7a3205" stroke-width="1.8" />
+                <path d="M-10 11 C-14 -9, -10 -23, -3 -27 C5 -22, 12 -7, 11 5 Z" fill="url(#cat-ear-inner)" />
+                <path d="M-7 9 Q-2 0 7 4" stroke="#fff3db" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.8" />
+              </g>
+
+              <!-- RIGHT EAR -->
+              <g id="ear-r" transform="translate(32, -30)">
+                <path d="M-18 7 C-20 -11, -9 -32, 4 -38 C16 -34, 23 -14, 16 16 Z" fill="url(#cat-head-grad)" stroke="#7a3205" stroke-width="1.8" />
+                <path d="M-11 5 C-12 -7, -5 -22, 3 -27 C10 -23, 14 -9, 10 11 Z" fill="url(#cat-ear-inner)" />
+                <path d="M-7 4 Q2 0 7 9" stroke="#fff3db" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.8" />
+              </g>
+
+              <!-- MAIN HEAD SHAPE WITH FLUFFY CHEEK TUFTS -->
+              <path d="M0 -43 C30 -43, 50 -23, 52 2 C59 7, 61 16, 52 22 C56 27, 47 34, 38 36 C23 43, -23 43, -38 36 C-47 34, -56 27, -52 22 C-61 16, -59 7, -52 2 C-50 -23, -30 -43, 0 -43 Z" fill="url(#cat-head-grad)" stroke="#7a3205" stroke-width="1.8" />
+
+              <!-- Forehead Tabby "M" Markings & Cheek Stripes -->
+              <path d="M-20 -20 L-11 -32 L0 -21 L11 -32 L20 -20" fill="none" stroke="#7a2f04" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.75" />
+              <path d="M-46 5 Q-34 3 -27 9 M-48 14 Q-34 13 -25 18" stroke="#853506" stroke-width="2.7" stroke-linecap="round" fill="none" opacity="0.65" />
+              <path d="M46 5 Q34 3 27 9 M48 14 Q34 13 25 18" stroke="#853506" stroke-width="2.7" stroke-linecap="round" fill="none" opacity="0.65" />
+
+              <!-- Cream Muzzle / Chin Highlights -->
+              <ellipse cx="-20" cy="-2" rx="16" ry="13.5" fill="#ffe7c2" opacity="0.45" />
+              <ellipse cx="20" cy="-2" rx="16" ry="13.5" fill="#ffe7c2" opacity="0.45" />
+              <path d="M-23 14 C-25 5, -12 2, 0 4 C12 2, 25 5, 23 14 C25 28, 12 36, 0 36 C-12 36, -25 28, -23 14 Z" fill="url(#cat-cream-fur)" />
+
+              <!-- Rosy Affectionate Cheek Blushes -->
+              <g id="cat-blush" opacity="0" style="transition: opacity 0.35s ease;">
+                <ellipse cx="-30" cy="14" rx="10" ry="6" fill="#ff7a7a" opacity="0.52" />
+                <ellipse cx="30" cy="14" rx="10" ry="6" fill="#ff7a7a" opacity="0.52" />
+              </g>
+
+              <!-- EMERALD GREEN EYES -->
+              <g id="cat-eyes-open">
+                <g id="eye-l" transform="translate(-20, -4)">
+                  <ellipse cx="0" cy="0" rx="13" ry="12" fill="#1f0d04" />
+                  <ellipse cx="0" cy="0" rx="11.8" ry="10.8" fill="url(#cat-eye-iris)" />
+                  <g id="pupil-group-l">
+                    <ellipse id="pupil-l" cx="0" cy="0" rx="5" ry="9.5" fill="#09140a" />
+                    <circle cx="-4" cy="-4" r="3.4" fill="#ffffff" />
+                    <circle cx="3.5" cy="3.5" r="1.6" fill="#ffffff" opacity="0.85" />
+                  </g>
+                  <ellipse id="eyelid-l" cx="0" cy="0" rx="13" ry="12" fill="url(#cat-head-grad)" transform="scale(1, 0)" />
+                </g>
+
+                <g id="eye-r" transform="translate(20, -4)">
+                  <ellipse cx="0" cy="0" rx="13" ry="12" fill="#1f0d04" />
+                  <ellipse cx="0" cy="0" rx="11.8" ry="10.8" fill="url(#cat-eye-iris)" />
+                  <g id="pupil-group-r">
+                    <ellipse id="pupil-r" cx="0" cy="0" rx="5" ry="9.5" fill="#09140a" />
+                    <circle cx="-4" cy="-4" r="3.4" fill="#ffffff" />
+                    <circle cx="3.5" cy="3.5" r="1.6" fill="#ffffff" opacity="0.85" />
+                  </g>
+                  <ellipse id="eyelid-r" cx="0" cy="0" rx="13" ry="12" fill="url(#cat-head-grad)" transform="scale(1, 0)" />
+                </g>
+              </g>
+
+              <!-- Happy Smiling Closed Eyes -->
+              <g id="cat-eyes-happy" opacity="0">
+                <path d="M-31 -2 Q-20 -15 -8 -2" fill="none" stroke="#4a1d04" stroke-width="3.8" stroke-linecap="round" />
+                <path d="M8 -2 Q20 -15 31 -2" fill="none" stroke="#4a1d04" stroke-width="3.8" stroke-linecap="round" />
+              </g>
+
+              <!-- VELVETY PINK NOSE & EXPRESSIVE MOUTH -->
+              <path d="M-7 9 C-7 6, 7 6, 7 9 L0 16 Z" fill="url(#cat-nose-grad)" stroke="#7a2e33" stroke-width="1.2" />
+              <path id="cat-mouth-open" d="M-6 20 Q0 30 6 20 Z" fill="#e86b72" stroke="#6e282c" stroke-width="1.2" opacity="0" />
+              <path id="cat-mouth-line" d="M0 15 L0 19 M-10 20 Q-4.5 24.5 0 19 Q4.5 24.5 10 20" fill="none" stroke="#5e2508" stroke-width="2.2" stroke-linecap="round" />
+
+              <!-- DELICATE WHITE WHISKERS -->
+              <g id="cat-whiskers" stroke="#fff8eb" stroke-width="1.5" stroke-linecap="round" opacity="0.88">
+                <path d="M-20 16 Q-46 12 -66 16" fill="none" />
+                <path d="M-20 20 Q-45 20 -64 25" fill="none" />
+                <path d="M-18 24 Q-42 27 -58 34" fill="none" />
+                <path d="M20 16 Q46 12 66 16" fill="none" />
+                <path d="M20 20 Q45 20 64 25" fill="none" />
+                <path d="M18 24 Q42 27 58 34" fill="none" />
+              </g>
+            </g>
+          </g>
+        </g>
+
+        <!-- Static Transparent Hitbox for Petting the Kitten -->
+        <rect id="kitten-interactive-hitbox" class="hit-target" x="-75" y="-130" width="150" height="185" rx="30" />
+      </g>
+
+      <!-- ====================================================================
+           5. INTERACTIVE YARN BALLS CONTAINER (2 to 4 Yarn Balls on the Rug)
+           ==================================================================== -->
+      <g id="yarn-balls-layer"></g>
+
+      <!-- ====================================================================
+           6. COLLAPSIBLE NUMBER LINE HELPER SHELF (1 .. 10)
+           ==================================================================== -->
+      <g id="helper-shelf-wrapper" transform="translate(0, -220)">
+        <line x1="330" y1="-60" x2="330" y2="62" stroke="#c99e67" stroke-width="6" stroke-dasharray="6 3" />
+        <line x1="1270" y1="-60" x2="1270" y2="62" stroke="#c99e67" stroke-width="6" stroke-dasharray="6 3" />
+        <circle cx="330" cy="60" r="8" fill="#5e3418" />
+        <circle cx="1270" cy="60" r="8" fill="#5e3418" />
+
+        <!-- Carved Oak Shelf Board -->
+        <g filter="url(#shadow-deep)">
+          <rect x="265" y="20" width="1070" height="106" rx="24" fill="url(#shelf-wood-grad)" stroke="#3b1f0c" stroke-width="4.5" />
+          <rect x="278" y="31" width="1044" height="84" rx="18" fill="#4f2b14" stroke="#9e673c" stroke-width="2" />
+          <path d="M315 74 Q800 90 1285 74" fill="none" stroke="#f2d59b" stroke-width="3" stroke-dasharray="8 6" opacity="0.65" />
+        </g>
+
+        <!-- 10 Miniature Yarn Balls (1..10) -->
+        <g id="shelf-balls-container"></g>
+      </g>
+
+      <!-- ====================================================================
+           7. SAFE WOODEN UI CONTROLS (Well inside 1600x900 safe margins!)
+           NO CSS transform on outer <g transform="translate(X,Y)">!
+           ==================================================================== -->
+      <!-- TOP-LEFT (x=95, y=75): Toggle Full Number Line (1..10) Helper Button -->
+      <g id="btn-toggle-helper" class="interactive-node" transform="translate(95, 75)" filter="url(#shadow-deep)">
+        <g id="btn-helper-visual">
+          <circle cx="0" cy="0" r="46" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3.5" />
+          <circle cx="0" cy="0" r="38" fill="url(#wood-btn-face)" stroke="#f0be8a" stroke-width="1.5" stroke-opacity="0.5" />
+          <circle cx="0" cy="0" r="33" fill="none" stroke="#f7dec1" stroke-width="2" stroke-dasharray="5 5" opacity="0.6" />
+          <!-- Icon: Connected 1..10 Yarn Garland -->
+          <path d="M-24 10 Q0 20 24 10" fill="none" stroke="#ffe4a3" stroke-width="2.8" stroke-linecap="round" />
+          <circle cx="-18" cy="-4" r="10" fill="#d95b43" stroke="#471d14" stroke-width="1.8" />
+          <text x="-18" y="0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff8eb">1</text>
+          <circle cx="0" cy="-9" r="10.5" fill="#e09b36" stroke="#47320d" stroke-width="1.8" />
+          <text x="0" y="-5" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff8eb">2</text>
+          <circle cx="18" cy="-4" r="10" fill="#5a9e6f" stroke="#163b28" stroke-width="1.8" />
+          <text x="18" y="0" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff8eb">10</text>
+          <circle id="helper-active-ring" cx="0" cy="0" r="43" fill="none" stroke="#ffe17d" stroke-width="3.5" opacity="0" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="52" />
+      </g>
+
+      <!-- TOP-RIGHT SAFE CONTROLS: Teacher Direction Peg, Step Peg, and Sound Toggle -->
+      <!-- 1) Direction Filter Peg (⇄ / → / ←) at (x=1295, y=75) -->
+      <g id="btn-filter-dir" class="interactive-node" transform="translate(1295, 75)" filter="url(#shadow-deep)">
+        <g id="btn-dir-visual">
+          <circle cx="0" cy="0" r="36" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3" />
+          <circle cx="0" cy="0" r="29" fill="url(#wood-btn-face)" />
+          <circle cx="0" cy="0" r="25" fill="none" stroke="#f7dec1" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.55" />
+          <g id="dir-filter-icon">
+            <!-- Default: Both Directions ⇄ -->
+            <path d="M-14 -5 L10 -5 M5 -10 L12 -5 L5 0" fill="none" stroke="#ffe49e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M14 6 L-10 6 M-5 1 L-12 6 L-5 11" fill="none" stroke="#ffbfa3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="42" />
+      </g>
+
+      <!-- 2) Step Size Filter Peg (1..3 / 1 / 2 / 3) at (x=1385, y=75) -->
+      <g id="btn-filter-step" class="interactive-node" transform="translate(1385, 75)" filter="url(#shadow-deep)">
+        <g id="btn-step-visual">
+          <circle cx="0" cy="0" r="36" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3" />
+          <circle cx="0" cy="0" r="29" fill="url(#wood-btn-face)" />
+          <circle cx="0" cy="0" r="25" fill="none" stroke="#f7dec1" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.55" />
+          <text id="step-filter-text" x="0" y="7" text-anchor="middle" font-size="20" font-weight="bold" fill="#ffe49e" stroke="#3b1d09" stroke-width="1" paint-order="stroke">1-3</text>
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="42" />
+      </g>
+
+      <!-- 3) Sound Mute/Unmute Wooden Button at (x=1485, y=75) -->
+      <g id="btn-toggle-sound" class="interactive-node" transform="translate(1485, 75)" filter="url(#shadow-deep)">
+        <g id="btn-sound-visual">
+          <circle cx="0" cy="0" r="40" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3.2" />
+          <circle cx="0" cy="0" r="32" fill="url(#wood-btn-face)" stroke="#f0be8a" stroke-width="1.5" stroke-opacity="0.5" />
+          <circle cx="0" cy="0" r="27" fill="none" stroke="#f7dec1" stroke-width="1.8" stroke-dasharray="5 5" opacity="0.55" />
+          <path d="M-13 -5 L-5 -5 L4 -14 L4 14 L-5 5 L-13 5 Z" fill="#f7cf86" stroke="#4a2810" stroke-width="2" stroke-linejoin="round" />
+          <g id="sound-waves-icon" stroke="#ffe5a8" stroke-width="2.8" stroke-linecap="round" fill="none">
+            <path d="M9 -7 Q16 0 9 7" />
+            <path d="M15 -13 Q24 0 15 13" />
+          </g>
+          <line id="sound-mute-slash" x1="-15" y1="-15" x2="17" y2="17" stroke="#e0533c" stroke-width="4.2" stroke-linecap="round" opacity="0" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="46" />
+      </g>
+
+      <!-- BOTTOM-RIGHT (x=1485, y=805): Minimalist "Next" ("Далі") Wooden Button -->
+      <g id="btn-next-round" class="interactive-node" transform="translate(1485, 805)" filter="url(#shadow-deep)">
+        <g id="btn-next-visual">
+          <circle id="next-pulse-halo" cx="0" cy="0" r="60" fill="none" stroke="#ffe27a" stroke-width="4" opacity="0" />
+          <circle cx="0" cy="0" r="54" fill="#c96b46" stroke="#3b1d0b" stroke-width="3.8" />
+          <circle cx="0" cy="0" r="50" fill="none" stroke="#f5cbb8" stroke-width="2.8" stroke-dasharray="8 6" opacity="0.65" />
+          <circle cx="0" cy="0" r="42" fill="url(#wood-btn-face)" stroke="#f0be8a" stroke-width="2" />
+          <circle cx="0" cy="0" r="36" fill="none" stroke="#f7dec1" stroke-width="1.8" stroke-dasharray="6 5" opacity="0.65" />
+          <path d="M-16 -6 L4 -6 L4 -17 L22 0 L4 17 L4 6 L-16 6 Z" fill="#ffd97d" stroke="#4a260c" stroke-width="2.6" stroke-linejoin="round" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="60" />
+      </g>
+    </svg>
+
+    <!-- Floating Golden Dust Motes & Celebration Particles Canvas -->
+    <canvas id="fx-canvas"></canvas>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. COLOR PALETTE FOR THE 10 YARN BALLS (Rich, cozy, distinct colors)
+       ========================================================================== */
+    const YARN_PALETTE = [
+      { base: '#d95b43', light: '#f79c88', dark: '#7d2616', strand: '#ffbfb0' }, // 1: Terracotta Coral
+      { base: '#e09b36', light: '#fad082', dark: '#80500c', strand: '#ffe4ad' }, // 2: Warm Mustard Gold
+      { base: '#5a9e6f', light: '#9cd9ae', dark: '#245233', strand: '#c2f0d0' }, // 3: Sage Meadow Green
+      { base: '#4a8db8', light: '#8fc9ed', dark: '#1c4966', strand: '#bae2fa' }, // 4: Cerulean Sky Blue
+      { base: '#9468b0', light: '#cba6e3', dark: '#462859', strand: '#e5cdf5' }, // 5: Heather Lavender
+      { base: '#cf6387', light: '#f5a6c0', dark: '#6e223b', strand: '#ffd1e0' }, // 6: Dusty Rose Berry
+      { base: '#3d9991', light: '#82d9d1', dark: '#174f4a', strand: '#b6f2ed' }, // 7: Deep Sea Teal
+      { base: '#d67438', light: '#f7ad7e', dark: '#75340d', strand: '#ffd0b3' }, // 8: Burnt Apricot Orange
+      { base: '#6e7ab8', light: '#abb5eb', dark: '#2c3466', strand: '#d3dafc' }, // 9: Periwinkle Indigo
+      { base: '#b85449', light: '#eb978d', dark: '#611d16', strand: '#ffc4bd' }  // 10: Crimson Cinnamon
+    ];
+
+    /* ==========================================================================
+       HELPER: Bounce any inner visual <g> smoothly via JS without touching
+       the outer <g transform="translate(X, Y)"> positioning!
+       ========================================================================== */
+    function animateInnerScale(el, peakScale = 1.14, duration = 320) {
+      if (!el) return;
+      const start = performance.now();
+      function step(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const s = 1 + (peakScale - 1) * Math.sin(t * Math.PI);
+        el.setAttribute('transform', `scale(${s.toFixed(3)})`);
+        if (t < 1) requestAnimationFrame(step);
+        else el.setAttribute('transform', 'scale(1)');
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ==========================================================================
+       2. SYNTHESIZED WEB AUDIO ENGINE (Realistic Quiet Purr, Marimba, Celebration)
+       ========================================================================== */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.purrGain = null;
+        this.purrStopTimer = null;
+        this.isPurring = false;
+        this.numberFreqs = [
+          261.63, // 1: C4
+          293.66, // 2: D4
+          329.63, // 3: E4
+          392.00, // 4: G4
+          440.00, // 5: A4
+          523.25, // 6: C5
+          587.33, // 7: D5
+          659.25, // 8: E5
+          783.99, // 9: G5
+          880.00  // 10: A5
+        ];
+      }
+
+      init() {
+        try {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+              this.setupPurrGenerator();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        } catch (err) {
+          // Ignore audio context restrictions if blocked
+        }
+      }
+
+      setupPurrGenerator() {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+
+        this.purrGain = ctx.createGain();
+        this.purrGain.gain.value = 0.0001;
+        this.purrGain.connect(ctx.destination);
+
+        const subOsc = ctx.createOscillator();
+        subOsc.type = 'triangle';
+        subOsc.frequency.value = 25.5;
+
+        const breathLfo = ctx.createOscillator();
+        breathLfo.type = 'sine';
+        breathLfo.frequency.value = 0.42;
+        const breathFreqGain = ctx.createGain();
+        breathFreqGain.gain.value = 1.8;
+        breathLfo.connect(breathFreqGain);
+        breathFreqGain.connect(subOsc.frequency);
+
+        const subFilter = ctx.createBiquadFilter();
+        subFilter.type = 'lowpass';
+        subFilter.frequency.value = 95;
+
+        const subLevel = ctx.createGain();
+        subLevel.gain.value = 0.35;
+
+        subOsc.connect(subFilter);
+        subFilter.connect(subLevel);
+        subLevel.connect(this.purrGain);
+
+        const bufferSize = ctx.sampleRate * 2;
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          b0 = 0.99886 * b0 + white * 0.0555179;
+          b1 = 0.99332 * b1 + white * 0.0750759;
+          b2 = 0.96900 * b2 + white * 0.1538520;
+          b3 = 0.86650 * b3 + white * 0.3104856;
+          b4 = 0.55000 * b4 + white * 0.5329522;
+          b5 = -0.7616 * b5 - white * 0.0168980;
+          output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.04;
+          b6 = white * 0.115926;
+        }
+
+        const noiseNode = ctx.createBufferSource();
+        noiseNode.buffer = noiseBuffer;
+        noiseNode.loop = true;
+
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.value = 240;
+        bandpass.Q.value = 2.2;
+
+        const rattleModGain = ctx.createGain();
+        rattleModGain.gain.value = 0.25;
+
+        const rattleLfo = ctx.createOscillator();
+        rattleLfo.type = 'sine';
+        rattleLfo.frequency.value = 25.5;
+        const rattleDepth = ctx.createGain();
+        rattleDepth.gain.value = 0.22;
+        rattleLfo.connect(rattleDepth);
+        rattleDepth.connect(rattleModGain.gain);
+
+        noiseNode.connect(bandpass);
+        bandpass.connect(rattleModGain);
+        rattleModGain.connect(this.purrGain);
+
+        subOsc.start();
+        breathLfo.start();
+        noiseNode.start();
+        rattleLfo.start();
+      }
+
+      triggerQuietPurr(durationMs = 3400, intensity = 0.085) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx || !this.purrGain) return;
+
+        const now = this.ctx.currentTime;
+        this.isPurring = true;
+        this.purrGain.gain.cancelScheduledValues(now);
+        this.purrGain.gain.setValueAtTime(Math.max(0.001, this.purrGain.gain.value), now);
+        this.purrGain.gain.linearRampToValueAtTime(intensity, now + 0.4);
+
+        if (this.purrStopTimer) clearTimeout(this.purrStopTimer);
+        this.purrStopTimer = setTimeout(() => {
+          if (!this.ctx || !this.purrGain) return;
+          const t = this.ctx.currentTime;
+          this.purrGain.gain.cancelScheduledValues(t);
+          this.purrGain.gain.setValueAtTime(this.purrGain.gain.value, t);
+          this.purrGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+          this.isPurring = false;
+        }, durationMs);
+      }
+
+      playPawStep() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(115 + Math.random() * 25, now);
+        osc.frequency.exponentialRampToValueAtTime(48, now + 0.065);
+
+        gain.gain.setValueAtTime(0.045, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.075);
+      }
+
+      playNumberReveal(numberOneToTen) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const idx = Math.max(0, Math.min(9, numberOneToTen - 1));
+        const freq = this.numberFreqs[idx];
+
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        const gain2 = this.ctx.createGain();
+
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(freq, now);
+
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(freq * 2, now);
+
+        gain1.gain.setValueAtTime(0.001, now);
+        gain1.gain.linearRampToValueAtTime(0.22, now + 0.018);
+        gain1.gain.exponentialRampToValueAtTime(0.0008, now + 0.75);
+
+        gain2.gain.setValueAtTime(0.001, now);
+        gain2.gain.linearRampToValueAtTime(0.07, now + 0.012);
+        gain2.gain.exponentialRampToValueAtTime(0.0005, now + 0.28);
+
+        osc1.connect(gain1);
+        osc2.connect(gain2);
+        gain1.connect(this.ctx.destination);
+        gain2.connect(this.ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.78);
+        osc2.stop(now + 0.30);
+      }
+
+      playKittenChirp() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const mod = this.ctx.createOscillator();
+        const modGain = this.ctx.createGain();
+        const mainGain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(780, now + 0.14);
+        osc.frequency.exponentialRampToValueAtTime(640, now + 0.24);
+
+        mod.type = 'sine';
+        mod.frequency.value = 32;
+        modGain.gain.value = 28;
+
+        mod.connect(modGain);
+        modGain.connect(osc.frequency);
+
+        mainGain.gain.setValueAtTime(0.001, now);
+        mainGain.gain.linearRampToValueAtTime(0.08, now + 0.04);
+        mainGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.26);
+
+        osc.connect(mainGain);
+        mainGain.connect(this.ctx.destination);
+
+        osc.start(now);
+        mod.start(now);
+        osc.stop(now + 0.28);
+        mod.stop(now + 0.28);
+      }
+
+      playCelebrationFanfare(styleIndex = 0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const chordPatterns = [
+          [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50],
+          [329.63, 392.00, 523.25, 587.33, 659.25, 783.99, 1046.50],
+          [261.63, 392.00, 440.00, 523.25, 659.25, 880.00, 1046.50],
+          [293.66, 392.00, 493.88, 587.33, 783.99, 987.77, 1174.66]
+        ];
+
+        const notes = chordPatterns[styleIndex % chordPatterns.length];
+        notes.forEach((freq, idx) => {
+          const delay = idx * 0.085;
+          const now = this.ctx.currentTime + delay;
+          const osc = this.ctx.createOscillator();
+          const oscHarm = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = styleIndex % 2 === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+
+          oscHarm.type = 'sine';
+          oscHarm.frequency.setValueAtTime(freq * 1.5, now);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.9);
+
+          const harmGain = this.ctx.createGain();
+          harmGain.gain.setValueAtTime(0.03, now);
+          harmGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.45);
+
+          osc.connect(gain);
+          oscHarm.connect(harmGain);
+          gain.connect(this.ctx.destination);
+          harmGain.connect(this.ctx.destination);
+
+          osc.start(now);
+          oscHarm.start(now);
+          osc.stop(now + 0.95);
+          oscHarm.stop(now + 0.5);
+        });
+      }
+
+      playWoodClick() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.055);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.065);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* ==========================================================================
+       3. CANVAS PARTICLE & SUNBEAM DUST ENGINE
+       Maps stage-svg (1600x900 meet) coordinates accurately to screen pixels
+       ========================================================================== */
+    class ParticleSystem {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.dustMotes = [];
+        this.particles = [];
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.initDustMotes();
+      }
+
+      resize() {
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+      }
+
+      // Convert stage-svg (1600x900 meet) coordinates to screen canvas coordinates
+      svgToScreen(svgX, svgY) {
+        const scale = Math.min(this.width / 1600, this.height / 900);
+        const offsetX = (this.width - 1600 * scale) / 2;
+        const offsetY = (this.height - 900 * scale) / 2;
+        return {
+          x: offsetX + svgX * scale,
+          y: offsetY + svgY * scale,
+          scale
+        };
+      }
+
+      initDustMotes() {
+        this.dustMotes = [];
+        for (let i = 0; i < 50; i++) {
+          this.dustMotes.push({
+            x: Math.random() * this.width,
+            y: Math.random() * this.height,
+            r: 1.2 + Math.random() * 2.4,
+            vx: 0.12 + Math.random() * 0.2,
+            vy: -0.08 + Math.random() * 0.22,
+            phase: Math.random() * Math.PI * 2,
+            alpha: 0.2 + Math.random() * 0.55
+          });
+        }
+      }
+
+      spawnYarnRevealBurst(svgX, svgY, colorObj) {
+        const pos = this.svgToScreen(svgX, svgY);
+        const colors = [colorObj.base, colorObj.light, colorObj.strand, '#ffe58f', '#fff6d6'];
+
+        for (let i = 0; i < 28; i++) {
+          const angle = (Math.PI * 2 * i) / 28 + (Math.random() - 0.5) * 0.3;
+          const speed = (2.5 + Math.random() * 6.2) * pos.scale;
+          this.particles.push({
+            type: i % 3 === 0 ? 'star' : 'yarn',
+            x: pos.x,
+            y: pos.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2 * pos.scale,
+            gravity: 0.14 * pos.scale,
+            size: (6 + Math.random() * 7) * pos.scale,
+            color: colors[i % colors.length],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 0.15,
+            life: 1,
+            decay: 0.016 + Math.random() * 0.012
+          });
+        }
+      }
+
+      spawnPurrHearts(svgX, svgY) {
+        const pos = this.svgToScreen(svgX, svgY);
+        const colors = ['#ff8fa3', '#ffb3c1', '#ffd6a5', '#ffe599'];
+        for (let i = 0; i < 6; i++) {
+          this.particles.push({
+            type: 'heart',
+            x: pos.x + (Math.random() - 0.5) * 55 * pos.scale,
+            y: pos.y - 18 * pos.scale,
+            vx: (Math.random() - 0.5) * 1.2 * pos.scale,
+            vy: (-1.4 - Math.random() * 1.4) * pos.scale,
+            gravity: -0.01 * pos.scale,
+            size: (10 + Math.random() * 7) * pos.scale,
+            color: colors[i % colors.length],
+            rot: (Math.random() - 0.5) * 0.4,
+            vRot: (Math.random() - 0.5) * 0.02,
+            life: 1,
+            decay: 0.012 + Math.random() * 0.008
+          });
+        }
+      }
+
+      spawnRoundCelebration(styleIndex, ballPositions, catPos) {
+        const palette = ['#ff758f', '#ffd166', '#06d6a0', '#4ea8de', '#c77dff', '#ff9f1c'];
+
+        if (styleIndex === 0) {
+          ballPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y);
+            for (let i = 0; i < 5; i++) {
+              this.particles.push({
+                type: 'butterfly',
+                x: pos.x + (Math.random() - 0.5) * 45 * pos.scale,
+                y: pos.y,
+                vx: (Math.random() - 0.5) * 3.2 * pos.scale,
+                vy: (-2.0 - Math.random() * 2.4) * pos.scale,
+                gravity: -0.015 * pos.scale,
+                size: (13 + Math.random() * 8) * pos.scale,
+                color: palette[(i + b.num) % palette.length],
+                wingPhase: Math.random() * Math.PI * 2,
+                rot: 0,
+                vRot: 0,
+                life: 1,
+                decay: 0.007 + Math.random() * 0.005
+              });
+            }
+          });
+        } else if (styleIndex === 1) {
+          const cPos = this.svgToScreen(catPos.x, catPos.y - 60);
+          for (let i = 0; i < 36; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (1.5 + Math.random() * 4.8) * cPos.scale;
+            this.particles.push({
+              type: i % 2 === 0 ? 'heart' : 'star',
+              x: cPos.x + (Math.random() - 0.5) * 160 * cPos.scale,
+              y: cPos.y + (Math.random() - 0.5) * 50 * cPos.scale,
+              vx: Math.cos(angle) * speed * 0.7,
+              vy: -Math.abs(Math.sin(angle) * speed) - 1.2 * cPos.scale,
+              gravity: -0.01 * cPos.scale,
+              size: (10 + Math.random() * 9) * cPos.scale,
+              color: palette[i % palette.length],
+              rot: (Math.random() - 0.5) * 0.5,
+              vRot: (Math.random() - 0.5) * 0.03,
+              life: 1,
+              decay: 0.009 + Math.random() * 0.006
+            });
+          }
+        } else if (styleIndex === 2) {
+          ballPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y - 25);
+            for (let i = 0; i < 20; i++) {
+              const angle = (Math.PI * 2 * i) / 20;
+              const speed = (2.8 + Math.random() * 6.0) * pos.scale;
+              this.particles.push({
+                type: 'ribbon',
+                x: pos.x,
+                y: pos.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 3.2 * pos.scale,
+                gravity: 0.12 * pos.scale,
+                size: (11 + Math.random() * 9) * pos.scale,
+                color: palette[(i + b.num) % palette.length],
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.14,
+                life: 1,
+                decay: 0.01 + Math.random() * 0.007
+              });
+            }
+          });
+        } else {
+          ballPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y);
+            for (let i = 0; i < 18; i++) {
+              const angle = (Math.PI * 2 * i) / 18;
+              const speed = (2 + Math.random() * 4.2) * pos.scale;
+              this.particles.push({
+                type: 'star',
+                x: pos.x,
+                y: pos.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1.5 * pos.scale,
+                gravity: 0.04 * pos.scale,
+                size: (9 + Math.random() * 8) * pos.scale,
+                color: i % 2 === 0 ? '#ffe885' : '#9bf6ff',
+                rot: Math.random() * Math.PI,
+                vRot: 0.08,
+                life: 1,
+                decay: 0.01 + Math.random() * 0.006
+              });
+            }
+          });
+        }
+      }
+
+      updateAndDraw(time) {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        for (let m of this.dustMotes) {
+          m.x += m.vx + Math.sin(time * 0.001 + m.phase) * 0.18;
+          m.y += m.vy + Math.cos(time * 0.0012 + m.phase) * 0.12;
+          if (m.x > this.width + 10) m.x = -10;
+          if (m.y > this.height + 10) m.y = -10;
+          if (m.y < -10) m.y = this.height + 10;
+
+          const twinkle = 0.5 + 0.5 * Math.sin(time * 0.003 + m.phase);
+          ctx.save();
+          ctx.globalAlpha = m.alpha * twinkle;
+          ctx.fillStyle = '#fff2b2';
+          ctx.shadowColor = '#ffd966';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const p = this.particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += p.gravity;
+          p.rot += p.vRot;
+          p.life -= p.decay;
+
+          if (p.life <= 0) {
+            this.particles.splice(i, 1);
+            continue;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+
+          if (p.type === 'star') {
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 8;
+            this.drawFourPointStar(ctx, 0, 0, p.size, p.size * 0.38);
+          } else if (p.type === 'heart') {
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 6;
+            this.drawHeart(ctx, 0, 0, p.size);
+          } else if (p.type === 'yarn' || p.type === 'ribbon') {
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = p.type === 'ribbon' ? 4 : 3;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-p.size, 0);
+            ctx.quadraticCurveTo(-p.size * 0.3, -p.size * 0.7, 0, 0);
+            ctx.quadraticCurveTo(p.size * 0.3, p.size * 0.7, p.size, 0);
+            ctx.stroke();
+          } else if (p.type === 'butterfly') {
+            p.wingPhase += 0.24;
+            p.x += Math.sin(p.wingPhase * 0.3) * 1.2;
+            const wingW = Math.abs(Math.cos(p.wingPhase)) * p.size;
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = '#fff3b0';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.ellipse(-wingW * 0.5, -2, wingW * 0.65, p.size * 0.5, -0.3, 0, Math.PI * 2);
+            ctx.ellipse(wingW * 0.5, -2, wingW * 0.65, p.size * 0.5, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#4a2508';
+            ctx.fillRect(-1.5, -p.size * 0.35, 3, p.size * 0.7);
+          }
+
+          ctx.restore();
+        }
+      }
+
+      drawFourPointStar(ctx, x, y, outerR, innerR) {
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const r = i % 2 === 0 ? outerR : innerR;
+          const a = (i * Math.PI) / 4;
+          if (i === 0) ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+          else ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      drawHeart(ctx, x, y, size) {
+        const s = size * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(x, y + s * 0.6);
+        ctx.bezierCurveTo(x - s * 1.3, y - s * 0.2, x - s * 0.7, y - s * 1.2, x, y - s * 0.4);
+        ctx.bezierCurveTo(x + s * 0.7, y - s * 1.2, x + s * 1.3, y - s * 0.2, x, y + s * 0.6);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    /* ==========================================================================
+       4. SVG YARN BALL GENERATOR (Detailed 3D Wound Yarn Strands + Stitched Tag)
+       Uses a static outer <g transform="translate(x,y)"> and a large static
+       <circle class="hit-target"> so clicking NEVER misses or moves the group!
+       ========================================================================== */
+    function createYarnBallSVG(number, x, y, radius, isRevealed, isNextHint = false) {
+      const palette = YARN_PALETTE[(number - 1) % YARN_PALETTE.length];
+      const ns = 'http://www.w3.org/2000/svg';
+      const g = document.createElementNS(ns, 'g');
+      g.setAttribute('class', 'interactive-node');
+      g.setAttribute('transform', `translate(${x}, ${y})`);
+      g.dataset.number = number;
+
+      const gradId = `yarn-grad-${number}-${Math.round(x)}-${Math.round(y)}`;
+      const r = radius;
+      const fontSize = Math.round(r * 0.92);
+      const badgeScale = isRevealed ? 1 : 0.001;
+      const badgeOpacity = isRevealed ? 1 : 0;
+      const mysteryOpacity = isRevealed ? 0 : 1;
+
+      const pawHintHtml = (!isRevealed && isNextHint) ? `
+        <g class="paw-hint-indicator" transform="translate(0, ${-r * 1.25})">
+          <circle cx="0" cy="0" r="19" fill="#ffe484" fill-opacity="0.45" filter="url(#glow-gold)" />
+          <ellipse cx="0" cy="4" rx="8" ry="6" fill="#fff3c4" stroke="#8c5319" stroke-width="1.5" />
+          <circle cx="-8.5" cy="-4.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+          <circle cx="-3" cy="-8.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+          <circle cx="3" cy="-8.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+          <circle cx="8.5" cy="-4.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+        </g>
+      ` : '';
+
+      g.innerHTML = `
+        <defs>
+          <radialGradient id="${gradId}" cx="36%" cy="32%" r="68%">
+            <stop offset="0%" stop-color="${palette.light}" />
+            <stop offset="52%" stop-color="${palette.base}" />
+            <stop offset="88%" stop-color="${palette.dark}" />
+            <stop offset="100%" stop-color="#261107" />
+          </radialGradient>
+        </defs>
+
+        <!-- Floor Shadow -->
+        <ellipse cx="0" cy="${r * 0.85}" rx="${r * 0.92}" ry="${r * 0.28}" fill="#1f0e05" fill-opacity="0.52" />
+
+        <!-- Loose curly yarn tail -->
+        <path d="M${r * 0.65} ${r * 0.55} Q${r * 1.15} ${r * 0.82} ${r * 1.32} ${r * 0.52} T${r * 1.55} ${r * 0.68}"
+              fill="none" stroke="${palette.base}" stroke-width="${Math.max(4, r * 0.1)}" stroke-linecap="round" />
+        <path d="M${r * 0.65} ${r * 0.55} Q${r * 1.15} ${r * 0.82} ${r * 1.32} ${r * 0.52} T${r * 1.55} ${r * 0.68}"
+              fill="none" stroke="${palette.strand}" stroke-width="${Math.max(1.5, r * 0.035)}" stroke-dasharray="4 4" stroke-linecap="round" />
+
+        <!-- Inner Rotator / Scaler Group at local (0,0) -->
+        <g class="yarn-ball-rotator" transform="scale(1)">
+          <!-- Soft Golden Highlight Ring if this is the next suggested ball to click -->
+          <circle class="next-ball-halo" cx="0" cy="0" r="${r + 7}" fill="none" stroke="#ffe27a" stroke-width="4" opacity="${(!isRevealed && isNextHint) ? '0.8' : '0'}" />
+
+          <g class="yarn-sphere-inner">
+            <circle cx="0" cy="0" r="${r}" fill="url(#${gradId})" stroke="${palette.dark}" stroke-width="2.5" />
+
+            <!-- Criss-crossing curved yarn wind lines -->
+            <g fill="none" stroke="${palette.strand}" stroke-opacity="0.45" stroke-width="${r * 0.085}" stroke-linecap="round">
+              <path d="M${-r * 0.82} ${-r * 0.35} Q${-r * 0.1} ${-r * 0.88} ${r * 0.78} ${-r * 0.25}" />
+              <path d="M${-r * 0.88} ${-r * 0.08} Q0 ${-r * 0.62} ${r * 0.86} ${r * 0.05}" />
+              <path d="M${-r * 0.75} ${r * 0.22} Q${r * 0.08} ${-r * 0.32} ${r * 0.82} ${r * 0.35}" />
+
+              <path d="M${-r * 0.45} ${-r * 0.82} Q${-r * 0.65} 0 ${-r * 0.15} ${r * 0.88}" />
+              <path d="M${-r * 0.15} ${-r * 0.92} Q${-r * 0.35} 0 ${r * 0.18} ${r * 0.92}" />
+              <path d="M${r * 0.18} ${-r * 0.86} Q${-r * 0.05} 0 ${r * 0.48} ${r * 0.82}" />
+
+              <path d="M${-r * 0.65} ${r * 0.58} Q${r * 0.15} ${r * 0.85} ${r * 0.75} ${r * 0.15}" />
+              <path d="M${-r * 0.55} ${r * 0.75} Q${r * 0.25} ${r * 0.95} ${r * 0.82} ${r * 0.38}" />
+            </g>
+
+            <!-- Darker depth grooves -->
+            <g fill="none" stroke="${palette.dark}" stroke-opacity="0.48" stroke-width="${r * 0.045}" stroke-linecap="round">
+              <path d="M${-r * 0.85} ${-r * 0.2} Q0 ${-r * 0.75} ${r * 0.82} ${-r * 0.1}" />
+              <path d="M${-r * 0.3} ${-r * 0.88} Q${-r * 0.5} 0 ${0} ${r * 0.9}" />
+              <path d="M${-r * 0.6} ${r * 0.68} Q${r * 0.2} ${r * 0.9} ${r * 0.78} ${r * 0.28}" />
+            </g>
+
+            <!-- Specular highlight -->
+            <ellipse cx="${-r * 0.32}" cy="${-r * 0.34}" rx="${r * 0.34}" ry="${r * 0.2}" transform="rotate(-28 ${-r * 0.32} ${-r * 0.34})" fill="#ffffff" fill-opacity="0.22" />
+          </g>
+
+          <!-- Mystery Yarn Knot Swirl (Shown when unrevealed) -->
+          <g class="mystery-knot-overlay" opacity="${mysteryOpacity}">
+            <circle cx="0" cy="0" r="${r * 0.32}" fill="${palette.dark}" fill-opacity="0.38" />
+            <path d="M${-r * 0.22} ${-r * 0.1} Q0 ${-r * 0.32} ${r * 0.22} ${-r * 0.08} Q${r * 0.32} ${r * 0.18} 0 ${r * 0.24} Q${-r * 0.28} ${r * 0.16} ${-r * 0.12} 0"
+                  fill="none" stroke="${palette.strand}" stroke-width="3.5" stroke-linecap="round" opacity="0.9" />
+          </g>
+
+          <!-- Cozy Stitched Felt Number Badge -->
+          <g class="yarn-number-badge" transform="scale(${badgeScale})" opacity="${badgeOpacity}">
+            <circle cx="0" cy="0" r="${r * 0.64}" fill="url(#felt-badge-grad)" stroke="#5c3818" stroke-width="2.5" />
+            <circle cx="0" cy="0" r="${r * 0.55}" fill="none" stroke="#8c5830" stroke-width="1.8" stroke-dasharray="5 4" />
+            <text x="0" y="${fontSize * 0.35}" text-anchor="middle" font-size="${fontSize}" font-weight="bold" fill="#3b1d0a" stroke="#fff6e6" stroke-width="1.5" paint-order="stroke">${number}</text>
+          </g>
+        </g>
+
+        ${pawHintHtml}
+
+        <!-- Generous Static Transparent Hit Target so clicks NEVER fail -->
+        <circle class="hit-target" cx="0" cy="0" r="${r * 1.18}" />
+      `;
+
+      return g;
+    }
+
+    /* ==========================================================================
+       5. KITTEN ANIMATION & EMOTION CONTROLLER
+       Handles smooth walking between balls, 5+ emotional states, blinking, purring
+       ========================================================================== */
+    class KittenController {
+      constructor() {
+        this.root = document.getElementById('kitten-root');
+        this.flipGroup = document.getElementById('kitten-flip-group');
+        this.bodyRig = document.getElementById('kitten-body-rig');
+        this.head = document.getElementById('cat-head');
+        this.tailGroup = document.getElementById('cat-tail-group');
+        this.earL = document.getElementById('ear-l');
+        this.earR = document.getElementById('ear-r');
+        this.legFL = document.getElementById('leg-fl');
+        this.legFR = document.getElementById('leg-fr');
+        this.legBL = document.getElementById('leg-bl');
+        this.legBR = document.getElementById('leg-br');
+        this.eyesOpen = document.getElementById('cat-eyes-open');
+        this.eyesHappy = document.getElementById('cat-eyes-happy');
+        this.eyelidL = document.getElementById('eyelid-l');
+        this.eyelidR = document.getElementById('eyelid-r');
+        this.pupilL = document.getElementById('pupil-l');
+        this.pupilR = document.getElementById('pupil-r');
+        this.blush = document.getElementById('cat-blush');
+        this.mouthOpen = document.getElementById('cat-mouth-open');
+        this.purrRipples = document.getElementById('purr-ripples');
+
+        this.x = 800;
+        this.y = 645;
+        this.facing = 1;
+        this.emotion = 'calm';
+        this.emotionTimer = null;
+        this.walkState = null;
+        this.lastStepTime = 0;
+
+        this.nextBlinkTime = performance.now() + 2400;
+        this.isBlinking = false;
+      }
+
+      setPositionImmediate(x, y, facing = 1) {
+        this.walkState = null;
+        this.x = x;
+        this.y = y;
+        this.facing = facing;
+        this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+        this.flipGroup.setAttribute('transform', `scale(${this.facing}, 1)`);
+        this.setEmotion('calm');
+      }
+
+      setEmotion(emotionName, durationMs = 0) {
+        this.emotion = emotionName;
+        if (this.emotionTimer) {
+          clearTimeout(this.emotionTimer);
+          this.emotionTimer = null;
+        }
+
+        this.eyesOpen.setAttribute('opacity', '1');
+        this.eyesHappy.setAttribute('opacity', '0');
+        this.blush.style.opacity = '0';
+        this.mouthOpen.setAttribute('opacity', '0');
+        this.pupilL.setAttribute('rx', '5');
+        this.pupilR.setAttribute('rx', '5');
+
+        if (emotionName === 'curious') {
+          this.pupilL.setAttribute('rx', '7.8');
+          this.pupilR.setAttribute('rx', '7.8');
+          this.mouthOpen.setAttribute('opacity', '0.7');
+        } else if (emotionName === 'purring') {
+          this.eyesOpen.setAttribute('opacity', '0');
+          this.eyesHappy.setAttribute('opacity', '1');
+          this.blush.style.opacity = '1';
+        } else if (emotionName === 'excited') {
+          this.pupilL.setAttribute('rx', '8.2');
+          this.pupilR.setAttribute('rx', '8.2');
+          this.blush.style.opacity = '0.85';
+          this.mouthOpen.setAttribute('opacity', '1');
+        } else if (emotionName === 'celebrating') {
+          this.eyesOpen.setAttribute('opacity', '0');
+          this.eyesHappy.setAttribute('opacity', '1');
+          this.blush.style.opacity = '1';
+          this.mouthOpen.setAttribute('opacity', '1');
+        }
+
+        if (durationMs > 0) {
+          this.emotionTimer = setTimeout(() => {
+            if (this.emotion !== 'walking') {
+              this.setEmotion('calm');
+            }
+          }, durationMs);
+        }
+      }
+
+      walkTo(targetX, targetY, onArrive) {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 6) {
+          this.x = targetX;
+          this.y = targetY;
+          this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+          if (onArrive) onArrive();
+          return;
+        }
+
+        this.facing = dx >= 0 ? 1 : -1;
+        this.flipGroup.setAttribute('transform', `scale(${this.facing}, 1)`);
+        this.setEmotion('walking');
+
+        const duration = Math.min(900, Math.max(340, dist * 1.35));
+        this.walkState = {
+          startX: this.x,
+          startY: this.y,
+          targetX,
+          targetY,
+          startTime: performance.now(),
+          duration,
+          onArrive
+        };
+      }
+
+      update(now) {
+        if (this.walkState) {
+          const elapsed = now - this.walkState.startTime;
+          const t = Math.min(1, elapsed / this.walkState.duration);
+          const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+          this.x = this.walkState.startX + (this.walkState.targetX - this.walkState.startX) * ease;
+          this.y = this.walkState.startY + (this.walkState.targetY - this.walkState.startY) * ease;
+
+          const stepPhase = elapsed * 0.026;
+          const bounceY = -Math.abs(Math.sin(stepPhase)) * 10;
+          const bodyTilt = Math.sin(stepPhase) * 3.2;
+
+          this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+          this.bodyRig.setAttribute('transform', `translate(0, ${bounceY}) rotate(${bodyTilt})`);
+
+          const flSwing = Math.sin(stepPhase) * 22;
+          const frSwing = -Math.sin(stepPhase) * 22;
+          this.legFL.setAttribute('transform', `translate(-14, 11) rotate(${flSwing})`);
+          this.legFR.setAttribute('transform', `translate(18, 11) rotate(${frSwing})`);
+          this.legBL.setAttribute('transform', `translate(-34, 16) rotate(${frSwing * 0.6})`);
+          this.legBR.setAttribute('transform', `translate(30, 18) rotate(${flSwing * 0.6})`);
+
+          if (now - this.lastStepTime > 170) {
+            sound.playPawStep();
+            this.lastStepTime = now;
+          }
+
+          if (t >= 1) {
+            const cb = this.walkState.onArrive;
+            this.walkState = null;
+            this.legFL.setAttribute('transform', 'translate(-14, 11)');
+            this.legFR.setAttribute('transform', 'translate(18, 11)');
+            this.legBL.setAttribute('transform', 'translate(-34, 16)');
+            this.legBR.setAttribute('transform', 'translate(30, 18)');
+            this.bodyRig.setAttribute('transform', 'translate(0, 0)');
+            if (cb) cb();
+          }
+          return;
+        }
+
+        const breath = Math.sin(now * 0.0032);
+        const tailAngle = Math.sin(now * 0.0028) * 14 + (this.emotion === 'celebrating' ? Math.sin(now * 0.015) * 18 : 0);
+        this.tailGroup.setAttribute('transform', `translate(-44, 10) rotate(${tailAngle})`);
+
+        if (sound.isPurring || this.emotion === 'purring') {
+          const vibX = Math.sin(now * 0.16) * 0.8;
+          const vibY = Math.cos(now * 0.18) * 0.6;
+          this.bodyRig.setAttribute('transform', `translate(${vibX}, ${breath * 1.8 + vibY}) scale(1, ${1 + breath * 0.012})`);
+          const ripplePulse = 0.4 + 0.35 * Math.sin(now * 0.008);
+          this.purrRipples.setAttribute('opacity', ripplePulse.toFixed(2));
+        } else if (this.emotion === 'celebrating') {
+          const hopY = -Math.abs(Math.sin(now * 0.009)) * 20;
+          const stretch = 1 + Math.sin(now * 0.009) * 0.06;
+          this.bodyRig.setAttribute('transform', `translate(0, ${hopY}) scale(${1 / stretch}, ${stretch})`);
+          const pawWave = Math.sin(now * 0.018) * 24;
+          this.legFL.setAttribute('transform', `translate(-14, 6) rotate(${pawWave})`);
+          this.legFR.setAttribute('transform', `translate(18, 6) rotate(${-pawWave})`);
+          this.purrRipples.setAttribute('opacity', '0');
+        } else {
+          this.bodyRig.setAttribute('transform', `translate(0, ${breath * 1.8}) scale(1, ${1 + breath * 0.01})`);
+          this.legFL.setAttribute('transform', 'translate(-14, 11)');
+          this.legFR.setAttribute('transform', 'translate(18, 11)');
+          this.purrRipples.setAttribute('opacity', '0');
+        }
+
+        let headTilt = Math.sin(now * 0.0018) * 2.5;
+        if (this.emotion === 'curious') headTilt = 11 + Math.sin(now * 0.004) * 3;
+        else if (this.emotion === 'purring') headTilt = -6 + Math.sin(now * 0.003) * 2;
+        else if (this.emotion === 'excited') headTilt = -4 + Math.cos(now * 0.006) * 4;
+        this.head.setAttribute('transform', `translate(4, -68) rotate(${headTilt})`);
+
+        const earTwitchL = Math.sin(now * 0.0025) * 4 + (this.emotion === 'curious' ? -8 : 0);
+        const earTwitchR = -Math.cos(now * 0.0029) * 4 + (this.emotion === 'curious' ? 8 : 0);
+        this.earL.setAttribute('transform', `translate(-32, -30) rotate(${earTwitchL})`);
+        this.earR.setAttribute('transform', `translate(32, -30) rotate(${earTwitchR})`);
+
+        if (!this.isBlinking && now > this.nextBlinkTime) {
+          this.isBlinking = true;
+          this.blinkStart = now;
+          this.nextBlinkTime = now + 2600 + Math.random() * 2800;
+        }
+
+        if (this.isBlinking) {
+          const bt = (now - this.blinkStart) / 180;
+          if (bt >= 1) {
+            this.isBlinking = false;
+            this.eyelidL.setAttribute('transform', 'scale(1, 0)');
+            this.eyelidR.setAttribute('transform', 'scale(1, 0)');
+          } else {
+            const closeAmt = Math.sin(bt * Math.PI);
+            this.eyelidL.setAttribute('transform', `scale(1, ${closeAmt})`);
+            this.eyelidR.setAttribute('transform', `scale(1, ${closeAmt})`);
+          }
+        }
+      }
+    }
+
+    /* ==========================================================================
+       6. MAIN GAME CONTROLLER
+       ========================================================================== */
+    class NumberLineCatGame {
+      constructor() {
+        this.canvas = document.getElementById('fx-canvas');
+        this.particles = new ParticleSystem(this.canvas);
+        this.kitten = new KittenController();
+
+        this.yarnLayer = document.getElementById('yarn-balls-layer');
+        this.connectingLayer = document.getElementById('yarn-connecting-layer');
+        this.pawTrailLayer = document.getElementById('paw-trail-layer');
+        this.taskEmblemContent = document.getElementById('task-emblem-content');
+        this.shelfContainer = document.getElementById('shelf-balls-container');
+        this.helperShelfWrapper = document.getElementById('helper-shelf-wrapper');
+        this.helperActiveRing = document.getElementById('helper-active-ring');
+        this.nextPulseHalo = document.getElementById('next-pulse-halo');
+
+        // Optional teacher filters (0 = All, 1 = Forward +, -1 = Backward -)
+        this.dirFilter = 0;
+        // Step filter (0 = All 1..3, or 1, 2, 3)
+        this.stepFilter = 0;
+
+        this.roundData = null;
+        this.lastSignature = '';
+        this.celebrationCounter = 0;
+        this.helperOpen = false;
+        this.shelfCurrentY = -220;
+        this.shelfTargetY = -220;
+
+        this.buildHelperShelf();
+        this.bindEvents();
+        this.generateNewRound(true);
+        this.startLoop();
+      }
+
+      /* ------------------------------------------------------------------------
+         Build the 1..10 Collapsible Helper Shelf at the top of the room
+         ------------------------------------------------------------------------ */
+      buildHelperShelf() {
+        this.shelfContainer.innerHTML = '';
+        const ns = 'http://www.w3.org/2000/svg';
+        const startX = 346;
+        const spacing = 101;
+
+        for (let num = 1; num <= 10; num++) {
+          const cx = startX + (num - 1) * spacing;
+          const cy = 73;
+
+          const itemGroup = document.createElementNS(ns, 'g');
+          itemGroup.setAttribute('id', `shelf-item-${num}`);
+
+          const ring = document.createElementNS(ns, 'circle');
+          ring.setAttribute('id', `shelf-ring-${num}`);
+          ring.setAttribute('cx', cx);
+          ring.setAttribute('cy', cy);
+          ring.setAttribute('r', '36');
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', '#ffe27a');
+          ring.setAttribute('stroke-width', '3.5');
+          ring.setAttribute('opacity', '0');
+          itemGroup.appendChild(ring);
+
+          const miniBall = createYarnBallSVG(num, cx, cy, 28, true, false);
+          miniBall.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            sound.init();
+            sound.playNumberReveal(num);
+            sound.triggerQuietPurr(1800, 0.06);
+            this.particles.spawnYarnRevealBurst(cx, cy, YARN_PALETTE[num - 1]);
+            const rotator = miniBall.querySelector('.yarn-ball-rotator');
+            animateInnerScale(rotator, 1.2, 320);
+          });
+
+          itemGroup.appendChild(miniBall);
+          this.shelfContainer.appendChild(itemGroup);
+        }
+      }
+
+      updateHelperShelfHighlights() {
+        if (!this.roundData) return;
+        for (let num = 1; num <= 10; num++) {
+          const ring = document.getElementById(`shelf-ring-${num}`);
+          if (!ring) continue;
+
+          const ballItem = this.roundData.balls.find((b) => b.num === num);
+          if (!ballItem) {
+            ring.setAttribute('opacity', '0');
+          } else if (ballItem.num === this.roundData.startNum) {
+            ring.setAttribute('stroke', '#ffd966');
+            ring.setAttribute('stroke-dasharray', 'none');
+            ring.setAttribute('opacity', '0.95');
+          } else {
+            ring.setAttribute('stroke', ballItem.revealed ? '#9ef0b6' : '#ffd966');
+            ring.setAttribute('stroke-dasharray', ballItem.revealed ? 'none' : '6 4');
+            ring.setAttribute('opacity', '0.8');
+          }
+        }
+      }
+
+      /* ------------------------------------------------------------------------
+         Render the visual non-verbal Task Emblem on the rug (+1/+2/+3 or -1/-2/-3)
+         ------------------------------------------------------------------------ */
+      renderTaskEmblem() {
+        if (!this.roundData || !this.taskEmblemContent) return;
+        const { dir, steps } = this.roundData;
+        const signStr = dir === 1 ? `+${steps}` : `-${steps}`;
+        const arrowColor = dir === 1 ? '#3c8c50' : '#c95238';
+
+        // Draw direction arrow, step badge, and step pips (small yarn dots)
+        let pipsHtml = '';
+        for (let i = 0; i < steps; i++) {
+          const px = 38 + i * 22;
+          pipsHtml += `<circle cx="${px}" cy="0" r="7.5" fill="${arrowColor}" stroke="#fff6e6" stroke-width="1.8" />`;
+        }
+
+        const arrowPath = dir === 1
+          ? `<path d="M-88 0 L-46 0 M-58 -11 L-44 0 L-58 11" fill="none" stroke="${arrowColor}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />`
+          : `<path d="M-44 0 L-86 0 M-74 -11 L-88 0 L-74 11" fill="none" stroke="${arrowColor}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />`;
+
+        this.taskEmblemContent.innerHTML = `
+          ${arrowPath}
+          <text x="-6" y="10" text-anchor="middle" font-size="30" font-weight="bold" fill="#3b1d0a" stroke="#fff8eb" stroke-width="1.5" paint-order="stroke">${signStr}</text>
+          ${pipsHtml}
+        `;
+      }
+
+      /* ------------------------------------------------------------------------
+         Generate a New Counting Task:
+         steps in {1, 2, 3}, direction in {+1 (forward), -1 (backward)}
+         ------------------------------------------------------------------------ */
+      generateNewRound(isFirstRound = false) {
+        let steps, dir, startNum, sig;
+        let attempts = 0;
+
+        do {
+          steps = this.stepFilter !== 0 ? this.stepFilter : [1, 2, 3][Math.floor(Math.random() * 3)];
+          dir = this.dirFilter !== 0 ? this.dirFilter : (Math.random() < 0.5 ? 1 : -1);
+
+          if (dir === 1) {
+            const maxStart = 10 - steps;
+            startNum = 1 + Math.floor(Math.random() * maxStart);
+          } else {
+            const minStart = 1 + steps;
+            startNum = minStart + Math.floor(Math.random() * (10 - minStart + 1));
+          }
+          sig = `${startNum}:${dir}:${steps}`;
+          attempts++;
+        } while (sig === this.lastSignature && attempts < 15);
+
+        this.lastSignature = sig;
+
+        const totalBalls = steps + 1;
+        const nums = [];
+        for (let i = 0; i <= steps; i++) {
+          nums.push(startNum + dir * i);
+        }
+        // Sort left-to-right in ascending order so:
+        // Forward (+): startNum is on the LEFT, hidden balls on the RIGHT.
+        // Backward (-): startNum is on the RIGHT, hidden balls on the LEFT.
+        nums.sort((a, b) => a - b);
+
+        const spacing = totalBalls === 4 ? 225 : totalBalls === 3 ? 255 : 280;
+        const centerX = 800;
+        const baseY = 745;
+
+        const balls = nums.map((num, idx) => {
+          const x = centerX + (idx - (totalBalls - 1) / 2) * spacing;
+          const y = baseY + Math.abs(idx - (totalBalls - 1) / 2) * 7;
+          return {
+            num,
+            x,
+            y,
+            revealed: num === startNum
+          };
+        });
+
+        this.roundData = {
+          startNum,
+          dir,
+          steps,
+          balls,
+          completed: false
+        };
+
+        if (this.nextPulseHalo) {
+          this.nextPulseHalo.setAttribute('opacity', '0');
+        }
+
+        this.renderTaskEmblem();
+        this.renderRoundScene(isFirstRound);
+        this.updateHelperShelfHighlights();
+      }
+
+      getNextSequentialBall() {
+        if (!this.roundData) return null;
+        const { startNum, dir, steps, balls } = this.roundData;
+        for (let i = 1; i <= steps; i++) {
+          const targetNum = startNum + dir * i;
+          const found = balls.find((b) => b.num === targetNum);
+          if (found && !found.revealed) return found;
+        }
+        return null;
+      }
+
+      /* ------------------------------------------------------------------------
+         Render Connecting Yarn Strand, Directional Paw Prints, and Yarn Balls
+         ------------------------------------------------------------------------ */
+      renderRoundScene(placeCatImmediately = false) {
+        this.yarnLayer.innerHTML = '';
+        this.connectingLayer.innerHTML = '';
+        this.pawTrailLayer.innerHTML = '';
+
+        const ns = 'http://www.w3.org/2000/svg';
+        const { balls, startNum, dir } = this.roundData;
+        const nextBall = this.getNextSequentialBall();
+
+        // 1) Unwinding yarn strand connecting the balls on the rug
+        if (balls.length >= 2) {
+          let pathD = `M ${balls[0].x} ${balls[0].y + 36}`;
+          for (let i = 1; i < balls.length; i++) {
+            const prev = balls[i - 1];
+            const curr = balls[i];
+            const midX = (prev.x + curr.x) / 2;
+            const waveY = prev.y + 44 + (i % 2 === 0 ? -12 : 12);
+            pathD += ` Q ${midX} ${waveY} ${curr.x} ${curr.y + 36}`;
+          }
+
+          const strandShadow = document.createElementNS(ns, 'path');
+          strandShadow.setAttribute('d', pathD);
+          strandShadow.setAttribute('fill', 'none');
+          strandShadow.setAttribute('stroke', '#331809');
+          strandShadow.setAttribute('stroke-width', '8');
+          strandShadow.setAttribute('stroke-linecap', 'round');
+          strandShadow.setAttribute('opacity', '0.45');
+          this.connectingLayer.appendChild(strandShadow);
+
+          const strandMain = document.createElementNS(ns, 'path');
+          strandMain.setAttribute('d', pathD);
+          strandMain.setAttribute('fill', 'none');
+          strandMain.setAttribute('stroke', '#f5dec2');
+          strandMain.setAttribute('stroke-width', '5.5');
+          strandMain.setAttribute('stroke-linecap', 'round');
+          this.connectingLayer.appendChild(strandMain);
+
+          const strandTwist = document.createElementNS(ns, 'path');
+          strandTwist.setAttribute('d', pathD);
+          strandTwist.setAttribute('fill', 'none');
+          strandTwist.setAttribute('stroke', '#c97b53');
+          strandTwist.setAttribute('stroke-width', '2.8');
+          strandTwist.setAttribute('stroke-dasharray', '7 7');
+          strandTwist.setAttribute('stroke-linecap', 'round');
+          this.connectingLayer.appendChild(strandTwist);
+        }
+
+        // 2) Directional glowing paw-print trail on the rug
+        const startBall = balls.find((b) => b.num === startNum);
+        const endBall = balls.find((b) => b.num === startNum + dir * this.roundData.steps);
+        if (startBall && endBall) {
+          const totalDist = endBall.x - startBall.x;
+          const pawCount = this.roundData.steps * 2;
+          for (let p = 1; p <= pawCount; p++) {
+            const frac = p / (pawCount + 1);
+            const px = startBall.x + totalDist * frac;
+            const py = 695 + (p % 2 === 0 ? -6 : 6);
+            const angle = dir === 1 ? 90 : -90;
+
+            const paw = document.createElementNS(ns, 'g');
+            paw.setAttribute('transform', `translate(${px}, ${py}) rotate(${angle}) scale(0.72)`);
+            paw.setAttribute('opacity', '0.35');
+            paw.innerHTML = `
+              <ellipse cx="0" cy="4" rx="7" ry="5" fill="#fff0c2" />
+              <circle cx="-7" cy="-4" r="3" fill="#fff0c2" />
+              <circle cx="-2.5" cy="-7" r="3" fill="#fff0c2" />
+              <circle cx="2.5" cy="-7" r="3" fill="#fff0c2" />
+              <circle cx="7" cy="-4" r="3" fill="#fff0c2" />
+            `;
+            this.pawTrailLayer.appendChild(paw);
+          }
+        }
+
+        // 3) Render each interactive Yarn Ball (radius 58)
+        balls.forEach((b) => {
+          const isHint = nextBall && nextBall.num === b.num;
+          const ballEl = createYarnBallSVG(b.num, b.x, b.y, 58, b.revealed, isHint);
+          b.element = ballEl;
+
+          // Bind pointerdown so every single tap/click registers immediately!
+          ballEl.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            this.handleYarnBallClick(b);
+          });
+
+          this.yarnLayer.appendChild(ballEl);
+        });
+
+        // 4) Position Kitten beside the starting yarn ball
+        if (startBall) {
+          const catTargetX = startBall.x;
+          const catTargetY = startBall.y - 88;
+          const faceDir = dir === 1 ? 1 : -1;
+
+          if (placeCatImmediately) {
+            this.kitten.setPositionImmediate(catTargetX, catTargetY, faceDir);
+            sound.triggerQuietPurr(2600, 0.065);
+          } else {
+            this.kitten.walkTo(catTargetX, catTargetY, () => {
+              this.kitten.facing = faceDir;
+              this.kitten.flipGroup.setAttribute('transform', `scale(${faceDir}, 1)`);
+              this.kitten.setEmotion('curious', 2000);
+              sound.triggerQuietPurr(2600, 0.075);
+            });
+          }
+        }
+      }
+
+      /* ------------------------------------------------------------------------
+         Handle Clicking a Yarn Ball:
+         1) Immediately reveals the number on the yarn ball with sound & sparkles
+         2) Walks the kitten right over to sit beside the clicked yarn ball,
+            changes its emotion, and purrs!
+         ------------------------------------------------------------------------ */
+      handleYarnBallClick(ballObj) {
+        sound.init();
+
+        const rotator = ballObj.element ? ballObj.element.querySelector('.yarn-ball-rotator') : null;
+        animateInnerScale(rotator, 1.16, 360);
+
+        if (!ballObj.revealed) {
+          // Immediately reveal the number badge so the child gets instant responsive feedback!
+          ballObj.revealed = true;
+
+          const badge = ballObj.element.querySelector('.yarn-number-badge');
+          const knot = ballObj.element.querySelector('.mystery-knot-overlay');
+
+          if (knot) knot.setAttribute('opacity', '0');
+          if (badge) {
+            badge.setAttribute('opacity', '1');
+            animateInnerScale(badge, 1.18, 380);
+          }
+
+          this.refreshPawHints();
+          this.updateHelperShelfHighlights();
+
+          sound.playNumberReveal(ballObj.num);
+          this.particles.spawnYarnRevealBurst(ballObj.x, ballObj.y, YARN_PALETTE[ballObj.num - 1]);
+        } else {
+          // Clicking an already revealed ball plays its note & sparkles
+          sound.playNumberReveal(ballObj.num);
+          this.particles.spawnYarnRevealBurst(ballObj.x, ballObj.y, YARN_PALETTE[ballObj.num - 1]);
+        }
+
+        // Walk the kitten over to sit beside the clicked yarn ball
+        const targetCatX = ballObj.x;
+        const targetCatY = ballObj.y - 88;
+
+        this.kitten.walkTo(targetCatX, targetCatY, () => {
+          const nextUnrevealed = this.getNextSequentialBall();
+          if (nextUnrevealed && nextUnrevealed.num !== ballObj.num) {
+            const lookDir = nextUnrevealed.x >= ballObj.x ? 1 : -1;
+            this.kitten.facing = lookDir;
+            this.kitten.flipGroup.setAttribute('transform', `scale(${lookDir}, 1)`);
+          }
+
+          const emotions = ['purring', 'excited', 'curious'];
+          const chosenEmotion = emotions[ballObj.num % emotions.length];
+          this.kitten.setEmotion(chosenEmotion, 3200);
+          sound.triggerQuietPurr(3500, 0.088);
+          this.particles.spawnPurrHearts(this.kitten.x, this.kitten.y - 55);
+
+          // Check if all balls in this round are now revealed
+          const allDone = this.roundData.balls.every((b) => b.revealed);
+          if (allDone && !this.roundData.completed) {
+            this.roundData.completed = true;
+            setTimeout(() => this.triggerRoundCompleteCelebration(), 260);
+          }
+        });
+      }
+
+      refreshPawHints() {
+        const oldHints = this.yarnLayer.querySelectorAll('.paw-hint-indicator');
+        oldHints.forEach((h) => h.remove());
+
+        const allHalos = this.yarnLayer.querySelectorAll('.next-ball-halo');
+        allHalos.forEach((h) => h.setAttribute('opacity', '0'));
+
+        const nextBall = this.getNextSequentialBall();
+        if (nextBall && nextBall.element) {
+          const halo = nextBall.element.querySelector('.next-ball-halo');
+          if (halo) halo.setAttribute('opacity', '0.85');
+
+          const ns = 'http://www.w3.org/2000/svg';
+          const hintG = document.createElementNS(ns, 'g');
+          hintG.setAttribute('class', 'paw-hint-indicator');
+          hintG.setAttribute('transform', 'translate(0, -73)');
+          hintG.innerHTML = `
+            <circle cx="0" cy="0" r="19" fill="#ffe484" fill-opacity="0.45" filter="url(#glow-gold)" />
+            <ellipse cx="0" cy="4" rx="8" ry="6" fill="#fff3c4" stroke="#8c5319" stroke-width="1.5" />
+            <circle cx="-8.5" cy="-4.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+            <circle cx="-3" cy="-8.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+            <circle cx="3" cy="-8.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+            <circle cx="8.5" cy="-4.5" r="3.5" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" />
+          `;
+          // Insert before hit-target so hit-target stays on top
+          const hitTarget = nextBall.element.querySelector('.hit-target');
+          nextBall.element.insertBefore(hintG, hitTarget);
+        }
+      }
+
+      /* ------------------------------------------------------------------------
+         Active, Varied Non-Verbal Celebration when all balls are revealed
+         ------------------------------------------------------------------------ */
+      triggerRoundCompleteCelebration() {
+        const styleIdx = this.celebrationCounter % 4;
+        this.celebrationCounter++;
+
+        sound.playCelebrationFanfare(styleIdx);
+        sound.triggerQuietPurr(4200, 0.095);
+        this.kitten.setEmotion('celebrating', 3400);
+
+        if (this.nextPulseHalo) {
+          this.nextPulseHalo.setAttribute('opacity', '0.9');
+        }
+
+        this.particles.spawnRoundCelebration(styleIdx, this.roundData.balls, {
+          x: this.kitten.x,
+          y: this.kitten.y
+        });
+
+        const orderedBalls = [...this.roundData.balls].sort((a, b) =>
+          this.roundData.dir === 1 ? a.num - b.num : b.num - a.num
+        );
+
+        orderedBalls.forEach((b, idx) => {
+          setTimeout(() => {
+            if (!b.element) return;
+            const rotator = b.element.querySelector('.yarn-ball-rotator');
+            animateInnerScale(rotator, 1.2, 420);
+          }, idx * 120);
+        });
+      }
+
+      /* ------------------------------------------------------------------------
+         Bind UI Controls & Kitten Petting Interaction via reliable pointerdown
+         ------------------------------------------------------------------------ */
+      bindEvents() {
+        // Petting / Clicking directly on the kitten
+        const catHitbox = document.getElementById('kitten-interactive-hitbox');
+        catHitbox.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playKittenChirp();
+          sound.triggerQuietPurr(3800, 0.095);
+          this.kitten.setEmotion('purring', 3200);
+          this.particles.spawnPurrHearts(this.kitten.x, this.kitten.y - 65);
+        });
+
+        // Toggle 1..10 Full Number Line Helper Shelf
+        const btnHelper = document.getElementById('btn-toggle-helper');
+        const btnHelperVisual = document.getElementById('btn-helper-visual');
+        btnHelper.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnHelperVisual, 0.9, 180);
+          this.helperOpen = !this.helperOpen;
+          this.shelfTargetY = this.helperOpen ? 0 : -220;
+          this.helperActiveRing.setAttribute('opacity', this.helperOpen ? '0.95' : '0');
+        });
+
+        // Teacher Direction Filter Peg (Cycles: Both ⇄ -> Forward → -> Backward ←)
+        const btnDir = document.getElementById('btn-filter-dir');
+        const btnDirVisual = document.getElementById('btn-dir-visual');
+        const dirIcon = document.getElementById('dir-filter-icon');
+        btnDir.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnDirVisual, 0.9, 180);
+
+          if (this.dirFilter === 0) {
+            this.dirFilter = 1;
+            dirIcon.innerHTML = `<path d="M-15 0 L13 0 M4 -9 L15 0 L4 9" fill="none" stroke="#a8f0b8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />`;
+          } else if (this.dirFilter === 1) {
+            this.dirFilter = -1;
+            dirIcon.innerHTML = `<path d="M15 0 L-13 0 M-4 -9 L-15 0 L-4 9" fill="none" stroke="#ffbfa3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />`;
+          } else {
+            this.dirFilter = 0;
+            dirIcon.innerHTML = `
+              <path d="M-14 -5 L10 -5 M5 -10 L12 -5 L5 0" fill="none" stroke="#ffe49e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M14 6 L-10 6 M-5 1 L-12 6 L-5 11" fill="none" stroke="#ffbfa3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+            `;
+          }
+          this.generateNewRound(false);
+        });
+
+        // Teacher Step Filter Peg (Cycles: 1-3 -> 1 -> 2 -> 3)
+        const btnStep = document.getElementById('btn-filter-step');
+        const btnStepVisual = document.getElementById('btn-step-visual');
+        const stepText = document.getElementById('step-filter-text');
+        btnStep.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnStepVisual, 0.9, 180);
+
+          this.stepFilter = (this.stepFilter + 1) % 4;
+          stepText.textContent = this.stepFilter === 0 ? '1-3' : String(this.stepFilter);
+          this.generateNewRound(false);
+        });
+
+        // Toggle Sound Mute / Unmute
+        const btnSound = document.getElementById('btn-toggle-sound');
+        const btnSoundVisual = document.getElementById('btn-sound-visual');
+        const muteSlash = document.getElementById('sound-mute-slash');
+        const soundWaves = document.getElementById('sound-waves-icon');
+        btnSound.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          animateInnerScale(btnSoundVisual, 0.9, 180);
+          sound.muted = !sound.muted;
+          if (sound.muted) {
+            muteSlash.setAttribute('opacity', '1');
+            soundWaves.setAttribute('opacity', '0.25');
+            if (sound.purrGain && sound.ctx) {
+              sound.purrGain.gain.setValueAtTime(0.0001, sound.ctx.currentTime);
+            }
+          } else {
+            muteSlash.setAttribute('opacity', '0');
+            soundWaves.setAttribute('opacity', '1');
+            sound.playWoodClick();
+          }
+        });
+
+        // Minimalist "Next" ("Далі") Button — immediately generates a new round
+        const btnNext = document.getElementById('btn-next-round');
+        const btnNextVisual = document.getElementById('btn-next-visual');
+        btnNext.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnNextVisual, 0.9, 180);
+          this.generateNewRound(false);
+        });
+
+        window.addEventListener('pointerdown', () => {
+          sound.init();
+        }, { once: true });
+      }
+
+      /* ------------------------------------------------------------------------
+         Main Animation Loop (Kitten, Shelf Slide, Particles, Wall Clock Hands)
+         ------------------------------------------------------------------------ */
+      startLoop() {
+        const hourHand = document.getElementById('clock-hour-hand');
+        const minHand = document.getElementById('clock-min-hand');
+
+        const loop = (now) => {
+          this.kitten.update(now);
+          this.particles.updateAndDraw(now);
+
+          // Smoothly animate collapsible 1..10 helper shelf
+          if (Math.abs(this.shelfTargetY - this.shelfCurrentY) > 0.4) {
+            this.shelfCurrentY += (this.shelfTargetY - this.shelfCurrentY) * 0.14;
+            this.helperShelfWrapper.setAttribute('transform', `translate(0, ${this.shelfCurrentY.toFixed(1)})`);
+          }
+
+          // Subtle breathing pulse on paw hint & next button halo
+          const hintPulse = 1 + Math.sin(now * 0.005) * 0.08;
+          const pawHint = this.yarnLayer.querySelector('.paw-hint-indicator');
+          if (pawHint) {
+            const floatY = -73 + Math.sin(now * 0.004) * 5;
+            pawHint.setAttribute('transform', `translate(0, ${floatY.toFixed(1)}) scale(${hintPulse.toFixed(3)})`);
+          }
+
+          // Wall clock hands
+          const minAngle = (now * 0.0004) % 360;
+          const hourAngle = (now * 0.000033) % 360 - 45;
+          if (minHand && hourHand) {
+            minHand.setAttribute('transform', `rotate(${minAngle} 1235 140)`);
+            hourHand.setAttribute('transform', `rotate(${hourAngle} 1235 140)`);
+          }
+
+          requestAnimationFrame(loop);
+        };
+
+        requestAnimationFrame(loop);
+      }
+    }
+
+    window.onload = function () {
+      new NumberLineCatGame();
+    };
+  </script>
+</body>
+</html>
