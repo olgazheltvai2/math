@@ -1,0 +1,1910 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Сафарі-вантажівка: Склад чисел 2-6</title>
+<style>
+  /* ================= БАЗОВІ СТИЛІ ТА СКИДАННЯ ================= */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', 'Comic Sans MS', sans-serif;
+    background: #e09f3e;
+  }
+
+  /* Головна сцена гри */
+  #game-stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: linear-gradient(180deg, #ff9233 0%, #ffd166 42%, #f4d58d 62%, #709775 62%, #415d43 100%);
+  }
+
+  /* ================= ЖИВИЙ СЮЖЕТНИЙ ФОН САВАНИ ================= */
+  #bg-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Плавний рух хмар та птахів */
+  .cloud-drift-1 {
+    animation: cloudMove 55s linear infinite;
+  }
+  .cloud-drift-2 {
+    animation: cloudMove 38s linear infinite;
+  }
+  @keyframes cloudMove {
+    0% { transform: translateX(-280px); }
+    100% { transform: translateX(1400px); }
+  }
+
+  .acacia-sway {
+    transform-origin: bottom center;
+    transform-box: fill-box;
+    animation: treeBreeze 4.5s ease-in-out infinite alternate;
+  }
+  @keyframes treeBreeze {
+    0% { transform: rotate(-1.4deg); }
+    100% { transform: rotate(1.4deg); }
+  }
+
+  .birds-flock {
+    animation: birdsFly 26s linear infinite;
+  }
+  @keyframes birdsFly {
+    0% { transform: translate(-120px, 30px) scale(0.85); }
+    50% { transform: translate(650px, -18px) scale(1.05); }
+    100% { transform: translate(1400px, 20px) scale(0.85); }
+  }
+
+  /* ================= КНОПКИ НАВІГАЦІЇ (НАЗАД / ДАЛІ) ================= */
+  .nav-btn {
+    position: fixed;
+    top: 2.2vh;
+    width: 68px;
+    height: 68px;
+    z-index: 60;
+    cursor: pointer;
+    background: none;
+    border: none;
+    outline: none;
+    filter: drop-shadow(0 6px 8px rgba(40, 20, 5, 0.45));
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .nav-btn:hover {
+    transform: scale(1.12);
+  }
+  .nav-btn:active {
+    transform: scale(0.92);
+  }
+  #btn-prev { left: 2.2vw; }
+  #btn-next { right: 2.2vw; }
+
+  /* ================= САФАРІ-ВАНТАЖІВКА З ПРИЧЕПОМ ================= */
+  /* Вантажівка стоїть чітко колесами на дорозі */
+  #truck-assembly {
+    position: absolute;
+    left: 50%;
+    bottom: 18.5vh;
+    width: 860px;
+    height: 320px;
+    margin-left: -340px;
+    z-index: 15;
+    will-change: transform;
+  }
+
+  #truck-assembly.offscreen-left {
+    transform: translateX(-145vw);
+    transition: none;
+  }
+  #truck-assembly.parked {
+    transform: translateX(0);
+    transition: transform 1.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #truck-assembly.offscreen-right {
+    transform: translateX(135vw);
+    transition: transform 1.3s cubic-bezier(0.55, 0.05, 0.67, 0.19);
+  }
+
+  /* Легка вібрація кузова від роботи двигуна */
+  #truck-suspension {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-origin: center 250px;
+    animation: engineIdle 0.38s ease-in-out infinite alternate;
+  }
+  @keyframes engineIdle {
+    0% { transform: translateY(0px); }
+    100% { transform: translateY(-2px); }
+  }
+
+  /* Просідання ресор, коли тварина застрибує в кузов */
+  .suspension-bounce {
+    animation: suspensionDip 0.38s ease-out !important;
+  }
+  @keyframes suspensionDip {
+    0% { transform: translateY(0) rotate(0deg); }
+    35% { transform: translateY(11px) rotate(-1.2deg); }
+    75% { transform: translateY(-3px) rotate(0.4deg); }
+    100% { transform: translateY(0) rotate(0deg); }
+  }
+
+  /* Струс при помилковій відповіді */
+  .truck-shake-error {
+    animation: truckErrorWobble 0.45s ease-in-out !important;
+  }
+  @keyframes truckErrorWobble {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-12px) rotate(-1deg); }
+    40% { transform: translateX(12px) rotate(1deg); }
+    60% { transform: translateX(-8px) rotate(-0.6deg); }
+    80% { transform: translateX(8px) rotate(0.6deg); }
+  }
+
+  /* Обертання коліс навколо власного центру (0,0) без зміщення координат */
+  .wheel-rotor {
+    transform-origin: 0px 0px;
+    animation: spinWheel 0.55s linear infinite;
+  }
+  .wheel-stopped .wheel-rotor {
+    animation-play-state: paused;
+  }
+  @keyframes spinWheel {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Відкидний дерев'яний трап ззаду причепа */
+  #ramp-rotor {
+    transform-origin: 0px 0px;
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .ramp-closed {
+    transform: rotate(0deg);
+  }
+  .ramp-open {
+    transform: rotate(-122deg);
+  }
+
+  /* Живий водій у кабіні вантажівки */
+  #driver-character {
+    transform-origin: 0px 0px;
+    transition: transform 0.3s ease;
+    animation: driverBob 1.8s ease-in-out infinite alternate;
+  }
+  @keyframes driverBob {
+    0% { transform: translateY(0px) rotate(-2deg); }
+    100% { transform: translateY(-3px) rotate(3deg); }
+  }
+  .driver-happy {
+    animation: driverCheer 0.35s ease-in-out infinite alternate !important;
+  }
+  @keyframes driverCheer {
+    0% { transform: translateY(2px) rotate(-8deg) scale(1.04); }
+    100% { transform: translateY(-9px) rotate(10deg) scale(1.08); }
+  }
+  .driver-oops {
+    animation: driverShake 0.22s ease-in-out 3 !important;
+  }
+  @keyframes driverShake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-14deg); }
+    75% { transform: rotate(14deg); }
+  }
+
+  /* Пульсація щита з цифрою на кабіні при помилці */
+  .badge-pulse {
+    animation: badgeHighlight 0.55s ease-in-out;
+  }
+  @keyframes badgeHighlight {
+    0%, 100% { transform: translate(642px, 174px) scale(1); }
+    50% { transform: translate(642px, 174px) scale(1.24); }
+  }
+
+  /* ================= ШАРИ ТВАРИН ТА АНІМАЦІЯ ЇХНІХ КІНЦІВОК ================= */
+  /* Контейнер тварин всередині причепа (між задньою стінкою та переднім бортиком) */
+  #trailer-animals-layer {
+    position: absolute;
+    left: 44px;
+    bottom: 92px;
+    width: 492px;
+    height: 150px;
+    z-index: 16;
+    pointer-events: none;
+  }
+
+  /* Загальний шар для тварин на дорозі та під час посадки */
+  #ground-animals-layer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 22;
+    pointer-events: none;
+  }
+
+  .animal-actor {
+    position: absolute;
+    width: 122px;
+    height: 106px;
+    transform-origin: center bottom;
+    will-change: left, top, transform;
+  }
+
+  /* Всі шарніри кінцівок обертаються навколо (0,0) своєї точки кріплення */
+  .leg-f-near, .leg-f-far, .leg-b-near, .leg-b-far, .head-rotor, .tail-rotor, .animal-rig {
+    transform-origin: 0px 0px;
+  }
+
+  /* 1. Стан спокою (дихання, помах хвоста, легкий рух голови) */
+  .state-idle .animal-rig {
+    animation: rigBreathe 2.2s ease-in-out infinite alternate;
+  }
+  .state-idle .head-rotor {
+    animation: headIdle 2.6s ease-in-out infinite alternate;
+  }
+  .state-idle .tail-rotor {
+    animation: tailIdle 1.5s ease-in-out infinite alternate;
+  }
+  @keyframes rigBreathe {
+    0% { transform: translateY(0px) scaleY(1); }
+    100% { transform: translateY(1.5px) scaleY(0.985); }
+  }
+  @keyframes headIdle {
+    0% { transform: rotate(-2.5deg); }
+    100% { transform: rotate(3.5deg); }
+  }
+  @keyframes tailIdle {
+    0% { transform: rotate(-10deg); }
+    100% { transform: rotate(14deg); }
+  }
+
+  /* 2. Стан реалістичної ходьби (перехресний крок 4 лап + пружний рух корпусу) */
+  .state-walking .animal-rig {
+    animation: walkBounce 0.22s ease-in-out infinite alternate;
+  }
+  .state-walking .leg-f-near,
+  .state-walking .leg-b-far {
+    animation: legSwingA 0.24s ease-in-out infinite alternate;
+  }
+  .state-walking .leg-f-far,
+  .state-walking .leg-b-near {
+    animation: legSwingB 0.24s ease-in-out infinite alternate;
+  }
+  .state-walking .head-rotor {
+    animation: walkHeadNod 0.24s ease-in-out infinite alternate;
+  }
+  .state-walking .tail-rotor {
+    animation: walkTailCarry 0.24s ease-in-out infinite alternate;
+  }
+
+  @keyframes walkBounce {
+    0% { transform: translateY(0px) rotate(-1deg); }
+    100% { transform: translateY(-4.5px) rotate(1.5deg); }
+  }
+  @keyframes legSwingA {
+    0% { transform: rotate(-26deg); }
+    100% { transform: rotate(26deg); }
+  }
+  @keyframes legSwingB {
+    0% { transform: rotate(26deg); }
+    100% { transform: rotate(-26deg); }
+  }
+  @keyframes walkHeadNod {
+    0% { transform: rotate(-5deg); }
+    100% { transform: rotate(6deg); }
+  }
+  @keyframes walkTailCarry {
+    0% { transform: rotate(12deg); }
+    100% { transform: rotate(28deg); }
+  }
+
+  /* 3. Стан присідання перед стрибком у кузов */
+  .state-crouch .animal-rig {
+    transform: translateY(7px) rotate(-12deg) scale(1.06, 0.9);
+    transition: transform 0.16s ease-out;
+  }
+  .state-crouch .leg-b-near, .state-crouch .leg-b-far {
+    transform: rotate(-28deg);
+    transition: transform 0.16s ease-out;
+  }
+  .state-crouch .leg-f-near, .state-crouch .leg-f-far {
+    transform: rotate(22deg);
+    transition: transform 0.16s ease-out;
+  }
+  .state-crouch .head-rotor {
+    transform: rotate(-16deg);
+    transition: transform 0.16s ease-out;
+  }
+
+  /* 4. Стан стрибка ВГОРУ в причіп (задні лапи відштовхуються, передні тягнуться вперед) */
+  .state-jump-up .leg-b-near, .state-jump-up .leg-b-far {
+    transform: rotate(38deg);
+    transition: transform 0.2s ease-out;
+  }
+  .state-jump-up .leg-f-near, .state-jump-up .leg-f-far {
+    transform: rotate(-36deg);
+    transition: transform 0.2s ease-out;
+  }
+  .state-jump-up .tail-rotor {
+    transform: rotate(35deg);
+  }
+  .state-jump-up .head-rotor {
+    transform: rotate(-10deg);
+  }
+
+  /* 5. Пружне вмощування на своєму місці в кузові */
+  .state-settle {
+    animation: settleSquash 0.36s ease-out;
+  }
+  @keyframes settleSquash {
+    0% { transform: scale(1.14, 0.86); }
+    50% { transform: scale(0.95, 1.06); }
+    100% { transform: scale(1, 1); }
+  }
+
+  /* ================= ПАНЕЛЬ ВИБОРУ ЦИФР (1 - 6) ================= */
+  #numbers-dock {
+    position: absolute;
+    bottom: 1.8vh;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 1.5vw;
+    z-index: 50;
+    padding: 8px 20px;
+  }
+
+  .num-totem {
+    width: 92px;
+    height: 102px;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s;
+    filter: drop-shadow(0 7px 9px rgba(30, 18, 6, 0.48));
+  }
+  .num-totem:hover {
+    transform: translateY(-9px) scale(1.07);
+    filter: drop-shadow(0 14px 14px rgba(30, 18, 6, 0.55)) brightness(1.06);
+  }
+  .num-totem:active {
+    transform: translateY(2px) scale(0.95);
+  }
+
+  .totem-wrong {
+    animation: totemShake 0.48s ease-in-out;
+  }
+  @keyframes totemShake {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    20% { transform: translateX(-11px) rotate(-9deg); }
+    40% { transform: translateX(11px) rotate(9deg); }
+    60% { transform: translateX(-7px) rotate(-5deg); }
+    80% { transform: translateX(7px) rotate(5deg); }
+  }
+
+  .totem-correct {
+    animation: totemPop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes totemPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.28) translateY(-14px); filter: drop-shadow(0 0 20px #ffd166); }
+    100% { transform: scale(1); }
+  }
+
+  /* Шар спецефектів (хмарки пилу з-під лап та салют) */
+  #fx-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 45;
+  }
+
+  /* Адаптація для менших екранів */
+  @media (max-width: 1060px) {
+    #truck-assembly {
+      transform-origin: center bottom;
+      scale: 0.8;
+      margin-left: -360px;
+    }
+    .num-totem {
+      width: 76px;
+      height: 84px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-stage">
+  <!-- ================= ЖИВИЙ СЮЖЕТНИЙ ФОН САВАНИ ================= -->
+  <svg id="bg-svg" viewBox="0 0 1280 720" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff8d6" />
+        <stop offset="50%" stop-color="#ffbe0b" stop-opacity="0.75" />
+        <stop offset="100%" stop-color="#fb5607" stop-opacity="0" />
+      </radialGradient>
+      <linearGradient id="canyonGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#c97a53" />
+        <stop offset="100%" stop-color="#8d5538" />
+      </linearGradient>
+      <linearGradient id="safariRoadGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="#df9a4f" />
+        <stop offset="45%" stop-color="#c87d32" />
+        <stop offset="100%" stop-color="#9c5a18" />
+      </linearGradient>
+    </defs>
+
+    <!-- Сонце в небі савани -->
+    <circle cx="1010" cy="125" r="145" fill="url(#sunGlow)" />
+    <circle cx="1010" cy="125" r="62" fill="#fff9db" />
+
+    <!-- Хмари -->
+    <g class="cloud-drift-1" opacity="0.82">
+      <path d="M90 105 Q120 72 162 92 Q198 62 242 92 Q280 82 292 112 Q305 135 270 140 L95 140 Q65 135 90 105 Z" fill="#ffe5d9" />
+    </g>
+    <g class="cloud-drift-2" style="animation-delay: -18s;" opacity="0.72">
+      <path d="M140 175 Q165 148 200 165 Q230 148 260 172 Q285 178 270 198 L140 198 Q115 192 140 175 Z" fill="#ffcad4" />
+    </g>
+
+    <!-- Птахи в небі -->
+    <g class="birds-flock">
+      <path d="M0 0 Q12 -14 24 0 Q36 -14 48 0 Q36 -5 24 4 Q12 -5 0 0 Z" fill="#5c3a21" />
+      <path d="M38 16 Q48 6 58 16 Q68 6 78 16 Q68 11 58 19 Q48 11 38 16 Z" fill="#5c3a21" />
+    </g>
+
+    <!-- Далекі скелясті плато савани -->
+    <path d="M-20 430 L85 335 L205 335 L275 405 L455 385 L545 310 L690 310 L775 410 L980 365 L1115 325 L1215 325 L1300 420 L1300 480 L-20 480 Z" fill="url(#canyonGrad)" opacity="0.65" />
+    <path d="M-20 455 Q260 400 540 440 T1060 425 T1300 445 L1300 510 L-20 510 Z" fill="#b57c4e" />
+
+    <!-- Акації з обох боків -->
+    <g class="acacia-sway">
+      <path d="M195 455 Q200 385 178 340 Q150 305 110 295 M200 455 Q205 375 228 325 Q255 295 288 290 M202 390 Q175 350 155 335" stroke="#4a2c18" stroke-width="10" stroke-linecap="round" fill="none" />
+      <ellipse cx="115" cy="292" rx="68" ry="18" fill="#386641" />
+      <ellipse cx="190" cy="325" rx="56" ry="15" fill="#6a994e" />
+      <ellipse cx="278" cy="288" rx="75" ry="20" fill="#2b5030" />
+      <ellipse cx="212" cy="274" rx="86" ry="22" fill="#4f772d" />
+    </g>
+
+    <g class="acacia-sway" style="animation-delay: -2.2s;">
+      <path d="M1110 450 Q1115 380 1085 330 Q1050 300 1020 295 M1118 450 Q1123 375 1155 320 Q1190 295 1215 290" stroke="#4a2c18" stroke-width="11" stroke-linecap="round" fill="none" />
+      <ellipse cx="1030" cy="292" rx="70" ry="18" fill="#386641" />
+      <ellipse cx="1200" cy="288" rx="78" ry="20" fill="#2b5030" />
+      <ellipse cx="1120" cy="270" rx="95" ry="24" fill="#6a994e" />
+    </g>
+
+    <!-- Зелена смуга трави за дорогою -->
+    <path d="M-20 455 Q420 432 880 450 T1300 445 L1300 520 L-20 520 Z" fill="#588157" />
+
+    <!-- ШИРОКА ПІЩАНА ДОРОГА САВАНИ (саме тут стоять звірі та котяться колеса машини) -->
+    <path d="M-20 495 Q640 486 1300 495 L1300 618 Q640 610 -20 618 Z" fill="url(#safariRoadGrad)" stroke="#7f4f24" stroke-width="4" />
+    <!-- Колії на піску -->
+    <path d="M-20 532 Q640 524 1300 532" stroke="#edc483" stroke-width="5" stroke-dasharray="38 24" fill="none" opacity="0.55" />
+    <path d="M-20 584 Q640 576 1300 584" stroke="#edc483" stroke-width="5" stroke-dasharray="45 28" fill="none" opacity="0.55" />
+
+    <!-- Дерев'яний вказівник зупинки сафарі біля місця посадки -->
+    <g transform="translate(278, 430)">
+      <rect x="-5" y="0" width="10" height="72" rx="3" fill="#5c3010" stroke="#2b1606" stroke-width="2.5" />
+      <polygon points="-38,8 32,8 44,22 32,36 -38,36" fill="#e9c46a" stroke="#4a2c18" stroke-width="3" stroke-linejoin="round" />
+      <!-- Силует лапки на вказівнику (без жодного тексту) -->
+      <circle cx="-4" cy="24" r="6" fill="#7f4f24" />
+      <circle cx="-12" cy="15" r="3" fill="#7f4f24" />
+      <circle cx="-4" cy="13" r="3" fill="#7f4f24" />
+      <circle cx="4" cy="15" r="3" fill="#7f4f24" />
+      <path d="M14 16 L26 22 L14 28 Z" fill="#bc6c25" />
+    </g>
+
+    <!-- Передній план: смарагдова трава під кнопки цифр -->
+    <path d="M-20 612 Q320 598 640 612 T1300 608 L1300 730 L-20 730 Z" fill="#2d6a4f" stroke="#1b4332" stroke-width="4" />
+    <g fill="#1b4332">
+      <path d="M35 625 L45 592 L57 625 L70 598 L77 625 Z" />
+      <path d="M235 622 L245 590 L257 622 L270 596 L277 622 Z" />
+      <path d="M1020 622 L1030 588 L1045 622 L1060 594 L1068 622 Z" />
+      <path d="M1190 620 L1202 588 L1215 620 L1228 592 L1238 620 Z" />
+    </g>
+  </svg>
+
+  <!-- ================= КНОПКИ НАВІГАЦІЇ (ДЕРЕВ'ЯНІ СТРІЛКИ) ================= -->
+  <button id="btn-prev" class="nav-btn" aria-label="Попередній рівень">
+    <svg viewBox="0 0 100 100">
+      <defs>
+        <radialGradient id="btnWood" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#e09f3e" />
+          <stop offset="65%" stop-color="#9e5a24" />
+          <stop offset="100%" stop-color="#5c3010" />
+        </radialGradient>
+      </defs>
+      <circle cx="50" cy="50" r="44" fill="url(#btnWood)" stroke="#3d1e08" stroke-width="6" />
+      <circle cx="50" cy="50" r="36" fill="none" stroke="#f4d58d" stroke-width="2.5" stroke-dasharray="10 6" opacity="0.7" />
+      <path d="M62 28 L32 50 L62 72 L55 50 Z" fill="#fff3b0" stroke="#3d1e08" stroke-width="4" stroke-linejoin="round" />
+    </svg>
+  </button>
+
+  <button id="btn-next" class="nav-btn" aria-label="Наступний рівень">
+    <svg viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="44" fill="url(#btnWood)" stroke="#3d1e08" stroke-width="6" />
+      <circle cx="50" cy="50" r="36" fill="none" stroke="#f4d58d" stroke-width="2.5" stroke-dasharray="10 6" opacity="0.7" />
+      <path d="M38 28 L68 50 L38 72 L45 50 Z" fill="#fff3b0" stroke="#3d1e08" stroke-width="4" stroke-linejoin="round" />
+    </svg>
+  </button>
+
+  <!-- ================= САФАРІ-ВАНТАЖІВКА З ПРИЧЕПОМ ================= -->
+  <div id="truck-assembly" class="offscreen-left">
+    <div id="truck-suspension">
+      <!-- Контейнер для звірів, які вже стоять/сидять у причепі -->
+      <div id="trailer-animals-layer"></div>
+
+      <!-- SVG Вантажівка + Причіп + Відкидний трап + Живий водій + Колеса -->
+      <svg id="truck-svg" viewBox="0 0 860 320" width="100%" height="100%">
+        <defs>
+          <linearGradient id="cabPaint" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#52b788" />
+            <stop offset="55%" stop-color="#2d6a4f" />
+            <stop offset="100%" stop-color="#1b4332" />
+          </linearGradient>
+          <linearGradient id="fenderPaint" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#ffd166" />
+            <stop offset="100%" stop-color="#e09f3e" />
+          </linearGradient>
+          <linearGradient id="trailerWood" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#d4a373" />
+            <stop offset="50%" stop-color="#bc6c25" />
+            <stop offset="100%" stop-color="#7f4f24" />
+          </linearGradient>
+          <linearGradient id="glassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#e0fbfc" stop-opacity="0.7" />
+            <stop offset="100%" stop-color="#98c1d9" stop-opacity="0.4" />
+          </linearGradient>
+        </defs>
+
+        <!-- Тінь під вантажівкою на піщаній дорозі -->
+        <ellipse cx="445" cy="296" rx="395" ry="14" fill="rgba(45, 25, 8, 0.38)" />
+
+        <!-- Відкидний дерев'яний трап ззаду причепа (шарнір у точці 44, 218) -->
+        <g transform="translate(44, 218)">
+          <g id="ramp-rotor" class="ramp-closed">
+            <rect x="-10" y="-76" width="14" height="80" rx="5" fill="#9c6644" stroke="#3d2210" stroke-width="3.5" />
+            <!-- Протиковзкі поперечини на трапі -->
+            <line x1="-10" y1="-60" x2="4" y2="-60" stroke="#ffd166" stroke-width="3" />
+            <line x1="-10" y1="-42" x2="4" y2="-42" stroke="#ffd166" stroke-width="3" />
+            <line x1="-10" y1="-24" x2="4" y2="-24" stroke="#ffd166" stroke-width="3" />
+            <circle cx="-3" cy="0" r="6" fill="#ffd166" stroke="#3d2210" stroke-width="2.5" />
+          </g>
+        </g>
+
+        <!-- Задня стінка причепа (позаду звірів) -->
+        <rect x="44" y="62" width="496" height="162" rx="12" fill="#5c3a21" stroke="#3d2210" stroke-width="5" />
+
+        <!-- Динамічні перегородки та килимки під поточну місткість (2..6 місць) -->
+        <g id="trailer-slot-dividers"></g>
+
+        <!-- Смугастий сафарі-дашок причепа -->
+        <path d="M36 68 Q292 46 548 68 L540 84 L44 84 Z" fill="#e63946" stroke="#3d2210" stroke-width="4" />
+        <path d="M105 62 L150 60 L145 84 L100 84 Z M225 58 L270 58 L265 84 L220 84 Z M345 58 L390 60 L385 84 L340 84 Z M460 62 L505 65 L500 84 L455 84 Z" fill="#fff3b0" />
+
+        <!-- Фаркоп (зчіпка між причепом і тягачем) -->
+        <rect x="536" y="214" width="44" height="16" rx="4" fill="#343a40" stroke="#1b1e21" stroke-width="3" />
+        <circle cx="558" cy="222" r="5" fill="#adb5bd" />
+
+        <!-- ================= КАБІНА ТЯГАЧА ТА ЖИВИЙ ВОДІЙ ================= -->
+        <!-- Вихлопна труба -->
+        <rect x="574" y="58" width="14" height="160" rx="5" fill="#6c757d" stroke="#2b2d42" stroke-width="3.5" />
+        <path d="M574 58 Q574 42 560 38" stroke="#6c757d" stroke-width="12" stroke-linecap="round" fill="none" />
+
+        <!-- Основний кузов кабіни -->
+        <path d="M575 234 L575 84 Q575 64 595 64 L702 64 Q722 64 734 88 L754 140 L814 150 Q832 154 832 174 L832 234 Z" fill="url(#cabPaint)" stroke="#1b2a20" stroke-width="5" stroke-linejoin="round" />
+
+        <!-- Вікно кабіни (внутрішній інтер'єр + живий водій-слоненя) -->
+        <path d="M645 78 L704 78 Q718 78 726 98 L740 136 L645 136 Z" fill="#1d3557" stroke="#1b2a20" stroke-width="4" stroke-linejoin="round" />
+
+        <!-- ЖИВИЙ ПЕРСОНАЖ-ВОДІЙ У КАБІНІ (Слоненя-рейнджер за кермом) -->
+        <g transform="translate(684, 124)">
+          <g id="driver-character">
+            <!-- Вушко слоненяти -->
+            <ellipse cx="-18" cy="-14" rx="11" ry="14" fill="#8d99ae" stroke="#2b2d42" stroke-width="2.5" />
+            <ellipse cx="-17" cy="-14" rx="6" ry="9" fill="#ffb5a7" />
+            <!-- Голова та хобот -->
+            <circle cx="0" cy="-14" r="16" fill="#adb5bd" stroke="#2b2d42" stroke-width="2.5" />
+            <path d="M10 -12 Q24 -10 22 -22 Q20 -26 17 -22" fill="none" stroke="#adb5bd" stroke-width="6" stroke-linecap="round" />
+            <path d="M10 -12 Q24 -10 22 -22" fill="none" stroke="#2b2d42" stroke-width="2" stroke-linecap="round" />
+            <!-- Очі та посмішка водія -->
+            <circle cx="5" cy="-18" r="3.5" fill="#1d1e2c" />
+            <circle cx="4" cy="-19.5" r="1.3" fill="#ffffff" />
+            <path id="driver-mouth" d="M2 -6 Q8 -2 12 -6" stroke="#2b2d42" stroke-width="2.2" fill="none" stroke-linecap="round" />
+            <!-- Сафарі-капелюшок водія -->
+            <ellipse cx="-1" cy="-29" rx="19" ry="5" fill="#e9c46a" stroke="#5c3010" stroke-width="2" />
+            <path d="M-13 -29 Q-10 -42 0 -42 Q10 -42 12 -29 Z" fill="#f4d58d" stroke="#5c3010" stroke-width="2" />
+            <!-- Лапка на кермі -->
+            <path d="M4 2 L20 -2" stroke="#8d99ae" stroke-width="7" stroke-linecap="round" />
+          </g>
+          <!-- Кермо у кабіні -->
+          <line x1="26" y1="10" x2="18" y2="-6" stroke="#343a40" stroke-width="4" stroke-linecap="round" />
+          <ellipse cx="18" cy="-6" rx="3" ry="9" transform="rotate(-25 18 -6)" fill="#e63946" stroke="#1d1e2c" stroke-width="2" />
+        </g>
+
+        <!-- Напівпрозорий полиск скла кабіни поверх водія -->
+        <path d="M645 78 L704 78 Q718 78 726 98 L740 136 L645 136 Z" fill="url(#glassGrad)" stroke="#1b2a20" stroke-width="4" stroke-linejoin="round" />
+        <polygon points="654,84 672,84 658,130 648,130" fill="#ffffff" opacity="0.38" />
+
+        <!-- Сафарі-смуги на капоті -->
+        <path d="M746 148 Q758 173 750 203 M774 151 Q786 176 778 206 M800 154 Q810 174 804 196" stroke="#f4a261" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.85" />
+
+        <!-- Радіатор та передня фара -->
+        <rect x="820" y="164" width="14" height="48" rx="4" fill="#ced4da" stroke="#2b2d42" stroke-width="3" />
+        <ellipse cx="829" cy="172" rx="7" ry="11" fill="#fff3b0" stroke="#e09f3e" stroke-width="3" />
+        <polygon points="836,166 860,154 860,194 836,180" fill="#fff3b0" opacity="0.38" />
+
+        <!-- КРУГЛИЙ ЩИТ НА ДВЕРЯХ КАБІНИ З ЦІЛЬОВИМ ЧИСЛОМ (2, 3, 4, 5 або 6) -->
+        <g id="target-badge-group" transform="translate(642, 174)">
+          <circle cx="0" cy="0" r="45" fill="#5c3010" stroke="#2b1606" stroke-width="4" />
+          <circle cx="0" cy="0" r="39" fill="url(#fenderPaint)" stroke="#fff3b0" stroke-width="3" />
+          <circle cx="-31" cy="0" r="3" fill="#5c3010" />
+          <circle cx="31" cy="0" r="3" fill="#5c3010" />
+          <circle cx="0" cy="-31" r="3" fill="#5c3010" />
+          <circle cx="0" cy="31" r="3" fill="#5c3010" />
+          <text id="target-number-text" x="0" y="19" text-anchor="middle" font-size="56" font-weight="900" fill="#3d1e08" stroke="#fff8d6" stroke-width="2">4</text>
+        </g>
+
+        <!-- Нижня платформа-шасі причепа (під лапами тварин, щоб було видно як вони йдуть) -->
+        <g id="trailer-front-rail">
+          <rect x="38" y="210" width="508" height="32" rx="8" fill="url(#trailerWood)" stroke="#3d2210" stroke-width="4.5" />
+          <!-- Декоративний зигзаг вздовж борту платформи -->
+          <path d="M52 228 L72 216 L92 228 L112 216 L132 228 L152 216 L172 228 L192 216 L212 228 L232 216 L252 228 L272 216 L292 228 L312 216 L332 228 L352 216 L372 228 L392 216 L412 228 L432 216 L452 228 L472 216 L492 228 L512 216 L532 228" stroke="#ffd166" stroke-width="3.5" fill="none" stroke-linejoin="round" opacity="0.85" />
+          <!-- Низький захисний поручень -->
+          <rect x="42" y="188" width="500" height="8" rx="4" fill="#e09f3e" stroke="#3d2210" stroke-width="2.5" opacity="0.88" />
+        </g>
+
+        <!-- Колісні арки (крила) та передній бампер -->
+        <path d="M84 242 Q138 192 192 242 Z" fill="url(#fenderPaint)" stroke="#3d2210" stroke-width="4" />
+        <path d="M384 242 Q438 192 492 242 Z" fill="url(#fenderPaint)" stroke="#3d2210" stroke-width="4" />
+        <path d="M688 240 Q746 184 804 240 Z" fill="url(#fenderPaint)" stroke="#1b2a20" stroke-width="4" />
+        <rect x="808" y="220" width="32" height="20" rx="6" fill="#e09f3e" stroke="#2b1606" stroke-width="4" />
+
+        <!-- ================= КОЛЕСА (ЗАКРІПЛЕНІ У СВОЇХ КООРДИНАТАХ НА ДОРОЗІ) ================= -->
+        <!-- Колесо 1: заднє причепа (центр 138, 254) -->
+        <g class="wheel-holder" transform="translate(138, 254)">
+          <g class="wheel-rotor">
+            <circle cx="0" cy="0" r="38" fill="#2b2d42" stroke="#14151f" stroke-width="5" />
+            <circle cx="0" cy="0" r="32" fill="none" stroke="#6c757d" stroke-width="4" stroke-dasharray="10 8" />
+            <circle cx="0" cy="0" r="20" fill="#e09f3e" stroke="#3d1e08" stroke-width="3.5" />
+            <line x1="-18" y1="0" x2="18" y2="0" stroke="#3d1e08" stroke-width="4" />
+            <line x1="0" y1="-18" x2="0" y2="18" stroke="#3d1e08" stroke-width="4" />
+            <circle cx="0" cy="0" r="7" fill="#fff3b0" stroke="#3d1e08" stroke-width="2.5" />
+          </g>
+        </g>
+
+        <!-- Колесо 2: переднє причепа (центр 438, 254) -->
+        <g class="wheel-holder" transform="translate(438, 254)">
+          <g class="wheel-rotor">
+            <circle cx="0" cy="0" r="38" fill="#2b2d42" stroke="#14151f" stroke-width="5" />
+            <circle cx="0" cy="0" r="32" fill="none" stroke="#6c757d" stroke-width="4" stroke-dasharray="10 8" />
+            <circle cx="0" cy="0" r="20" fill="#e09f3e" stroke="#3d1e08" stroke-width="3.5" />
+            <line x1="-18" y1="0" x2="18" y2="0" stroke="#3d1e08" stroke-width="4" />
+            <line x1="0" y1="-18" x2="0" y2="18" stroke="#3d1e08" stroke-width="4" />
+            <circle cx="0" cy="0" r="7" fill="#fff3b0" stroke="#3d1e08" stroke-width="2.5" />
+          </g>
+        </g>
+
+        <!-- Колесо 3: переднє тягача (центр 746, 252) -->
+        <g class="wheel-holder" transform="translate(746, 252)">
+          <g class="wheel-rotor">
+            <circle cx="0" cy="0" r="40" fill="#2b2d42" stroke="#14151f" stroke-width="5" />
+            <circle cx="0" cy="0" r="34" fill="none" stroke="#6c757d" stroke-width="4" stroke-dasharray="11 8" />
+            <circle cx="0" cy="0" r="22" fill="#e09f3e" stroke="#3d1e08" stroke-width="3.5" />
+            <line x1="-20" y1="0" x2="20" y2="0" stroke="#3d1e08" stroke-width="4" />
+            <line x1="0" y1="-20" x2="0" y2="20" stroke="#3d1e08" stroke-width="4" />
+            <circle cx="0" cy="0" r="8" fill="#fff3b0" stroke="#3d1e08" stroke-width="2.5" />
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Шар для звірів на дорозі, які підходять і застрибують у причіп -->
+  <div id="ground-animals-layer"></div>
+
+  <!-- Шар для спецефектів (хмарки пилу з-під лап, зірочки) -->
+  <svg id="fx-layer" viewBox="0 0 1280 720" preserveAspectRatio="none"></svg>
+
+  <!-- ================= ПАНЕЛЬ З ЦИФРАМИ (1 - 6) ================= -->
+  <div id="numbers-dock"></div>
+</div>
+
+<script>
+  // =========================================================================
+  // 1. ЗВУКОВИЙ РУШІЙ (Web Audio API) — РЕАЛІСТИЧНІ ЗВУКИ КРОКІВ, СТРИБКІВ ТА МОТОРА
+  // =========================================================================
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+    }
+
+    init() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioCtx();
+      }
+      if (this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    }
+
+    // Бурчання мотора вантажівки під час руху
+    playTruckEngine(duration = 1.1, rising = true) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+
+      osc.frequency.setValueAtTime(rising ? 52 : 92, now);
+      osc.frequency.exponentialRampToValueAtTime(rising ? 92 : 48, now + duration);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.11, now + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration);
+    }
+
+    // Звук відкриття/закриття дерев'яного трапа
+    playRampClunk(open = true) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(open ? 160 : 110, now);
+      osc.frequency.exponentialRampToValueAtTime(open ? 75 : 175, now + 0.14);
+
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.16);
+    }
+
+    // М'який тупіт лап/копит під час ходьби тварини
+    playFootstep(pitchOffset = 0) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(115 + pitchOffset, now);
+      osc.frequency.exponentialRampToValueAtTime(45, now + 0.065);
+
+      gain.gain.setValueAtTime(0.14, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.075);
+    }
+
+    // Пружний звук стрибка ВГОРУ в кузов
+    playAnimalJumpUp(index = 0) {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      const startFreq = 220 + index * 40;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(startFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(startFreq * 1.9, now + 0.24);
+
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.27);
+    }
+
+    // Приземлення лапами на дерев'яний настил причепа
+    playDeckThud() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(48, now + 0.12);
+
+      gain.gain.setValueAtTime(0.26, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    }
+
+    // Радісний гудок вантажівки та марімба-акорд при заповненні кузова
+    playVictoryHornAndFanfare() {
+      this.init();
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((freq, idx) => {
+        const now = this.ctx.currentTime + idx * 0.085;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now);
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.38);
+      });
+    }
+
+    // Пружний звук помилки
+    playErrorBoing() {
+      this.init();
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(185, now);
+      osc.frequency.linearRampToValueAtTime(110, now + 0.18);
+      osc.frequency.linearRampToValueAtTime(150, now + 0.28);
+      osc.frequency.linearRampToValueAtTime(92, now + 0.42);
+
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.45);
+    }
+  }
+
+  const sound = new SoundEngine();
+
+  // =========================================================================
+  // 2. 10 РЕАЛІСТИЧНИХ ВИДІВ ТВАРИН З РУХОМИМИ ЛАПАМИ, ШИЄЮ ТА ХВОСТОМ (ПРОФІЛЬ 3/4)
+  // Кожна тварина дивиться праворуч (у бік машини) і має 4 окремі кінцівки для ходьби
+  // =========================================================================
+  const ANIMAL_SPECIES = [
+    'tiger',    // 1. Тигр
+    'zebra',    // 2. Зебра
+    'lion',     // 3. Лев
+    'giraffe',  // 4. Жирафа
+    'elephant', // 5. Слон
+    'panda',    // 6. Панда
+    'fox',      // 7. Лисиця
+    'hippo',    // 8. Бегемот
+    'monkey',   // 9. Мавпочка
+    'koala'     // 10. Коала
+  ];
+
+  // Генератор деталізованої SVG-моделі з шарнірним скелетом для реалістичної ходьби та стрибків
+  function getArticulatedAnimalSVG(species) {
+    switch (species) {
+      case 'tiger':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні лапи (темніший тон для об'єму) -->
+            <g transform="translate(42, 70)"><g class="leg-b-far">
+              <path d="M-6 0 L-4 28 Q-4 34 4 34 L8 34 Q10 30 5 26 L4 0 Z" fill="#d96b00" stroke="#6b3000" stroke-width="2.2"/>
+              <path d="M-5 10 L3 12 M-4 18 L3 20" stroke="#1d1e2c" stroke-width="2.5" stroke-linecap="round"/>
+            </g></g>
+            <g transform="translate(86, 70)"><g class="leg-f-far">
+              <path d="M-5 0 L-3 28 Q-3 34 5 34 L9 34 Q11 30 6 26 L5 0 Z" fill="#d96b00" stroke="#6b3000" stroke-width="2.2"/>
+              <path d="M-4 10 L4 12 M-3 18 L4 20" stroke="#1d1e2c" stroke-width="2.5" stroke-linecap="round"/>
+            </g></g>
+            <!-- Хвіст з кільцями -->
+            <g transform="translate(28, 56)"><g class="tail-rotor">
+              <path d="M0 0 Q-18 -6 -22 -24 Q-24 -32 -17 -30 Q-14 -16 2 -4 Z" fill="#f77f00" stroke="#6b3000" stroke-width="2.2"/>
+              <path d="M-12 -12 L-7 -15 M-18 -20 L-13 -22 M-21 -28 L-16 -29" stroke="#1d1e2c" stroke-width="3" stroke-linecap="round"/>
+            </g></g>
+            <!-- Тулуб тигра з реалістичними смужками та світлим черевцем -->
+            <path d="M26 58 Q26 40 58 42 Q92 42 98 58 Q100 74 84 76 L38 76 Q25 74 26 58 Z" fill="#f77f00" stroke="#6b3000" stroke-width="2.5"/>
+            <path d="M36 74 Q62 66 86 74 Z" fill="#fff3d1"/>
+            <path d="M40 44 Q44 56 40 66 M52 43 Q57 58 52 70 M65 43 Q69 57 65 68 M78 45 Q82 56 78 65" stroke="#1d1e2c" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+            <!-- Ближні лапи -->
+            <g transform="translate(36, 72)"><g class="leg-b-near">
+              <path d="M-7 0 Q-9 14 -5 28 Q-5 34 3 34 L9 34 Q11 29 5 26 L6 0 Z" fill="#ff921c" stroke="#6b3000" stroke-width="2.4"/>
+              <ellipse cx="4" cy="31" rx="6" ry="3.5" fill="#fff3d1"/>
+              <path d="M-6 9 L4 11 M-5 17 L3 19" stroke="#1d1e2c" stroke-width="2.6" stroke-linecap="round"/>
+            </g></g>
+            <g transform="translate(80, 72)"><g class="leg-f-near">
+              <path d="M-6 0 L-4 28 Q-4 34 4 34 L10 34 Q12 29 6 26 L6 0 Z" fill="#ff921c" stroke="#6b3000" stroke-width="2.4"/>
+              <ellipse cx="5" cy="31" rx="6" ry="3.5" fill="#fff3d1"/>
+              <path d="M-5 9 L5 11 M-4 17 L4 19" stroke="#1d1e2c" stroke-width="2.6" stroke-linecap="round"/>
+            </g></g>
+            <!-- Голова тигра у профілі 3/4 -->
+            <g transform="translate(92, 48)"><g class="head-rotor">
+              <circle cx="-6" cy="-18" r="8" fill="#f77f00" stroke="#6b3000" stroke-width="2.4"/>
+              <circle cx="-6" cy="-18" r="4" fill="#ffb5a7"/>
+              <circle cx="12" cy="-17" r="7.5" fill="#f77f00" stroke="#6b3000" stroke-width="2.4"/>
+              <ellipse cx="5" cy="-2" rx="19" ry="16" fill="#f77f00" stroke="#6b3000" stroke-width="2.5"/>
+              <!-- Білі бакенбарди та мордочка -->
+              <path d="M-8 2 Q-6 14 8 14 Q24 14 25 2 Q18 -4 6 0 Q-4 -3 -8 2 Z" fill="#fff3d1"/>
+              <path d="M-6 -8 L-1 -5 M-8 -2 L-2 0 M2 -15 L4 -8" stroke="#1d1e2c" stroke-width="2.8" stroke-linecap="round"/>
+              <circle cx="4" cy="-5" r="4" fill="#1d1e2c"/>
+              <circle cx="17" cy="-5" r="3.8" fill="#1d1e2c"/>
+              <circle cx="3" cy="-6.5" r="1.5" fill="#ffffff"/>
+              <circle cx="16" cy="-6.5" r="1.5" fill="#ffffff"/>
+              <polygon points="12,1 21,1 16.5,6" fill="#ff758f" stroke="#6b3000" stroke-width="1.2"/>
+              <path d="M10 8 Q16 12 21 8" stroke="#6b3000" stroke-width="2" fill="none" stroke-linecap="round"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'zebra':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні ноги з копитами -->
+            <g transform="translate(42, 68)"><g class="leg-b-far">
+              <rect x="-4" y="0" width="8" height="34" rx="3" fill="#dee2e6" stroke="#2b2d42" stroke-width="2.2"/>
+              <rect x="-4" y="28" width="9" height="7" rx="2" fill="#1d1e2c"/>
+            </g></g>
+            <g transform="translate(86, 68)"><g class="leg-f-far">
+              <rect x="-4" y="0" width="8" height="34" rx="3" fill="#dee2e6" stroke="#2b2d42" stroke-width="2.2"/>
+              <rect x="-4" y="28" width="9" height="7" rx="2" fill="#1d1e2c"/>
+            </g></g>
+            <!-- Хвіст зебри -->
+            <g transform="translate(28, 52)"><g class="tail-rotor">
+              <path d="M0 0 Q-14 8 -16 24" stroke="#f8f9fa" stroke-width="5" fill="none" stroke-linecap="round"/>
+              <path d="M-16 20 L-22 31 L-11 29 Z" fill="#1d1e2c"/>
+            </g></g>
+            <!-- Тулуб зебри зі смужками -->
+            <path d="M26 56 Q26 38 58 40 Q90 40 96 56 Q98 73 82 74 L38 74 Q25 72 26 56 Z" fill="#f8f9fa" stroke="#2b2d42" stroke-width="2.5"/>
+            <path d="M36 42 Q41 56 36 72 M48 40 Q54 56 49 73 M61 40 Q66 56 62 73 M74 41 Q79 56 75 72 M86 44 Q89 56 85 68" stroke="#1d1e2c" stroke-width="4.2" fill="none" stroke-linecap="round"/>
+            <!-- Ближні ноги -->
+            <g transform="translate(36, 70)"><g class="leg-b-near">
+              <rect x="-5" y="0" width="9" height="34" rx="3.5" fill="#ffffff" stroke="#2b2d42" stroke-width="2.4"/>
+              <line x1="-4" y1="10" x2="4" y2="12" stroke="#1d1e2c" stroke-width="3"/>
+              <line x1="-4" y1="18" x2="4" y2="20" stroke="#1d1e2c" stroke-width="3"/>
+              <rect x="-5" y="28" width="10" height="7" rx="2" fill="#1d1e2c"/>
+            </g></g>
+            <g transform="translate(80, 70)"><g class="leg-f-near">
+              <rect x="-5" y="0" width="9" height="34" rx="3.5" fill="#ffffff" stroke="#2b2d42" stroke-width="2.4"/>
+              <line x1="-4" y1="10" x2="4" y2="12" stroke="#1d1e2c" stroke-width="3"/>
+              <line x1="-4" y1="18" x2="4" y2="20" stroke="#1d1e2c" stroke-width="3"/>
+              <rect x="-5" y="28" width="10" height="7" rx="2" fill="#1d1e2c"/>
+            </g></g>
+            <!-- Шия, смугаста грива та голова зебри -->
+            <g transform="translate(88, 46)"><g class="head-rotor">
+              <!-- Грива -->
+              <path d="M-12 -24 Q-4 -28 4 -22 L-4 2 L-14 0 Z" fill="#1d1e2c"/>
+              <line x1="-9" y1="-16" x2="-1" y2="-14" stroke="#ffffff" stroke-width="3"/>
+              <line x1="-11" y1="-8" x2="-3" y2="-6" stroke="#ffffff" stroke-width="3"/>
+              <!-- Шия та голова -->
+              <path d="M-10 6 L-2 -18 Q6 -24 18 -14 L26 -2 Q28 8 18 10 L0 8 Z" fill="#f8f9fa" stroke="#2b2d42" stroke-width="2.5"/>
+              <ellipse cx="0" cy="-22" rx="4" ry="8" transform="rotate(-15 0 -22)" fill="#f8f9fa" stroke="#2b2d42" stroke-width="2.2"/>
+              <ellipse cx="9" cy="-21" rx="4" ry="7.5" transform="rotate(12 9 -21)" fill="#f8f9fa" stroke="#2b2d42" stroke-width="2.2"/>
+              <!-- Смужки на морді та чорний ніс -->
+              <path d="M-4 -8 L6 -5 M-6 0 L5 2" stroke="#1d1e2c" stroke-width="3" stroke-linecap="round"/>
+              <ellipse cx="21" cy="2" rx="8" ry="7" fill="#2b2d42"/>
+              <circle cx="22" cy="0" r="2" fill="#adb5bd"/>
+              <circle cx="8" cy="-10" r="3.8" fill="#1d1e2c"/>
+              <circle cx="7" cy="-11.2" r="1.4" fill="#ffffff"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'lion':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні лапи -->
+            <g transform="translate(42, 70)"><g class="leg-b-far">
+              <path d="M-5 0 L-3 28 Q-3 34 5 34 L8 34 Q10 30 5 26 L4 0 Z" fill="#d4873f" stroke="#6b3000" stroke-width="2.2"/>
+            </g></g>
+            <g transform="translate(86, 70)"><g class="leg-f-far">
+              <path d="M-5 0 L-3 28 Q-3 34 5 34 L8 34 Q10 30 5 26 L4 0 Z" fill="#d4873f" stroke="#6b3000" stroke-width="2.2"/>
+            </g></g>
+            <!-- Хвіст з китичкою -->
+            <g transform="translate(28, 55)"><g class="tail-rotor">
+              <path d="M0 0 Q-16 -4 -20 -20" stroke="#f4a261" stroke-width="5.5" fill="none" stroke-linecap="round"/>
+              <ellipse cx="-21" cy="-23" rx="6" ry="8" transform="rotate(-20 -21 -23)" fill="#8d3b00" stroke="#4a1d00" stroke-width="2"/>
+            </g></g>
+            <!-- Тулуб лева -->
+            <path d="M27 58 Q27 41 58 43 Q90 43 96 58 Q98 74 82 75 L38 75 Q26 73 27 58 Z" fill="#f4a261" stroke="#7f3800" stroke-width="2.5"/>
+            <path d="M38 74 Q62 67 84 74 Z" fill="#ffe5b4"/>
+            <!-- Ближні лапи -->
+            <g transform="translate(36, 72)"><g class="leg-b-near">
+              <path d="M-6 0 L-4 28 Q-4 34 4 34 L10 34 Q12 29 6 26 L6 0 Z" fill="#f9b26b" stroke="#7f3800" stroke-width="2.4"/>
+            </g></g>
+            <g transform="translate(80, 72)"><g class="leg-f-near">
+              <path d="M-6 0 L-4 28 Q-4 34 4 34 L10 34 Q12 29 6 26 L6 0 Z" fill="#f9b26b" stroke="#7f3800" stroke-width="2.4"/>
+            </g></g>
+            <!-- Голова лева з пишною гривою -->
+            <g transform="translate(90, 48)"><g class="head-rotor">
+              <path d="M0 -26 Q12 -28 18 -18 Q28 -14 25 -2 Q30 10 20 16 Q12 26 0 22 Q-12 26 -18 16 Q-26 8 -22 -4 Q-26 -16 -14 -20 Q-10 -28 0 -26 Z" fill="#9c4100" stroke="#4a1d00" stroke-width="2.5"/>
+              <circle cx="-7" cy="-16" r="6" fill="#f4a261" stroke="#7f3800" stroke-width="2"/>
+              <circle cx="13" cy="-16" r="6" fill="#f4a261" stroke="#7f3800" stroke-width="2"/>
+              <ellipse cx="6" cy="-2" rx="16" ry="14" fill="#f4a261" stroke="#7f3800" stroke-width="2.2"/>
+              <ellipse cx="12" cy="4" rx="10" ry="7" fill="#ffe5b4"/>
+              <circle cx="5" cy="-5" r="3.8" fill="#1d1e2c"/>
+              <circle cx="16" cy="-5" r="3.6" fill="#1d1e2c"/>
+              <circle cx="4" cy="-6.3" r="1.4" fill="#ffffff"/>
+              <circle cx="15" cy="-6.3" r="1.4" fill="#ffffff"/>
+              <polygon points="11,0 19,0 15,5" fill="#5c2200"/>
+              <path d="M10 7 Q15 11 20 7" stroke="#5c2200" stroke-width="2" fill="none" stroke-linecap="round"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'giraffe':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Довгі стрункі ноги жирафи -->
+            <g transform="translate(42, 66)"><g class="leg-b-far">
+              <rect x="-3.5" y="0" width="7" height="36" rx="3" fill="#e0a938" stroke="#7f4f24" stroke-width="2"/>
+              <rect x="-3.5" y="30" width="8" height="6" rx="1.5" fill="#4a2c18"/>
+            </g></g>
+            <g transform="translate(84, 66)"><g class="leg-f-far">
+              <rect x="-3.5" y="0" width="7" height="36" rx="3" fill="#e0a938" stroke="#7f4f24" stroke-width="2"/>
+              <rect x="-3.5" y="30" width="8" height="6" rx="1.5" fill="#4a2c18"/>
+            </g></g>
+            <!-- Хвіст -->
+            <g transform="translate(30, 56)"><g class="tail-rotor">
+              <path d="M0 0 Q-10 10 -11 24" stroke="#ffd166" stroke-width="4" fill="none" stroke-linecap="round"/>
+              <ellipse cx="-11" cy="25" rx="3.5" ry="6" fill="#4a2c18"/>
+            </g></g>
+            <!-- Плямистий корпус жирафи -->
+            <path d="M28 60 Q28 45 56 44 Q86 40 92 56 Q94 72 80 73 L38 73 Q28 71 28 60 Z" fill="#ffd166" stroke="#7f4f24" stroke-width="2.4"/>
+            <circle cx="44" cy="55" r="5" fill="#bc6c25"/>
+            <circle cx="60" cy="52" r="6" fill="#bc6c25"/>
+            <circle cx="52" cy="64" r="4.5" fill="#bc6c25"/>
+            <circle cx="74" cy="58" r="5.5" fill="#bc6c25"/>
+            <!-- Ближні ноги -->
+            <g transform="translate(36, 68)"><g class="leg-b-near">
+              <rect x="-4" y="0" width="7.5" height="36" rx="3" fill="#ffd166" stroke="#7f4f24" stroke-width="2.2"/>
+              <rect x="-4" y="30" width="8.5" height="6" rx="1.5" fill="#4a2c18"/>
+            </g></g>
+            <g transform="translate(78, 68)"><g class="leg-f-near">
+              <rect x="-4" y="0" width="7.5" height="36" rx="3" fill="#ffd166" stroke="#7f4f24" stroke-width="2.2"/>
+              <rect x="-4" y="30" width="8.5" height="6" rx="1.5" fill="#4a2c18"/>
+            </g></g>
+            <!-- Довга шия та голова жирафи з ріжками -->
+            <g transform="translate(84, 48)"><g class="head-rotor">
+              <path d="M-8 6 L4 -30 L17 -28 L8 8 Z" fill="#ffd166" stroke="#7f4f24" stroke-width="2.4"/>
+              <circle cx="2" cy="-10" r="4" fill="#bc6c25"/>
+              <circle cx="7" cy="-20" r="3.5" fill="#bc6c25"/>
+              <!-- Ріжки -->
+              <line x1="8" y1="-32" x2="6" y2="-42" stroke="#7f4f24" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="6" cy="-42" r="3.5" fill="#4a2c18"/>
+              <line x1="15" y1="-32" x2="17" y2="-42" stroke="#7f4f24" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="17" cy="-42" r="3.5" fill="#4a2c18"/>
+              <ellipse cx="0" cy="-30" rx="6" ry="3.5" transform="rotate(-20 0 -30)" fill="#ffd166" stroke="#7f4f24" stroke-width="2"/>
+              <ellipse cx="14" cy="-28" rx="13" ry="9" fill="#ffd166" stroke="#7f4f24" stroke-width="2.2"/>
+              <ellipse cx="21" cy="-26" rx="7" ry="6" fill="#faedcd"/>
+              <circle cx="13" cy="-30" r="3.4" fill="#1d1e2c"/>
+              <circle cx="12" cy="-31" r="1.2" fill="#ffffff"/>
+              <circle cx="22" cy="-27" r="1.5" fill="#7f4f24"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'elephant':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні масивні ноги слона -->
+            <g transform="translate(40, 68)"><g class="leg-b-far">
+              <rect x="-7" y="0" width="13" height="34" rx="5" fill="#768396" stroke="#3b4452" stroke-width="2.2"/>
+            </g></g>
+            <g transform="translate(84, 68)"><g class="leg-f-far">
+              <rect x="-7" y="0" width="13" height="34" rx="5" fill="#768396" stroke="#3b4452" stroke-width="2.2"/>
+            </g></g>
+            <!-- Хвостик -->
+            <g transform="translate(22, 54)"><g class="tail-rotor">
+              <path d="M0 0 Q-10 8 -9 20" stroke="#8d99ae" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+            </g></g>
+            <!-- Округлий сірий тулуб -->
+            <ellipse cx="58" cy="56" rx="38" ry="24" fill="#8d99ae" stroke="#3b4452" stroke-width="2.5"/>
+            <!-- Ближні ноги з білими нігтиками -->
+            <g transform="translate(34, 70)"><g class="leg-b-near">
+              <rect x="-7" y="0" width="14" height="34" rx="5" fill="#9aa6ba" stroke="#3b4452" stroke-width="2.4"/>
+              <circle cx="-2" cy="32" r="2.2" fill="#edf2f4"/>
+              <circle cx="3" cy="32" r="2.2" fill="#edf2f4"/>
+            </g></g>
+            <g transform="translate(78, 70)"><g class="leg-f-near">
+              <rect x="-7" y="0" width="14" height="34" rx="5" fill="#9aa6ba" stroke="#3b4452" stroke-width="2.4"/>
+              <circle cx="-2" cy="32" r="2.2" fill="#edf2f4"/>
+              <circle cx="3" cy="32" r="2.2" fill="#edf2f4"/>
+            </g></g>
+            <!-- Голова слона з великим вухом, бивнем та хоботом -->
+            <g transform="translate(92, 46)"><g class="head-rotor">
+              <circle cx="4" cy="-2" r="20" fill="#8d99ae" stroke="#3b4452" stroke-width="2.5"/>
+              <!-- Велике вухо -->
+              <ellipse cx="-10" cy="-2" rx="14" ry="18" fill="#9aa6ba" stroke="#3b4452" stroke-width="2.4"/>
+              <ellipse cx="-9" cy="-1" rx="8" ry="12" fill="#ffb5a7"/>
+              <!-- Хобот -->
+              <path d="M18 -4 Q34 -2 32 14 Q30 22 23 18 Q20 15 24 12" fill="#8d99ae" stroke="#3b4452" stroke-width="2.5" stroke-linecap="round"/>
+              <!-- Білий бивень -->
+              <path d="M12 6 Q24 12 26 4 Q20 2 14 2 Z" fill="#fff8d6" stroke="#3b4452" stroke-width="2"/>
+              <circle cx="11" cy="-6" r="3.8" fill="#1d1e2c"/>
+              <circle cx="10" cy="-7.2" r="1.4" fill="#ffffff"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'panda':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні чорні лапи -->
+            <g transform="translate(42, 70)"><g class="leg-b-far">
+              <rect x="-6" y="0" width="12" height="32" rx="6" fill="#1b1e21"/>
+            </g></g>
+            <g transform="translate(84, 70)"><g class="leg-f-far">
+              <rect x="-6" y="0" width="12" height="32" rx="6" fill="#1b1e21"/>
+            </g></g>
+            <!-- Круглий хвостик -->
+            <g transform="translate(24, 58)"><g class="tail-rotor">
+              <circle cx="-4" cy="0" r="6" fill="#212529"/>
+            </g></g>
+            <!-- Білий пухкий тулуб панди з чорним плечовим поясом -->
+            <ellipse cx="58" cy="58" rx="35" ry="22" fill="#f8f9fa" stroke="#212529" stroke-width="2.5"/>
+            <path d="M68 37 Q84 39 90 56 Q90 73 74 78 L64 76 Q66 56 68 37 Z" fill="#212529"/>
+            <!-- Ближні чорні лапи -->
+            <g transform="translate(36, 70)"><g class="leg-b-near">
+              <rect x="-7" y="0" width="13" height="33" rx="6.5" fill="#212529" stroke="#000" stroke-width="2"/>
+            </g></g>
+            <g transform="translate(78, 70)"><g class="leg-f-near">
+              <rect x="-7" y="0" width="13" height="33" rx="6.5" fill="#212529" stroke="#000" stroke-width="2"/>
+            </g></g>
+            <!-- Голова панди -->
+            <g transform="translate(92, 46)"><g class="head-rotor">
+              <circle cx="-8" cy="-17" r="8" fill="#212529"/>
+              <circle cx="11" cy="-16" r="7.5" fill="#212529"/>
+              <ellipse cx="4" cy="-2" rx="19" ry="17" fill="#f8f9fa" stroke="#212529" stroke-width="2.5"/>
+              <ellipse cx="5" cy="-4" rx="6.5" ry="8" transform="rotate(-12 5 -4)" fill="#212529"/>
+              <ellipse cx="17" cy="-4" rx="5.5" ry="7" transform="rotate(12 17 -4)" fill="#212529"/>
+              <circle cx="6" cy="-5" r="3" fill="#ffffff"/>
+              <circle cx="17" cy="-5" r="2.8" fill="#ffffff"/>
+              <circle cx="6.5" cy="-5" r="1.6" fill="#1d1e2c"/>
+              <circle cx="17.5" cy="-5" r="1.5" fill="#1d1e2c"/>
+              <ellipse cx="15" cy="3" rx="4.5" ry="3" fill="#212529"/>
+              <ellipse cx="-2" cy="4" rx="4" ry="2.5" fill="#ffccd5"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'fox':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні лапки з темними панчохами -->
+            <g transform="translate(42, 70)"><g class="leg-b-far">
+              <path d="M-4 0 L-3 32 L4 32 L4 0 Z" fill="#c8553d" stroke="#7a1c1c" stroke-width="2"/>
+              <rect x="-4" y="20" width="8" height="13" rx="3" fill="#2b1606"/>
+            </g></g>
+            <g transform="translate(84, 70)"><g class="leg-f-far">
+              <path d="M-4 0 L-3 32 L4 32 L4 0 Z" fill="#c8553d" stroke="#7a1c1c" stroke-width="2"/>
+              <rect x="-4" y="20" width="8" height="13" rx="3" fill="#2b1606"/>
+            </g></g>
+            <!-- Розкішний пухнастий хвіст лисиці з білим кінчиком -->
+            <g transform="translate(30, 56)"><g class="tail-rotor">
+              <path d="M0 0 Q-22 -12 -28 -2 Q-32 10 -14 14 Q-4 14 2 4 Z" fill="#e76f51" stroke="#8c2318" stroke-width="2.4"/>
+              <path d="M-28 -2 Q-31 6 -20 11 Q-16 3 -21 -3 Z" fill="#fff8f0"/>
+            </g></g>
+            <!-- Гнучкий рудий тулуб -->
+            <path d="M28 58 Q30 43 58 44 Q88 44 94 58 Q95 72 80 73 L38 73 Q28 71 28 58 Z" fill="#e76f51" stroke="#8c2318" stroke-width="2.4"/>
+            <path d="M38 72 Q62 64 90 68 Q84 74 38 72 Z" fill="#fff8f0"/>
+            <!-- Ближні лапки -->
+            <g transform="translate(36, 72)"><g class="leg-b-near">
+              <path d="M-4.5 0 L-3.5 32 L4.5 32 L4.5 0 Z" fill="#f4845f" stroke="#8c2318" stroke-width="2.2"/>
+              <rect x="-4.5" y="19" width="9" height="14" rx="3.5" fill="#3d1e08"/>
+            </g></g>
+            <g transform="translate(78, 72)"><g class="leg-f-near">
+              <path d="M-4.5 0 L-3.5 32 L4.5 32 L4.5 0 Z" fill="#f4845f" stroke="#8c2318" stroke-width="2.2"/>
+              <rect x="-4.5" y="19" width="9" height="14" rx="3.5" fill="#3d1e08"/>
+            </g></g>
+            <!-- Голова лисички з гострим носиком та білою грудкою -->
+            <g transform="translate(90, 48)"><g class="head-rotor">
+              <path d="M-8 6 Q0 24 12 8 Z" fill="#fff8f0"/>
+              <polygon points="-10,-10 -6,-28 4,-14" fill="#e76f51" stroke="#8c2318" stroke-width="2.2"/>
+              <polygon points="4,-12 10,-28 16,-12" fill="#e76f51" stroke="#8c2318" stroke-width="2.2"/>
+              <path d="M-12 -2 Q-10 -16 6 -16 Q18 -16 28 -2 Q16 10 4 10 Q-10 10 -12 -2 Z" fill="#e76f51" stroke="#8c2318" stroke-width="2.4"/>
+              <path d="M-10 0 Q6 0 27 -1 Q16 10 4 10 Q-8 10 -10 0 Z" fill="#fff8f0"/>
+              <circle cx="6" cy="-5" r="3.6" fill="#1d1e2c"/>
+              <circle cx="5" cy="-6.2" r="1.3" fill="#ffffff"/>
+              <circle cx="27" cy="-2" r="4" fill="#1d1e2c"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'hippo':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні кремезні ніжки бегемота -->
+            <g transform="translate(40, 72)"><g class="leg-b-far">
+              <rect x="-7" y="0" width="13" height="30" rx="5" fill="#7d656d" stroke="#4a383e" stroke-width="2.2"/>
+            </g></g>
+            <g transform="translate(82, 72)"><g class="leg-f-far">
+              <rect x="-7" y="0" width="13" height="30" rx="5" fill="#7d656d" stroke="#4a383e" stroke-width="2.2"/>
+            </g></g>
+            <!-- Хвостик -->
+            <g transform="translate(20, 56)"><g class="tail-rotor">
+              <path d="M0 0 L-9 10" stroke="#9d8189" stroke-width="5" stroke-linecap="round"/>
+            </g></g>
+            <!-- Бочкоподібний тулуб бегемота -->
+            <ellipse cx="56" cy="58" rx="39" ry="23" fill="#9d8189" stroke="#4a383e" stroke-width="2.5"/>
+            <path d="M30 72 Q56 66 82 72 Q56 80 30 72 Z" fill="#d8b4bc" opacity="0.6"/>
+            <!-- Ближні ніжки -->
+            <g transform="translate(34, 73)"><g class="leg-b-near">
+              <rect x="-7" y="0" width="14" height="30" rx="5" fill="#b0939b" stroke="#4a383e" stroke-width="2.4"/>
+            </g></g>
+            <g transform="translate(76, 73)"><g class="leg-f-near">
+              <rect x="-7" y="0" width="14" height="30" rx="5" fill="#b0939b" stroke="#4a383e" stroke-width="2.4"/>
+            </g></g>
+            <!-- Масивна морда бегемота -->
+            <g transform="translate(90, 50)"><g class="head-rotor">
+              <ellipse cx="-6" cy="-18" rx="5" ry="7" fill="#9d8189" stroke="#4a383e" stroke-width="2.2"/>
+              <ellipse cx="6" cy="-18" rx="5" ry="7" fill="#9d8189" stroke="#4a383e" stroke-width="2.2"/>
+              <circle cx="0" cy="-4" r="16" fill="#9d8189" stroke="#4a383e" stroke-width="2.4"/>
+              <ellipse cx="14" cy="2" rx="16" ry="12" fill="#b89ca4" stroke="#4a383e" stroke-width="2.4"/>
+              <ellipse cx="12" cy="-2" rx="2.5" ry="4" fill="#4a383e"/>
+              <ellipse cx="22" cy="-2" rx="2.5" ry="4" fill="#4a383e"/>
+              <rect x="13" y="9" width="5" height="5" rx="1" fill="#ffffff" stroke="#4a383e" stroke-width="1.2"/>
+              <rect x="21" y="9" width="5" height="5" rx="1" fill="#ffffff" stroke="#4a383e" stroke-width="1.2"/>
+              <circle cx="2" cy="-8" r="3.6" fill="#1d1e2c"/>
+              <circle cx="1" cy="-9.2" r="1.3" fill="#ffffff"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'monkey':
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні лапки мавпочки -->
+            <g transform="translate(44, 68)"><g class="leg-b-far">
+              <path d="M-4 0 L-3 34 L4 34 L4 0 Z" fill="#633b18" stroke="#3b210c" stroke-width="2"/>
+            </g></g>
+            <g transform="translate(82, 68)"><g class="leg-f-far">
+              <path d="M-4 0 L-3 34 L4 34 L4 0 Z" fill="#633b18" stroke="#3b210c" stroke-width="2"/>
+            </g></g>
+            <!-- Довгий закручений хвіст -->
+            <g transform="translate(32, 54)"><g class="tail-rotor">
+              <path d="M0 0 Q-20 -16 -18 -32 Q-16 -44 -6 -38 Q2 -32 -6 -26" fill="none" stroke="#7f4f24" stroke-width="6" stroke-linecap="round"/>
+            </g></g>
+            <!-- Тулуб мавпочки -->
+            <ellipse cx="60" cy="58" rx="28" ry="18" fill="#7f4f24" stroke="#3b210c" stroke-width="2.4"/>
+            <ellipse cx="62" cy="64" rx="18" ry="10" fill="#e6ccb2"/>
+            <!-- Ближні лапки -->
+            <g transform="translate(38, 70)"><g class="leg-b-near">
+              <path d="M-4.5 0 L-3.5 33 L5 33 L5 0 Z" fill="#9c6644" stroke="#3b210c" stroke-width="2.2"/>
+            </g></g>
+            <g transform="translate(76, 70)"><g class="leg-f-near">
+              <path d="M-4.5 0 L-3.5 33 L5 33 L5 0 Z" fill="#9c6644" stroke="#3b210c" stroke-width="2.2"/>
+            </g></g>
+            <!-- Голова мавпочки -->
+            <g transform="translate(88, 44)"><g class="head-rotor">
+              <circle cx="-10" cy="0" r="9" fill="#7f4f24" stroke="#3b210c" stroke-width="2.2"/>
+              <circle cx="-10" cy="0" r="5" fill="#e6ccb2"/>
+              <circle cx="4" cy="-2" r="17" fill="#7f4f24" stroke="#3b210c" stroke-width="2.4"/>
+              <ellipse cx="10" cy="2" rx="12" ry="11" fill="#e6ccb2"/>
+              <circle cx="7" cy="-5" r="3.6" fill="#1d1e2c"/>
+              <circle cx="16" cy="-5" r="3.4" fill="#1d1e2c"/>
+              <circle cx="6" cy="-6.2" r="1.3" fill="#ffffff"/>
+              <circle cx="15" cy="-6.2" r="1.3" fill="#ffffff"/>
+              <ellipse cx="14" cy="1" rx="3.5" ry="2.5" fill="#3b210c"/>
+              <path d="M8 6 Q14 10 19 6" stroke="#3b210c" stroke-width="2" fill="none" stroke-linecap="round"/>
+            </g></g>
+          </g>
+        </svg>`;
+
+      case 'koala':
+      default:
+        return `
+        <svg viewBox="0 0 130 110" width="100%" height="100%">
+          <g class="animal-rig">
+            <!-- Дальні лапки коали -->
+            <g transform="translate(44, 70)"><g class="leg-b-far">
+              <rect x="-6" y="0" width="11" height="32" rx="5" fill="#5c718a" stroke="#2f3e52" stroke-width="2.2"/>
+            </g></g>
+            <g transform="translate(80, 70)"><g class="leg-f-far">
+              <rect x="-6" y="0" width="11" height="32" rx="5" fill="#5c718a" stroke="#2f3e52" stroke-width="2.2"/>
+            </g></g>
+            <!-- Пухнастий круглий хвостик -->
+            <g transform="translate(28, 60)"><g class="tail-rotor">
+              <circle cx="-3" cy="0" r="6" fill="#778da9" stroke="#2f3e52" stroke-width="2"/>
+            </g></g>
+            <!-- Пухкий сіро-блакитний тулуб коали -->
+            <ellipse cx="58" cy="58" rx="31" ry="21" fill="#778da9" stroke="#2f3e52" stroke-width="2.5"/>
+            <ellipse cx="62" cy="64" rx="18" ry="12" fill="#e0e1dd"/>
+            <!-- Ближні лапки -->
+            <g transform="translate(38, 71)"><g class="leg-b-near">
+              <rect x="-6" y="0" width="12" height="32" rx="5.5" fill="#8d99ae" stroke="#2f3e52" stroke-width="2.4"/>
+            </g></g>
+            <g transform="translate(74, 71)"><g class="leg-f-near">
+              <rect x="-6" y="0" width="12" height="32" rx="5.5" fill="#8d99ae" stroke="#2f3e52" stroke-width="2.4"/>
+            </g></g>
+            <!-- Голова коали з великими пухнастими вухами та чорним носом -->
+            <g transform="translate(86, 44)"><g class="head-rotor">
+              <circle cx="-11" cy="-12" r="12" fill="#778da9" stroke="#2f3e52" stroke-width="2.4"/>
+              <circle cx="-11" cy="-12" r="7" fill="#e0e1dd"/>
+              <circle cx="14" cy="-12" r="11" fill="#778da9" stroke="#2f3e52" stroke-width="2.4"/>
+              <circle cx="14" cy="-12" r="6" fill="#e0e1dd"/>
+              <ellipse cx="4" cy="-1" rx="18" ry="16" fill="#778da9" stroke="#2f3e52" stroke-width="2.5"/>
+              <circle cx="2" cy="-4" r="3.5" fill="#1d1e2c"/>
+              <circle cx="16" cy="-4" r="3.4" fill="#1d1e2c"/>
+              <circle cx="1" cy="-5.2" r="1.2" fill="#ffffff"/>
+              <ellipse cx="10" cy="1" rx="5.5" ry="8" fill="#2b2d42"/>
+              <ellipse cx="9" cy="-1" rx="1.8" ry="3" fill="#6c757d"/>
+            </g></g>
+          </g>
+        </svg>`;
+    }
+  }
+
+  // =========================================================================
+  // 3. СТВОРЕННЯ ПАНЕЛІ ЦИФР (1..6)
+  // =========================================================================
+  const numbersDock = document.getElementById('numbers-dock');
+  const totemPalettes = [
+    ['#ff595e', '#c9184a'], // 1
+    ['#ffca3a', '#e07a5f'], // 2
+    ['#8ac926', '#386641'], // 3
+    ['#1982c4', '#1d3557'], // 4
+    ['#9b5de5', '#5a189a'], // 5
+    ['#f77f00', '#9c4100']  // 6
+  ];
+
+  for (let n = 1; n <= 6; n++) {
+    const [colTop, colBot] = totemPalettes[n - 1];
+    const btn = document.createElement('div');
+    btn.className = 'num-totem';
+    btn.dataset.value = n;
+    btn.innerHTML = `
+      <svg viewBox="0 0 100 110" width="100%" height="100%">
+        <defs>
+          <linearGradient id="totemGrad${n}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="${colTop}" />
+            <stop offset="100%" stop-color="${colBot}" />
+          </linearGradient>
+        </defs>
+        <path d="M16 18 Q50 6 84 18 Q94 55 82 94 Q50 106 18 94 Q6 55 16 18 Z" fill="#5c3010" stroke="#2b1606" stroke-width="5" />
+        <path d="M22 23 Q50 13 78 23 Q86 55 76 88 Q50 98 24 88 Q14 55 22 23 Z" fill="url(#totemGrad${n})" stroke="#fff3b0" stroke-width="3" />
+        <path d="M18 22 Q28 10 38 20 Q28 28 18 22 Z" fill="#8ac926" stroke="#2b5030" stroke-width="2" />
+        <text x="50" y="75" text-anchor="middle" font-size="58" font-weight="900" fill="#fff8d6" stroke="#2b1606" stroke-width="3">${n}</text>
+      </svg>
+    `;
+    btn.addEventListener('click', () => handleNumberClick(n, btn));
+    numbersDock.appendChild(btn);
+  }
+
+  // =========================================================================
+  // 4. СПЕЦЕФЕКТИ (ПИЛ ПІД ЛАПАМИ ТА СВЯТКОВИЙ ФЕЄРВЕРК)
+  // =========================================================================
+  const fxLayer = document.getElementById('fx-layer');
+
+  function spawnDustPuff(xPx, yPx, scale = 1, color = '#edc483') {
+    const stageRect = document.getElementById('game-stage').getBoundingClientRect();
+    const svgX = (xPx / stageRect.width) * 1280;
+    const svgY = (yPx / stageRect.height) * 720;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    for (let i = 0; i < 5; i++) {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      const angle = Math.PI + (Math.random() - 0.5) * 2.2;
+      const dx = Math.cos(angle) * 26 * scale;
+      const dy = -Math.abs(Math.sin(angle) * 18 * scale) - 4;
+
+      circle.setAttribute('cx', svgX);
+      circle.setAttribute('cy', svgY);
+      circle.setAttribute('r', 8 * scale);
+      circle.setAttribute('fill', color);
+      circle.setAttribute('opacity', '0.8');
+      g.appendChild(circle);
+
+      circle.animate([
+        { transform: 'translate(0px, 0px) scale(0.5)', opacity: 0.85 },
+        { transform: `translate(${dx}px, ${dy}px) scale(1.4)`, opacity: 0 }
+      ], { duration: 360, easing: 'ease-out' });
+    }
+    fxLayer.appendChild(g);
+    setTimeout(() => g.remove(), 380);
+  }
+
+  function spawnCelebrationBurst() {
+    const colors = ['#ffd166', '#06d6a0', '#ef476f', '#118ab2', '#ff9f1c'];
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+    for (let i = 0; i < 24; i++) {
+      const star = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const startX = 520 + (Math.random() - 0.5) * 280;
+      const startY = 340 + (Math.random() - 0.5) * 70;
+      const dx = (Math.random() - 0.5) * 340;
+      const dy = -90 - Math.random() * 180;
+
+      star.setAttribute('points', '0,-12 4,-4 12,-4 6,2 8,11 0,6 -8,11 -6,2 -12,-4 -4,-4');
+      star.setAttribute('fill', colors[i % colors.length]);
+      star.setAttribute('stroke', '#3d1e08');
+      star.setAttribute('stroke-width', '1.5');
+      g.appendChild(star);
+
+      star.animate([
+        { transform: `translate(${startX}px, ${startY}px) scale(0.3) rotate(0deg)`, opacity: 1 },
+        { transform: `translate(${startX + dx}px, ${startY + dy}px) scale(1.3) rotate(240deg)`, opacity: 0 }
+      ], { duration: 850 + Math.random() * 300, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+    }
+    fxLayer.appendChild(g);
+    setTimeout(() => g.remove(), 1200);
+  }
+
+  // =========================================================================
+  // 5. ЕМОЦІЇ ВОДІЯ В КАБІНІ ТА КЕРУВАННЯ ТРАПОМ І КОЛЕСАМИ
+  // =========================================================================
+  const driverEl = document.getElementById('driver-character');
+  const driverMouth = document.getElementById('driver-mouth');
+  const rampRotor = document.getElementById('ramp-rotor');
+  const truckAssembly = document.getElementById('truck-assembly');
+  const truckSuspension = document.getElementById('truck-suspension');
+  const targetBadgeGroup = document.getElementById('target-badge-group');
+
+  function setDriverState(state) {
+    driverEl.classList.remove('driver-happy', 'driver-oops');
+    if (state === 'happy') {
+      driverEl.classList.add('driver-happy');
+      driverMouth.setAttribute('d', 'M1 -7 Q7 1 13 -7 Z');
+      driverMouth.setAttribute('fill', '#ef476f');
+    } else if (state === 'oops') {
+      driverEl.classList.add('driver-oops');
+      driverMouth.setAttribute('d', 'M3 -3 Q7 -8 11 -3');
+      driverMouth.setAttribute('fill', 'none');
+    } else {
+      driverMouth.setAttribute('d', 'M2 -6 Q8 -2 12 -6');
+      driverMouth.setAttribute('fill', 'none');
+    }
+  }
+
+  function setWheelsSpinning(spinning) {
+    if (spinning) {
+      truckAssembly.classList.remove('wheel-stopped');
+    } else {
+      truckAssembly.classList.add('wheel-stopped');
+    }
+  }
+
+  function setRampOpen(open) {
+    if (open) {
+      rampRotor.classList.remove('ramp-closed');
+      rampRotor.classList.add('ramp-open');
+    } else {
+      rampRotor.classList.remove('ramp-open');
+      rampRotor.classList.add('ramp-closed');
+    }
+  }
+
+  // =========================================================================
+  // 6. ЗБАЛАНСОВАНИЙ ГЕНЕРАТОР СКЛАДУ ЧИСЕЛ (2, 3, 4, 5, 6)
+  // =========================================================================
+  const levelHistory = [];
+  let currentHistoryIndex = -1;
+  let isBusy = false;
+
+  // Тасована колода цільових чисел [2, 3, 4, 5, 6], щоб кожне число гарантовано випадало!
+  let targetDeck = [];
+
+  function getNextTargetNumber() {
+    if (targetDeck.length === 0) {
+      targetDeck = [2, 3, 4, 5, 6];
+      // Перемішуємо за алгоритмом Фішера-Єйтса
+      for (let i = targetDeck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [targetDeck[i], targetDeck[j]] = [targetDeck[j], targetDeck[i]];
+      }
+      // Перевіряємо, щоб перше число нової колоди не збігалося з останнім числом минулої
+      if (levelHistory.length > 0 && targetDeck[0] === levelHistory[levelHistory.length - 1].targetTotal) {
+        [targetDeck[0], targetDeck[1]] = [targetDeck[1], targetDeck[0]];
+      }
+    }
+    return targetDeck.shift();
+  }
+
+  function createRandomLevelData() {
+    const targetTotal = getNextTargetNumber();
+
+    // Кількість звірів, що вже в кузові: від 1 до (targetTotal - 1)
+    const initialCount = 1 + Math.floor(Math.random() * (targetTotal - 1));
+    const missingCount = targetTotal - initialCount;
+
+    // Вибираємо 2 різні види тварин із 10
+    const idx1 = Math.floor(Math.random() * ANIMAL_SPECIES.length);
+    let idx2 = Math.floor(Math.random() * (ANIMAL_SPECIES.length - 1));
+    if (idx2 >= idx1) idx2++;
+
+    return {
+      targetTotal,
+      initialCount,
+      missingCount,
+      speciesInside: ANIMAL_SPECIES[idx1],
+      speciesWaiting: ANIMAL_SPECIES[idx2]
+    };
+  }
+
+  // =========================================================================
+  // 7. ВІДМАЛЬОВКА СЛОТІВ У ПРИЧЕПІ ТА ПОЗИЦІОНУВАННЯ ЗВІРІВ
+  // =========================================================================
+  const trailerAnimalsLayer = document.getElementById('trailer-animals-layer');
+  const groundAnimalsLayer = document.getElementById('ground-animals-layer');
+  const targetNumberText = document.getElementById('target-number-text');
+  const slotDividersGroup = document.getElementById('trailer-slot-dividers');
+
+  // Розрахунок координат місця в причепі: звірі займають місця справа наліво (від кабіни до входу),
+  // щоб нові звірі, які застрибують зліва, природно підходили до вільних місць без перестрибування через зайняті!
+  function getSlotXInTrailer(slotOrderIndex, totalSlots) {
+    const usableWidth = 480;
+    const step = usableWidth / totalSlots;
+    // slotOrderIndex = 0 — найближче до кабіни (справа), щоб вхід зліва залишався вільним для посадки
+    const visualColFromLeft = (totalSlots - 1) - slotOrderIndex;
+    const x = step * visualColFromLeft + (step - 118) / 2;
+    return x;
+  }
+
+  // Відмальовка дерев'яних перегородок та килимків-місць у причепі відповідно до targetTotal (2..6)
+  function renderTrailerStalls(totalSlots) {
+    slotDividersGroup.innerHTML = '';
+    const usableWidth = 480;
+    const step = usableWidth / totalSlots;
+
+    for (let i = 0; i < totalSlots; i++) {
+      const slotLeft = 52 + i * step;
+      const slotCenter = slotLeft + step / 2;
+
+      // Вертикальна бамбукова перегородка між секціями
+      if (i > 0) {
+        const divider = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        divider.setAttribute('x1', slotLeft);
+        divider.setAttribute('y1', 78);
+        divider.setAttribute('x2', slotLeft);
+        divider.setAttribute('y2', 208);
+        divider.setAttribute('stroke', '#8a5a36');
+        divider.setAttribute('stroke-width', '5');
+        divider.setAttribute('stroke-dasharray', '12 6');
+        slotDividersGroup.appendChild(divider);
+      }
+
+      // Солом'яний килимок-місце на підлозі кузова
+      const mat = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+      mat.setAttribute('cx', slotCenter);
+      mat.setAttribute('cy', 204);
+      mat.setAttribute('rx', Math.min(36, step * 0.38));
+      mat.setAttribute('ry', 8);
+      mat.setAttribute('fill', '#e9c46a');
+      mat.setAttribute('stroke', '#3d2210');
+      mat.setAttribute('stroke-width', '2');
+      slotDividersGroup.appendChild(mat);
+    }
+  }
+
+  // Завантаження рівня
+  function loadLevel(levelData) {
+    isBusy = true;
+    setDriverState('idle');
+    setRampOpen(false);
+
+    trailerAnimalsLayer.innerHTML = '';
+    groundAnimalsLayer.innerHTML = '';
+
+    // Оновлюємо цільове число (2, 3, 4, 5 або 6) на дверях кабіни
+    targetNumberText.textContent = levelData.targetTotal;
+    renderTrailerStalls(levelData.targetTotal);
+
+    // Розміщуємо початкових тварин першого виду у причепі (починаючи від правого краю біля кабіни)
+    for (let i = 0; i < levelData.initialCount; i++) {
+      const slotX = getSlotXInTrailer(i, levelData.targetTotal);
+      const animalEl = document.createElement('div');
+      animalEl.className = 'animal-actor state-idle';
+      animalEl.style.left = `${slotX}px`;
+      animalEl.style.top = `34px`;
+      trailerAnimalsLayer.appendChild(animalEl);
+      animalEl.innerHTML = getArticulatedAnimalSVG(levelData.speciesInside);
+    }
+
+    // Розміщуємо шеренгу тварин другого виду на піщаній дорозі зліва від місця паркування причепа
+    // Вони стоять на землі одна за одною, готові йти вперед та стрибати в кузов
+    const waitingCount = 5;
+    const roadBaseY = window.innerHeight * 0.635;
+    for (let i = 0; i < waitingCount; i++) {
+      const wAnimal = document.createElement('div');
+      wAnimal.className = 'animal-actor state-idle waiting-queue-animal';
+      // i = 0 стоїть найближче до причепа (перший у черзі на посадку)
+      const queueX = 165 - i * 44;
+      const queueY = roadBaseY + (i % 2) * 14;
+      wAnimal.style.left = `${queueX}px`;
+      wAnimal.style.top = `${queueY}px`;
+      wAnimal.style.zIndex = 20 + (i % 2);
+      wAnimal.innerHTML = getArticulatedAnimalSVG(levelData.speciesWaiting);
+      groundAnimalsLayer.appendChild(wAnimal);
+    }
+
+    // Заїзд вантажівки зліва
+    truckAssembly.className = 'offscreen-left';
+    setWheelsSpinning(true);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        sound.playTruckEngine(1.2, true);
+        truckAssembly.className = 'parked wheel-stopped';
+        setWheelsSpinning(true);
+      });
+    });
+
+    // Коли вантажівка зупинилася — зупиняємо колеса і відкидаємо трап
+    setTimeout(() => {
+      setWheelsSpinning(false);
+      sound.playRampClunk(true);
+      setRampOpen(true);
+      isBusy = false;
+    }, 1350);
+  }
+
+  // =========================================================================
+  // 8. РЕАЛІСТИЧНА ХОРЕОГРАФІЯ ПОСАДКИ: ХОДЬБА ПО ЗЕМЛІ -> СТРИБОК ВГОРУ -> ПРОХІД ПО КУЗОВУ
+  // =========================================================================
+  function handleNumberClick(selectedNumber, btnElement) {
+    if (isBusy) return;
+
+    const currentLevel = levelHistory[currentHistoryIndex];
+
+    if (selectedNumber === currentLevel.missingCount) {
+      isBusy = true;
+      btnElement.classList.add('totem-correct');
+      setTimeout(() => btnElement.classList.remove('totem-correct'), 600);
+
+      setDriverState('happy');
+      boardAnimalsRealistically(currentLevel);
+    } else {
+      // Активний фідбек при помилці
+      sound.playErrorBoing();
+      btnElement.classList.add('totem-wrong');
+      truckSuspension.classList.add('truck-shake-error');
+      targetBadgeGroup.classList.add('badge-pulse');
+      setDriverState('oops');
+
+      setTimeout(() => {
+        btnElement.classList.remove('totem-wrong');
+        truckSuspension.classList.remove('truck-shake-error');
+        targetBadgeGroup.classList.remove('badge-pulse');
+        if (!isBusy) setDriverState('idle');
+      }, 580);
+    }
+  }
+
+  // Покрокова реалістична анімація кожної тварини:
+  // Фаза 1: Йде лапами по дорозі до трапа причепа.
+  // Фаза 2: Присідає біля трапа і вистрибує ВГОРУ на підлогу кузова (задній край причепа).
+  // Фаза 3: Йде лапами всередині причепа до свого вільного місця і зупиняється.
+  function boardAnimalsRealistically(levelData) {
+    const queueAnimals = Array.from(groundAnimalsLayer.querySelectorAll('.waiting-queue-animal'));
+    const countToBoard = levelData.missingCount;
+
+    let completedBoardings = 0;
+
+    for (let i = 0; i < countToBoard; i++) {
+      setTimeout(() => {
+        const actor = queueAnimals[i];
+        if (!actor) return;
+
+        const targetOrderSlot = levelData.initialCount + i;
+        const targetInternalX = getSlotXInTrailer(targetOrderSlot, levelData.targetTotal);
+
+        const trailerRect = trailerAnimalsLayer.getBoundingClientRect();
+        const actorRect = actor.getBoundingClientRect();
+
+        const startX = actorRect.left;
+        const startY = actorRect.top;
+
+        // Точка біля підніжжя відкидного трапа на землі
+        const rampFootX = trailerRect.left - 62;
+        const rampFootY = trailerRect.top + 96;
+
+        // Точка входу на підлогу кузова (лівий край всередині причепа)
+        const deckEntryX = trailerRect.left + 4;
+        const deckEntryY = trailerRect.top + 34;
+
+        // Фінальна точка місця всередині причепа
+        const finalScreenX = trailerRect.left + targetInternalX;
+        const finalScreenY = deckEntryY;
+
+        // ---------------- ФАЗА 1: ХОДЬБА ПО ЗЕМЛІ ДО ТРАПА ----------------
+        actor.classList.remove('state-idle');
+        actor.classList.add('state-walking');
+
+        const walkGroundDist = Math.max(40, Math.hypot(rampFootX - startX, rampFootY - startY));
+        const walkGroundDuration = Math.min(720, Math.max(340, walkGroundDist * 2.4));
+
+        // Звуки кроків та пил під лапами під час підходу до причепа
+        const stepInterval = setInterval(() => {
+          const r = actor.getBoundingClientRect();
+          sound.playFootstep(i * 15);
+          spawnDustPuff(r.left + 55, r.bottom - 6, 0.75);
+        }, 160);
+
+        const walkToRampAnim = actor.animate([
+          { left: `${startX}px`, top: `${startY}px` },
+          { left: `${rampFootX}px`, top: `${rampFootY}px` }
+        ], {
+          duration: walkGroundDuration,
+          easing: 'linear',
+          fill: 'forwards'
+        });
+
+        walkToRampAnim.onfinish = () => {
+          clearInterval(stepInterval);
+          actor.style.left = `${rampFootX}px`;
+          actor.style.top = `${rampFootY}px`;
+
+          // ---------------- ФАЗА 2: ПРИСІДАННЯ ТА СТРИБОК ВГОРУ В КУЗОВ ----------------
+          actor.classList.remove('state-walking');
+          actor.classList.add('state-crouch');
+
+          setTimeout(() => {
+            actor.classList.remove('state-crouch');
+            actor.classList.add('state-jump-up');
+            sound.playAnimalJumpUp(i);
+            spawnDustPuff(rampFootX + 60, rampFootY + 95, 1.15);
+
+            // Висока дуга стрибка знизу-вгору на платформу причепа
+            const jumpMidX = (rampFootX + deckEntryX) / 2;
+            const jumpPeakY = deckEntryY - 46;
+
+            const jumpUpAnim = actor.animate([
+              { left: `${rampFootX}px`, top: `${rampFootY}px`, transform: 'rotate(-20deg)' },
+              { left: `${jumpMidX}px`, top: `${jumpPeakY}px`, transform: 'rotate(-8deg)', offset: 0.58 },
+              { left: `${deckEntryX}px`, top: `${deckEntryY}px`, transform: 'rotate(0deg)' }
+            ], {
+              duration: 390,
+              easing: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+              fill: 'forwards'
+            });
+
+            jumpUpAnim.onfinish = () => {
+              sound.playDeckThud();
+              // Просідання ресор вантажівки в момент приземлення звіра на підлогу кузова
+              truckSuspension.classList.remove('suspension-bounce');
+              void truckSuspension.offsetWidth;
+              truckSuspension.classList.add('suspension-bounce');
+
+              // Переносимо тварину в DOM-шар причепа у точці входу (x = 4px)
+              actor.remove();
+              const trailerActor = document.createElement('div');
+              trailerActor.className = 'animal-actor state-walking';
+              trailerActor.style.left = `4px`;
+              trailerActor.style.top = `34px`;
+              trailerActor.innerHTML = getArticulatedAnimalSVG(levelData.speciesWaiting);
+              trailerAnimalsLayer.appendChild(trailerActor);
+
+              // ---------------- ФАЗА 3: ПРОХІД ПО ПІДЛОЗІ КУЗОВА ДО СВОГО МІСЦЯ ----------------
+              const insideDist = Math.abs(targetInternalX - 4);
+              const walkInsideDuration = Math.max(180, insideDist * 1.65);
+
+              const deckStepTimer = setInterval(() => {
+                sound.playFootstep(35);
+              }, 150);
+
+              const walkInsideAnim = trailerActor.animate([
+                { left: `4px`, top: `34px` },
+                { left: `${targetInternalX}px`, top: `34px` }
+              ], {
+                duration: walkInsideDuration,
+                easing: 'linear',
+                fill: 'forwards'
+              });
+
+              walkInsideAnim.onfinish = () => {
+                clearInterval(deckStepTimer);
+                trailerActor.style.left = `${targetInternalX}px`;
+                trailerActor.classList.remove('state-walking');
+                trailerActor.classList.add('state-idle', 'state-settle');
+
+                completedBoardings++;
+                if (completedBoardings === countToBoard) {
+                  finishLevelAndDepart();
+                }
+              };
+            };
+          }, 130);
+        };
+      }, i * 560);
+    }
+  }
+
+  // Коли всі звірі зайшли і сіли на свої місця — закриваємо трап і машина вирушає!
+  function finishLevelAndDepart() {
+    setTimeout(() => {
+      sound.playRampClunk(false);
+      setRampOpen(false);
+      sound.playVictoryHornAndFanfare();
+      spawnCelebrationBurst();
+    }, 220);
+
+    // Ховаємо решту звірів із черги на дорозі, щоб не заважали від'їзду
+    setTimeout(() => {
+      groundAnimalsLayer.innerHTML = '';
+      setWheelsSpinning(true);
+      sound.playTruckEngine(1.2, true);
+      truckAssembly.className = 'offscreen-right';
+    }, 950);
+
+    setTimeout(() => {
+      goToNextLevel();
+    }, 2200);
+  }
+
+  // =========================================================================
+  // 9. КНОПКИ НАВІГАЦІЇ ("ДАЛІ" ТА "НАЗАД")
+  // =========================================================================
+  function goToNextLevel() {
+    if (currentHistoryIndex < levelHistory.length - 1) {
+      currentHistoryIndex++;
+    } else {
+      levelHistory.push(createRandomLevelData());
+      currentHistoryIndex = levelHistory.length - 1;
+    }
+    loadLevel(levelHistory[currentHistoryIndex]);
+  }
+
+  function goToPrevLevel() {
+    if (currentHistoryIndex > 0) {
+      currentHistoryIndex--;
+      loadLevel(levelHistory[currentHistoryIndex]);
+    } else {
+      loadLevel(levelHistory[0]);
+    }
+  }
+
+  document.getElementById('btn-next').addEventListener('click', () => {
+    sound.init();
+    goToNextLevel();
+  });
+
+  document.getElementById('btn-prev').addEventListener('click', () => {
+    sound.init();
+    goToPrevLevel();
+  });
+
+  // Запуск гри
+  window.addEventListener('DOMContentLoaded', () => {
+    goToNextLevel();
+  });
+</script>
+</body>
+</html>
