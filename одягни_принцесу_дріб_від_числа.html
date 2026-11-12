@@ -1,0 +1,2407 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Королівський бал</title>
+<style>
+  /* ================= ОСНОВНІ СТИЛІ ТА СКИДАННЯ ================= */
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body, html {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    background: #140824;
+  }
+
+  /* Контейнер всієї сцени */
+  #game-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* Фоновий SVG на весь екран */
+  #bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+  }
+
+  /* Канвас для золотого пилу, пелюсток та блискіток */
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 25;
+  }
+
+  /* ================= ВЕРХНЯ ПАНЕЛЬ НАВІГАЦІЇ ТА ПРОГРЕСУ ================= */
+  #top-nav-bar {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* Мінімалістичні кнопки Назад / Далі */
+  .nav-arrow-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #521f73, #290b3d);
+    border: 2px solid #d4af37;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6), inset 0 0 8px rgba(212,175,55,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s;
+  }
+
+  .nav-arrow-btn:hover {
+    transform: scale(1.14);
+    filter: drop-shadow(0 0 10px #ffd700) brightness(1.15);
+  }
+
+  .nav-arrow-btn:active {
+    transform: scale(0.95);
+  }
+
+  .nav-arrow-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: #ffd700;
+  }
+
+  /* Перлинна гірлянда прогресу */
+  #progress-garland {
+    display: flex;
+    gap: 11px;
+    padding: 9px 22px;
+    background: linear-gradient(180deg, rgba(58,18,82,0.92), rgba(28,8,44,0.95));
+    border: 2px solid #d4af37;
+    border-radius: 40px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.6), inset 0 0 12px rgba(212,175,55,0.35);
+  }
+
+  .pearl-step {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #7a5c91, #2d1642 75%);
+    border: 2px solid #9e7bb5;
+    box-shadow: inset 0 2px 4px rgba(255,255,255,0.3), 0 2px 5px rgba(0,0,0,0.5);
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .pearl-step:hover {
+    transform: scale(1.2);
+    border-color: #ffd700;
+  }
+
+  .pearl-step.active {
+    transform: scale(1.3);
+    background: radial-gradient(circle at 30% 30%, #fffbe6, #ffd700 55%, #b8860b 100%);
+    border-color: #ffffff;
+    box-shadow: 0 0 14px #ffd700, 0 0 24px #ffae00;
+  }
+
+  .pearl-step.done {
+    background: radial-gradient(circle at 30% 30%, #ffffff, #f8c8dc 50%, #d4af37 100%);
+    border-color: #ffd700;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.8);
+  }
+
+  /* ================= ОСНОВНИЙ МАКЕТ: ДІВЧИНКА + СТОЛИК ================= */
+  #main-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 52px 2.5vw 18px 2vw;
+  }
+
+  /* Ліва частина: Подіум з дівчинкою та котиком */
+  #character-zone {
+    position: relative;
+    width: 46%;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    transition: all 0.9s cubic-bezier(0.25, 1, 0.5, 1);
+  }
+
+  /* У фіналі дівчинка виходить у центр зали */
+  #main-stage.finale-mode #character-zone {
+    width: 100%;
+    justify-content: center;
+  }
+
+  #girl-svg {
+    height: 93%;
+    max-height: 830px;
+    width: auto;
+    overflow: visible;
+    filter: drop-shadow(0 18px 28px rgba(10, 2, 20, 0.7));
+    transform-origin: bottom center;
+  }
+
+  /* Анімації живої дівчинки */
+  @keyframes breathe {
+    0%, 100% { transform: translateY(0) scaleY(1); }
+    50% { transform: translateY(-3px) scaleY(1.006); }
+  }
+  #girl-upper-body {
+    animation: breathe 4s ease-in-out infinite;
+    transform-origin: 260px 380px;
+  }
+
+  @keyframes happyTwirl {
+    0% { transform: scale(1) rotate(0deg); }
+    25% { transform: translateY(-14px) scale(1.03) rotate(-2deg); }
+    60% { transform: translateY(-6px) scale(1.02) rotate(2deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  .girl-joy {
+    animation: happyTwirl 0.85s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes waltzDance {
+    0%, 100% { transform: translateX(0) translateY(0) rotate(0deg); }
+    25% { transform: translateX(-18px) translateY(-10px) rotate(-1.8deg); }
+    50% { transform: translateX(0) translateY(-4px) rotate(0deg); }
+    75% { transform: translateX(18px) translateY(-10px) rotate(1.8deg); }
+  }
+  .girl-waltz {
+    animation: waltzDance 4.5s ease-in-out infinite;
+  }
+
+  /* Анімація котика */
+  @keyframes tailWag {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(20deg); }
+  }
+  #kitten-tail {
+    transform-origin: 48px 690px;
+    animation: tailWag 2.4s ease-in-out infinite;
+  }
+  @keyframes kittenJump {
+    0%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-22px) scale(1.06); }
+  }
+  .kitten-happy {
+    animation: kittenJump 0.6s ease-out;
+  }
+
+  /* ================= ПРАВА ЧАСТИНА: ІНТЕРАКТИВНИЙ СТОЛИК ================= */
+  #task-zone {
+    position: relative;
+    width: 53%;
+    height: 92%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  #main-stage.finale-mode #task-zone {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(120px) scale(0.9);
+    position: absolute;
+    right: -100%;
+  }
+
+  /* Різьблений королівський подіум-столик для завдань */
+  #vanity-board {
+    position: relative;
+    width: 100%;
+    max-width: 760px;
+    height: 485px;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 48px 20px 55px 20px;
+  }
+
+  /* Декоративна основа туалетного столика позаду предметів */
+  #vanity-bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 20px 35px rgba(0,0,0,0.75));
+  }
+
+  /* ================= ПРЯМИЙ ШВИДКИЙ ВВІД 3 СКЛАДІВ НА СТОЛИКУ (БЕЗ МЕНЮ) ================= */
+  #live-syllable-bar {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 18;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(180deg, #4b186e, #26093d);
+    border: 3px solid #ffd700;
+    border-radius: 30px;
+    padding: 4px 14px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.7), inset 0 0 12px rgba(255,215,0,0.35);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  #live-syllable-bar:focus-within {
+    transform: translateX(-50%) scale(1.06);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.85), 0 0 20px rgba(255,215,0,0.75);
+    border-color: #ffffff;
+  }
+
+  .quill-icon-inline {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+
+  #live-triplet-input {
+    width: 215px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff6cc;
+    font-family: 'Verdana', 'Arial Rounded MT Bold', sans-serif;
+    font-weight: 900;
+    font-size: 21px;
+    text-align: center;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  #live-triplet-input::selection {
+    background: #ffd700;
+    color: #2b0938;
+  }
+
+  /* Контейнер для 3 сюжетних предметів зі складами або 3 варіантів одягу */
+  #interactive-items {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+    gap: 14px;
+  }
+
+  /* Картка сюжетного предмета зі складом */
+  .syllable-object {
+    position: relative;
+    width: 31%;
+    height: 340px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.35s ease;
+    filter: drop-shadow(0 12px 18px rgba(15, 3, 28, 0.65));
+  }
+
+  .syllable-object:hover {
+    transform: translateY(-12px) scale(1.05);
+    filter: drop-shadow(0 18px 25px rgba(255, 215, 0, 0.45));
+  }
+
+  .syllable-object.read-done {
+    animation: objectCelebrate 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    pointer-events: none;
+  }
+
+  @keyframes objectCelebrate {
+    0% { transform: scale(1); }
+    40% { transform: translateY(-28px) scale(1.14) rotate(3deg); filter: drop-shadow(0 0 30px #ffd700); }
+    100% { transform: translateY(-8px) scale(0.95); filter: drop-shadow(0 0 18px #ffd700) brightness(1.12); opacity: 0.88; }
+  }
+
+  .syllable-object svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Стиль тексту складу на медальйоні предмета */
+  .syllable-text {
+    font-family: 'Verdana', 'Arial Rounded MT Bold', sans-serif;
+    font-weight: 900;
+    font-size: 38px;
+    fill: #3b0a45;
+    text-anchor: middle;
+    dominant-baseline: central;
+    letter-spacing: 1px;
+    paint-order: stroke;
+    stroke: #fffdf5;
+    stroke-width: 5px;
+    stroke-linejoin: round;
+  }
+
+  /* ================= КАРТКИ ВИБОРУ ОДЯГУ / АКСЕСУАРІВ ================= */
+  .wardrobe-option {
+    position: relative;
+    width: 31%;
+    height: 345px;
+    cursor: pointer;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s ease;
+    filter: drop-shadow(0 12px 20px rgba(10, 2, 22, 0.75));
+    animation: popIn 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+  }
+
+  .wardrobe-option:nth-child(1) { animation-delay: 0.05s; }
+  .wardrobe-option:nth-child(2) { animation-delay: 0.17s; }
+  .wardrobe-option:nth-child(3) { animation-delay: 0.29s; }
+
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(40px) scale(0.75); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .wardrobe-option:hover {
+    transform: translateY(-14px) scale(1.06);
+    filter: drop-shadow(0 16px 28px rgba(255, 215, 0, 0.55));
+  }
+
+  .wardrobe-option.selected-choice {
+    transform: translateY(-16px) scale(1.08);
+    filter: drop-shadow(0 0 26px #ffd700) drop-shadow(0 0 45px #ff69b4);
+  }
+
+  .wardrobe-option svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Золота кнопка підтвердження вибору (з'являється, коли приміряли варіант) */
+  #confirm-choice-btn {
+    position: absolute;
+    bottom: -26px;
+    left: 50%;
+    transform: translateX(-50%) scale(0);
+    width: 86px;
+    height: 86px;
+    cursor: pointer;
+    z-index: 15;
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s;
+    filter: drop-shadow(0 8px 18px rgba(0,0,0,0.7));
+  }
+
+  #confirm-choice-btn.visible {
+    transform: translateX(-50%) scale(1);
+    animation: pulseCrown 1.6s infinite ease-in-out;
+  }
+
+  #confirm-choice-btn:hover {
+    filter: drop-shadow(0 0 25px #ffd700) brightness(1.15);
+  }
+
+  @keyframes pulseCrown {
+    0%, 100% { transform: translateX(-50%) scale(1); }
+    50% { transform: translateX(-50%) scale(1.12); }
+  }
+
+  /* ================= КНОПКА ЗАГАЛЬНОГО СПИСКУ СКЛАДІВ ТА ПОВТОРУ ================= */
+  #teacher-btn {
+    position: absolute;
+    top: 12px;
+    right: 18px;
+    width: 48px;
+    height: 48px;
+    z-index: 40;
+    cursor: pointer;
+    transition: transform 0.3s ease, filter 0.3s ease;
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6));
+  }
+
+  #teacher-btn:hover {
+    transform: scale(1.12) rotate(-6deg);
+    filter: drop-shadow(0 0 16px #ffd700);
+  }
+
+  /* Кнопка перезапуску у фіналі */
+  #replay-btn {
+    position: absolute;
+    bottom: 28px;
+    right: 28px;
+    width: 74px;
+    height: 74px;
+    z-index: 35;
+    cursor: pointer;
+    display: none;
+    transition: transform 0.3s ease, filter 0.3s ease;
+    filter: drop-shadow(0 6px 16px rgba(0,0,0,0.7));
+  }
+  #replay-btn:hover {
+    transform: scale(1.12) rotate(15deg);
+    filter: drop-shadow(0 0 22px #ffd700);
+  }
+
+  /* Модальне вікно вчителя (для масової вставки на всі рівні одразу) */
+  #teacher-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(12, 4, 22, 0.82);
+    backdrop-filter: blur(6px);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  #teacher-modal-backdrop.open {
+    display: flex;
+  }
+
+  #teacher-modal {
+    width: 100%;
+    max-width: 680px;
+    background: radial-gradient(circle at top, #4b1d6b, #230a36 85%);
+    border: 4px solid #d4af37;
+    border-radius: 28px;
+    padding: 26px 30px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.85), inset 0 0 30px rgba(212,175,55,0.25);
+    color: #fff6d6;
+    position: relative;
+  }
+
+  #teacher-modal h3 {
+    font-size: 22px;
+    color: #ffd700;
+    margin-bottom: 10px;
+    text-align: center;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  }
+
+  .modal-hint {
+    font-size: 14px;
+    color: #e2c8f5;
+    margin-bottom: 12px;
+    line-height: 1.4;
+    text-align: center;
+  }
+
+  .preset-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 12px;
+  }
+
+  .preset-chip {
+    background: linear-gradient(180deg, #682891, #3f135c);
+    border: 1.5px solid #d4af37;
+    color: #fff3c4;
+    padding: 6px 13px;
+    border-radius: 20px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .preset-chip:hover {
+    background: linear-gradient(180deg, #8b38bf, #541b7a);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(255,215,0,0.3);
+  }
+
+  #syllables-input {
+    width: 100%;
+    height: 125px;
+    background: linear-gradient(180deg, #2a0e3d, #1a0729);
+    border: 2px solid #c59b27;
+    border-radius: 16px;
+    padding: 14px;
+    color: #fff9e6;
+    font-size: 20px;
+    font-family: 'Verdana', sans-serif;
+    font-weight: bold;
+    letter-spacing: 1px;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    box-shadow: inset 0 4px 12px rgba(0,0,0,0.6);
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  #syllables-input:focus {
+    border-color: #ffd700;
+    box-shadow: inset 0 4px 12px rgba(0,0,0,0.6), 0 0 14px rgba(255,215,0,0.4);
+  }
+
+  .mode-selector {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(20, 5, 34, 0.55);
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(212, 175, 55, 0.4);
+    font-size: 14px;
+  }
+
+  .mode-selector label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    color: #f5e6ff;
+  }
+
+  .mode-selector input[type="radio"] {
+    accent-color: #ffd700;
+    width: 17px;
+    height: 17px;
+  }
+
+  .modal-actions {
+    margin-top: 18px;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .royal-btn {
+    background: linear-gradient(180deg, #ffd700, #c88a04);
+    color: #2b0938;
+    font-weight: bold;
+    font-size: 16px;
+    padding: 10px 28px;
+    border: 2px solid #fff6cc;
+    border-radius: 25px;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+
+  .royal-btn:hover {
+    transform: translateY(-2px) scale(1.03);
+    box-shadow: 0 8px 22px rgba(255,215,0,0.6);
+  }
+
+  .royal-btn.secondary {
+    background: linear-gradient(180deg, #572578, #311047);
+    color: #f3dcff;
+    border-color: #b388eb;
+  }
+
+  /* Адаптивність для менших екранів */
+  @media (max-width: 1024px) {
+    #main-stage { padding: 48px 1.5vw 15px 1.5vw; }
+    #character-zone { width: 44%; }
+    #task-zone { width: 55%; }
+    #vanity-board { height: 425px; }
+    .syllable-object, .wardrobe-option { height: 290px; }
+    .syllable-text { font-size: 32px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-scene">
+
+  <!-- ================= 1. ФОНОВІ ПАЛАЦОВІ ЗАЛИ (SVG) ================= -->
+  <svg id="bg-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+    <defs>
+      <!-- Градієнти для Зали 0 (Королівський будуар / Золота зала) -->
+      <linearGradient id="wallGold" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#2c1245"/>
+        <stop offset="55%" stop-color="#471d6b"/>
+        <stop offset="100%" stop-color="#230b38"/>
+      </linearGradient>
+      <linearGradient id="floorMarble1" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#3c1b54"/>
+        <stop offset="30%" stop-color="#592978"/>
+        <stop offset="100%" stop-color="#1e0930"/>
+      </linearGradient>
+      <linearGradient id="drapeVelvet" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#8f113b"/>
+        <stop offset="50%" stop-color="#5e0724"/>
+        <stop offset="100%" stop-color="#2e0210"/>
+      </linearGradient>
+      <linearGradient id="goldMetal" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#fff3b0"/>
+        <stop offset="30%" stop-color="#ffd700"/>
+        <stop offset="65%" stop-color="#b8860b"/>
+        <stop offset="100%" stop-color="#fced98"/>
+      </linearGradient>
+      <radialGradient id="candleGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#fff8c4" stop-opacity="0.9"/>
+        <stop offset="45%" stop-color="#ffae00" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#ffae00" stop-opacity="0"/>
+      </radialGradient>
+
+      <!-- Градієнти для Зали 1 (Зоряна мармурова тераса над озером) -->
+      <linearGradient id="nightSky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#050b24"/>
+        <stop offset="55%" stop-color="#112459"/>
+        <stop offset="100%" stop-color="#28427a"/>
+      </linearGradient>
+      <linearGradient id="terraceFloor" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#1e2d52"/>
+        <stop offset="100%" stop-color="#0d152b"/>
+      </linearGradient>
+
+      <!-- Градієнти для Зали 2 (Кришталева квітуча оранжерея) -->
+      <linearGradient id="conservatorySky" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#102b3f"/>
+        <stop offset="55%" stop-color="#1e5266"/>
+        <stop offset="100%" stop-color="#2e777d"/>
+      </linearGradient>
+      <linearGradient id="emeraldFloor" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#183d38"/>
+        <stop offset="100%" stop-color="#091f1c"/>
+      </linearGradient>
+
+      <!-- Візерунок паркету/мармуру -->
+      <pattern id="royalTile" width="160" height="80" patternUnits="userSpaceOnUse">
+        <polygon points="80,0 160,40 80,80 0,40" fill="rgba(255,215,0,0.06)" stroke="rgba(255,215,0,0.18)" stroke-width="1.5"/>
+        <polygon points="80,10 145,40 80,70 15,40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1"/>
+      </pattern>
+
+      <!-- Візерунок шпалер дамаск -->
+      <pattern id="damaskPattern" width="90" height="90" patternUnits="userSpaceOnUse">
+        <path d="M45 10 C55 25, 70 25, 45 45 C20 25, 35 25, 45 10 Z" fill="rgba(255,215,0,0.06)"/>
+        <path d="M45 45 C65 60, 65 75, 45 85 C25 75, 25 60, 45 45 Z" fill="rgba(255,215,0,0.05)"/>
+        <circle cx="45" cy="45" r="3" fill="rgba(255,215,0,0.1)"/>
+      </pattern>
+    </defs>
+
+    <!-- ВАРІАНТ ФОНУ 0: Палацова золота бальна зала -->
+    <g id="bg-variant-0">
+      <rect width="1600" height="630" fill="url(#wallGold)"/>
+      <rect width="1600" height="630" fill="url(#damaskPattern)"/>
+
+      <!-- Палацові аркові вікна з нічним небом -->
+      <g transform="translate(460, 80)">
+        <path d="M0,550 L0,180 A170,170 0 0,1 340,180 L340,550 Z" fill="#0d1638" stroke="url(#goldMetal)" stroke-width="10"/>
+        <circle cx="240" cy="140" r="42" fill="#fff9d2" opacity="0.9"/>
+        <circle cx="255" cy="130" r="36" fill="#0d1638"/>
+        <circle cx="90" cy="110" r="2.5" fill="#fff"/>
+        <circle cx="150" cy="70" r="3" fill="#ffd700"/>
+        <circle cx="70" cy="210" r="2" fill="#fff"/>
+        <circle cx="270" cy="230" r="2.5" fill="#fff"/>
+        <path d="M170,10 L170,550 M0,260 L340,260 M0,410 L340,410" stroke="url(#goldMetal)" stroke-width="4" opacity="0.7"/>
+      </g>
+
+      <g transform="translate(980, 80)">
+        <path d="M0,550 L0,180 A170,170 0 0,1 340,180 L340,550 Z" fill="#0d1638" stroke="url(#goldMetal)" stroke-width="10"/>
+        <circle cx="100" cy="120" r="2.5" fill="#fff"/>
+        <circle cx="220" cy="95" r="3" fill="#ffd700"/>
+        <circle cx="130" cy="200" r="2" fill="#fff"/>
+        <circle cx="260" cy="190" r="2.5" fill="#fff"/>
+        <path d="M170,10 L170,550 M0,260 L340,260 M0,410 L340,410" stroke="url(#goldMetal)" stroke-width="4" opacity="0.7"/>
+      </g>
+
+      <!-- Мармурові колони -->
+      <g fill="url(#goldMetal)">
+        <rect x="370" y="40" width="55" height="590" fill="#5e3a78" stroke="url(#goldMetal)" stroke-width="4"/>
+        <rect x="358" y="40" width="79" height="22" rx="6"/>
+        <rect x="355" y="608" width="85" height="24" rx="6"/>
+
+        <rect x="860" y="40" width="55" height="590" fill="#5e3a78" stroke="url(#goldMetal)" stroke-width="4"/>
+        <rect x="848" y="40" width="79" height="22" rx="6"/>
+        <rect x="845" y="608" width="85" height="24" rx="6"/>
+
+        <rect x="1370" y="40" width="55" height="590" fill="#5e3a78" stroke="url(#goldMetal)" stroke-width="4"/>
+        <rect x="1358" y="40" width="79" height="22" rx="6"/>
+        <rect x="1355" y="608" width="85" height="24" rx="6"/>
+      </g>
+
+      <rect x="0" y="620" width="1600" height="18" fill="url(#goldMetal)"/>
+      <rect x="0" y="638" width="1600" height="262" fill="url(#floorMarble1)"/>
+      <rect x="0" y="638" width="1600" height="262" fill="url(#royalTile)"/>
+
+      <!-- Оксамитові портьєри -->
+      <path d="M0,0 L280,0 C250,220 160,400 210,635 L0,635 Z" fill="url(#drapeVelvet)" stroke="#d4af37" stroke-width="3"/>
+      <path d="M210,330 Q100,360 0,300" fill="none" stroke="url(#goldMetal)" stroke-width="6"/>
+      <circle cx="210" cy="330" r="12" fill="url(#goldMetal)"/>
+      <path d="M1600,0 L1410,0 C1450,220 1520,400 1470,635 L1600,635 Z" fill="url(#drapeVelvet)" stroke="#d4af37" stroke-width="3"/>
+
+      <!-- Кришталева люстра -->
+      <g transform="translate(650, 0)">
+        <line x1="150" y1="0" x2="150" y2="55" stroke="url(#goldMetal)" stroke-width="6"/>
+        <path d="M50,115 Q150,155 250,115 Q150,70 50,115 Z" fill="url(#goldMetal)" opacity="0.9"/>
+        <path d="M20,115 Q85,170 150,115 Q215,170 280,115" fill="none" stroke="#fff9d6" stroke-width="3" stroke-dasharray="4 6"/>
+        <g>
+          <circle cx="45" cy="95" r="28" fill="url(#candleGlow)"/>
+          <rect x="41" y="95" width="8" height="22" fill="#fffef0"/>
+          <path d="M45,80 Q52,92 45,96 Q38,92 45,80 Z" fill="#ffdf40"/>
+
+          <circle cx="105" cy="85" r="28" fill="url(#candleGlow)"/>
+          <rect x="101" y="85" width="8" height="22" fill="#fffef0"/>
+          <path d="M105,70 Q112,82 105,86 Q98,82 105,70 Z" fill="#ffdf40"/>
+
+          <circle cx="195" cy="85" r="28" fill="url(#candleGlow)"/>
+          <rect x="191" y="85" width="8" height="22" fill="#fffef0"/>
+          <path d="M195,70 Q202,82 195,86 Q188,82 195,70 Z" fill="#ffdf40"/>
+
+          <circle cx="255" cy="95" r="28" fill="url(#candleGlow)"/>
+          <rect x="251" y="95" width="8" height="22" fill="#fffef0"/>
+          <path d="M255,80 Q262,92 255,96 Q248,92 255,80 Z" fill="#ffdf40"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- ВАРІАНТ ФОНУ 1: Зоряна мармурова тераса над озером -->
+    <g id="bg-variant-1" style="display:none;">
+      <rect width="1600" height="640" fill="url(#nightSky)"/>
+      <circle cx="1220" cy="150" r="68" fill="url(#candleGlow)"/>
+      <circle cx="1220" cy="150" r="44" fill="#fffde8"/>
+      <g fill="#ffffff" opacity="0.85">
+        <circle cx="220" cy="90" r="2.5"/><circle cx="380" cy="140" r="3"/><circle cx="540" cy="70" r="2"/>
+        <circle cx="760" cy="120" r="3.5"/><circle cx="940" cy="80" r="2.5"/><circle cx="1080" cy="190" r="2"/>
+        <circle cx="1430" cy="110" r="3"/><circle cx="650" cy="210" r="2"/><circle cx="310" cy="230" r="2.5"/>
+      </g>
+      <path d="M0,450 Q260,340 520,430 T1080,410 T1600,440 L1600,520 L0,520 Z" fill="#0c1b40"/>
+      <rect x="0" y="485" width="1600" height="155" fill="#091533"/>
+      <ellipse cx="1220" cy="520" rx="70" ry="6" fill="#fff8c4" opacity="0.45"/>
+      <ellipse cx="1220" cy="545" rx="52" ry="5" fill="#fff8c4" opacity="0.35"/>
+      <ellipse cx="1220" cy="570" rx="35" ry="4" fill="#fff8c4" opacity="0.25"/>
+
+      <rect x="0" y="535" width="1600" height="16" fill="#d9e4ff"/>
+      <g fill="#b8c9f0" stroke="#7d94c7" stroke-width="2">
+        <rect x="80" y="551" width="22" height="75" rx="8"/><rect x="160" y="551" width="22" height="75" rx="8"/>
+        <rect x="240" y="551" width="22" height="75" rx="8"/><rect x="320" y="551" width="22" height="75" rx="8"/>
+        <rect x="400" y="551" width="22" height="75" rx="8"/><rect x="480" y="551" width="22" height="75" rx="8"/>
+        <rect x="560" y="551" width="22" height="75" rx="8"/><rect x="640" y="551" width="22" height="75" rx="8"/>
+        <rect x="720" y="551" width="22" height="75" rx="8"/><rect x="800" y="551" width="22" height="75" rx="8"/>
+        <rect x="880" y="551" width="22" height="75" rx="8"/><rect x="960" y="551" width="22" height="75" rx="8"/>
+        <rect x="1040" y="551" width="22" height="75" rx="8"/><rect x="1120" y="551" width="22" height="75" rx="8"/>
+        <rect x="1200" y="551" width="22" height="75" rx="8"/><rect x="1280" y="551" width="22" height="75" rx="8"/>
+        <rect x="1360" y="551" width="22" height="75" rx="8"/><rect x="1440" y="551" width="22" height="75" rx="8"/>
+      </g>
+      <rect x="0" y="622" width="1600" height="18" fill="url(#goldMetal)"/>
+      <rect x="0" y="640" width="1600" height="260" fill="url(#terraceFloor)"/>
+      <rect x="0" y="640" width="1600" height="260" fill="url(#royalTile)"/>
+      <rect x="120" y="0" width="60" height="630" fill="#cad8f7" stroke="url(#goldMetal)" stroke-width="4"/>
+      <rect x="1420" y="0" width="60" height="630" fill="#cad8f7" stroke="url(#goldMetal)" stroke-width="4"/>
+      <path d="M180,90 Q500,220 800,80 Q1100,220 1420,90" fill="none" stroke="url(#goldMetal)" stroke-width="4"/>
+      <circle cx="340" cy="145" r="14" fill="url(#candleGlow)"/><circle cx="500" cy="160" r="14" fill="url(#candleGlow)"/>
+      <circle cx="660" cy="135" r="14" fill="url(#candleGlow)"/><circle cx="800" cy="85" r="16" fill="url(#candleGlow)"/>
+      <circle cx="950" cy="135" r="14" fill="url(#candleGlow)"/><circle cx="1110" cy="160" r="14" fill="url(#candleGlow)"/>
+      <circle cx="1270" cy="145" r="14" fill="url(#candleGlow)"/>
+    </g>
+
+    <!-- ВАРІАНТ ФОНУ 2: Королівська квітуча оранжерея -->
+    <g id="bg-variant-2" style="display:none;">
+      <rect width="1600" height="640" fill="url(#conservatorySky)"/>
+      <g stroke="url(#goldMetal)" stroke-width="5" fill="none" opacity="0.75">
+        <path d="M100,630 L100,200 A350,200 0 0,1 800,200 L800,630"/>
+        <path d="M800,630 L800,200 A350,200 0 0,1 1500,200 L1500,630"/>
+        <line x1="450" y1="0" x2="450" y2="630"/><line x1="1150" y1="0" x2="1150" y2="630"/>
+        <path d="M0,320 L1600,320 M0,480 L1600,480"/>
+      </g>
+      <g>
+        <circle cx="140" cy="540" r="110" fill="#144536"/><circle cx="240" cy="570" r="95" fill="#1c5c48"/>
+        <circle cx="1460" cy="540" r="115" fill="#144536"/><circle cx="1350" cy="575" r="95" fill="#1c5c48"/>
+        <circle cx="800" cy="575" r="85" fill="#164f3d"/>
+        <circle cx="120" cy="510" r="16" fill="#ff6b9d"/><circle cx="175" cy="535" r="14" fill="#ff9ebb"/>
+        <circle cx="220" cy="560" r="15" fill="#ff477e"/><circle cx="265" cy="530" r="12" fill="#ffb3c6"/>
+        <circle cx="770" cy="555" r="14" fill="#ff6b9d"/><circle cx="825" cy="545" r="15" fill="#ff9ebb"/>
+        <circle cx="1340" cy="550" r="15" fill="#ff6b9d"/><circle cx="1410" cy="515" r="16" fill="#ff477e"/>
+        <circle cx="1475" cy="545" r="14" fill="#ffb3c6"/>
+      </g>
+      <rect x="0" y="622" width="1600" height="18" fill="url(#goldMetal)"/>
+      <rect x="0" y="640" width="1600" height="260" fill="url(#emeraldFloor)"/>
+      <rect x="0" y="640" width="1600" height="260" fill="url(#royalTile)"/>
+    </g>
+  </svg>
+
+  <!-- ================= 2. ВЕРХНЯ ПАНЕЛЬ ПРОГРЕСУ З КНОПКАМИ НАЗАД / ДАЛІ ================= -->
+  <div id="top-nav-bar">
+    <button class="nav-arrow-btn" id="prev-stage-btn" title="Попередній етап">
+      <svg viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+    </button>
+
+    <div id="progress-garland"></div>
+
+    <button class="nav-arrow-btn" id="next-stage-btn" title="Наступний етап">
+      <svg viewBox="0 0 24 24"><path d="M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z"/></svg>
+    </button>
+  </div>
+
+  <!-- ================= 3. КНОПКА ВЧИТЕЛЯ (ПОВНИЙ СПИСОК ЗАВДАНЬ НА ВСІ РІВНІ) ================= -->
+  <div id="teacher-btn" title="Список завдань на всі рівні">
+    <svg viewBox="0 0 80 80">
+      <circle cx="40" cy="40" r="36" fill="url(#wallGold)" stroke="url(#goldMetal)" stroke-width="4"/>
+      <circle cx="40" cy="40" r="30" fill="none" stroke="#ffd700" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <path d="M56,18 C42,20 30,32 24,48 L20,60 L32,56 C48,50 58,36 56,18 Z" fill="url(#goldMetal)"/>
+      <path d="M20,60 L48,32" stroke="#3b0a45" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <!-- Кнопка повтору гри у фіналі -->
+  <div id="replay-btn">
+    <svg viewBox="0 0 90 90">
+      <circle cx="45" cy="45" r="40" fill="url(#wallGold)" stroke="url(#goldMetal)" stroke-width="4"/>
+      <path d="M45,22 A23,23 0 1,0 68,45" fill="none" stroke="url(#goldMetal)" stroke-width="6" stroke-linecap="round"/>
+      <polygon points="45,12 45,32 61,22" fill="url(#goldMetal)"/>
+    </svg>
+  </div>
+
+  <!-- ================= 4. ГОЛОВНА СЦЕНА ================= -->
+  <div id="main-stage">
+
+    <!-- ЛІВА ЗОНА: Дівчинка на королівському подіумі + Пухнастий котик ліворуч на пуфі -->
+    <div id="character-zone">
+      <!-- Розширений viewBox, щоб котик сидів лівіше і жодна пишна сукня його не затуляла -->
+      <svg id="girl-svg" viewBox="-45 0 585 820">
+        <defs>
+          <!-- Реалістичні градієнти шкіри -->
+          <radialGradient id="skinFace" cx="48%" cy="42%" r="55%">
+            <stop offset="0%" stop-color="#ffe9dc"/>
+            <stop offset="65%" stop-color="#fad2be"/>
+            <stop offset="100%" stop-color="#e5b199"/>
+          </radialGradient>
+          <linearGradient id="skinBody" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#eec0ab"/>
+            <stop offset="35%" stop-color="#ffe6d9"/>
+            <stop offset="70%" stop-color="#fad2be"/>
+            <stop offset="100%" stop-color="#e3ad94"/>
+          </linearGradient>
+
+          <!-- Градієнти волосся -->
+          <linearGradient id="hairGold" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#fff099"/>
+            <stop offset="35%" stop-color="#f2c14e"/>
+            <stop offset="75%" stop-color="#b87d14"/>
+            <stop offset="100%" stop-color="#7a4e05"/>
+          </linearGradient>
+          <linearGradient id="hairChoco" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#6e473b"/>
+            <stop offset="40%" stop-color="#3d221a"/>
+            <stop offset="80%" stop-color="#24110c"/>
+            <stop offset="100%" stop-color="#140805"/>
+          </linearGradient>
+          <linearGradient id="hairAuburn" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ff9b6a"/>
+            <stop offset="40%" stop-color="#c94a29"/>
+            <stop offset="80%" stop-color="#7d200d"/>
+            <stop offset="100%" stop-color="#4a0e03"/>
+          </linearGradient>
+
+          <!-- Градієнти бальних суконь -->
+          <linearGradient id="gownSapphire" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4ea8ff"/>
+            <stop offset="35%" stop-color="#1b56b8"/>
+            <stop offset="75%" stop-color="#0d296b"/>
+            <stop offset="100%" stop-color="#06143b"/>
+          </linearGradient>
+          <linearGradient id="gownEmerald" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4ad9a9"/>
+            <stop offset="35%" stop-color="#12825f"/>
+            <stop offset="75%" stop-color="#074a35"/>
+            <stop offset="100%" stop-color="#03261b"/>
+          </linearGradient>
+          <linearGradient id="gownRose" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffb8d1"/>
+            <stop offset="35%" stop-color="#e0487d"/>
+            <stop offset="75%" stop-color="#941442"/>
+            <stop offset="100%" stop-color="#520622"/>
+          </linearGradient>
+          <linearGradient id="silkSlip" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fff8f2"/>
+            <stop offset="60%" stop-color="#f5e1da"/>
+            <stop offset="100%" stop-color="#dec0b6"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Королівський круглий подіум під ніжками дівчинки (зсунутий трохи праворуч, щоб котик мав своє місце зліва) -->
+        <g transform="translate(55, 0)">
+          <g id="pedestal">
+            <ellipse cx="260" cy="775" rx="185" ry="34" fill="#2a0d3d" stroke="url(#goldMetal)" stroke-width="5"/>
+            <ellipse cx="260" cy="766" rx="170" ry="27" fill="#6b1138" stroke="#f5d77f" stroke-width="2.5"/>
+            <ellipse cx="260" cy="762" rx="145" ry="20" fill="#8c194a"/>
+          </g>
+
+          <!-- ================= ШАРИ ДІВЧИНКИ ================= -->
+          <g id="girl-character">
+
+            <!-- 1. ЗАДНЯ ЧАСТИНА НАКИДКИ / МАНТІЇ -->
+            <g id="layer-cape-back"></g>
+
+            <!-- 2. ЗАДНЯ ЧАСТИНА ВОЛОССЯ -->
+            <g id="layer-hair-back">
+              <path d="M205,155 C175,210 175,310 198,370 C225,385 295,385 322,370 C345,310 345,210 315,155 Z" fill="url(#hairChoco)"/>
+            </g>
+
+            <!-- 3. НИЖНЯ ЧАСТИНА ТІЛА (НІЖКИ) -->
+            <g id="layer-legs">
+              <path d="M228,480 L225,715 L247,715 L254,480 Z" fill="url(#skinBody)"/>
+              <path d="M292,480 L295,715 L273,715 L266,480 Z" fill="url(#skinBody)"/>
+              <ellipse cx="233" cy="726" rx="16" ry="10" fill="url(#skinBody)"/>
+              <ellipse cx="287" cy="726" rx="16" ry="10" fill="url(#skinBody)"/>
+            </g>
+
+            <!-- ВЕРХНЯ ЧАСТИНА ТІЛА, ЩО ДИХАЄ -->
+            <g id="girl-upper-body">
+
+              <!-- Шия, плечі та торс -->
+              <path d="M243,210 L243,262 L277,262 L277,210 Z" fill="url(#skinBody)"/>
+              <path d="M188,268 C212,253 240,255 260,255 C280,255 308,253 332,268 C340,295 318,365 304,415 L216,415 C202,365 180,295 188,268 Z" fill="url(#skinBody)"/>
+              <path d="M222,272 Q242,280 255,274 M298,272 Q278,280 265,274" fill="none" stroke="#d9a18a" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
+
+              <!-- Руки (ліва та права) -->
+              <path d="M192,270 C172,325 162,385 175,442 C182,448 192,444 195,435 C186,385 194,335 210,288 Z" fill="url(#skinBody)"/>
+              <path d="M328,270 C348,325 358,385 345,442 C338,448 328,444 325,435 C334,385 326,335 310,288 Z" fill="url(#skinBody)"/>
+
+              <!-- Кисті рук -->
+              <ellipse cx="184" cy="446" rx="11" ry="14" transform="rotate(-15 184 446)" fill="url(#skinBody)"/>
+              <ellipse cx="336" cy="446" rx="11" ry="14" transform="rotate(15 336 446)" fill="url(#skinBody)"/>
+
+              <!-- 4. ШАР РУКАВИЧОК -->
+              <g id="layer-gloves"></g>
+
+              <!-- 5. БАЗОВА ШОВКОВА СУКНЯ-КОМБІНАЦІЯ (вище колін, щоб чудово було видно ніжки та вибір туфельок) -->
+              <g id="layer-base-slip">
+                <path d="M212,295 Q236,312 260,298 Q284,312 308,295 L298,395 L328,545 Q260,568 192,545 L222,395 Z" fill="url(#silkSlip)" stroke="#e0c3b8" stroke-width="2"/>
+                <path d="M212,295 Q236,312 260,298 Q284,312 308,295" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="4 3"/>
+                <path d="M192,545 Q260,568 328,545" fill="none" stroke="#ffffff" stroke-width="5" stroke-dasharray="6 4"/>
+              </g>
+
+              <!-- 6. ШАР БАЛЬНОЇ СУКНІ (з фігурним вирізом унизу, щоб туфельки залишалися видимими) -->
+              <g id="layer-dress"></g>
+
+              <!-- 7. ШАР НАКИДКИ СПЕРЕДУ / ШАЛІ -->
+              <g id="layer-cape-front"></g>
+
+              <!-- 8. ШАР КОЛЬЄ -->
+              <g id="layer-necklace"></g>
+
+              <!-- 9. ГОЛОВА ТА ОБЛИЧЧЯ ДІВЧИНКИ -->
+              <g id="girl-head">
+                <ellipse cx="206" cy="175" rx="9" ry="15" fill="url(#skinFace)"/>
+                <ellipse cx="314" cy="175" rx="9" ry="15" fill="url(#skinFace)"/>
+
+                <path d="M210,130 C210,95 310,95 310,130 C313,172 302,215 260,226 C218,215 207,172 210,130 Z" fill="url(#skinFace)"/>
+
+                <!-- Рум'янець та тіні -->
+                <g id="layer-makeup">
+                  <ellipse cx="226" cy="182" rx="14" ry="8" fill="#ff9eb5" opacity="0.32"/>
+                  <ellipse cx="294" cy="182" rx="14" ry="8" fill="#ff9eb5" opacity="0.32"/>
+                </g>
+
+                <!-- Очі з райдужкою, віями та бровами -->
+                <g id="girl-eyes-group">
+                  <path id="brow-l" d="M220,146 Q234,139 248,145" fill="none" stroke="#4a2c20" stroke-width="2.6" stroke-linecap="round"/>
+                  <path id="brow-r" d="M272,145 Q286,139 300,146" fill="none" stroke="#4a2c20" stroke-width="2.6" stroke-linecap="round"/>
+
+                  <ellipse cx="235" cy="162" rx="13" ry="9.5" fill="#ffffff"/>
+                  <ellipse cx="285" cy="162" rx="13" ry="9.5" fill="#ffffff"/>
+
+                  <g id="iris-group">
+                    <circle class="eye-iris" cx="235" cy="162" r="7.5" fill="#3a75c4"/>
+                    <circle class="eye-iris" cx="285" cy="162" r="7.5" fill="#3a75c4"/>
+                    <circle cx="235" cy="162" r="3.8" fill="#12091c"/>
+                    <circle cx="285" cy="162" r="3.8" fill="#12091c"/>
+                    <circle cx="232.5" cy="159" r="2.4" fill="#ffffff"/>
+                    <circle cx="282.5" cy="159" r="2.4" fill="#ffffff"/>
+                    <circle cx="238" cy="165" r="1.2" fill="#ffffff"/>
+                    <circle cx="288" cy="165" r="1.2" fill="#ffffff"/>
+                  </g>
+
+                  <!-- Повіки для кліпання -->
+                  <g id="eyelids" style="opacity:0;">
+                    <ellipse cx="235" cy="162" rx="13.5" ry="10" fill="url(#skinFace)"/>
+                    <ellipse cx="285" cy="162" rx="13.5" ry="10" fill="url(#skinFace)"/>
+                    <path d="M222,164 Q235,171 248,164" fill="none" stroke="#2c1510" stroke-width="2.2"/>
+                    <path d="M272,164 Q285,171 298,164" fill="none" stroke="#2c1510" stroke-width="2.2"/>
+                  </g>
+
+                  <!-- Густі вії -->
+                  <path d="M221,160 Q235,150 248,161" fill="none" stroke="#1f0d09" stroke-width="2.8" stroke-linecap="round"/>
+                  <path d="M221,160 L217,155 M226,156 L224,151 M235,154 L235,149" stroke="#1f0d09" stroke-width="1.6" stroke-linecap="round"/>
+                  <path d="M272,161 Q285,150 299,160" fill="none" stroke="#1f0d09" stroke-width="2.8" stroke-linecap="round"/>
+                  <path d="M299,160 L303,155 M294,156 L296,151 M285,154 L285,149" stroke="#1f0d09" stroke-width="1.6" stroke-linecap="round"/>
+                </g>
+
+                <!-- Носик та вуста -->
+                <path d="M258,167 L256,182 Q260,185 264,182" fill="none" stroke="#d49c85" stroke-width="2" stroke-linecap="round"/>
+                <g id="girl-mouth">
+                  <path id="lips-shape" d="M246,197 Q253,193 260,196 Q267,193 274,197 Q260,208 246,197 Z" fill="#e05a7a"/>
+                  <path id="lips-smile" d="M244,197 Q260,204 276,197" fill="none" stroke="#b33653" stroke-width="1.5" stroke-linecap="round"/>
+                  <ellipse cx="260" cy="200" rx="6" ry="1.8" fill="#ffffff" opacity="0.45"/>
+                </g>
+              </g>
+
+              <!-- 10. ШАР СЕРЕЖОК -->
+              <g id="layer-earrings"></g>
+
+              <!-- 11. ПЕРЕДНЯ ЧАСТИНА ЗАЧІСКИ -->
+              <g id="layer-hair-front">
+                <path d="M206,142 C205,92 315,92 314,142 C302,116 278,112 260,122 C242,112 218,116 206,142 Z" fill="url(#hairChoco)"/>
+              </g>
+
+              <!-- 12. ШАР ТІАРИ / КОРОНИ -->
+              <g id="layer-tiara"></g>
+
+              <!-- 13. ШАР АКСЕСУАРА В РУКУ -->
+              <g id="layer-hand-item"></g>
+
+            </g><!-- /#girl-upper-body -->
+
+            <!-- 14. ШАР ЧЕРЕВИЧКІВ (розміщено поверх нижнього краю сукні, щоб туфельки завжди красиво визирали) -->
+            <g id="layer-shoes">
+              <path d="M216,722 Q233,738 250,722 L248,735 Q233,742 218,735 Z" fill="#f5d5e0" stroke="#c99aa8" stroke-width="1.5"/>
+              <path d="M270,722 Q287,738 304,722 L302,735 Q287,742 272,735 Z" fill="#f5d5e0" stroke="#c99aa8" stroke-width="1.5"/>
+            </g>
+
+          </g><!-- /#girl-character -->
+        </g><!-- /translate(55, 0) -->
+
+        <!-- ================= ПУХНАСТИЙ КОТИК ЛІВОРУЧ НА ОКРЕМОМУ КОРОЛІВСЬКОМУ ПУФІ ================= -->
+        <g id="royal-kitten">
+          <!-- Оксамитова подушечка-пуф під котиком -->
+          <ellipse cx="42" cy="726" rx="58" ry="18" fill="#4a1230" stroke="url(#goldMetal)" stroke-width="3.5"/>
+          <ellipse cx="42" cy="720" rx="50" ry="14" fill="url(#drapeVelvet)" stroke="#ffd700" stroke-width="1.5"/>
+          <!-- Золоті китиці подушечки -->
+          <circle cx="-14" cy="726" r="5.5" fill="url(#goldMetal)"/>
+          <circle cx="98" cy="726" r="5.5" fill="url(#goldMetal)"/>
+
+          <!-- Хвостик котика -->
+          <path id="kitten-tail" d="M22,695 C-18,685 -28,640 -2,630 C14,625 18,655 25,682 Z" fill="#fff9f5" stroke="#dfd3eb" stroke-width="2"/>
+          <!-- Тільце -->
+          <ellipse cx="42" cy="692" rx="33" ry="27" fill="#fff9f5" stroke="#e4d8f0" stroke-width="2"/>
+          <!-- Лапки -->
+          <ellipse cx="27" cy="716" rx="11" ry="6.5" fill="#ffffff" stroke="#e4d8f0" stroke-width="1.5"/>
+          <ellipse cx="57" cy="716" rx="11" ry="6.5" fill="#ffffff" stroke="#e4d8f0" stroke-width="1.5"/>
+          <!-- Золотий бантик на шиї -->
+          <polygon points="24,669 42,677 24,685" fill="url(#goldMetal)"/>
+          <polygon points="60,669 42,677 60,685" fill="url(#goldMetal)"/>
+          <circle cx="42" cy="677" r="5" fill="#d4af37"/>
+          <!-- Голівка котика -->
+          <circle cx="42" cy="647" r="25" fill="#fff9f5" stroke="#e4d8f0" stroke-width="2"/>
+          <!-- Вушка -->
+          <polygon points="20,633 23,606 38,625" fill="#fff9f5" stroke="#e4d8f0" stroke-width="2"/>
+          <polygon points="23,630 25,612 35,625" fill="#f7b2c4"/>
+          <polygon points="64,633 61,606 46,625" fill="#fff9f5" stroke="#e4d8f0" stroke-width="2"/>
+          <polygon points="61,630 59,612 49,625" fill="#f7b2c4"/>
+          <!-- Маленька золота коронка на котику -->
+          <polygon points="31,624 35,611 42,619 49,611 53,624" fill="url(#goldMetal)" stroke="#8a5a00" stroke-width="1.2"/>
+          <!-- Оченята котика -->
+          <g id="kitten-eyes">
+            <circle cx="32" cy="645" r="4.8" fill="#234d8c"/>
+            <circle cx="30.5" cy="643.5" r="1.6" fill="#fff"/>
+            <circle cx="52" cy="645" r="4.8" fill="#234d8c"/>
+            <circle cx="50.5" cy="643.5" r="1.6" fill="#fff"/>
+          </g>
+          <!-- Носик та вуса -->
+          <polygon points="39,652 45,652 42,656" fill="#f28ca6"/>
+          <path d="M35,657 Q42,661 49,657" fill="none" stroke="#8a6d7b" stroke-width="1.6" stroke-linecap="round"/>
+        </g>
+      </svg>
+    </div>
+
+    <!-- ПРАВА ЗОНА: Різьблений столик зі швидким вводом складів та предметами -->
+    <div id="task-zone">
+      <div id="vanity-board">
+
+        <!-- ВБУДОВАНЕ ПОЛЕ МИТТЄВОЇ ЗАМІНИ 3 ЗАВДАНЬ ПРЯМО ПІД ЧАС ГРИ (БЕЗ МЕНЮ) -->
+        <div id="live-syllable-bar" title="Клікніть і впишіть 3 вирази через пробіл — вони зміняться миттєво">
+          <svg class="quill-icon-inline" viewBox="0 0 32 32">
+            <path d="M26,4 C18,5 12,11 9,20 L6,28 L14,25 C22,22 27,14 26,4 Z" fill="url(#goldMetal)"/>
+            <path d="M6,28 L21,13" stroke="#2b0938" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <input type="text" id="live-triplet-input" spellcheck="false" autocomplete="off" value="1/2 1/4 12" />
+        </div>
+
+        <!-- SVG різьбленого королівського столика -->
+        <svg id="vanity-bg-svg" viewBox="0 0 800 500" preserveAspectRatio="none">
+          <path d="M35,420 L35,90 Q35,25 110,25 L690,25 Q765,25 765,90 L765,420 Z"
+                fill="url(#wallGold)" stroke="url(#goldMetal)" stroke-width="7"/>
+          <path d="M50,410 L50,98 Q50,42 115,42 L685,42 Q750,42 750,98 L750,410 Z"
+                fill="url(#damaskPattern)" stroke="#ffd700" stroke-width="1.5" opacity="0.8"/>
+
+          <polygon points="10,410 790,410 760,455 40,455" fill="#4f2369" stroke="url(#goldMetal)" stroke-width="6"/>
+          <polygon points="22,416 778,416 755,442 45,442" fill="#733494" opacity="0.6"/>
+          <path d="M60,455 Q120,495 190,455 M610,455 Q680,495 740,455 M260,455 Q400,500 540,455"
+                fill="none" stroke="url(#goldMetal)" stroke-width="7" stroke-linecap="round"/>
+        </svg>
+
+        <!-- Сюди динамічно рендеряться 3 предмети зі складами або 3 варіанти вбрання -->
+        <div id="interactive-items"></div>
+
+        <!-- Золотий королівський медальйон підтвердження обраного вбрання -->
+        <div id="confirm-choice-btn">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="44" fill="url(#goldMetal)" stroke="#ffffff" stroke-width="3"/>
+            <circle cx="50" cy="50" r="36" fill="#8f113b" stroke="url(#goldMetal)" stroke-width="2.5"/>
+            <path d="M32,52 L45,65 L70,36" fill="none" stroke="#fff8d6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#main-stage -->
+
+  <!-- Канвас для святкових частинок -->
+  <canvas id="fx-canvas"></canvas>
+
+  <!-- ================= 5. ВІКНО ПОВНОГО СПИСКУ ЗАВДАНЬ (НА ВСІ 10 РІВНІВ ОДРАЗУ) ================= -->
+  <div id="teacher-modal-backdrop">
+    <div id="teacher-modal">
+      <h3>Налаштування повного списку завдань</h3>
+      <p class="modal-hint">
+        Кожна трійка — це <b>два дроби та ціле число</b>, яке ділиться націло на обидва знаменники (напр., <b>1/2 1/4 12</b>). Дроби пишіть через скісну риску. Ви можете змінювати поточні 3 вирази прямо на золотому сувої над столиком під час гри або вставити сюди список на всі рівні одразу:
+      </p>
+
+      <div class="preset-bar">
+        <button class="preset-chip" data-preset="1/2 1/4 12 1/3 2/3 18 1/2 1/5 20 1/4 3/4 24 1/5 3/5 25 1/3 1/6 30">Прості дроби</button>
+        <button class="preset-chip" data-preset="1/8 3/8 40 1/6 5/6 36 1/10 3/10 50 2/7 5/7 70 1/9 4/9 45 3/11 5/11 66">Дроби та числа</button>
+        <button class="preset-chip" data-preset="1/3 3/4 48 1/6 5/8 72 2/5 7/10 80 3/7 4/9 126 5/12 7/15 180 2/9 5/18 90">Більші числа</button>
+        <button class="preset-chip" data-preset="1/10 3/10 50 1/10 7/10 90 3/10 9/10 100 1/100 25/100 200 1/10 1/100 300 5/100 7/10 400">Десяткові</button>
+      </div>
+
+      <textarea id="syllables-input" spellcheck="false"></textarea>
+
+      <div class="mode-selector">
+        <label>
+          <input type="radio" name="stage-count-mode" value="fit" checked>
+          <span>Грати рівно стільки завдань, скільки трійок введено (до 10 етапів)</span>
+        </label>
+        <label>
+          <input type="radio" name="stage-count-mode" value="all10">
+          <span>Завжди проходити всі 10 етапів (повторювати завдання по колу, якщо їх менше 30)</span>
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button class="royal-btn secondary" id="close-modal-btn">Скасувати</button>
+        <button class="royal-btn" id="apply-syllables-btn">Застосувати і почати</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /#game-scene -->
+
+<script>
+/* ============================================================================
+   1. ЗВУКОВИЙ РУШІЙ (Web Audio API — живі мелодійні звуки без слів)
+   ============================================================================ */
+class RoyalSoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.waltzTimer = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  playTone(freq, startTime, duration, type = 'sine', volume = 0.18) {
+    if (!this.ctx) return;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, startTime);
+
+    gain.gain.setValueAtTime(0.001, startTime);
+    gain.gain.exponentialRampToValueAtTime(volume, startTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.02);
+  }
+
+  // Звук 1: Пшик парфумів + кришталеві дзвіночки
+  playPerfumeSound() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const bufferSize = this.ctx.sampleRate * 0.18;
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.06));
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 2800;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.25;
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start(now);
+
+    const notes = [783.99, 987.77, 1174.66, 1567.98];
+    notes.forEach((f, idx) => {
+      this.playTone(f, now + 0.05 + idx * 0.06, 0.45, 'sine', 0.14);
+    });
+  }
+
+  // Звук 2: Відкриття золотої шкатулки
+  playJewelryBoxSound() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51];
+    notes.forEach((f, idx) => {
+      this.playTone(f, now + idx * 0.055, 0.55, 'triangle', 0.16);
+    });
+  }
+
+  // Звук 3: Сяйво барокового люстерка
+  playMirrorSound() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const notes = [659.25, 880.00, 1108.73, 1318.51, 1760.00];
+    notes.forEach((f, idx) => {
+      this.playTone(f, now + idx * 0.05, 0.5, 'sine', 0.13);
+    });
+  }
+
+  // Звук примірки одягу чи аксесуара
+  playTryOnSound() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const chord = [587.33, 739.99, 880.00, 1174.66];
+    chord.forEach((f, idx) => {
+      this.playTone(f, now + idx * 0.04, 0.5, 'triangle', 0.15);
+    });
+  }
+
+  // Звук підтвердження вибору і переходу до наступного завдання
+  playConfirmStageSound() {
+    this.init();
+    const now = this.ctx.currentTime;
+    const fanfare = [523.25, 659.25, 783.99, 1046.50];
+    fanfare.forEach((f, idx) => {
+      this.playTone(f, now + idx * 0.08, 0.65, 'triangle', 0.2);
+      this.playTone(f * 1.5, now + idx * 0.08, 0.55, 'sine', 0.08);
+    });
+  }
+
+  // Королівський вальс у фіналі
+  startRoyalWaltz() {
+    this.init();
+    this.stopWaltz();
+    const melody = [
+      { f: 523.25, b: 392.00 }, { f: 659.25 }, { f: 783.99 },
+      { f: 659.25, b: 392.00 }, { f: 783.99 }, { f: 1046.50 },
+      { f: 880.00, b: 440.00 }, { f: 783.99 }, { f: 698.46 },
+      { f: 783.99, b: 392.00 }, { f: 659.25 }, { f: 523.25 }
+    ];
+    let step = 0;
+    const playStep = () => {
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const item = melody[step % melody.length];
+      this.playTone(item.f, now, 0.45, 'triangle', 0.13);
+      if (item.b) {
+        this.playTone(item.b, now, 0.55, 'sine', 0.12);
+      }
+      step++;
+    };
+    playStep();
+    this.waltzTimer = setInterval(playStep, 430);
+  }
+
+  stopWaltz() {
+    if (this.waltzTimer) {
+      clearInterval(this.waltzTimer);
+      this.waltzTimer = null;
+    }
+  }
+}
+
+const sound = new RoyalSoundEngine();
+
+
+/* ============================================================================
+   2. СИСТЕМА ЧАСТИНОК (Золотий пил, зірочки та пелюстки троянд)
+   ============================================================================ */
+const canvas = document.getElementById('fx-canvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function spawnSparkles(x, y, count = 28, palette = ['#ffd700', '#fff8c4', '#ff85b3', '#80e5ff']) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 6.5;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1.5,
+      size: 3 + Math.random() * 6,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      alpha: 1,
+      decay: 0.015 + Math.random() * 0.015,
+      rot: Math.random() * Math.PI,
+      vRot: (Math.random() - 0.5) * 0.15,
+      type: Math.random() > 0.35 ? 'star' : 'circle'
+    });
+  }
+}
+
+let finaleRainActive = false;
+function animateParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (finaleRainActive && Math.random() < 0.35) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: -15,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: 1.5 + Math.random() * 2.2,
+      size: 5 + Math.random() * 6,
+      color: ['#ffd700', '#ff6b9d', '#ffb3c6', '#fff5b8'][Math.floor(Math.random() * 4)],
+      alpha: 0.95,
+      decay: 0.0025,
+      rot: Math.random() * Math.PI,
+      vRot: (Math.random() - 0.5) * 0.06,
+      type: Math.random() > 0.5 ? 'petal' : 'star'
+    });
+  }
+
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.08;
+    p.alpha -= p.decay;
+    p.rot += p.vRot;
+
+    if (p.alpha <= 0 || p.y > canvas.height + 30) {
+      particles.splice(i, 1);
+      continue;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+
+    if (p.type === 'star') {
+      ctx.beginPath();
+      for (let s = 0; s < 4; s++) {
+        ctx.lineTo(Math.cos(s * Math.PI / 2) * p.size * 1.5, Math.sin(s * Math.PI / 2) * p.size * 1.5);
+        ctx.lineTo(Math.cos((s + 0.5) * Math.PI / 2) * p.size * 0.45, Math.sin((s + 0.5) * Math.PI / 2) * p.size * 0.45);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (p.type === 'petal') {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.size * 1.2, p.size * 0.65, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  requestAnimationFrame(animateParticles);
+}
+animateParticles();
+
+
+/* ============================================================================
+   3. ВІДОБРАЖЕННЯ ДРОБІВ ТА ЧИСЕЛ НА СЮЖЕТНИХ ПРЕДМЕТАХ
+      (дріб — вертикально: чисельник над знаменником, горизонтальна риска)
+   ============================================================================ */
+const OBJECT_LAYOUTS = [
+  { cx: 120, cy: 188, maxW: 106, maxH: 68 },   // 0: медальйон на флаконі парфумів
+  { cx: 120, cy: 188, maxW: 108, maxH: 64 },   // 1: табличка на шкатулці
+  { cx: 120, cy: 145, maxW: 114, maxH: 128 }   // 2: скло люстерка
+];
+
+function escapeXmlText(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderMathSVG(token, slotIndex) {
+  const { cx, cy, maxW, maxH } = OBJECT_LAYOUTS[slotIndex];
+  const t = String(token == null ? '' : token).trim();
+
+  // Дріб: "2/3" → чисельник 2 над знаменником 3 з рискою між ними
+  if (t.includes('/')) {
+    const rawParts = t.split('/');
+    const rawNum = (rawParts[0] || '').trim();
+    const rawDen = (rawParts[1] || '').trim();
+    const num = escapeXmlText(rawNum);
+    const den = escapeXmlText(rawDen);
+
+    const fs = Math.max(18, Math.min(34, maxH * 0.34));
+    const halfGap = fs * 0.72;
+    const numLen = Math.max(rawNum.length, rawDen.length, 1);
+    const estWidth = fs * 0.62 * numLen;
+    const lineHalf = Math.min(maxW * 0.46, Math.max(estWidth * 0.65, fs * 0.95));
+    const lineW = Math.max(2.5, fs * 0.12);
+    const sw = Math.max(3, fs * 0.14).toFixed(1);
+
+    return `
+      <text x="${cx}" y="${(cy - halfGap).toFixed(1)}" class="syllable-text" style="font-size:${fs.toFixed(1)}px; stroke-width:${sw}px" text-anchor="middle" dominant-baseline="central">${num}</text>
+      <line x1="${(cx - lineHalf).toFixed(1)}" y1="${cy}" x2="${(cx + lineHalf).toFixed(1)}" y2="${cy}" stroke="#3b0a45" stroke-width="${lineW.toFixed(1)}" stroke-linecap="round"/>
+      <text x="${cx}" y="${(cy + halfGap).toFixed(1)}" class="syllable-text" style="font-size:${fs.toFixed(1)}px; stroke-width:${sw}px" text-anchor="middle" dominant-baseline="central">${den}</text>
+    `;
+  }
+
+  // Ціле число
+  const fs = Math.max(24, Math.min(46, maxH * 0.58));
+  const sw = Math.max(3, fs * 0.14).toFixed(1);
+  return `<text x="${cx}" y="${cy + 2}" class="syllable-text" style="font-size:${fs.toFixed(1)}px; stroke-width:${sw}px" text-anchor="middle" dominant-baseline="central">${escapeXmlText(t)}</text>`;
+}
+
+function renderMathContent(token, slotIndex) {
+  return renderMathSVG(token, slotIndex);
+}
+
+function getStoryObjectSVG(typeIndex, content) {
+  const mathContent = `<g class="math-content" data-slot="${typeIndex}">${renderMathContent(content, typeIndex)}</g>`;
+
+  // 0: Кришталевий флакон парфумів із помпою
+  if (typeIndex === 0) {
+    return `
+      <svg viewBox="0 0 240 320">
+        <circle cx="120" cy="175" r="88" fill="url(#candleGlow)" opacity="0.45"/>
+        <path d="M135,58 Q185,55 192,98" fill="none" stroke="url(#goldMetal)" stroke-width="5"/>
+        <ellipse cx="195" cy="115" rx="22" ry="15" fill="#d91e5b" stroke="url(#goldMetal)" stroke-width="3"/>
+        <path d="M188,128 L180,152 M195,129 L195,155 M202,128 L210,152" stroke="#ffd700" stroke-width="2.5"/>
+        <polygon points="120,16 142,40 120,62 98,40" fill="#a8e6ff" stroke="url(#goldMetal)" stroke-width="3"/>
+        <rect x="104" y="60" width="32" height="22" rx="4" fill="url(#goldMetal)"/>
+        <path d="M72,95 L168,95 L202,155 L178,275 L62,275 L38,155 Z"
+              fill="url(#gownRose)" stroke="url(#goldMetal)" stroke-width="5"/>
+        <polygon points="75,100 120,100 105,270 66,270 44,155" fill="rgba(255,255,255,0.22)"/>
+        <ellipse cx="120" cy="188" rx="68" ry="48" fill="url(#goldMetal)" stroke="#4a0e2e" stroke-width="3"/>
+        <ellipse cx="120" cy="188" rx="60" ry="40" fill="#fff6e0" stroke="#c8961e" stroke-width="2"/>
+        ${mathContent}
+      </svg>`;
+  }
+
+  // 1: Золота королівська шкатулка з самоцвітами на оксамитовій подушці
+  if (typeIndex === 1) {
+    return `
+      <svg viewBox="0 0 240 320">
+        <circle cx="120" cy="180" r="88" fill="url(#candleGlow)" opacity="0.45"/>
+        <path d="M25,255 Q120,235 215,255 Q230,285 195,295 Q120,305 45,295 Q10,285 25,255 Z"
+              fill="url(#drapeVelvet)" stroke="url(#goldMetal)" stroke-width="3"/>
+        <circle cx="25" cy="275" r="8" fill="url(#goldMetal)"/>
+        <circle cx="215" cy="275" r="8" fill="url(#goldMetal)"/>
+        <path d="M40,125 Q120,65 200,125 Z" fill="url(#gownSapphire)" stroke="url(#goldMetal)" stroke-width="5"/>
+        <circle cx="120" cy="82" r="14" fill="#ff1e56" stroke="url(#goldMetal)" stroke-width="4"/>
+        <rect x="36" y="125" width="168" height="135" rx="14" fill="url(#gownSapphire)" stroke="url(#goldMetal)" stroke-width="6"/>
+        <rect x="44" y="130" width="10" height="125" fill="url(#goldMetal)"/>
+        <rect x="186" y="130" width="10" height="125" fill="url(#goldMetal)"/>
+        <rect x="52" y="145" width="136" height="86" rx="22" fill="url(#goldMetal)" stroke="#10254c" stroke-width="3"/>
+        <rect x="59" y="152" width="122" height="72" rx="17" fill="#fff6e0" stroke="#c8961e" stroke-width="2"/>
+        ${mathContent}
+      </svg>`;
+  }
+
+  // 2: Срібне та золоте барокове люстерко з перлами
+  return `
+    <svg viewBox="0 0 240 320">
+      <circle cx="120" cy="155" r="90" fill="url(#candleGlow)" opacity="0.45"/>
+      <rect x="108" y="235" width="24" height="70" rx="10" fill="url(#goldMetal)" stroke="#7a5205" stroke-width="2.5"/>
+      <path d="M80,255 Q120,240 160,255 Q145,278 120,262 Q95,278 80,255 Z" fill="#ff477e" stroke="url(#goldMetal)" stroke-width="2"/>
+      <polygon points="85,48 102,22 120,42 138,22 155,48" fill="url(#goldMetal)" stroke="#7a5205" stroke-width="2"/>
+      <circle cx="102" cy="20" r="5" fill="#fff"/><circle cx="120" cy="18" r="6" fill="#00e5ff"/><circle cx="138" cy="20" r="5" fill="#fff"/>
+      <ellipse cx="120" cy="145" rx="82" ry="96" fill="url(#goldMetal)" stroke="#8c5a08" stroke-width="4"/>
+      <ellipse cx="120" cy="145" rx="74" ry="88" fill="none" stroke="#ffffff" stroke-width="5" stroke-dasharray="2 11" stroke-linecap="round"/>
+      <ellipse cx="120" cy="145" rx="66" ry="80" fill="#fdf6ff" stroke="#d4af37" stroke-width="3"/>
+      <path d="M75,95 L155,195 M95,82 L168,170" stroke="#ffffff" stroke-width="6" opacity="0.65" stroke-linecap="round"/>
+      ${mathContent}
+    </svg>`;
+}
+
+
+/* ============================================================================
+   4. КАТАЛОГ УСІХ 10 ЕТАПІВ ПІДГОТОВКИ ДО БАЛУ (ВЗУТТЯ ПЕРЕД СУКНЕЮ!)
+   ============================================================================ */
+const DRESSUP_STAGES = [
+  // ЕТАП 1: ЗАЧІСКА
+  {
+    id: 'hair',
+    priority: 2,
+    applyChoice: (variant) => {
+      const back = document.getElementById('layer-hair-back');
+      const front = document.getElementById('layer-hair-front');
+      if (variant === 0) {
+        back.innerHTML = `
+          <path d="M198,145 C155,215 152,355 182,425 C202,445 225,415 232,390 C250,415 270,415 288,390 C295,415 318,445 338,425 C368,355 365,215 322,145 Z" fill="url(#hairGold)" stroke="#9e6b0e" stroke-width="2"/>
+          <path d="M180,250 Q165,310 190,375 M340,250 Q355,310 330,375" fill="none" stroke="#fff3b0" stroke-width="3" opacity="0.6"/>`;
+        front.innerHTML = `
+          <path d="M204,148 C200,88 320,88 316,148 C302,115 275,108 260,122 C245,108 218,115 204,148 Z" fill="url(#hairGold)"/>
+          <path d="M206,136 C192,185 196,245 212,282 C205,235 208,185 218,142 Z" fill="url(#hairGold)"/>
+          <path d="M314,136 C328,185 324,245 308,282 C315,235 312,185 302,142 Z" fill="url(#hairGold)"/>`;
+      } else if (variant === 1) {
+        back.innerHTML = `
+          <ellipse cx="260" cy="88" rx="46" ry="34" fill="url(#hairChoco)" stroke="#24110c" stroke-width="2"/>
+          <path d="M222,78 Q260,60 298,78" fill="none" stroke="#fff" stroke-width="5" stroke-dasharray="1 12" stroke-linecap="round"/>`;
+        front.innerHTML = `
+          <path d="M205,146 C202,88 318,88 315,146 C300,114 278,108 260,120 C242,108 220,114 205,146 Z" fill="url(#hairChoco)"/>
+          <path d="M208,145 Q194,200 208,245 Q214,205 214,155" fill="none" stroke="url(#hairChoco)" stroke-width="7" stroke-linecap="round"/>
+          <path d="M312,145 Q326,200 312,245 Q306,205 306,155" fill="none" stroke="url(#hairChoco)" stroke-width="7" stroke-linecap="round"/>`;
+      } else {
+        back.innerHTML = `
+          <path d="M198,145 C162,215 168,335 195,405 C235,435 305,435 335,395 C358,325 352,215 322,145 Z" fill="url(#hairAuburn)"/>`;
+        front.innerHTML = `
+          <path d="M204,148 C200,88 320,88 316,148 C295,110 265,108 245,124 C225,112 212,122 204,148 Z" fill="url(#hairAuburn)"/>
+          <path d="M308,142 C332,205 332,295 292,345 C278,315 295,245 304,155 Z" fill="url(#hairAuburn)" stroke="#ffae85" stroke-width="1.5"/>`;
+      }
+    },
+    previewSVG: (v) => {
+      const fills = ['url(#hairGold)', 'url(#hairChoco)', 'url(#hairAuburn)'];
+      const styles = [
+        `<path d="M65,95 C40,150 42,235 68,265 C90,245 85,170 88,125 C110,105 130,105 152,125 C155,170 150,245 172,265 C198,235 200,150 175,95 C155,60 85,60 65,95 Z" fill="${fills[0]}" stroke="#8f5d08" stroke-width="2"/>`,
+        `<ellipse cx="120" cy="72" rx="44" ry="32" fill="${fills[1]}"/><path d="M85,65 Q120,48 155,65" fill="none" stroke="#fff" stroke-width="5" stroke-dasharray="1 10" stroke-linecap="round"/><path d="M68,120 C68,72 172,72 172,120 C155,95 85,95 68,120 Z" fill="${fills[1]}"/><path d="M72,120 Q58,175 74,215 M168,120 Q182,175 166,215" fill="none" stroke="${fills[1]}" stroke-width="8" stroke-linecap="round"/>`,
+        `<path d="M65,95 C45,150 52,225 82,258 C120,275 168,265 182,225 C198,165 190,120 172,95 C148,62 92,62 65,95 Z" fill="${fills[2]}" stroke="#ff9b6a" stroke-width="2"/>`
+      ];
+      return wrapOnStand(styles[v]);
+    }
+  },
+
+  // ЕТАП 2: КОЛІР ОЧЕЙ ТА ВЕЧІРНІЙ МАКІЯЖ
+  {
+    id: 'makeup',
+    priority: 6,
+    applyChoice: (variant) => {
+      const irises = document.querySelectorAll('.eye-iris');
+      const makeup = document.getElementById('layer-makeup');
+      const lips = document.getElementById('lips-shape');
+      const eyeColors = ['#189c68', '#1e5fd9', '#b86f14'];
+      const lipColors = ['#e84a72', '#d92662', '#b81d3d'];
+      const shadowColors = ['#66e0b3', '#7ab3ff', '#ffd27a'];
+
+      irises.forEach(el => el.setAttribute('fill', eyeColors[variant]));
+      lips.setAttribute('fill', lipColors[variant]);
+      makeup.innerHTML = `
+        <ellipse cx="225" cy="182" rx="15" ry="8.5" fill="${lipColors[variant]}" opacity="0.34"/>
+        <ellipse cx="295" cy="182" rx="15" ry="8.5" fill="${lipColors[variant]}" opacity="0.34"/>
+        <path d="M220,156 Q235,145 249,157" fill="${shadowColors[variant]}" opacity="0.55"/>
+        <path d="M271,157 Q285,145 300,156" fill="${shadowColors[variant]}" opacity="0.55"/>`;
+    },
+    previewSVG: (v) => {
+      const eyeColors = ['#189c68', '#1e5fd9', '#b86f14'];
+      const lipColors = ['#e84a72', '#d92662', '#b81d3d'];
+      return wrapOnStand(`
+        <ellipse cx="120" cy="155" rx="68" ry="78" fill="url(#skinFace)" stroke="url(#goldMetal)" stroke-width="4"/>
+        <ellipse cx="94" cy="142" rx="16" ry="11" fill="#fff"/>
+        <ellipse cx="146" cy="142" rx="16" ry="11" fill="#fff"/>
+        <circle cx="94" cy="142" r="9" fill="${eyeColors[v]}"/>
+        <circle cx="146" cy="142" r="9" fill="${eyeColors[v]}"/>
+        <circle cx="94" cy="142" r="4.5" fill="#111"/><circle cx="146" cy="142" r="4.5" fill="#111"/>
+        <circle cx="91" cy="139" r="2.5" fill="#fff"/><circle cx="143" cy="139" r="2.5" fill="#fff"/>
+        <path d="M76,140 Q94,126 110,141 M130,141 Q146,126 164,140" fill="none" stroke="#1f0d09" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M98,192 Q110,185 120,190 Q130,185 142,192 Q120,210 98,192 Z" fill="${lipColors[v]}"/>
+      `);
+    }
+  },
+
+  // ЕТАП 3: ЧЕРЕВИЧКИ (тепер ІДУТЬ ПЕРЕД СУКНЕЮ, поки ніжки повністю відкриті!)
+  {
+    id: 'shoes',
+    priority: 0,
+    applyChoice: (variant) => {
+      const shoes = document.getElementById('layer-shoes');
+      if (variant === 0) {
+        // 0: Кришталеві туфельки з діамантовими бантиками
+        shoes.innerHTML = `
+          <path d="M212,716 Q233,735 254,716 L250,740 Q233,748 216,740 Z" fill="#bceeff" stroke="#ffffff" stroke-width="2.2"/>
+          <polygon points="223,716 243,716 233,727" fill="#ffffff" stroke="#63b3ff" stroke-width="1"/>
+          <circle cx="233" cy="720" r="3.5" fill="#fff"/>
+          <path d="M266,716 Q287,735 308,716 L304,740 Q287,748 270,740 Z" fill="#bceeff" stroke="#ffffff" stroke-width="2.2"/>
+          <polygon points="277,716 297,716 287,727" fill="#ffffff" stroke="#63b3ff" stroke-width="1"/>
+          <circle cx="287" cy="720" r="3.5" fill="#fff"/>`;
+      } else if (variant === 1) {
+        // 1: Золоті королівські черевички з перлинними ремінцями
+        shoes.innerHTML = `
+          <path d="M212,716 Q233,735 254,716 L250,740 Q233,748 216,740 Z" fill="url(#goldMetal)" stroke="#7a5205" stroke-width="2.2"/>
+          <path d="M222,708 Q233,715 244,708" fill="none" stroke="#fff" stroke-width="3.5" stroke-dasharray="1 4" stroke-linecap="round"/>
+          <circle cx="233" cy="723" r="4.5" fill="#00c47c" stroke="#fff" stroke-width="1.2"/>
+          <path d="M266,716 Q287,735 308,716 L304,740 Q287,748 270,740 Z" fill="url(#goldMetal)" stroke="#7a5205" stroke-width="2.2"/>
+          <path d="M276,708 Q287,715 298,708" fill="none" stroke="#fff" stroke-width="3.5" stroke-dasharray="1 4" stroke-linecap="round"/>
+          <circle cx="287" cy="723" r="4.5" fill="#00c47c" stroke="#fff" stroke-width="1.2"/>`;
+      } else {
+        // 2: Рубінові оксамитові туфельки зі стрічками-балеринками
+        shoes.innerHTML = `
+          <path d="M212,716 Q233,735 254,716 L250,740 Q233,748 216,740 Z" fill="#b80f48" stroke="url(#goldMetal)" stroke-width="2.2"/>
+          <path d="M223,698 L243,714 M243,698 L223,714" stroke="#ff6b9d" stroke-width="2.8" stroke-linecap="round"/>
+          <circle cx="233" cy="722" r="4.5" fill="#ff6b9d" stroke="url(#goldMetal)" stroke-width="1.5"/>
+          <path d="M266,716 Q287,735 308,716 L304,740 Q287,748 270,740 Z" fill="#b80f48" stroke="url(#goldMetal)" stroke-width="2.2"/>
+          <path d="M277,698 L297,714 M297,698 L277,714" stroke="#ff6b9d" stroke-width="2.8" stroke-linecap="round"/>
+          <circle cx="287" cy="722" r="4.5" fill="#ff6b9d" stroke="url(#goldMetal)" stroke-width="1.5"/>`;
+      }
+    },
+    previewSVG: (v) => {
+      const colors = ['#bceeff', 'url(#goldMetal)', '#b80f48'];
+      const strokes = ['#ffffff', '#8a5a00', 'url(#goldMetal)'];
+      return wrapOnStand(`
+        <path d="M52,185 C52,215 85,225 118,225 L118,212 C95,205 78,192 74,165 L52,165 Z" fill="${colors[v]}" stroke="${strokes[v]}" stroke-width="3"/>
+        <rect x="52" y="185" width="10" height="38" rx="3" fill="${strokes[v]}"/>
+        <circle cx="102" cy="206" r="9" fill="#fff8d6" stroke="url(#goldMetal)" stroke-width="2"/>
+
+        <path d="M128,175 C128,205 161,215 194,215 L194,202 C171,195 154,182 150,155 L128,155 Z" fill="${colors[v]}" stroke="${strokes[v]}" stroke-width="3"/>
+        <rect x="128" y="175" width="10" height="38" rx="3" fill="${strokes[v]}"/>
+        <circle cx="178" cy="196" r="9" fill="#fff8d6" stroke="url(#goldMetal)" stroke-width="2"/>
+      `);
+    }
+  },
+
+  // ЕТАП 4: БАЛЬНА СУКНЯ (з витонченим фігурним вирізом спереду, щоб обрані туфельки залишалися видимими!)
+  {
+    id: 'dress',
+    priority: 1,
+    applyChoice: (variant) => {
+      document.getElementById('layer-base-slip').style.display = 'none';
+      const dressLayer = document.getElementById('layer-dress');
+      if (variant === 0) {
+        // 0: Сапфірова пишна бальна сукня «Зоряна ніч» (з арковим вирізом над туфельками)
+        dressLayer.innerHTML = `
+          <path d="M220,392 C145,455 110,605 98,732 Q150,745 198,718 Q260,686 322,718 Q370,745 422,732 C410,605 375,455 300,392 Z" fill="url(#gownSapphire)" stroke="#8ec5ff" stroke-width="2.5"/>
+          <path d="M238,395 L165,725 M260,398 L260,698 M282,395 L355,725" stroke="rgba(255,255,255,0.25)" stroke-width="4"/>
+          <path d="M98,732 Q150,745 198,718 Q260,686 322,718 Q370,745 422,732" fill="none" stroke="url(#goldMetal)" stroke-width="5"/>
+          <path d="M218,392 Q175,445 145,485 Q205,465 260,425 Q315,465 375,485 Q345,445 302,392 Z" fill="#63b3ff" opacity="0.85" stroke="#fff" stroke-width="1.5"/>
+          <path d="M182,292 Q205,318 214,300 L192,278 Z M338,292 Q315,318 306,300 L328,278 Z" fill="#63b3ff"/>
+          <path d="M210,288 Q235,308 260,294 Q285,308 310,288 L300,395 Q260,415 220,395 Z" fill="url(#gownSapphire)" stroke="url(#goldMetal)" stroke-width="2.5"/>
+          <path d="M242,296 L260,398 L278,296" fill="none" stroke="url(#goldMetal)" stroke-width="2"/>
+          <circle cx="200" cy="540" r="3" fill="#fff"/><circle cx="290" cy="520" r="3.5" fill="#ffd700"/>
+          <circle cx="240" cy="610" r="3" fill="#fff"/><circle cx="320" cy="630" r="3" fill="#fff"/>
+          <circle cx="170" cy="660" r="3.5" fill="#ffd700"/><circle cx="270" cy="665" r="3" fill="#fff"/>`;
+      } else if (variant === 1) {
+        // 1: Смарагдова оксамитова сукня з золотою парчею (з арковим вирізом над туфельками)
+        dressLayer.innerHTML = `
+          <path d="M220,392 C150,465 118,605 102,732 Q155,742 202,716 Q260,685 318,716 Q365,742 418,732 C402,605 370,465 300,392 Z" fill="#fff0b8" stroke="url(#goldMetal)" stroke-width="3"/>
+          <path d="M205,675 L260,550 L315,675" fill="none" stroke="url(#goldMetal)" stroke-width="3"/>
+          <path d="M220,392 C140,460 110,605 102,732 C165,715 225,585 260,445 C295,585 355,715 418,732 C410,605 380,460 300,392 Z" fill="url(#gownEmerald)" stroke="url(#goldMetal)" stroke-width="3"/>
+          <path d="M208,284 Q260,312 312,284 L300,395 Q260,418 220,395 Z" fill="url(#gownEmerald)" stroke="url(#goldMetal)" stroke-width="3"/>
+          <polygon points="242,295 278,295 268,398 252,398" fill="url(#goldMetal)"/>
+          <ellipse cx="198" cy="285" rx="18" ry="14" fill="url(#gownEmerald)" stroke="url(#goldMetal)" stroke-width="2"/>
+          <ellipse cx="322" cy="285" rx="18" ry="14" fill="url(#gownEmerald)" stroke="url(#goldMetal)" stroke-width="2"/>`;
+      } else {
+        // 2: Пудрово-рубінова багатошарова шовкова сукня «Королівська троянда»
+        dressLayer.innerHTML = `
+          <path d="M220,392 C142,460 108,605 96,732 Q150,745 200,716 Q260,685 320,716 Q370,745 424,732 C412,605 378,460 300,392 Z" fill="url(#gownRose)" stroke="#ffc2d6" stroke-width="2.5"/>
+          <path d="M138,530 Q200,565 260,525 Q320,565 382,530" fill="none" stroke="#ffdae6" stroke-width="5"/>
+          <path d="M115,635 Q190,675 260,630 Q330,675 405,635" fill="none" stroke="#ffdae6" stroke-width="5"/>
+          <path d="M96,732 Q150,745 200,716 Q260,685 320,716 Q370,745 424,732" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="6 4"/>
+          <path d="M210,286 Q235,272 260,295 Q285,272 310,286 L300,395 Q260,414 220,395 Z" fill="url(#gownRose)" stroke="#fff" stroke-width="2"/>
+          <circle cx="260" cy="396" r="14" fill="#ff2a6d" stroke="#ffd700" stroke-width="2.5"/>
+          <circle cx="260" cy="396" r="6" fill="#ffb8d1"/>`;
+      }
+    },
+    previewSVG: (v) => {
+      const grads = ['url(#gownSapphire)', 'url(#gownEmerald)', 'url(#gownRose)'];
+      const trims = ['#8ec5ff', 'url(#goldMetal)', '#ffdae6'];
+      return wrapOnStand(`
+        <path d="M92,75 Q120,90 148,75 L140,135 L195,270 Q120,250 45,270 L100,135 Z" fill="${grads[v]}" stroke="${trims[v]}" stroke-width="3"/>
+        <path d="M100,135 Q120,148 140,135" fill="none" stroke="url(#goldMetal)" stroke-width="4"/>
+        <path d="M62,215 Q120,235 178,215" fill="none" stroke="${trims[v]}" stroke-width="3"/>
+      `);
+    }
+  },
+
+  // ЕТАП 5: ДОВГІ БАЛЬНІ РУКАВИЧКИ
+  {
+    id: 'gloves',
+    priority: 7,
+    applyChoice: (variant) => {
+      const gloves = document.getElementById('layer-gloves');
+      const fills = ['#ffffff', 'url(#goldMetal)', '#ffb8d1'];
+      const strokes = ['#d9e4ff', '#8a5a00', '#e0487d'];
+      gloves.innerHTML = `
+        <path d="M183,328 C170,368 164,405 175,442 C182,448 192,444 195,435 C188,400 192,365 203,334 Z" fill="${fills[variant]}" stroke="${strokes[variant]}" stroke-width="2"/>
+        <ellipse cx="184" cy="446" rx="11.5" ry="14.5" transform="rotate(-15 184 446)" fill="${fills[variant]}" stroke="${strokes[variant]}" stroke-width="1.5"/>
+        <path d="M337,328 C350,368 356,405 345,442 C338,448 328,444 325,435 C332,400 328,365 317,334 Z" fill="${fills[variant]}" stroke="${strokes[variant]}" stroke-width="2"/>
+        <ellipse cx="336" cy="446" rx="11.5" ry="14.5" transform="rotate(15 336 446)" fill="${fills[variant]}" stroke="${strokes[variant]}" stroke-width="1.5"/>`;
+    },
+    previewSVG: (v) => {
+      const fills = ['#ffffff', 'url(#goldMetal)', '#ffb8d1'];
+      const strokes = ['#a8c0f0', '#8a5a00', '#e0487d'];
+      return wrapOnStand(`
+        <path d="M75,90 L98,90 L108,215 C112,235 92,245 82,230 L68,150 Z" fill="${fills[v]}" stroke="${strokes[v]}" stroke-width="3"/>
+        <path d="M135,90 L158,90 L168,215 C172,235 152,245 142,230 L128,150 Z" fill="${fills[v]}" stroke="${strokes[v]}" stroke-width="3"/>
+        <path d="M72,92 L101,92 M132,92 L161,92" stroke="url(#goldMetal)" stroke-width="5" stroke-linecap="round"/>
+      `);
+    }
+  },
+
+  // ЕТАП 6: КОРОЛІВСЬКЕ КОЛЬЄ
+  {
+    id: 'necklace',
+    priority: 4,
+    applyChoice: (variant) => {
+      const neck = document.getElementById('layer-necklace');
+      if (variant === 0) {
+        neck.innerHTML = `
+          <path d="M234,255 Q260,276 286,255" fill="none" stroke="#ffffff" stroke-width="4" stroke-dasharray="2 5" stroke-linecap="round"/>
+          <polygon points="260,268 266,278 260,288 254,278" fill="#a8f0ff" stroke="#ffffff" stroke-width="1.5"/>
+          <circle cx="246" cy="270" r="3.5" fill="#ffffff"/><circle cx="274" cy="270" r="3.5" fill="#ffffff"/>`;
+      } else if (variant === 1) {
+        neck.innerHTML = `
+          <path d="M232,254 Q260,275 288,254" fill="none" stroke="url(#goldMetal)" stroke-width="5" stroke-linecap="round"/>
+          <ellipse cx="260" cy="274" rx="6" ry="8" fill="#00c47c" stroke="url(#goldMetal)" stroke-width="2"/>
+          <circle cx="245" cy="268" r="4" fill="#00c47c" stroke="url(#goldMetal)" stroke-width="1.5"/>
+          <circle cx="275" cy="268" r="4" fill="#00c47c" stroke="url(#goldMetal)" stroke-width="1.5"/>`;
+      } else {
+        neck.innerHTML = `
+          <path d="M234,252 Q260,272 286,252" fill="none" stroke="#fff5f8" stroke-width="5" stroke-dasharray="1 6" stroke-linecap="round"/>
+          <path d="M260,268 C254,262 248,270 260,282 C272,270 266,262 260,268 Z" fill="#ff1e56" stroke="url(#goldMetal)" stroke-width="1.8"/>`;
+      }
+    },
+    previewSVG: (v) => {
+      const gems = ['#a8f0ff', '#00c47c', '#ff1e56'];
+      return wrapOnStand(`
+        <path d="M62,115 Q120,210 178,115" fill="none" stroke="url(#goldMetal)" stroke-width="7" stroke-linecap="round"/>
+        <path d="M68,115 Q120,195 172,115" fill="none" stroke="#ffffff" stroke-width="5" stroke-dasharray="2 10" stroke-linecap="round"/>
+        <polygon points="120,168 136,192 120,218 104,192" fill="${gems[v]}" stroke="url(#goldMetal)" stroke-width="4"/>
+        <circle cx="88" cy="158" r="9" fill="${gems[v]}" stroke="url(#goldMetal)" stroke-width="3"/>
+        <circle cx="152" cy="158" r="9" fill="${gems[v]}" stroke="url(#goldMetal)" stroke-width="3"/>
+      `);
+    }
+  },
+
+  // ЕТАП 7: ДОРОГОЦІННІ СЕРЕЖКИ
+  {
+    id: 'earrings',
+    priority: 8,
+    applyChoice: (variant) => {
+      const ears = document.getElementById('layer-earrings');
+      const colors = ['#a8f0ff', '#00c47c', '#ff1e56'];
+      ears.innerHTML = `
+        <circle cx="205" cy="186" r="3.5" fill="url(#goldMetal)"/>
+        <polygon points="205,190 210,202 205,212 200,202" fill="${colors[variant]}" stroke="url(#goldMetal)" stroke-width="1.5"/>
+        <circle cx="315" cy="186" r="3.5" fill="url(#goldMetal)"/>
+        <polygon points="315,190 320,202 315,212 310,202" fill="${colors[variant]}" stroke="url(#goldMetal)" stroke-width="1.5"/>`;
+    },
+    previewSVG: (v) => {
+      const colors = ['#a8f0ff', '#00c47c', '#ff1e56'];
+      return wrapOnStand(`
+        <circle cx="85" cy="115" r="10" fill="url(#goldMetal)"/>
+        <line x1="85" y1="125" x2="85" y2="150" stroke="url(#goldMetal)" stroke-width="4"/>
+        <polygon points="85,148 104,182 85,215 66,182" fill="${colors[v]}" stroke="url(#goldMetal)" stroke-width="4"/>
+
+        <circle cx="155" cy="115" r="10" fill="url(#goldMetal)"/>
+        <line x1="155" y1="125" x2="155" y2="150" stroke="url(#goldMetal)" stroke-width="4"/>
+        <polygon points="155,148 174,182 155,215 136,182" fill="${colors[v]}" stroke="url(#goldMetal)" stroke-width="4"/>
+      `);
+    }
+  },
+
+  // ЕТАП 8: КОРОЛІВСЬКА ТІАРА / ДІАДЕМА
+  {
+    id: 'tiara',
+    priority: 3,
+    applyChoice: (variant) => {
+      const tiara = document.getElementById('layer-tiara');
+      if (variant === 0) {
+        tiara.innerHTML = `
+          <path d="M218,108 L230,84 L245,100 L260,70 L275,100 L290,84 L302,108 Q260,116 218,108 Z" fill="#e8f4ff" stroke="#ffffff" stroke-width="2"/>
+          <polygon points="260,80 266,92 260,104 254,92" fill="#1e66ff"/>
+          <circle cx="260" cy="68" r="4" fill="#ffffff"/>`;
+      } else if (variant === 1) {
+        tiara.innerHTML = `
+          <path d="M216,108 L224,78 L242,98 L260,68 L278,98 L296,78 L304,108 Q260,116 216,108 Z" fill="url(#goldMetal)" stroke="#7a5205" stroke-width="2"/>
+          <circle cx="260" cy="92" r="6" fill="#00c47c" stroke="#fff" stroke-width="1.5"/>
+          <circle cx="234" cy="96" r="4" fill="#00c47c"/><circle cx="286" cy="96" r="4" fill="#00c47c"/>`;
+      } else {
+        tiara.innerHTML = `
+          <path d="M218,108 Q260,72 302,108 Q260,115 218,108 Z" fill="url(#goldMetal)" stroke="#b81d4e" stroke-width="2"/>
+          <circle cx="260" cy="90" r="9" fill="#ff1e56" stroke="#ffd700" stroke-width="2"/>
+          <circle cx="240" cy="96" r="6.5" fill="#ff6b9d"/><circle cx="280" cy="96" r="6.5" fill="#ff6b9d"/>`;
+      }
+    },
+    previewSVG: (v) => {
+      const gems = ['#1e66ff', '#00c47c', '#ff1e56'];
+      return wrapOnStand(`
+        <path d="M45,195 L65,120 L95,160 L120,95 L145,160 L175,120 L195,195 Q120,215 45,195 Z"
+              fill="url(#goldMetal)" stroke="#ffffff" stroke-width="3"/>
+        <polygon points="120,128 134,155 120,182 106,155" fill="${gems[v]}" stroke="#fff" stroke-width="2.5"/>
+        <circle cx="78" cy="165" r="10" fill="${gems[v]}" stroke="#fff" stroke-width="2"/>
+        <circle cx="162" cy="165" r="10" fill="${gems[v]}" stroke="#fff" stroke-width="2"/>
+      `);
+    }
+  },
+
+  // ЕТАП 9: АКСЕСУАР У РУКУ ТА КОРОЛІВСЬКА НАКИДКА
+  {
+    id: 'accessory',
+    priority: 5,
+    applyChoice: (variant) => {
+      const hand = document.getElementById('layer-hand-item');
+      const capeBack = document.getElementById('layer-cape-back');
+      const capeFront = document.getElementById('layer-cape-front');
+
+      if (variant === 0) {
+        capeBack.innerHTML = `
+          <path d="M192,268 C142,380 125,550 105,715 Q260,745 415,715 C395,550 378,380 328,268 Z"
+                fill="rgba(168, 230, 255, 0.28)" stroke="#ffffff" stroke-width="2" stroke-dasharray="6 4"/>`;
+        capeFront.innerHTML = `
+          <circle cx="204" cy="276" r="9" fill="url(#goldMetal)" stroke="#fff" stroke-width="2"/>
+          <circle cx="316" cy="276" r="9" fill="url(#goldMetal)" stroke="#fff" stroke-width="2"/>`;
+        hand.innerHTML = `
+          <g transform="translate(336, 442)">
+            <path d="M0,0 L-48,-52 A68,68 0 0,1 48,-52 Z" fill="#fff0f6" stroke="url(#goldMetal)" stroke-width="3"/>
+            <path d="M0,0 L-32,-58 M0,0 L-12,-64 M0,0 L12,-64 M0,0 L32,-58" stroke="url(#goldMetal)" stroke-width="2"/>
+            <path d="M-45,-50 Q0,-82 45,-50" fill="none" stroke="#ff6b9d" stroke-width="5" stroke-dasharray="4 3"/>
+          </g>`;
+      } else if (variant === 1) {
+        capeBack.innerHTML = ``;
+        capeFront.innerHTML = `
+          <path d="M180,275 Q260,320 340,275 Q352,308 325,322 Q260,350 195,322 Q168,308 180,275 Z"
+                fill="#fffdf9" stroke="#e6d8c8" stroke-width="2.5"/>
+          <circle cx="260" cy="312" r="10" fill="url(#goldMetal)"/>`;
+        hand.innerHTML = `
+          <g transform="translate(184, 446)">
+            <path d="M-16,0 Q0,-28 16,0" fill="none" stroke="url(#goldMetal)" stroke-width="3"/>
+            <path d="M-24,0 L24,0 L32,42 Q0,55 -32,42 Z" fill="url(#gownSapphire)" stroke="url(#goldMetal)" stroke-width="3"/>
+            <circle cx="0" cy="22" r="7" fill="url(#goldMetal)"/>
+          </g>`;
+      } else {
+        capeBack.innerHTML = `
+          <path d="M188,272 C145,390 135,540 120,695 Q260,725 400,695 C385,540 375,390 332,272 Z"
+                fill="rgba(255, 215, 0, 0.22)" stroke="url(#goldMetal)" stroke-width="2"/>`;
+        capeFront.innerHTML = `
+          <path d="M188,275 Q260,315 332,275" fill="none" stroke="url(#goldMetal)" stroke-width="7" stroke-linecap="round"/>`;
+        hand.innerHTML = `
+          <g transform="translate(332, 440)">
+            <polygon points="-10,5 10,5 4,42 -4,42" fill="#207a4c" stroke="url(#goldMetal)" stroke-width="2"/>
+            <circle cx="-14" cy="-12" r="14" fill="#1b7a48"/><circle cx="14" cy="-12" r="14" fill="#1b7a48"/>
+            <circle cx="-12" cy="-14" r="11" fill="#ff2a6d"/><circle cx="12" cy="-14" r="11" fill="#ff6b9d"/>
+            <circle cx="0" cy="-24" r="12" fill="#ff1e56"/><circle cx="0" cy="-6" r="10" fill="#ffb3c6"/>
+          </g>`;
+      }
+    },
+    previewSVG: (v) => {
+      if (v === 0) {
+        return wrapOnStand(`
+          <path d="M120,215 L45,115 A95,95 0 0,1 195,115 Z" fill="#fff0f6" stroke="url(#goldMetal)" stroke-width="4"/>
+          <path d="M120,215 L72,102 M120,215 L96,94 M120,215 L120,90 M120,215 L144,94 M120,215 L168,102" stroke="url(#goldMetal)" stroke-width="3"/>
+          <path d="M48,115 Q120,65 192,115" fill="none" stroke="#ff6b9d" stroke-width="8" stroke-dasharray="6 4"/>
+        `);
+      }
+      if (v === 1) {
+        return wrapOnStand(`
+          <path d="M90,125 Q120,70 150,125" fill="none" stroke="url(#goldMetal)" stroke-width="5"/>
+          <path d="M72,125 L168,125 L184,215 Q120,240 56,215 Z" fill="url(#gownSapphire)" stroke="url(#goldMetal)" stroke-width="5"/>
+          <polygon points="120,152 135,172 120,192 105,172" fill="url(#goldMetal)"/>
+        `);
+      }
+      return wrapOnStand(`
+        <polygon points="105,175 135,175 126,238 114,238" fill="#1b7a48" stroke="url(#goldMetal)" stroke-width="3"/>
+        <circle cx="88" cy="140" r="26" fill="#145c36"/><circle cx="152" cy="140" r="26" fill="#145c36"/>
+        <circle cx="95" cy="142" r="20" fill="#ff2a6d"/><circle cx="145" cy="142" r="20" fill="#ff6b9d"/>
+        <circle cx="120" cy="118" r="22" fill="#ff1e56"/><circle cx="120" cy="155" r="18" fill="#ffb3c6"/>
+      `);
+    }
+  },
+
+  // ЕТАП 10: ВИБІР ПАЛАЦОВОЇ ЗАЛИ ДЛЯ БАЛУ (ФОН)
+  {
+    id: 'background',
+    priority: 2,
+    applyChoice: (variant) => {
+      for (let i = 0; i < 3; i++) {
+        document.getElementById(`bg-variant-${i}`).style.display = (i === variant) ? 'block' : 'none';
+      }
+    },
+    previewSVG: (v) => {
+      if (v === 0) {
+        return wrapOnStand(`
+          <rect x="52" y="75" width="136" height="165" rx="18" fill="url(#wallGold)" stroke="url(#goldMetal)" stroke-width="5"/>
+          <path d="M52,195 L188,195 L188,240 L52,240 Z" fill="url(#floorMarble1)"/>
+          <circle cx="120" cy="115" r="26" fill="url(#candleGlow)"/>
+          <path d="M90,115 Q120,135 150,115" fill="none" stroke="url(#goldMetal)" stroke-width="5"/>
+        `);
+      }
+      if (v === 1) {
+        return wrapOnStand(`
+          <rect x="52" y="75" width="136" height="165" rx="18" fill="url(#nightSky)" stroke="url(#goldMetal)" stroke-width="5"/>
+          <circle cx="148" cy="115" r="20" fill="#fffde8"/>
+          <rect x="52" y="185" width="136" height="55" rx="6" fill="#112459"/>
+          <line x1="52" y1="185" x2="188" y2="185" stroke="#d9e4ff" stroke-width="6"/>
+        `);
+      }
+      return wrapOnStand(`
+        <rect x="52" y="75" width="136" height="165" rx="18" fill="url(#conservatorySky)" stroke="url(#goldMetal)" stroke-width="5"/>
+        <path d="M65,235 L65,125 A55,45 0 0,1 175,125 L175,235" fill="none" stroke="url(#goldMetal)" stroke-width="3"/>
+        <circle cx="85" cy="195" r="24" fill="#1c5c48"/><circle cx="155" cy="195" r="24" fill="#1c5c38"/>
+        <circle cx="88" cy="190" r="9" fill="#ff6b9d"/><circle cx="150" cy="190" r="9" fill="#ff477e"/>
+      `);
+    }
+  }
+];
+
+function wrapOnStand(innerSVG) {
+  return `
+    <svg viewBox="0 0 240 320">
+      <circle cx="120" cy="160" r="95" fill="url(#candleGlow)" opacity="0.38"/>
+      <ellipse cx="120" cy="292" rx="70" ry="16" fill="url(#goldMetal)" stroke="#6e4704" stroke-width="2.5"/>
+      <rect x="110" y="255" width="20" height="36" fill="url(#goldMetal)"/>
+      <rect x="26" y="34" width="188" height="232" rx="94" fill="url(#wallGold)" stroke="url(#goldMetal)" stroke-width="7"/>
+      <rect x="36" y="44" width="168" height="212" rx="84" fill="url(#damaskPattern)" stroke="#ffd700" stroke-width="1.5"/>
+      <polygon points="90,34 105,12 120,28 135,12 150,34" fill="url(#goldMetal)"/>
+      ${innerSVG}
+    </svg>`;
+}
+
+
+/* ============================================================================
+   5. КЕРУВАННЯ ГРОЮ, МИТТЄВА ЗАМІНА ЗАВДАНЬ БЕЗ МЕНЮ ТА НАВІГАЦІЯ
+   ============================================================================ */
+/* УВАГА: кожна трійка — це два дроби та ціле число,
+   яке ділиться націло на ОБИДВА знаменники. */
+let rawSyllablesList = [
+  '1/2', '1/4', '12',
+  '1/3', '2/3', '18',
+  '1/2', '1/5', '20',
+  '1/4', '3/4', '24',
+  '1/5', '3/5', '25',
+  '1/3', '1/6', '30',
+  '1/8', '3/8', '40',
+  '1/6', '5/6', '36',
+  '1/10', '3/10', '50',
+  '2/7', '5/7', '70'
+];
+
+let stageCountMode = 'fit';
+let activeStages = [];
+let stageSyllables = [];
+let currentStageIdx = 0;
+let readMask = [false, false, false];
+let selectedVariantInStage = null;
+let showingWardrobeNow = false;
+
+const interactiveContainer = document.getElementById('interactive-items');
+const confirmBtn = document.getElementById('confirm-choice-btn');
+const progressGarland = document.getElementById('progress-garland');
+const mainStage = document.getElementById('main-stage');
+const girlChar = document.getElementById('girl-character');
+const kittenChar = document.getElementById('royal-kitten');
+const replayBtn = document.getElementById('replay-btn');
+const liveTripletInput = document.getElementById('live-triplet-input');
+const prevStageBtn = document.getElementById('prev-stage-btn');
+const nextStageBtn = document.getElementById('next-stage-btn');
+
+// Живе кліпання очей дівчинки
+setInterval(() => {
+  const eyelids = document.getElementById('eyelids');
+  if (!eyelids) return;
+  eyelids.style.opacity = '1';
+  setTimeout(() => { eyelids.style.opacity = '0'; }, 150);
+}, 3600);
+
+// Інтерактивний котик: при кліку на нього також радісно підстрибує
+kittenChar.style.cursor = 'pointer';
+kittenChar.addEventListener('click', (e) => {
+  sound.playMirrorSound();
+  triggerCharacterJoy(false);
+  const rect = kittenChar.getBoundingClientRect();
+  spawnSparkles(rect.left + rect.width / 2, rect.top + rect.height / 2, 18);
+});
+
+function triggerCharacterJoy(intense = false) {
+  girlChar.classList.remove('girl-joy');
+  kittenChar.classList.remove('kitten-happy');
+  void girlChar.offsetWidth;
+  girlChar.classList.add('girl-joy');
+  kittenChar.classList.add('kitten-happy');
+
+  const smile = document.getElementById('lips-smile');
+  if (smile) {
+    smile.setAttribute('d', intense ? 'M242,195 Q260,210 278,195' : 'M244,197 Q260,206 276,197');
+  }
+
+  if (intense) {
+    const girlRect = document.getElementById('girl-svg').getBoundingClientRect();
+    spawnSparkles(girlRect.left + girlRect.width * 0.55, girlRect.top + girlRect.height * 0.45, 36);
+  }
+}
+
+function buildGameStages() {
+  const triplets = [];
+  for (let i = 0; i < rawSyllablesList.length; i += 3) {
+    const t = [
+      rawSyllablesList[i] || '1/2',
+      rawSyllablesList[i + 1] || '1/4',
+      rawSyllablesList[i + 2] || '12'
+    ];
+    triplets.push(t);
+  }
+  if (triplets.length === 0) {
+    triplets.push(['1/2', '1/4', '12']);
+  }
+
+  if (stageCountMode === 'all10') {
+    activeStages = [...DRESSUP_STAGES];
+    stageSyllables = activeStages.map((_, idx) => [...triplets[idx % triplets.length]]);
+  } else {
+    const count = Math.min(10, triplets.length);
+    if (count === 10) {
+      activeStages = [...DRESSUP_STAGES];
+    } else {
+      const picked = [...DRESSUP_STAGES]
+        .sort((a, b) => a.priority - b.priority)
+        .slice(0, count);
+      activeStages = DRESSUP_STAGES.filter(s => picked.includes(s));
+    }
+    stageSyllables = activeStages.map((_, idx) => [...triplets[idx]]);
+  }
+}
+
+function resetGirlAppearance() {
+  sound.stopWaltz();
+  finaleRainActive = false;
+  mainStage.classList.remove('finale-mode');
+  girlChar.classList.remove('girl-waltz');
+  replayBtn.style.display = 'none';
+
+  document.getElementById('layer-base-slip').style.display = 'block';
+  document.getElementById('layer-dress').innerHTML = '';
+  document.getElementById('layer-gloves').innerHTML = '';
+  document.getElementById('layer-necklace').innerHTML = '';
+  document.getElementById('layer-earrings').innerHTML = '';
+  document.getElementById('layer-tiara').innerHTML = '';
+  document.getElementById('layer-hand-item').innerHTML = '';
+  document.getElementById('layer-cape-back').innerHTML = '';
+  document.getElementById('layer-cape-front').innerHTML = '';
+
+  document.getElementById('layer-hair-back').innerHTML = `
+    <path d="M205,155 C175,210 175,310 198,370 C225,385 295,385 322,370 C345,310 345,210 315,155 Z" fill="url(#hairChoco)"/>`;
+  document.getElementById('layer-hair-front').innerHTML = `
+    <path d="M206,142 C205,92 315,92 314,142 C302,116 278,112 260,122 C242,112 218,116 206,142 Z" fill="url(#hairChoco)"/>`;
+  document.getElementById('layer-shoes').innerHTML = `
+    <path d="M216,722 Q233,738 250,722 L248,735 Q233,742 218,735 Z" fill="#f5d5e0" stroke="#c99aa8" stroke-width="1.5"/>
+    <path d="M270,722 Q287,738 304,722 L302,735 Q287,742 272,735 Z" fill="#f5d5e0" stroke="#c99aa8" stroke-width="1.5"/>`;
+
+  for (let i = 0; i < 3; i++) {
+    document.getElementById(`bg-variant-${i}`).style.display = (i === 0) ? 'block' : 'none';
+  }
+}
+
+function renderProgressPearls() {
+  progressGarland.innerHTML = '';
+  activeStages.forEach((_, idx) => {
+    const dot = document.createElement('div');
+    dot.className = 'pearl-step';
+    if (idx < currentStageIdx) dot.classList.add('done');
+    if (idx === currentStageIdx && !mainStage.classList.contains('finale-mode')) dot.classList.add('active');
+    // Клік на будь-яку перлину дозволяє одразу перейти на цей етап
+    dot.addEventListener('click', () => {
+      jumpToStage(idx);
+    });
+    progressGarland.appendChild(dot);
+  });
+}
+
+function startNewGame() {
+  buildGameStages();
+  resetGirlAppearance();
+  currentStageIdx = 0;
+  loadCurrentStageReading();
+}
+
+// Фаза 1 кожного етапу: Показ 3 сюжетних предметів із дробами/числами
+function loadCurrentStageReading(syncInput = true) {
+  showingWardrobeNow = false;
+  renderProgressPearls();
+  confirmBtn.classList.remove('visible');
+  selectedVariantInStage = null;
+  readMask = [false, false, false];
+  interactiveContainer.innerHTML = '';
+
+  const triplet = stageSyllables[currentStageIdx] || ['1/2', '1/4', '12'];
+  if (syncInput) {
+    liveTripletInput.value = triplet.join(' ');
+  }
+
+  triplet.forEach((syl, idx) => {
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'syllable-object';
+    itemDiv.innerHTML = getStoryObjectSVG(idx, syl);
+
+    itemDiv.addEventListener('click', () => {
+      if (readMask[idx]) return;
+      readMask[idx] = true;
+      itemDiv.classList.add('read-done');
+
+      if (idx === 0) sound.playPerfumeSound();
+      else if (idx === 1) sound.playJewelryBoxSound();
+      else sound.playMirrorSound();
+
+      const rect = itemDiv.getBoundingClientRect();
+      spawnSparkles(rect.left + rect.width / 2, rect.top + rect.height / 2, 26);
+      triggerCharacterJoy(false);
+
+      if (readMask.every(Boolean)) {
+        setTimeout(() => {
+          showWardrobeChoicesForStage();
+        }, 620);
+      }
+    });
+
+    interactiveContainer.appendChild(itemDiv);
+  });
+}
+
+// МИТТЄВЕ ОНОВЛЕННЯ 3 ЗАВДАНЬ ПРЯМО ПІД ЧАС ГРИ (БЕЗ ВІДКРИТТЯ МЕНЮ)
+liveTripletInput.addEventListener('focus', () => {
+  // При одному кліку одразу виділяємо всі 3 вирази, щоб можна було миттєво писати нові поверх
+  liveTripletInput.select();
+});
+
+liveTripletInput.addEventListener('input', () => {
+  const raw = liveTripletInput.value.trim().toUpperCase();
+  const parts = raw.split(/[\s,;.\-]+/).filter(Boolean);
+
+  const newTriplet = [
+    parts[0] || '...',
+    parts[1] || '...',
+    parts[2] || '...'
+  ];
+
+  stageSyllables[currentStageIdx] = newTriplet;
+
+  // Якщо вже були відкриті манекени з одягом або частина завдань була прочитана —
+  // повертаємо всі 3 предмети в активний стан з новими виразами
+  if (showingWardrobeNow || readMask.some(Boolean)) {
+    loadCurrentStageReading(false);
+  } else {
+    // Оновлюємо вміст медальйонів (числа/дроби) у реальному часі
+    const slots = interactiveContainer.querySelectorAll('.math-content');
+    slots.forEach((node) => {
+      const idx = parseInt(node.getAttribute('data-slot'), 10);
+      node.innerHTML = renderMathContent(newTriplet[idx], idx);
+    });
+  }
+});
+
+liveTripletInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    liveTripletInput.blur();
+  }
+});
+
+// Фаза 2 кожного етапу: Вибір 1 із 3 варіантів одягу, прикрас чи фону
+function showWardrobeChoicesForStage() {
+  showingWardrobeNow = true;
+  interactiveContainer.innerHTML = '';
+  const stageObj = activeStages[currentStageIdx];
+
+  for (let variant = 0; variant < 3; variant++) {
+    const card = document.createElement('div');
+    card.className = 'wardrobe-option';
+    card.innerHTML = stageObj.previewSVG(variant);
+
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.wardrobe-option').forEach(el => el.classList.remove('selected-choice'));
+      card.classList.add('selected-choice');
+
+      selectedVariantInStage = variant;
+      stageObj.applyChoice(variant);
+
+      sound.playTryOnSound();
+      const rect = card.getBoundingClientRect();
+      spawnSparkles(rect.left + rect.width / 2, rect.top + rect.height / 2, 22);
+      triggerCharacterJoy(true);
+
+      confirmBtn.classList.add('visible');
+    });
+
+    interactiveContainer.appendChild(card);
+  }
+}
+
+// Підтвердження обраного предмета
+confirmBtn.addEventListener('click', () => {
+  if (selectedVariantInStage === null) return;
+  sound.playConfirmStageSound();
+
+  const rect = confirmBtn.getBoundingClientRect();
+  spawnSparkles(rect.left + rect.width / 2, rect.top + rect.height / 2, 34);
+
+  currentStageIdx++;
+  if (currentStageIdx < activeStages.length) {
+    loadCurrentStageReading();
+  } else {
+    launchGrandBallFinale();
+  }
+});
+
+// Швидкий перехід між етапами кнопками «Назад» та «Далі»
+function jumpToStage(targetIdx) {
+  sound.stopWaltz();
+  finaleRainActive = false;
+  mainStage.classList.remove('finale-mode');
+  girlChar.classList.remove('girl-waltz');
+  replayBtn.style.display = 'none';
+
+  if (targetIdx >= activeStages.length) {
+    launchGrandBallFinale();
+    return;
+  }
+
+  currentStageIdx = Math.max(0, targetIdx);
+  sound.playTryOnSound();
+  loadCurrentStageReading();
+}
+
+prevStageBtn.addEventListener('click', () => {
+  if (mainStage.classList.contains('finale-mode')) {
+    jumpToStage(activeStages.length - 1);
+  } else if (currentStageIdx > 0) {
+    jumpToStage(currentStageIdx - 1);
+  }
+});
+
+nextStageBtn.addEventListener('click', () => {
+  if (mainStage.classList.contains('finale-mode')) return;
+  // Якщо ми ще не приміряли предмет на поточному етапі при швидкому пропуску —
+  // автоматично одягаємо перший варіант, щоб дівчинка не залишилася без вбрання
+  if (selectedVariantInStage === null && activeStages[currentStageIdx]) {
+    activeStages[currentStageIdx].applyChoice(0);
+  }
+  jumpToStage(currentStageIdx + 1);
+});
+
+// Урочистий фінал — Королівський бал!
+function launchGrandBallFinale() {
+  currentStageIdx = activeStages.length;
+  renderProgressPearls();
+  Array.from(progressGarland.children).forEach(el => {
+    el.classList.remove('active');
+    el.classList.add('done');
+  });
+
+  confirmBtn.classList.remove('visible');
+  mainStage.classList.add('finale-mode');
+  girlChar.classList.add('girl-waltz');
+  finaleRainActive = true;
+  replayBtn.style.display = 'block';
+
+  spawnSparkles(window.innerWidth * 0.5, window.innerHeight * 0.4, 70);
+  sound.startRoyalWaltz();
+}
+
+replayBtn.addEventListener('click', () => {
+  sound.playConfirmStageSound();
+  startNewGame();
+});
+
+
+/* ============================================================================
+   6. МОДАЛЬНЕ ВІКНО ПОВНОГО СПИСКУ ЗАВДАНЬ (ДЛЯ ПАКЕТНОГО ВВОДУ)
+   ============================================================================ */
+const teacherBtn = document.getElementById('teacher-btn');
+const modalBackdrop = document.getElementById('teacher-modal-backdrop');
+const syllablesTextarea = document.getElementById('syllables-input');
+const closeModalBtn = document.getElementById('close-modal-btn');
+const applySyllablesBtn = document.getElementById('apply-syllables-btn');
+
+try {
+  const saved = localStorage.getItem('royal_ball_math_v2');
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed) && parsed.length >= 3) {
+      rawSyllablesList = parsed;
+    }
+  }
+} catch (err) {}
+
+teacherBtn.addEventListener('click', () => {
+  syllablesTextarea.value = rawSyllablesList.join(' ');
+  modalBackdrop.classList.add('open');
+  syllablesTextarea.focus();
+});
+
+closeModalBtn.addEventListener('click', () => {
+  modalBackdrop.classList.remove('open');
+});
+
+document.querySelectorAll('.preset-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    syllablesTextarea.value = btn.getAttribute('data-preset');
+  });
+});
+
+applySyllablesBtn.addEventListener('click', () => {
+  const rawText = syllablesTextarea.value.trim().toUpperCase();
+  const tokens = rawText.split(/[\s,;.\n\r]+/).filter(Boolean);
+
+  if (tokens.length > 0) {
+    rawSyllablesList = tokens;
+    try {
+      localStorage.setItem('royal_ball_math_v2', JSON.stringify(rawSyllablesList));
+    } catch (err) {}
+  }
+
+  const checkedMode = document.querySelector('input[name="stage-count-mode"]:checked');
+  stageCountMode = checkedMode ? checkedMode.value : 'fit';
+
+  modalBackdrop.classList.remove('open');
+  sound.playConfirmStageSound();
+  startNewGame();
+});
+
+modalBackdrop.addEventListener('click', (e) => {
+  if (e.target === modalBackdrop) {
+    modalBackdrop.classList.remove('open');
+  }
+});
+
+// Старт гри при завантаженні сторінки
+startNewGame();
+</script>
+</body>
+</html>
