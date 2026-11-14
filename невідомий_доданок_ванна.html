@@ -1,0 +1,2437 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>5 + ? = 8</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 40%, #1d5d67 0%, #0e333a 70%, #071d22 100%);
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+  }
+  #gameCanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    cursor: pointer;
+    touch-action: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/**
+ * EDUCATIONAL MATH GAME: FINDING THE UNKNOWN ADDEND (A + ? = C  =>  ? = C - A)
+ * Pure HTML5 Canvas + Web Audio API Synthesizer.
+ * Zero external assets, zero emojis, zero verbal text, zero white rectangles.
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Virtual 16:9 widescreen coordinate system
+const VW = 1920;
+const VH = 1080;
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = window.innerWidth * dpr;
+  canvas.height = window.innerHeight * dpr;
+  const scaleX = canvas.width / VW;
+  const scaleY = canvas.height / VH;
+  scale = Math.min(scaleX, scaleY);
+  offsetX = (canvas.width - VW * scale) * 0.5;
+  offsetY = (canvas.height - VH * scale) * 0.5;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ============================================================================
+// WEB AUDIO API SYNTHESIZER (Rich procedural sound effects & music)
+// ============================================================================
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    this.muted = false;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+      }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Rubber duck quack with vocal formant filter
+  playQuack(pitchOffset = 0, delay = 0) {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime + delay;
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    const baseFreq = 310 + pitchOffset * 28 + (Math.random() * 25 - 12);
+    osc.frequency.setValueAtTime(baseFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.48, now + 0.065);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.82, now + 0.19);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1150, now);
+    filter.frequency.exponentialRampToValueAtTime(1950, now + 0.07);
+    filter.frequency.exponentialRampToValueAtTime(900, now + 0.19);
+    filter.Q.value = 4.2;
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.21);
+  }
+
+  // Water splash using filtered white noise + bubble blips
+  playSplash(intensity = 1.0, delay = 0) {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime + delay;
+    const duration = 0.35 + intensity * 0.2;
+    const bufferSize = Math.floor(this.ctx.sampleRate * duration);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.14));
+    }
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(550, now);
+    filter.frequency.exponentialRampToValueAtTime(1600, now + duration * 0.7);
+    filter.Q.value = 1.4;
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.28 * intensity, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start(now);
+
+    // Add 3 little water blips
+    for (let i = 0; i < 3; i++) {
+      this.playBubblePop(now - this.ctx.currentTime + 0.04 * i, 450 + i * 160);
+    }
+  }
+
+  // Soap bubble pop sound
+  playBubblePop(delay = 0, startFreq = 480) {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime + delay;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(startFreq, now);
+    osc.frequency.exponentialRampToValueAtTime(startFreq * 2.3, now + 0.085);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.18, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.095);
+  }
+
+  // Wooden/soap button click sound
+  playClick(freq = 520) {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, now);
+    osc.frequency.exponentialRampToValueAtTime(freq * 1.4, now + 0.06);
+
+    gain.gain.setValueAtTime(0.18, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.07);
+  }
+
+  // Joyful Hippo & Ducks victory fanfare (4 variations)
+  playVictory(variant = 0) {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const melodies = [
+      [523.25, 659.25, 783.99, 1046.50, 987.77, 1046.50],
+      [440.00, 554.37, 659.25, 880.00, 659.25, 880.00],
+      [587.33, 739.99, 880.00, 1174.66, 1046.50, 1174.66],
+      [392.00, 493.88, 587.33, 783.99, 987.77, 1174.66]
+    ];
+    const notes = melodies[variant % melodies.length];
+    const now = this.ctx.currentTime;
+
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+      const t = now + idx * 0.11;
+      osc.frequency.setValueAtTime(freq, t);
+
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.34);
+    });
+
+    // Hippo happy chuckle (bouncy low warm notes)
+    for (let i = 0; i < 4; i++) {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const t = now + 0.15 + i * 0.14;
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220 + i * 25, t);
+      osc.frequency.exponentialRampToValueAtTime(310 + i * 30, t + 0.08);
+      osc.frequency.exponentialRampToValueAtTime(190, t + 0.12);
+
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.14);
+    }
+  }
+
+  // Comical wrong answer tuba/bassoon + bubble pop
+  playWrong() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const notes = [195, 165];
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+
+      const t = now + idx * 0.18;
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, t);
+      osc.frequency.linearRampToValueAtTime(freq * 0.86, t + 0.17);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(480, t);
+
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.22, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.19);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.2);
+    });
+
+    this.playBubblePop(0.35, 360);
+  }
+}
+
+const sound = new SoundEngine();
+
+// ============================================================================
+// GAME STATE & CONFIGURATION
+// ============================================================================
+const STATE = {
+  mode: 10,              // 10 or 20
+  knownA: 2,             // First addend (already in tub)
+  unknownB: 3,           // Unknown addend (launched by hippo)
+  sumC: 5,               // Total ducks in tub
+  phase: 'INITIAL',      // 'INITIAL' -> 'TOSSING' -> 'PLAYING' -> 'CELEBRATING'
+  phaseTimer: 0,
+  celebrationType: 0,    // 0..3 varied hippo & duck celebrations
+  wrongTimer: 0,         // > 0 when hippo is doing comical wrong reaction
+  snoutBubbleSize: 0,    // Comical soap bubble on hippo snout during wrong reaction
+  showSubtractionArc: 0, // 0..1 animation progress for C - A = B visual helper
+  subtractionHelperActive: false,
+  ducks: [],
+  waterSprings: [],
+  foamClouds: [],
+  ambientBubbles: [],
+  fxParticles: [],
+  showerDrops: [],
+  buttons: [],
+  controlButtons: [],
+  mouseX: 0,
+  mouseY: 0,
+  hoveredBtn: null,
+  lastHistory: []
+};
+
+// Bathtub geometry constants
+const TUB = {
+  cx: 1170,
+  cy: 655,
+  width: 900,
+  rimY: 575,
+  waterY: 585,
+  innerLeft: 765,
+  innerRight: 1575
+};
+
+// Initialize 45 water springs across the bathtub width
+const NUM_SPRINGS = 45;
+for (let i = 0; i < NUM_SPRINGS; i++) {
+  STATE.waterSprings.push({
+    y: 0,
+    vy: 0,
+    targetY: 0
+  });
+}
+
+function splashWaterAt(x, force) {
+  const norm = (x - TUB.innerLeft) / (TUB.innerRight - TUB.innerLeft);
+  const idx = Math.max(1, Math.min(NUM_SPRINGS - 2, Math.floor(norm * NUM_SPRINGS)));
+  STATE.waterSprings[idx].vy += force;
+  if (idx > 0) STATE.waterSprings[idx - 1].vy += force * 0.6;
+  if (idx < NUM_SPRINGS - 1) STATE.waterSprings[idx + 1].vy += force * 0.6;
+}
+
+// Ambient floating soap bubbles in the bathroom
+for (let i = 0; i < 28; i++) {
+  STATE.ambientBubbles.push({
+    x: Math.random() * VW,
+    y: Math.random() * VH,
+    r: 8 + Math.random() * 24,
+    vx: (Math.random() - 0.5) * 0.4,
+    vy: -0.35 - Math.random() * 0.65,
+    wobble: Math.random() * Math.PI * 2,
+    hue: Math.random() * 360
+  });
+}
+
+// ============================================================================
+// PROBLEM GENERATOR & DUCK SLOT MANAGEMENT
+// ============================================================================
+function generateTask() {
+  const maxSum = STATE.mode;
+  const minSum = STATE.mode === 10 ? 3 : 6;
+  let sumC, knownA, unknownB, key;
+  let attempts = 0;
+
+  do {
+    sumC = Math.floor(Math.random() * (maxSum - minSum + 1)) + minSum;
+    // Ensure both A and B are at least 1
+    knownA = Math.floor(Math.random() * (sumC - 1)) + 1;
+    unknownB = sumC - knownA;
+    key = `${knownA}+${unknownB}=${sumC}`;
+    attempts++;
+  } while (STATE.lastHistory.includes(key) && attempts < 25);
+
+  STATE.lastHistory.push(key);
+  if (STATE.lastHistory.length > 6) STATE.lastHistory.shift();
+
+  STATE.knownA = knownA;
+  STATE.unknownB = unknownB;
+  STATE.sumC = sumC;
+  STATE.phase = 'INITIAL';
+  STATE.phaseTimer = 0;
+  STATE.wrongTimer = 0;
+  STATE.snoutBubbleSize = 0;
+  STATE.showSubtractionArc = 0;
+  STATE.subtractionHelperActive = false;
+  STATE.foamClouds = [];
+  STATE.showerDrops = [];
+
+  setupDucksForTask();
+  buildNumberPad();
+
+  // Gentle greeting quack from initial ducks
+  setTimeout(() => {
+    if (STATE.phase === 'INITIAL') {
+      sound.playQuack(0, 0);
+      if (STATE.knownA > 1) sound.playQuack(2, 0.14);
+    }
+  }, 180);
+}
+
+function setupDucksForTask() {
+  STATE.ducks = [];
+  const total = STATE.sumC;
+
+  // Arrange ducks in 1 or 2 neat staggered rows in the tub so every duck is 100% countable
+  const slots = [];
+  if (total <= 10) {
+    const topCount = Math.ceil(total / 2);
+    const botCount = total - topCount;
+    for (let i = 0; i < topCount; i++) {
+      const frac = topCount === 1 ? 0.5 : i / (topCount - 1);
+      slots.push({
+        x: 825 + frac * 660,
+        row: 0,
+        baseY: TUB.waterY - 12,
+        scale: 0.92
+      });
+    }
+    for (let i = 0; i < botCount; i++) {
+      const frac = botCount === 1 ? 0.5 : i / (botCount - 1);
+      slots.push({
+        x: 855 + frac * 620,
+        row: 1,
+        baseY: TUB.waterY + 14,
+        scale: 1.02
+      });
+    }
+  } else {
+    // Up to 20 ducks: 2 staggered rows of up to 10 ducks each
+    const topCount = Math.ceil(total / 2);
+    const botCount = total - topCount;
+    for (let i = 0; i < topCount; i++) {
+      const frac = topCount === 1 ? 0.5 : i / (topCount - 1);
+      slots.push({
+        x: 795 + frac * 725,
+        row: 0,
+        baseY: TUB.waterY - 16,
+        scale: 0.78
+      });
+    }
+    for (let i = 0; i < botCount; i++) {
+      const frac = botCount === 1 ? 0.5 : i / (botCount - 1);
+      slots.push({
+        x: 820 + frac * 690,
+        row: 1,
+        baseY: TUB.waterY + 15,
+        scale: 0.85
+      });
+    }
+  }
+
+  // Sort slots left-to-right so the first `knownA` ducks are on the left side,
+  // and the `unknownB` ducks land next to them cleanly
+  slots.sort((a, b) => a.x - b.x);
+
+  for (let i = 0; i < total; i++) {
+    const slot = slots[i];
+    const isInitial = i < STATE.knownA;
+    STATE.ducks.push({
+      index: i,
+      isInitial: isInitial,
+      slotX: slot.x,
+      slotY: slot.baseY,
+      row: slot.row,
+      scale: slot.scale,
+      x: isInitial ? slot.x : 535, // Basket position if waiting to be tossed
+      y: isInitial ? slot.baseY : 520,
+      vx: 0,
+      vy: 0,
+      rot: 0,
+      bobPhase: i * 0.75,
+      quackTimer: isInitial ? 0.35 : 0,
+      visible: isInitial,
+      inFlight: false,
+      flightProgress: 0,
+      flightDelay: (i - STATE.knownA) * 0.06,
+      startX: 535,
+      startY: 500,
+      bubbled: false,        // Wrapped in pink subtraction bubble (C - A helper)
+      bubbleLift: 0,         // Vertical float offset when bubbled
+      hasFoamCrown: false,   // Celebration effect
+      flipAngle: 0,          // Backflip celebration angle
+      facing: isInitial ? 1 : -1
+    });
+  }
+}
+
+// Trigger the Hippo Lady tossing the unknownB ducks from her basket into the tub
+function startDuckToss() {
+  STATE.phase = 'TOSSING';
+  STATE.phaseTimer = 0;
+  STATE.subtractionHelperActive = false;
+
+  STATE.ducks.forEach((d, idx) => {
+    d.bubbled = false;
+    d.bubbleLift = 0;
+    d.hasFoamCrown = false;
+    d.flipAngle = 0;
+    if (!d.isInitial) {
+      d.visible = false;
+      d.inFlight = true;
+      d.flightProgress = 0;
+      d.flightDelay = (idx - STATE.knownA) * 0.055;
+      d.startX = 545 + (Math.random() - 0.5) * 40;
+      d.startY = 475 + (Math.random() - 0.5) * 25;
+      d.x = d.startX;
+      d.y = d.startY;
+    }
+  });
+
+  sound.playQuack(3, 0.08);
+}
+
+// Toggle the visual subtraction helper: bubble/lift the known addend `A` ducks
+function toggleSubtractionHelper() {
+  STATE.subtractionHelperActive = !STATE.subtractionHelperActive;
+  sound.playBubblePop(0, STATE.subtractionHelperActive ? 420 : 620);
+
+  for (let i = 0; i < STATE.ducks.length; i++) {
+    const d = STATE.ducks[i];
+    if (i < STATE.knownA) {
+      d.bubbled = STATE.subtractionHelperActive;
+      if (d.bubbled) {
+        spawnBubbleBurst(d.x, d.y - 20, 5, '#ff85b3');
+      }
+    } else {
+      d.bubbled = false;
+    }
+  }
+}
+
+// ============================================================================
+// UI BUTTONS (Soap-bar Number Pad & Top-Right Brass Controls)
+// ============================================================================
+function buildNumberPad() {
+  STATE.buttons = [];
+  const count = STATE.mode === 10 ? 10 : 19;
+  const soapPalettes = [
+    { top: '#ff9ebb', bot: '#d95b82', rim: '#ffc4d6', text: '#59152b' },
+    { top: '#ffd27d', bot: '#d98a2b', rim: '#ffe6b3', text: '#5c3305' },
+    { top: '#80e5d8', bot: '#2b9e90', rim: '#b8f5ec', text: '#0b4740' },
+    { top: '#b8a2ff', bot: '#6e52cc', rim: '#dcd1ff', text: '#261466' },
+    { top: '#ffab91', bot: '#d95e38', rim: '#ffcfc2', text: '#591d0b' }
+  ];
+
+  if (count <= 10) {
+    const btnW = 136;
+    const btnH = 104;
+    const gap = 22;
+    const totalW = count * btnW + (count - 1) * gap;
+    const startX = (VW - totalW) * 0.5;
+    const y = 930;
+
+    for (let i = 1; i <= count; i++) {
+      const pal = soapPalettes[(i - 1) % soapPalettes.length];
+      STATE.buttons.push({
+        val: i,
+        x: startX + (i - 1) * (btnW + gap),
+        y: y,
+        w: btnW,
+        h: btnH,
+        pal: pal,
+        scale: 1,
+        shakeTime: 0,
+        hover: 0
+      });
+    }
+  } else {
+    // 19 soap bars in two neat rows (10 on top row, 9 on bottom row)
+    const btnW = 126;
+    const btnH = 74;
+    const gapX = 18;
+    const row1Count = 10;
+    const row2Count = 9;
+    const totalW1 = row1Count * btnW + (row1Count - 1) * gapX;
+    const totalW2 = row2Count * btnW + (row2Count - 1) * gapX;
+    const startX1 = (VW - totalW1) * 0.5;
+    const startX2 = (VW - totalW2) * 0.5;
+
+    for (let i = 1; i <= 19; i++) {
+      const isRow1 = i <= 10;
+      const idx = isRow1 ? i - 1 : i - 11;
+      const pal = soapPalettes[(i - 1) % soapPalettes.length];
+      STATE.buttons.push({
+        val: i,
+        x: (isRow1 ? startX1 : startX2) + idx * (btnW + gapX),
+        y: isRow1 ? 892 : 978,
+        w: btnW,
+        h: btnH,
+        pal: pal,
+        scale: 1,
+        shakeTime: 0,
+        hover: 0
+      });
+    }
+  }
+}
+
+function buildControlButtons() {
+  STATE.controlButtons = [
+    { id: 'MODE_10', x: 1385, y: 36, w: 92, h: 72, label: '10' },
+    { id: 'MODE_20', x: 1490, y: 36, w: 92, h: 72, label: '20' },
+    { id: 'REPLAY',  x: 1595, y: 36, w: 82, h: 72, label: '' },
+    { id: 'MUTE',    x: 1690, y: 36, w: 82, h: 72, label: '' },
+    { id: 'NEXT',    x: 1785, y: 36, w: 102, h: 72, label: '' }
+  ];
+}
+buildControlButtons();
+
+// ============================================================================
+// PARTICLE HELPERS
+// ============================================================================
+function spawnBubbleBurst(x, y, count = 12, color = '#ffffff') {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1.5 + Math.random() * 5.5;
+    STATE.fxParticles.push({
+      type: 'bubble',
+      x: x + (Math.random() - 0.5) * 30,
+      y: y + (Math.random() - 0.5) * 20,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2.0,
+      r: 7 + Math.random() * 16,
+      alpha: 1,
+      color: color,
+      life: 1.0,
+      decay: 0.015 + Math.random() * 0.015
+    });
+  }
+}
+
+function spawnCelebrationParticles(variant) {
+  for (let i = 0; i < 45; i++) {
+    const isStar = variant === 1 && i % 2 === 0;
+    const isPetal = variant === 3 && i % 2 === 0;
+    STATE.fxParticles.push({
+      type: isStar ? 'star' : (isPetal ? 'petal' : 'bubble'),
+      x: 420 + Math.random() * 1150,
+      y: 550 + Math.random() * 120,
+      vx: (Math.random() - 0.5) * 9,
+      vy: -4 - Math.random() * 9,
+      r: 10 + Math.random() * 16,
+      rot: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.14,
+      color: ['#ff85b3', '#ffd166', '#72efdd', '#c77dff', '#ff9ebb'][i % 5],
+      life: 1.0,
+      decay: 0.009 + Math.random() * 0.008
+    });
+  }
+}
+
+// ============================================================================
+// INPUT HANDLING (Mouse, Touch, Keyboard)
+// ============================================================================
+function screenToVirtual(clientX, clientY) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cx = clientX * dpr;
+  const cy = clientY * dpr;
+  return {
+    x: (cx - offsetX) / scale,
+    y: (cy - offsetY) / scale
+  };
+}
+
+function handlePointerDown(clientX, clientY) {
+  sound.init();
+  const pt = screenToVirtual(clientX, clientY);
+  STATE.mouseX = pt.x;
+  STATE.mouseY = pt.y;
+
+  // 1. Check Top-Right Control Buttons
+  for (const cBtn of STATE.controlButtons) {
+    if (pt.x >= cBtn.x && pt.x <= cBtn.x + cBtn.w && pt.y >= cBtn.y && pt.y <= cBtn.y + cBtn.h) {
+      sound.playClick(600);
+      if (cBtn.id === 'MODE_10' && STATE.mode !== 10) {
+        STATE.mode = 10;
+        generateTask();
+      } else if (cBtn.id === 'MODE_20' && STATE.mode !== 20) {
+        STATE.mode = 20;
+        generateTask();
+      } else if (cBtn.id === 'REPLAY') {
+        startDuckToss();
+      } else if (cBtn.id === 'MUTE') {
+        sound.muted = !sound.muted;
+      } else if (cBtn.id === 'NEXT') {
+        // Immediate skip to next generated task ("далі")
+        spawnBubbleBurst(cBtn.x + cBtn.w * 0.5, cBtn.y + cBtn.h * 0.5, 10, '#72efdd');
+        generateTask();
+      }
+      return;
+    }
+  }
+
+  // 2. Check Number Pad Soap Buttons
+  if (STATE.phase === 'PLAYING' || STATE.phase === 'INITIAL' || STATE.phase === 'TOSSING') {
+    for (const btn of STATE.buttons) {
+      if (pt.x >= btn.x && pt.x <= btn.x + btn.w && pt.y >= btn.y && pt.y <= btn.y + btn.h) {
+        checkAnswer(btn);
+        return;
+      }
+    }
+  }
+
+  // 3. Check Equation Plaque Interaction:
+  // Clicking `A` or the subtraction bubble button toggles the C - A visual bubble helper!
+  if (pt.x >= 620 && pt.x <= 830 && pt.y >= 45 && pt.y <= 195) {
+    toggleSubtractionHelper();
+    return;
+  }
+  // Clicking `?` on the plaque or the Hippo's basket replays the duck launch animation
+  if ((pt.x >= 910 && pt.x <= 1070 && pt.y >= 45 && pt.y <= 195) ||
+      (pt.x >= 440 && pt.x <= 640 && pt.y >= 420 && pt.y <= 580)) {
+    if (STATE.phase === 'PLAYING') {
+      startDuckToss();
+      return;
+    }
+  }
+
+  // 4. Check clicking on any duck in the bathtub
+  for (let i = STATE.ducks.length - 1; i >= 0; i--) {
+    const d = STATE.ducks[i];
+    if (!d.visible) continue;
+    const dy = d.y - d.bubbleLift;
+    const dist = Math.hypot(pt.x - d.x, pt.y - dy);
+    if (dist < 48 * d.scale) {
+      d.quackTimer = 0.32;
+      sound.playQuack(i % 5);
+      splashWaterAt(d.x, 8);
+      // Toggle pink subtraction bubble on this duck so child can manually isolate ducks
+      d.bubbled = !d.bubbled;
+      sound.playBubblePop(0.03, d.bubbled ? 480 : 660);
+      spawnBubbleBurst(d.x, dy, 6, '#ff9ebb');
+      return;
+    }
+  }
+
+  // 5. Clicking on the Hippo Lady makes her giggle/wiggle ears and blow a bubble
+  if (pt.x >= 180 && pt.x <= 560 && pt.y >= 170 && pt.y <= 780) {
+    sound.playBubblePop(0, 520);
+    spawnBubbleBurst(415, 340, 10, '#ff9ebb');
+  }
+}
+
+function checkAnswer(btn) {
+  // Ensure all ducks are visible if child answers super fast during toss
+  STATE.ducks.forEach(d => {
+    d.visible = true;
+    d.inFlight = false;
+    d.x = d.slotX;
+    d.y = d.slotY;
+  });
+
+  if (btn.val === STATE.unknownB) {
+    // CORRECT ANSWER!
+    STATE.phase = 'CELEBRATING';
+    STATE.phaseTimer = 0;
+    STATE.celebrationType = (STATE.celebrationType + 1) % 4;
+    STATE.showSubtractionArc = 0.01;
+    btn.scale = 1.25;
+
+    // Visually highlight C - A = B: lift the first A ducks in pink bubbles so the B remaining ducks shine
+    STATE.ducks.forEach((d, idx) => {
+      d.bubbled = idx < STATE.knownA;
+      d.quackTimer = 0.6;
+      if (STATE.celebrationType === 2 && !d.bubbled) {
+        d.hasFoamCrown = true;
+      }
+    });
+
+    sound.playSplash(1.1, 0);
+    sound.playVictory(STATE.celebrationType);
+    spawnCelebrationParticles(STATE.celebrationType);
+
+    for (let i = 0; i < 6; i++) {
+      splashWaterAt(830 + i * 130, 18);
+    }
+  } else {
+    // WRONG ANSWER: Comical hippo head tilt + snout bubble pop + button shake
+    btn.shakeTime = 0.55;
+    STATE.wrongTimer = 1.1;
+    STATE.snoutBubbleSize = 0.01;
+    sound.playWrong();
+    spawnBubbleBurst(btn.x + btn.w * 0.5, btn.y + btn.h * 0.5, 8, '#ffab91');
+  }
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handlePointerDown(e.clientX, e.clientY);
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  const pt = screenToVirtual(e.clientX, e.clientY);
+  STATE.mouseX = pt.x;
+  STATE.mouseY = pt.y;
+});
+
+// Keyboard support for numbers and Enter/RightArrow for Next
+let keyBuffer = '';
+let keyBufferTimer = null;
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') {
+    sound.playClick(600);
+    generateTask();
+    return;
+  }
+  if (e.key >= '0' && e.key <= '9') {
+    sound.init();
+    keyBuffer += e.key;
+    clearTimeout(keyBufferTimer);
+    const val = parseInt(keyBuffer, 10);
+    // If mode 10 or 2-digit number typed, check immediately
+    if (STATE.mode === 10 || val > 2 || keyBuffer.length >= 2) {
+      const targetBtn = STATE.buttons.find(b => b.val === val);
+      if (targetBtn && STATE.phase !== 'CELEBRATING') {
+        checkAnswer(targetBtn);
+      }
+      keyBuffer = '';
+    } else {
+      keyBufferTimer = setTimeout(() => {
+        const b = STATE.buttons.find(btn => btn.val === parseInt(keyBuffer, 10));
+        if (b && STATE.phase !== 'CELEBRATING') checkAnswer(b);
+        keyBuffer = '';
+      }, 420);
+    }
+  }
+});
+
+// ============================================================================
+// MAIN UPDATE LOOP (Physics, Springs, Character & Duck Animations)
+// ============================================================================
+let lastTime = performance.now();
+
+function update(dt, time) {
+  STATE.phaseTimer += dt;
+
+  // Phase transitions
+  if (STATE.phase === 'INITIAL' && STATE.phaseTimer > 0.85) {
+    startDuckToss();
+  } else if (STATE.phase === 'TOSSING') {
+    let allLanded = true;
+    STATE.ducks.forEach((d, idx) => {
+      if (d.inFlight) {
+        if (STATE.phaseTimer >= d.flightDelay) {
+          d.visible = true;
+          d.flightProgress += dt * 1.65;
+          if (d.flightProgress >= 1) {
+            d.flightProgress = 1;
+            d.inFlight = false;
+            d.x = d.slotX;
+            d.y = d.slotY;
+            d.quackTimer = 0.35;
+            // Big splash and foam cloud when landing in the tub!
+            splashWaterAt(d.slotX, 22);
+            sound.playSplash(0.55, 0);
+            sound.playQuack(idx % 5, 0.04);
+            for (let f = 0; f < 4; f++) {
+              STATE.foamClouds.push({
+                x: d.slotX + (Math.random() - 0.5) * 95,
+                y: TUB.waterY - 10 + (Math.random() - 0.5) * 40,
+                r: 32 + Math.random() * 28,
+                vx: (Math.random() - 0.5) * 1.2,
+                vy: -0.4 - Math.random() * 0.8,
+                life: 1.0
+              });
+            }
+          } else {
+            allLanded = false;
+            const p = d.flightProgress;
+            d.x = d.startX + (d.slotX - d.startX) * p;
+            const arcHeight = 210 + (idx % 3) * 35;
+            d.y = d.startY + (d.slotY - d.startY) * p - Math.sin(p * Math.PI) * arcHeight;
+            d.rot = Math.sin(p * Math.PI * 2) * 0.38;
+          }
+        } else {
+          allLanded = false;
+        }
+      }
+    });
+
+    if (allLanded && STATE.phaseTimer > 1.0) {
+      STATE.phase = 'PLAYING';
+      STATE.phaseTimer = 0;
+    }
+  } else if (STATE.phase === 'CELEBRATING') {
+    if (STATE.showSubtractionArc < 1) {
+      STATE.showSubtractionArc = Math.min(1, STATE.showSubtractionArc + dt * 1.8);
+    }
+    // Showerhead rainbow fountain in celebration variant 0
+    if (STATE.celebrationType === 0 && STATE.phaseTimer < 2.5) {
+      for (let i = 0; i < 3; i++) {
+        STATE.showerDrops.push({
+          x: 1565 + (Math.random() - 0.5) * 18,
+          y: 315 + (Math.random() - 0.5) * 18,
+          vx: -4.5 - Math.random() * 5.5,
+          vy: 1.5 + Math.random() * 3.5,
+          hue: (time * 180 + i * 60) % 360,
+          life: 1.0
+        });
+      }
+    }
+    // Auto-advance to next task after celebration completes
+    if (STATE.phaseTimer > 3.2) {
+      generateTask();
+    }
+  }
+
+  // Wrong answer timer & comical bubble on hippo snout
+  if (STATE.wrongTimer > 0) {
+    STATE.wrongTimer = Math.max(0, STATE.wrongTimer - dt);
+    if (STATE.wrongTimer > 0.35) {
+      STATE.snoutBubbleSize = Math.min(1, STATE.snoutBubbleSize + dt * 2.8);
+    } else if (STATE.snoutBubbleSize > 0) {
+      spawnBubbleBurst(425, 345, 8, '#ff9ebb');
+      STATE.snoutBubbleSize = 0;
+    }
+  }
+
+  // Update 1D Water Wave Springs (Hooke's law + neighbor propagation)
+  const k = 0.045;
+  const damp = 0.91;
+  for (let i = 0; i < NUM_SPRINGS; i++) {
+    const s = STATE.waterSprings[i];
+    const target = Math.sin(time * 2.6 + i * 0.45) * 4.5;
+    const force = -k * (s.y - target);
+    s.vy = (s.vy + force) * damp;
+    s.y += s.vy;
+  }
+  for (let iter = 0; iter < 2; iter++) {
+    for (let i = 0; i < NUM_SPRINGS; i++) {
+      if (i > 0) {
+        const dL = 0.06 * (STATE.waterSprings[i].y - STATE.waterSprings[i - 1].y);
+        STATE.waterSprings[i - 1].vy += dL;
+      }
+      if (i < NUM_SPRINGS - 1) {
+        const dR = 0.06 * (STATE.waterSprings[i].y - STATE.waterSprings[i + 1].y);
+        STATE.waterSprings[i + 1].vy += dR;
+      }
+    }
+  }
+
+  // Update Ducks bobbing on water waves
+  STATE.ducks.forEach((d, idx) => {
+    if (!d.visible) return;
+    if (d.quackTimer > 0) d.quackTimer = Math.max(0, d.quackTimer - dt);
+
+    // Target lift when wrapped in a subtraction bubble
+    const targetLift = d.bubbled ? 72 : 0;
+    d.bubbleLift += (targetLift - d.bubbleLift) * Math.min(1, dt * 8);
+
+    if (!d.inFlight) {
+      const norm = Math.max(0, Math.min(1, (d.slotX - TUB.innerLeft) / (TUB.innerRight - TUB.innerLeft)));
+      const sIdx = Math.min(NUM_SPRINGS - 1, Math.floor(norm * NUM_SPRINGS));
+      const waveY = STATE.waterSprings[sIdx].y;
+
+      let celebOffsetY = 0;
+      if (STATE.phase === 'CELEBRATING' && !d.bubbled) {
+        if (STATE.celebrationType === 0) {
+          d.flipAngle = Math.min(Math.PI * 2, d.flipAngle + dt * 6.5);
+        } else {
+          celebOffsetY = -Math.abs(Math.sin(time * 9 + idx * 0.6)) * 26;
+        }
+      } else {
+        d.flipAngle = 0;
+      }
+
+      d.x = d.slotX + Math.sin(time * 1.8 + d.bobPhase) * 4;
+      d.y = d.slotY + waveY * 0.85 + Math.sin(time * 3.2 + d.bobPhase) * 3.5 + celebOffsetY;
+      d.rot = Math.cos(time * 2.8 + d.bobPhase) * 0.08 + d.flipAngle;
+    }
+  });
+
+  // Update Temporary Foam Clouds
+  for (let i = STATE.foamClouds.length - 1; i >= 0; i--) {
+    const fc = STATE.foamClouds[i];
+    fc.x += fc.vx;
+    fc.y += fc.vy;
+    fc.r += dt * 12;
+    fc.life -= dt * 0.72;
+    if (fc.life <= 0) STATE.foamClouds.splice(i, 1);
+  }
+
+  // Update Shower Drops
+  for (let i = STATE.showerDrops.length - 1; i >= 0; i--) {
+    const sd = STATE.showerDrops[i];
+    sd.x += sd.vx;
+    sd.y += sd.vy;
+    sd.vy += 0.28;
+    sd.life -= dt * 0.9;
+    if (sd.y >= TUB.waterY) {
+      splashWaterAt(sd.x, 3);
+      STATE.showerDrops.splice(i, 1);
+    } else if (sd.life <= 0) {
+      STATE.showerDrops.splice(i, 1);
+    }
+  }
+
+  // Update FX Particles
+  for (let i = STATE.fxParticles.length - 1; i >= 0; i--) {
+    const p = STATE.fxParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.type !== 'bubble') p.vy += 0.18;
+    if (p.rot !== undefined) p.rot += p.vRot;
+    p.life -= p.decay;
+    if (p.life <= 0) STATE.fxParticles.splice(i, 1);
+  }
+
+  // Update Ambient Soap Bubbles
+  STATE.ambientBubbles.forEach(b => {
+    b.wobble += dt * 2.2;
+    b.x += b.vx + Math.sin(b.wobble) * 0.35;
+    b.y += b.vy;
+    if (b.y < -40) {
+      b.y = VH + 40;
+      b.x = Math.random() * VW;
+    }
+  });
+
+  // Update Number Pad Button animations
+  STATE.buttons.forEach(b => {
+    const isHover = STATE.mouseX >= b.x && STATE.mouseX <= b.x + b.w &&
+                    STATE.mouseY >= b.y && STATE.mouseY <= b.y + b.h;
+    b.hover += ((isHover ? 1 : 0) - b.hover) * Math.min(1, dt * 12);
+    b.scale += (1 - b.scale) * Math.min(1, dt * 10);
+    if (b.shakeTime > 0) b.shakeTime = Math.max(0, b.shakeTime - dt);
+  });
+}
+
+// ============================================================================
+// DRAWING FUNCTIONS: RICH VINTAGE SPA BATHROOM BACKGROUND
+// ============================================================================
+function drawRoundedRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawBackground(time) {
+  // 1. Rich Teal & Turquoise Ceramic Wall Tiles
+  const wallGrad = ctx.createLinearGradient(0, 0, 0, 740);
+  wallGrad.addColorStop(0, '#134e57');
+  wallGrad.addColorStop(0.55, '#1d6f7a');
+  wallGrad.addColorStop(1, '#12464f');
+  ctx.fillStyle = wallGrad;
+  ctx.fillRect(0, 0, VW, 740);
+
+  // Ceramic subway/mosaic tile pattern with subtle shimmer
+  const tileW = 96;
+  const tileH = 48;
+  ctx.lineWidth = 2;
+  for (let row = 0; row < 16; row++) {
+    const y = row * tileH;
+    const shift = (row % 2) * (tileW * 0.5);
+    for (let col = -1; col < 21; col++) {
+      const x = col * tileW + shift;
+      const shimmer = Math.sin(row * 1.7 + col * 2.3 + time * 0.8) * 0.04;
+      ctx.fillStyle = `rgba(120, 235, 240, ${0.05 + shimmer})`;
+      ctx.fillRect(x + 3, y + 3, tileW - 6, tileH - 6);
+      ctx.strokeStyle = 'rgba(8, 34, 39, 0.45)';
+      ctx.strokeRect(x, y, tileW, tileH);
+    }
+  }
+
+  // Animated water caustic light waves reflected on the wall tiles
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  for (let i = 0; i < 6; i++) {
+    ctx.beginPath();
+    const baseY = 160 + i * 95;
+    ctx.moveTo(0, baseY);
+    for (let x = 0; x <= VW; x += 120) {
+      const wy = baseY + Math.sin(x * 0.006 + time * 1.4 + i) * 28;
+      ctx.lineTo(x, wy);
+    }
+    ctx.lineWidth = 22;
+    ctx.strokeStyle = 'rgba(114, 239, 221, 0.045)';
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Ornate Dado Rail (Wooden & Brass Wall Molding)
+  const railGrad = ctx.createLinearGradient(0, 715, 0, 750);
+  railGrad.addColorStop(0, '#d4a359');
+  railGrad.addColorStop(0.3, '#8c5327');
+  railGrad.addColorStop(0.7, '#5e3214');
+  railGrad.addColorStop(1, '#3b1d09');
+  ctx.fillStyle = railGrad;
+  ctx.fillRect(0, 715, VW, 35);
+
+  // 2. Terracotta & Warm Amber Patterned Floor
+  const floorGrad = ctx.createLinearGradient(0, 750, 0, VH);
+  floorGrad.addColorStop(0, '#783c2a');
+  floorGrad.addColorStop(0.5, '#59291c');
+  floorGrad.addColorStop(1, '#38170e');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, 750, VW, VH - 750);
+
+  // Perspective decorative diamond floor tiles
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 750, VW, VH - 750);
+  ctx.clip();
+  for (let r = 0; r < 7; r++) {
+    const y = 750 + r * 56;
+    for (let c = -2; c < 24; c++) {
+      const x = c * 110 + (r % 2) * 55;
+      ctx.beginPath();
+      ctx.moveTo(x, y - 26);
+      ctx.lineTo(x + 52, y);
+      ctx.lineTo(x, y + 26);
+      ctx.lineTo(x - 52, y);
+      ctx.closePath();
+      ctx.fillStyle = (r + c) % 2 === 0 ? 'rgba(235, 168, 108, 0.14)' : 'rgba(45, 16, 10, 0.25)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 205, 148, 0.12)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // 3. Arched Sunny Window on Left Wall
+  ctx.save();
+  const winX = 75, winY = 95, winW = 220, winH = 350;
+  ctx.beginPath();
+  ctx.arc(winX + winW / 2, winY + winW / 2, winW / 2, Math.PI, 0);
+  ctx.lineTo(winX + winW, winY + winH);
+  ctx.lineTo(winX, winY + winH);
+  ctx.closePath();
+  ctx.save();
+  ctx.clip();
+
+  // Warm sky gradient inside window
+  const skyGrad = ctx.createLinearGradient(winX, winY, winX, winY + winH);
+  skyGrad.addColorStop(0, '#5ec8f2');
+  skyGrad.addColorStop(0.6, '#a6e3f7');
+  skyGrad.addColorStop(1, '#ffe5a3');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(winX, winY, winW, winH);
+
+  // Drifting golden clouds
+  ctx.fillStyle = 'rgba(255, 250, 235, 0.78)';
+  const cloudX = winX + ((time * 12) % (winW + 90)) - 45;
+  ctx.beginPath();
+  ctx.arc(cloudX, winY + 110, 28, 0, Math.PI * 2);
+  ctx.arc(cloudX + 24, winY + 102, 34, 0, Math.PI * 2);
+  ctx.arc(cloudX + 50, winY + 112, 24, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Distant lush green hills
+  ctx.fillStyle = '#52b788';
+  ctx.beginPath();
+  ctx.arc(winX + 60, winY + winH + 20, 120, Math.PI, 0);
+  ctx.arc(winX + 180, winY + winH + 30, 110, Math.PI, 0);
+  ctx.fill();
+
+  // Window wooden mullions
+  ctx.strokeStyle = '#6e3d1e';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(winX + winW / 2, winY);
+  ctx.lineTo(winX + winW / 2, winY + winH);
+  ctx.moveTo(winX, winY + 190);
+  ctx.lineTo(winX + winW, winY + 190);
+  ctx.stroke();
+  ctx.restore();
+
+  // Outer carved wooden window frame
+  ctx.strokeStyle = '#8c4f27';
+  ctx.lineWidth = 14;
+  ctx.stroke();
+  ctx.strokeStyle = '#d4a359';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  // Swaying Potted Fern on Window Sill
+  ctx.fillStyle = '#5c3116';
+  drawRoundedRect(winX - 16, winY + winH - 6, winW + 32, 22, 8);
+  ctx.fill();
+
+  // Terracotta pot
+  const potX = winX + 65, potY = winY + winH - 6;
+  ctx.fillStyle = '#c9643b';
+  ctx.beginPath();
+  ctx.moveTo(potX - 28, potY - 46);
+  ctx.lineTo(potX + 28, potY - 46);
+  ctx.lineTo(potX + 20, potY);
+  ctx.lineTo(potX - 20, potY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Swaying fern fronds
+  for (let f = -3; f <= 3; f++) {
+    ctx.save();
+    ctx.translate(potX, potY - 44);
+    ctx.rotate(f * 0.28 + Math.sin(time * 2.1 + f) * 0.05);
+    ctx.strokeStyle = '#2d936c';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(f * 8, -35, f * 16, -68);
+    ctx.stroke();
+    ctx.fillStyle = '#40b886';
+    for (let l = 1; l <= 5; l++) {
+      const ly = -l * 12;
+      ctx.beginPath();
+      ctx.ellipse(f * 2.2 * l - 7, ly, 8, 3.5, -0.4, 0, Math.PI * 2);
+      ctx.ellipse(f * 2.2 * l + 7, ly, 8, 3.5, 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // 4. Right Wall Wooden Spa Shelf with Colorful Glass Potion Bottles & Towels
+  const shelfX = 1450, shelfY = 235, shelfW = 390, shelfH = 18;
+  ctx.fillStyle = '#6e3b1b';
+  drawRoundedRect(shelfX, shelfY, shelfW, shelfH, 6);
+  ctx.fill();
+
+  // Bottle 1 (Lavender bath salts)
+  drawRoundedRect(shelfX + 35, shelfY - 68, 42, 68, 10);
+  ctx.fillStyle = '#b388eb';
+  ctx.fill();
+  ctx.fillStyle = '#d4a359';
+  ctx.fillRect(shelfX + 46, shelfY - 80, 20, 12);
+
+  // Bottle 2 (Round rose perfume bottle)
+  ctx.fillStyle = '#ff758f';
+  ctx.beginPath();
+  ctx.arc(shelfX + 120, shelfY - 32, 32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.arc(shelfX + 120, shelfY - 72, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Rolled plush spa towels on shelf
+  const towelColors = ['#ff9ebb', '#ffd166', '#72efdd'];
+  towelColors.forEach((col, idx) => {
+    const tx = shelfX + 205 + (idx % 2) * 58 + (idx === 2 ? 29 : 0);
+    const ty = shelfY - 22 - (idx === 2 ? 36 : 0);
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(110, 45, 65, 0.35)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 12, 0, Math.PI * 1.5);
+    ctx.stroke();
+  });
+
+  // 5. Plush Braided Pink & Rose Bath Rug under the Bathtub
+  ctx.save();
+  ctx.translate(1150, 815);
+  const rugGrad = ctx.createRadialGradient(0, 0, 60, 0, 0, 560);
+  rugGrad.addColorStop(0, '#ff85a1');
+  rugGrad.addColorStop(0.55, '#d84a6e');
+  rugGrad.addColorStop(0.85, '#ff9ebb');
+  rugGrad.addColorStop(1, '#9e2a49');
+  ctx.fillStyle = rugGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 560, 78, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffcad4';
+  ctx.lineWidth = 5;
+  ctx.setLineDash([16, 10]);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 520, 64, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+// ============================================================================
+// DRAWING THE REALISTIC FUNNY HIPPO LADY IN A PINK DRESS
+// ============================================================================
+function drawHippoLady(time) {
+  ctx.save();
+
+  const isCelebrating = STATE.phase === 'CELEBRATING';
+  const isTossing = STATE.phase === 'TOSSING';
+  const isWrong = STATE.wrongTimer > 0;
+
+  // Dynamic body bounce & sway
+  let bounceY = Math.sin(time * 2.8) * 5;
+  let bodyRot = Math.sin(time * 1.4) * 0.025;
+  let headTilt = Math.sin(time * 1.9) * 0.04;
+
+  if (isCelebrating) {
+    bounceY = -Math.abs(Math.sin(time * 10)) * 34;
+    bodyRot = Math.sin(time * 10) * 0.09;
+    headTilt = Math.sin(time * 10) * 0.14;
+  } else if (isTossing && STATE.phaseTimer < 0.7) {
+    bounceY = -Math.sin(STATE.phaseTimer * Math.PI / 0.7) * 22;
+    bodyRot = 0.08;
+  } else if (isWrong) {
+    headTilt = -0.22 * Math.sin(STATE.wrongTimer * Math.PI * 2);
+  }
+
+  const hipX = 395;
+  const hipY = 585 + bounceY;
+  ctx.translate(hipX, hipY);
+  ctx.rotate(bodyRot);
+
+  // Shadow under Hippo Lady
+  ctx.save();
+  ctx.translate(0, 215 - bounceY);
+  ctx.fillStyle = 'rgba(20, 8, 5, 0.38)';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 175, 36, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 1. Chubby Hippo Legs & Cute Pink Spa Slippers
+  [-68, 68].forEach((lx, idx) => {
+    const legLift = isCelebrating ? Math.max(0, Math.sin(time * 10 + idx * Math.PI)) * 28 : 0;
+    ctx.save();
+    ctx.translate(lx, 155 - legLift);
+
+    // Leg cylinder
+    const legGrad = ctx.createLinearGradient(-35, 0, 35, 0);
+    legGrad.addColorStop(0, '#7d6b7d');
+    legGrad.addColorStop(0.5, '#a895a8');
+    legGrad.addColorStop(1, '#685668');
+    ctx.fillStyle = legGrad;
+    drawRoundedRect(-34, -20, 68, 65, 26);
+    ctx.fill();
+
+    // Fluffy Pink Slipper
+    const slipGrad = ctx.createRadialGradient(0, 42, 5, 0, 42, 46);
+    slipGrad.addColorStop(0, '#ffb3c6');
+    slipGrad.addColorStop(1, '#d94c76');
+    ctx.fillStyle = slipGrad;
+    ctx.beginPath();
+    ctx.ellipse(idx === 0 ? -6 : 6, 44, 46, 22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cute pom-pom on slipper
+    ctx.fillStyle = '#ffe5ec';
+    ctx.beginPath();
+    ctx.arc(idx === 0 ? -16 : 16, 34, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // 2. Flowing Rosy-Pink Dress with Polka Dots, Satin Ribbon & Lace Frills
+  ctx.save();
+  const dressSway = Math.sin(time * 3.2) * 8 + (isCelebrating ? Math.sin(time * 12) * 18 : 0);
+
+  // Lace under-ruffle along the bottom hem
+  ctx.fillStyle = '#ffccd5';
+  for (let i = -7; i <= 7; i++) {
+    const rx = i * 24 + dressSway * 0.8;
+    const ry = 152 - Math.abs(i) * 2.5;
+    ctx.beginPath();
+    ctx.arc(rx, ry, 18, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Main Dress Bell Skirt & Bodice
+  const dressGrad = ctx.createRadialGradient(-25, 10, 20, 0, 40, 210);
+  dressGrad.addColorStop(0, '#ff8fab');
+  dressGrad.addColorStop(0.55, '#fb5687');
+  dressGrad.addColorStop(1, '#b5174e');
+  ctx.fillStyle = dressGrad;
+
+  ctx.beginPath();
+  ctx.moveTo(-105, -90);
+  ctx.quadraticCurveTo(-155, 35, -185 + dressSway, 148);
+  ctx.quadraticCurveTo(0, 178, 185 + dressSway, 148);
+  ctx.quadraticCurveTo(155, 35, 105, -90);
+  ctx.closePath();
+  ctx.fill();
+
+  // Subtle woven polka-dot pattern clipped inside the dress
+  ctx.save();
+  ctx.clip();
+  ctx.fillStyle = 'rgba(255, 225, 235, 0.24)';
+  for (let py = -70; py < 160; py += 42) {
+    for (let px = -160; px <= 160; px += 46) {
+      ctx.beginPath();
+      ctx.arc(px + (py % 84 === 0 ? 20 : 0) + dressSway * 0.4, py, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  // Satin Waist Ribbon & Bow
+  ctx.fillStyle = '#9e1444';
+  ctx.beginPath();
+  ctx.ellipse(0, -15, 126, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Frilly Neckline Collar
+  ctx.fillStyle = '#ffe5ec';
+  for (let c = -4; c <= 4; c++) {
+    ctx.beginPath();
+    ctx.arc(c * 24, -88 + Math.abs(c) * 2, 17, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 3. Left Arm (Back/Side Arm)
+  ctx.save();
+  let leftArmRot = -0.35 + Math.sin(time * 2.5) * 0.06;
+  if (isTossing && STATE.phaseTimer < 0.65) {
+    leftArmRot = -0.95 * Math.sin(STATE.phaseTimer * Math.PI / 0.65);
+  } else if (isCelebrating) {
+    leftArmRot = -1.1 + Math.sin(time * 14) * 0.35;
+  }
+  ctx.translate(-105, -65);
+  ctx.rotate(leftArmRot);
+
+  // Pink puff sleeve
+  ctx.fillStyle = '#ff759f';
+  ctx.beginPath();
+  ctx.arc(0, 0, 36, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hippo arm
+  const armGrad = ctx.createLinearGradient(-25, 0, 25, 95);
+  armGrad.addColorStop(0, '#a895a8');
+  armGrad.addColorStop(1, '#7d6b7d');
+  ctx.fillStyle = armGrad;
+  drawRoundedRect(-22, 10, 44, 92, 22);
+  ctx.fill();
+  ctx.restore();
+
+  // 4. Articulated Hippo Head, Snout, Ears & Pink Satin Bow
+  ctx.save();
+  ctx.translate(0, -145);
+  ctx.rotate(headTilt);
+
+  // Wiggling Hippo Ears
+  const earWiggle = Math.sin(time * 4.2) * 0.12 + (isCelebrating ? Math.sin(time * 16) * 0.25 : 0);
+  [-78, 78].forEach((ex, i) => {
+    ctx.save();
+    ctx.translate(ex, -92);
+    ctx.rotate((i === 0 ? -0.45 : 0.45) + (i === 0 ? -earWiggle : earWiggle));
+    ctx.fillStyle = '#8b788b';
+    ctx.beginPath();
+    ctx.ellipse(0, -18, 22, 32, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#f2a2ba';
+    ctx.beginPath();
+    ctx.ellipse(0, -16, 12, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Cute Pink Polka-Dot Shower Cap / Big Satin Bow on Top of Head
+  ctx.save();
+  ctx.translate(0, -108);
+  ctx.fillStyle = '#ff5d8f';
+  ctx.beginPath();
+  ctx.ellipse(-34, -6, 36, 20, -0.25, 0, Math.PI * 2);
+  ctx.ellipse(34, -6, 36, 20, 0.25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffacc5';
+  ctx.beginPath();
+  ctx.arc(0, -6, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Upper Head Cranium
+  const headGrad = ctx.createRadialGradient(-20, -65, 15, 0, -50, 105);
+  headGrad.addColorStop(0, '#c2b0c2');
+  headGrad.addColorStop(0.7, '#9a869a');
+  headGrad.addColorStop(1, '#736073');
+  ctx.fillStyle = headGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, -52, 86, 72, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Expressive Eyes with Blinking & Long Eyelashes
+  const isBlinking = (time % 4.2) > 4.02;
+  [-36, 36].forEach((eyeX, i) => {
+    ctx.save();
+    ctx.translate(eyeX, -62);
+
+    if (isBlinking) {
+      ctx.strokeStyle = '#3d293d';
+      ctx.lineWidth = 4.5;
+      ctx.beginPath();
+      ctx.arc(0, 4, 16, 0.1, Math.PI - 0.1);
+      ctx.stroke();
+    } else if (isCelebrating) {
+      // Happy joyful curved eyes
+      ctx.strokeStyle = '#3d293d';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(0, 6, 16, Math.PI + 0.2, -0.2);
+      ctx.stroke();
+    } else {
+      // Sclera (warm ivory)
+      ctx.fillStyle = '#fff5eb';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 17, 21, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Iris (looking slightly toward the bathtub)
+      const lookX = 4;
+      const lookY = 2;
+      ctx.fillStyle = '#4a2c40';
+      ctx.beginPath();
+      ctx.arc(lookX, lookY, 10.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Specular catchlights
+      ctx.fillStyle = '#ffe8d6';
+      ctx.beginPath();
+      ctx.arc(lookX - 3, lookY - 4, 4, 0, Math.PI * 2);
+      ctx.arc(lookX + 4, lookY + 3, 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eyelashes
+      ctx.strokeStyle = '#2b1929';
+      ctx.lineWidth = 3.2;
+      for (let l = -1; l <= 1; l++) {
+        ctx.beginPath();
+        const ang = (i === 0 ? -2.2 : -0.9) + l * 0.28;
+        ctx.moveTo(Math.cos(ang) * 16, Math.sin(ang) * 19);
+        ctx.lineTo(Math.cos(ang) * 24, Math.sin(ang) * 26);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  });
+
+  // Open Happy Mouth & Cute Hippo Teeth (visible below snout when laughing/tossing)
+  const mouthOpen = isCelebrating ? 0.85 : (isTossing && STATE.phaseTimer < 0.7 ? 0.65 : 0.15);
+  ctx.save();
+  ctx.translate(0, 38);
+  ctx.fillStyle = '#691e36';
+  ctx.beginPath();
+  ctx.ellipse(0, 12 * mouthOpen, 52, 14 + 28 * mouthOpen, 0, 0, Math.PI);
+  ctx.fill();
+  // Pink tongue
+  ctx.fillStyle = '#ff7597';
+  ctx.beginPath();
+  ctx.ellipse(0, 18 + 14 * mouthOpen, 32, 12 * mouthOpen + 4, 0, 0, Math.PI);
+  ctx.fill();
+  // Two cute rounded ivory hippo teeth
+  ctx.fillStyle = '#fff3d6';
+  drawRoundedRect(-24, 4, 14, 14 * mouthOpen + 4, 5);
+  ctx.fill();
+  drawRoundedRect(10, 4, 14, 14 * mouthOpen + 4, 5);
+  ctx.fill();
+  ctx.restore();
+
+  // Large Expressive Chubby Hippo Snout / Muzzle
+  const snoutScale = isWrong ? 1.07 : 1.0;
+  ctx.save();
+  ctx.scale(snoutScale, 1 / snoutScale);
+  const snoutGrad = ctx.createRadialGradient(-18, -5, 18, 0, 10, 128);
+  snoutGrad.addColorStop(0, '#d9bfd4');
+  snoutGrad.addColorStop(0.55, '#b599b2');
+  snoutGrad.addColorStop(1, '#826b80');
+  ctx.fillStyle = snoutGrad;
+  ctx.beginPath();
+  ctx.ellipse(0, 8, 114, 58, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Rosy Blush Cheeks
+  ctx.fillStyle = 'rgba(255, 105, 145, 0.38)';
+  ctx.beginPath();
+  ctx.ellipse(-72, 16, 26, 16, 0, 0, Math.PI * 2);
+  ctx.ellipse(72, 16, 26, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Flaring Nostrils
+  const nostrilScale = 1 + Math.sin(time * 3.5) * 0.08 + (isCelebrating ? 0.18 : 0);
+  [-38, 38].forEach((nx, i) => {
+    ctx.save();
+    ctx.translate(nx, -8);
+    ctx.scale(nostrilScale, nostrilScale);
+    ctx.fillStyle = '#52384f';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 12, 16, i === 0 ? -0.3 : 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Comical Soap Bubble on Hippo's Snout when a wrong answer is clicked
+  if (STATE.snoutBubbleSize > 0.02) {
+    const br = 42 * STATE.snoutBubbleSize;
+    const bGrad = ctx.createRadialGradient(25 - br * 0.3, -12 - br * 0.3, 2, 25, -12, br);
+    bGrad.addColorStop(0, 'rgba(255, 240, 250, 0.85)');
+    bGrad.addColorStop(0.5, 'rgba(255, 150, 200, 0.45)');
+    bGrad.addColorStop(1, 'rgba(130, 240, 255, 0.75)');
+    ctx.fillStyle = bGrad;
+    ctx.beginPath();
+    ctx.arc(28, -10, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore(); // End snout
+  ctx.restore(); // End head
+
+  // 5. Right Arm & Woven Duck Basket (Tosses Ducks into the Bathtub!)
+  ctx.save();
+  let rightArmRot = -0.35 + Math.sin(time * 2.5) * 0.05;
+  if (isTossing && STATE.phaseTimer < 0.75) {
+    rightArmRot = -1.15 * Math.sin(STATE.phaseTimer * Math.PI / 0.75);
+  } else if (isCelebrating) {
+    rightArmRot = -0.95 + Math.sin(time * 14 + 1) * 0.4;
+  }
+  ctx.translate(92, -62);
+  ctx.rotate(rightArmRot);
+
+  // Pink puff sleeve
+  ctx.fillStyle = '#ff759f';
+  ctx.beginPath();
+  ctx.arc(0, 0, 36, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Forearm reaching toward basket
+  ctx.fillStyle = '#a895a8';
+  drawRoundedRect(-20, 8, 42, 88, 20);
+  ctx.fill();
+
+  // Woven Bath Basket held by Hippo Lady
+  ctx.save();
+  ctx.translate(42, 78);
+  ctx.rotate(-rightArmRot * 0.6);
+
+  // Basket handle
+  ctx.strokeStyle = '#8c5327';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.arc(0, -18, 52, Math.PI, 0);
+  ctx.stroke();
+
+  // If in INITIAL phase, show little duck heads peeking out of the basket!
+  if (STATE.phase === 'INITIAL') {
+    const peekCount = Math.min(4, STATE.unknownB);
+    for (let p = 0; p < peekCount; p++) {
+      const px = -30 + p * 20;
+      ctx.fillStyle = '#ffd13b';
+      ctx.beginPath();
+      ctx.arc(px, -16, 13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ff7b29';
+      ctx.beginPath();
+      ctx.ellipse(px + 9, -14, 7, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Woven basket body
+  const baskGrad = ctx.createLinearGradient(-60, -15, 60, 48);
+  baskGrad.addColorStop(0, '#e0a96d');
+  baskGrad.addColorStop(0.5, '#b87d42');
+  baskGrad.addColorStop(1, '#7a4b1e');
+  ctx.fillStyle = baskGrad;
+  ctx.beginPath();
+  ctx.moveTo(-62, -12);
+  ctx.lineTo(62, -12);
+  ctx.lineTo(46, 52);
+  ctx.lineTo(-46, 52);
+  ctx.closePath();
+  ctx.fill();
+
+  // Woven cross-hatch texture
+  ctx.strokeStyle = 'rgba(70, 35, 10, 0.45)';
+  ctx.lineWidth = 3;
+  for (let wy = 0; wy < 48; wy += 14) {
+    ctx.beginPath();
+    ctx.moveTo(-54 + wy * 0.2, wy);
+    ctx.lineTo(54 - wy * 0.2, wy);
+    ctx.stroke();
+  }
+
+  // Brass '?' badge on basket
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.arc(0, 20, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#5c3305';
+  ctx.font = 'bold 24px "Trebuchet MS", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('?', 0, 21);
+
+  ctx.restore(); // End basket
+  ctx.restore(); // End right arm
+
+  ctx.restore(); // End Hippo Lady
+}
+
+// ============================================================================
+// DRAWING THE ORNATE CLAWFOOT BATHTUB, WATER WAVES & 3D RUBBER DUCKS
+// ============================================================================
+function drawDuck(d, time) {
+  if (!d.visible) return;
+  ctx.save();
+  const dy = d.y - d.bubbleLift;
+  ctx.translate(d.x, dy);
+  ctx.rotate(d.rot);
+  ctx.scale(d.scale, d.scale);
+
+  // Water ripple ring around duck if floating in water
+  if (d.bubbleLift < 10 && !d.inFlight) {
+    ctx.strokeStyle = 'rgba(190, 250, 255, 0.45)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 22, 34 + Math.sin(time * 4 + d.bobPhase) * 4, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 3D Sculpted Rubber Duck Body
+  const bodyGrad = ctx.createRadialGradient(-8, -4, 6, 0, 6, 38);
+  bodyGrad.addColorStop(0, '#fff375');
+  bodyGrad.addColorStop(0.55, '#ffd000');
+  bodyGrad.addColorStop(1, '#d48b00');
+  ctx.fillStyle = bodyGrad;
+
+  ctx.beginPath();
+  ctx.moveTo(-26, 4);
+  ctx.quadraticCurveTo(-34, -12, -22, -16);
+  ctx.quadraticCurveTo(-12, -6, 6, -8);
+  ctx.quadraticCurveTo(28, -8, 28, 10);
+  ctx.quadraticCurveTo(26, 26, 0, 26);
+  ctx.quadraticCurveTo(-26, 26, -26, 4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Sculpted Wing
+  const wingGrad = ctx.createLinearGradient(-12, -2, 8, 18);
+  wingGrad.addColorStop(0, '#ffe14d');
+  wingGrad.addColorStop(1, '#c97e00');
+  ctx.fillStyle = wingGrad;
+  ctx.beginPath();
+  ctx.ellipse(-3, 9, 15, 9, -0.18, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Duck Head
+  const headGrad = ctx.createRadialGradient(14, -24, 4, 12, -18, 22);
+  headGrad.addColorStop(0, '#fff68f');
+  headGrad.addColorStop(0.6, '#ffd000');
+  headGrad.addColorStop(1, '#d48b00');
+  ctx.fillStyle = headGrad;
+  ctx.beginPath();
+  ctx.arc(13, -18, 17, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shiny Dark Eye & Catchlight
+  ctx.fillStyle = '#241708';
+  ctx.beginPath();
+  ctx.arc(18, -21, 3.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff5d6';
+  ctx.beginPath();
+  ctx.arc(19.2, -22.5, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Expressive Orange Beak (opens when quacking!)
+  const beakOpen = d.quackTimer > 0 ? Math.sin(d.quackTimer * 28) * 0.28 + 0.25 : 0;
+  ctx.fillStyle = '#ff6d1f';
+  // Upper beak
+  ctx.beginPath();
+  ctx.ellipse(30, -19 - beakOpen * 4, 9, 4.5, -beakOpen, 0, Math.PI * 2);
+  ctx.fill();
+  // Lower beak
+  ctx.fillStyle = '#e0530b';
+  ctx.beginPath();
+  ctx.ellipse(29, -15 + beakOpen * 4, 7.5, 3.5, beakOpen, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Optional Foam Crown during Celebration
+  if (d.hasFoamCrown) {
+    ctx.fillStyle = '#ffeef5';
+    ctx.beginPath();
+    ctx.arc(7, -34, 8, 0, Math.PI * 2);
+    ctx.arc(15, -37, 10, 0, Math.PI * 2);
+    ctx.arc(22, -33, 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Shimmering Pink Soap Bubble Wrap (Visual Subtraction Helper: C - A = B)
+  if (d.bubbleLift > 4 || d.bubbled) {
+    const bAlpha = Math.min(1, d.bubbleLift / 50 + 0.3);
+    const bubGrad = ctx.createRadialGradient(-12, -18, 6, 4, -2, 46);
+    bubGrad.addColorStop(0, `rgba(255, 235, 245, ${0.25 * bAlpha})`);
+    bubGrad.addColorStop(0.65, `rgba(255, 120, 175, ${0.42 * bAlpha})`);
+    bubGrad.addColorStop(1, `rgba(120, 235, 255, ${0.85 * bAlpha})`);
+    ctx.fillStyle = bubGrad;
+    ctx.beginPath();
+    ctx.arc(4, -2, 45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255, 195, 220, ${0.9 * bAlpha})`;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Iridescent highlight arc on bubble
+    ctx.strokeStyle = `rgba(255, 250, 235, ${0.85 * bAlpha})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(4, -2, 37, -2.4, -1.6);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawBathtubAndDucks(time) {
+  // 1. Brass Faucet & Curved Showerhead on Right Side of Tub
+  ctx.save();
+  ctx.strokeStyle = '#d4a359';
+  ctx.lineWidth = 14;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(1585, 585);
+  ctx.lineTo(1585, 275);
+  ctx.arc(1545, 275, 40, 0, Math.PI, true);
+  ctx.stroke();
+
+  // Brass showerhead bell
+  const shGrad = ctx.createLinearGradient(1480, 275, 1530, 315);
+  shGrad.addColorStop(0, '#ffe299');
+  shGrad.addColorStop(0.5, '#d49b3d');
+  shGrad.addColorStop(1, '#8c5a14');
+  ctx.fillStyle = shGrad;
+  ctx.beginPath();
+  ctx.moveTo(1505, 275);
+  ctx.lineTo(1532, 318);
+  ctx.lineTo(1478, 318);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // 2. Back Interior Wall of the Bathtub (Warm Rose-Cream Enamel)
+  const backTubGrad = ctx.createLinearGradient(730, 520, 1610, 680);
+  backTubGrad.addColorStop(0, '#e6b8c4');
+  backTubGrad.addColorStop(0.5, '#f7dce2');
+  backTubGrad.addColorStop(1, '#cfa0ad');
+  ctx.fillStyle = backTubGrad;
+  ctx.beginPath();
+  ctx.ellipse(TUB.cx, TUB.rimY, 445, 62, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#b57c8c';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  // 3. Back Water Layer inside the Tub
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(TUB.cx, TUB.rimY + 6, 430, 54, 0, 0, Math.PI * 2);
+  ctx.clip();
+
+  const deepWaterGrad = ctx.createLinearGradient(0, TUB.waterY - 35, 0, TUB.waterY + 65);
+  deepWaterGrad.addColorStop(0, '#2ec4b6');
+  deepWaterGrad.addColorStop(1, '#0f7173');
+  ctx.fillStyle = deepWaterGrad;
+  ctx.fillRect(720, TUB.waterY - 45, 900, 120);
+
+  // Decorative background soap foam puffs along the back rim
+  ctx.fillStyle = 'rgba(255, 240, 246, 0.65)';
+  for (let i = 0; i < 16; i++) {
+    const fx = 765 + i * 54;
+    const fy = TUB.waterY - 22 + Math.sin(time * 2 + i) * 3;
+    ctx.beginPath();
+    ctx.arc(fx, fy, 20 + (i % 3) * 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 4. Draw Back Row Ducks (row === 0)
+  STATE.ducks.forEach(d => {
+    if (d.row === 0 && !d.inFlight) drawDuck(d, time);
+  });
+
+  // 5. Animated Spring-Wave Front Water Surface
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(TUB.cx, TUB.rimY + 10, 432, 56, 0, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.beginPath();
+  const span = TUB.innerRight - TUB.innerLeft;
+  ctx.moveTo(TUB.innerLeft - 30, TUB.waterY + 90);
+  for (let i = 0; i < NUM_SPRINGS; i++) {
+    const sx = TUB.innerLeft + (i / (NUM_SPRINGS - 1)) * span;
+    const sy = TUB.waterY + STATE.waterSprings[i].y;
+    ctx.lineTo(sx, sy);
+  }
+  ctx.lineTo(TUB.innerRight + 30, TUB.waterY + 90);
+  ctx.closePath();
+
+  const frontWaterGrad = ctx.createLinearGradient(0, TUB.waterY - 15, 0, TUB.waterY + 65);
+  frontWaterGrad.addColorStop(0, 'rgba(114, 239, 221, 0.78)');
+  frontWaterGrad.addColorStop(1, 'rgba(32, 164, 176, 0.88)');
+  ctx.fillStyle = frontWaterGrad;
+  ctx.fill();
+
+  // Shimmering water crest line
+  ctx.strokeStyle = 'rgba(210, 255, 252, 0.75)';
+  ctx.lineWidth = 3.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // 6. Draw Front Row Ducks (row === 1) & Any Ducks in Flight
+  STATE.ducks.forEach(d => {
+    if (d.row === 1 && !d.inFlight) drawDuck(d, time);
+  });
+  STATE.ducks.forEach(d => {
+    if (d.inFlight) drawDuck(d, time);
+  });
+
+  // 7. Temporary Foam Clouds when Ducks Splash Into the Tub
+  STATE.foamClouds.forEach(fc => {
+    ctx.save();
+    ctx.fillStyle = `rgba(255, 238, 246, ${fc.life * 0.85})`;
+    ctx.beginPath();
+    ctx.arc(fc.x, fc.y, fc.r, 0, Math.PI * 2);
+    ctx.arc(fc.x - fc.r * 0.6, fc.y + 6, fc.r * 0.75, 0, Math.PI * 2);
+    ctx.arc(fc.x + fc.r * 0.6, fc.y + 6, fc.r * 0.75, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // 8. Front Porcelain Body of the Ornate Clawfoot Bathtub
+  ctx.save();
+  const tubBodyGrad = ctx.createLinearGradient(730, 565, 1610, 815);
+  tubBodyGrad.addColorStop(0, '#fad2dd');
+  tubBodyGrad.addColorStop(0.35, '#f2b6c6');
+  tubBodyGrad.addColorStop(0.75, '#d9869d');
+  tubBodyGrad.addColorStop(1, '#9e4760');
+  ctx.fillStyle = tubBodyGrad;
+
+  ctx.beginPath();
+  // Top rim curve (front half of ellipse)
+  ctx.ellipse(TUB.cx, TUB.rimY, 446, 62, 0, 0, Math.PI);
+  // Right side curving down to base
+  ctx.bezierCurveTo(724, 730, 825, 805, 930, 808);
+  ctx.lineTo(1410, 808);
+  ctx.bezierCurveTo(1515, 805, 1616, 730, 1616, TUB.rimY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Golden Filigree Scrollwork on Front of Bathtub
+  ctx.strokeStyle = 'rgba(255, 215, 130, 0.55)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(960, 705);
+  ctx.bezierCurveTo(1060, 670, 1120, 740, 1170, 705);
+  ctx.bezierCurveTo(1220, 670, 1280, 740, 1380, 705);
+  ctx.stroke();
+
+  // Rolled Porcelain Front Lip of Bathtub
+  const lipGrad = ctx.createLinearGradient(0, TUB.rimY + 35, 0, TUB.rimY + 75);
+  lipGrad.addColorStop(0, '#ffe3ec');
+  lipGrad.addColorStop(0.5, '#f2acc0');
+  lipGrad.addColorStop(1, '#bf6981');
+  ctx.fillStyle = lipGrad;
+  ctx.beginPath();
+  ctx.ellipse(TUB.cx, TUB.rimY, 456, 64, 0, 0.04, Math.PI - 0.04);
+  ctx.ellipse(TUB.cx, TUB.rimY + 20, 452, 64, 0, Math.PI - 0.04, 0.04, true);
+  ctx.closePath();
+  ctx.fill();
+
+  // Carved Brass Lion-Paw Claw Feet
+  [855, 1485].forEach((fx, i) => {
+    const footGrad = ctx.createRadialGradient(fx, 805, 5, fx, 815, 42);
+    footGrad.addColorStop(0, '#ffe599');
+    footGrad.addColorStop(0.5, '#d49b35');
+    footGrad.addColorStop(1, '#7a4f0d');
+    ctx.fillStyle = footGrad;
+    ctx.beginPath();
+    ctx.moveTo(fx - 32, 778);
+    ctx.quadraticCurveTo(fx, 760, fx + 32, 778);
+    ctx.lineTo(fx + 42, 825);
+    ctx.quadraticCurveTo(fx, 835, fx - 42, 825);
+    ctx.closePath();
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // 9. Rainbow Shower Fountain Drops (Celebration 0)
+  STATE.showerDrops.forEach(sd => {
+    ctx.fillStyle = `hsla(${sd.hue}, 90%, 70%, ${sd.life})`;
+    ctx.beginPath();
+    ctx.arc(sd.x, sd.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// ============================================================================
+// DRAWING THE CARVED WOOD & BRASS EQUATION PLAQUE (A + ? = C)
+// ============================================================================
+function drawEquationPlaque(time) {
+  const px = 590, py = 32, pw = 740, ph = 165;
+  ctx.save();
+
+  // Brass hanging chains
+  ctx.strokeStyle = '#d4a359';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(px + 95, 0);
+  ctx.lineTo(px + 95, py + 12);
+  ctx.moveTo(px + pw - 95, 0);
+  ctx.lineTo(px + pw - 95, py + 12);
+  ctx.stroke();
+
+  // Drop shadow
+  ctx.fillStyle = 'rgba(8, 25, 30, 0.45)';
+  drawRoundedRect(px + 8, py + 10, pw, ph, 34);
+  ctx.fill();
+
+  // Outer Brass Bezel
+  const brassGrad = ctx.createLinearGradient(px, py, px, py + ph);
+  brassGrad.addColorStop(0, '#ffe599');
+  brassGrad.addColorStop(0.5, '#c98e32');
+  brassGrad.addColorStop(1, '#784b0d');
+  ctx.fillStyle = brassGrad;
+  drawRoundedRect(px, py, pw, ph, 34);
+  ctx.fill();
+
+  // Inner Carved Warm Mahogany Wood Board
+  const woodGrad = ctx.createLinearGradient(px + 10, py + 10, px + 10, py + ph - 10);
+  woodGrad.addColorStop(0, '#6e381f');
+  woodGrad.addColorStop(0.5, '#4f2512');
+  woodGrad.addColorStop(1, '#36170a');
+  ctx.fillStyle = woodGrad;
+  drawRoundedRect(px + 10, py + 10, pw - 20, ph - 20, 26);
+  ctx.fill();
+
+  // Decorative soap foam puffs on top corners of the plaque
+  ctx.fillStyle = '#ffeef4';
+  ctx.beginPath();
+  ctx.arc(px + 42, py + 14, 18, 0, Math.PI * 2);
+  ctx.arc(px + 68, py + 10, 22, 0, Math.PI * 2);
+  ctx.arc(px + 94, py + 15, 15, 0, Math.PI * 2);
+  ctx.arc(px + pw - 50, py + 12, 20, 0, Math.PI * 2);
+  ctx.arc(px + pw - 78, py + 15, 15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Equation slots: [A]  +  [?]  =  [C]
+  const cy = py + ph * 0.52;
+
+  // 1. Known Addend Tile [A] (Clickable to toggle subtraction bubbles!)
+  const aPulse = STATE.phase === 'INITIAL' ? 1 + Math.sin(time * 8) * 0.08 : (STATE.subtractionHelperActive ? 1.06 : 1);
+  drawEquationTile(px + 115, cy, 126, 108, String(STATE.knownA),
+    STATE.subtractionHelperActive ? '#ff85b3' : '#ffd166',
+    '#4a2505', aPulse, true);
+
+  // '+' Symbol
+  drawChunkySymbol(px + 235, cy, '+');
+
+  // 2. Unknown Addend Tile [?] (Reveals unknownB on celebration!)
+  const isRevealed = STATE.phase === 'CELEBRATING';
+  const qScale = isRevealed ? 1 + Math.sin(time * 10) * 0.1 : 1 + Math.sin(time * 3.5) * 0.04;
+  drawEquationTile(px + 355, cy, 132, 112,
+    isRevealed ? String(STATE.unknownB) : '?',
+    isRevealed ? '#72efdd' : '#ff9ebb',
+    isRevealed ? '#08473e' : '#59122b', qScale, false);
+
+  // '=' Symbol
+  drawChunkySymbol(px + 480, cy, '=');
+
+  // 3. Total Sum Tile [C]
+  const cPulse = (STATE.phase === 'PLAYING' && STATE.phaseTimer < 0.6) ? 1 + Math.sin(STATE.phaseTimer * 12) * 0.08 : 1;
+  drawEquationTile(px + 605, cy, 126, 108, String(STATE.sumC), '#80e5d8', '#09423c', cPulse, false);
+
+  // Interactive Subtraction Arc (Visualizing C - A = B when helper is active or celebrating)
+  if (STATE.subtractionHelperActive || STATE.showSubtractionArc > 0) {
+    const prog = STATE.subtractionHelperActive ? 1 : STATE.showSubtractionArc;
+    ctx.save();
+    ctx.strokeStyle = '#ff9ebb';
+    ctx.lineWidth = 6;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    ctx.moveTo(px + 605, py + ph - 16);
+    ctx.quadraticCurveTo(px + 360, py + ph + 55 * prog, px + 115, py + ph - 16);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Minus badge on the arc showing "C - A"
+    ctx.fillStyle = '#ff759f';
+    ctx.beginPath();
+    ctx.arc(px + 360, py + ph + 24 * prog, 24, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffe5ec';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.fillStyle = '#59122b';
+    ctx.font = 'bold 34px "Trebuchet MS", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('−', px + 360, py + ph + 25 * prog);
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawEquationTile(cx, cy, w, h, text, bgColor, textColor, scaleVal, showBubbleIcon) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scaleVal, scaleVal);
+
+  // Tile shadow
+  ctx.fillStyle = 'rgba(20, 8, 4, 0.45)';
+  drawRoundedRect(-w / 2 + 4, -h / 2 + 6, w, h, 24);
+  ctx.fill();
+
+  // Glossy soap/gemstone tile body
+  const grad = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
+  grad.addColorStop(0, bgColor);
+  grad.addColorStop(1, '#d98a3b');
+  ctx.fillStyle = grad;
+  drawRoundedRect(-w / 2, -h / 2, w, h, 24);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(255, 240, 215, 0.7)';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Little bubble hint icon in corner of `A` tile so child knows they can click it to bubble `A` ducks
+  if (showBubbleIcon) {
+    ctx.fillStyle = 'rgba(255, 120, 175, 0.75)';
+    ctx.beginPath();
+    ctx.arc(w / 2 - 18, -h / 2 + 18, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffeef4';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Number text
+  ctx.fillStyle = textColor;
+  ctx.font = 'bold 68px "Trebuchet MS", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 4);
+
+  ctx.restore();
+}
+
+function drawChunkySymbol(cx, cy, sym) {
+  ctx.save();
+  ctx.fillStyle = '#ffe599';
+  ctx.font = 'bold 66px "Trebuchet MS", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 6;
+  ctx.fillText(sym, cx, cy);
+  ctx.restore();
+}
+
+// ============================================================================
+// DRAWING STYLIZED SOAP-BAR NUMBER PAD & TOP-RIGHT CONTROLS
+// ============================================================================
+function drawNumberPad(time) {
+  // Decorative wooden bath tray under the soap buttons
+  const trayX = 185, trayY = 875, trayW = 1550, trayH = 192;
+  ctx.save();
+  const trayGrad = ctx.createLinearGradient(trayX, trayY, trayX, trayY + trayH);
+  trayGrad.addColorStop(0, '#8c4f27');
+  trayGrad.addColorStop(0.5, '#633314');
+  trayGrad.addColorStop(1, '#3d1c08');
+  ctx.fillStyle = trayGrad;
+  drawRoundedRect(trayX, trayY, trayW, trayH, 36);
+  ctx.fill();
+  ctx.strokeStyle = '#d4a359';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.restore();
+
+  // Draw each sculpted soap bar button
+  STATE.buttons.forEach(b => {
+    ctx.save();
+    const cx = b.x + b.w * 0.5;
+    const cy = b.y + b.h * 0.5;
+    const shakeX = b.shakeTime > 0 ? Math.sin(b.shakeTime * 45) * 10 : 0;
+    const sc = b.scale + b.hover * 0.07;
+
+    ctx.translate(cx + shakeX, cy - b.hover * 5);
+    ctx.scale(sc, sc);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(20, 8, 4, 0.45)';
+    drawRoundedRect(-b.w / 2 + 3, -b.h / 2 + 6, b.w, b.h, 24);
+    ctx.fill();
+
+    // Outer Soap Bar Body
+    const soapGrad = ctx.createLinearGradient(0, -b.h / 2, 0, b.h / 2);
+    soapGrad.addColorStop(0, b.pal.top);
+    soapGrad.addColorStop(1, b.pal.bot);
+    ctx.fillStyle = soapGrad;
+    drawRoundedRect(-b.w / 2, -b.h / 2, b.w, b.h, 24);
+    ctx.fill();
+
+    // Inner Embossed Soap Rim
+    ctx.strokeStyle = b.pal.rim;
+    ctx.lineWidth = 3.5;
+    drawRoundedRect(-b.w / 2 + 8, -b.h / 2 + 8, b.w - 16, b.h - 16, 17);
+    ctx.stroke();
+
+    // Tiny decorative soap bubbles on corner of bar
+    ctx.fillStyle = b.pal.rim;
+    ctx.beginPath();
+    ctx.arc(-b.w / 2 + 18, -b.h / 2 + 16, 5, 0, Math.PI * 2);
+    ctx.arc(-b.w / 2 + 27, -b.h / 2 + 13, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Number label
+    ctx.fillStyle = b.pal.text;
+    ctx.font = `bold ${STATE.mode === 10 ? 48 : 38}px "Trebuchet MS", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(b.val), 0, 3);
+
+    ctx.restore();
+  });
+}
+
+function drawTopRightControls() {
+  // Brass & Wood Soap Dish Backdrop for Controls
+  ctx.save();
+  ctx.fillStyle = 'rgba(30, 14, 7, 0.55)';
+  drawRoundedRect(1368, 22, 535, 100, 28);
+  ctx.fill();
+  ctx.strokeStyle = '#d4a359';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  STATE.controlButtons.forEach(cBtn => {
+    const isHover = STATE.mouseX >= cBtn.x && STATE.mouseX <= cBtn.x + cBtn.w &&
+                    STATE.mouseY >= cBtn.y && STATE.mouseY <= cBtn.y + cBtn.h;
+    const isActiveMode = (cBtn.id === 'MODE_10' && STATE.mode === 10) ||
+                         (cBtn.id === 'MODE_20' && STATE.mode === 20);
+
+    ctx.save();
+    ctx.translate(cBtn.x + cBtn.w / 2, cBtn.y + cBtn.h / 2 - (isHover ? 3 : 0));
+
+    const grad = ctx.createLinearGradient(0, -cBtn.h / 2, 0, cBtn.h / 2);
+    if (cBtn.id === 'NEXT') {
+      grad.addColorStop(0, '#72efdd');
+      grad.addColorStop(1, '#1b998b');
+    } else if (isActiveMode) {
+      grad.addColorStop(0, '#ff9ebb');
+      grad.addColorStop(1, '#d94c76');
+    } else {
+      grad.addColorStop(0, '#ffd166');
+      grad.addColorStop(1, '#b87d28');
+    }
+
+    ctx.fillStyle = grad;
+    drawRoundedRect(-cBtn.w / 2, -cBtn.h / 2, cBtn.w, cBtn.h, 20);
+    ctx.fill();
+    ctx.strokeStyle = isActiveMode ? '#ffe5ec' : '#ffe8a3';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.fillStyle = '#3d1c08';
+    ctx.strokeStyle = '#3d1c08';
+    ctx.lineWidth = 4.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (cBtn.label) {
+      ctx.font = 'bold 34px "Trebuchet MS", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cBtn.label, 0, 2);
+    } else if (cBtn.id === 'REPLAY') {
+      // Circular Replay Arrow Icon
+      ctx.beginPath();
+      ctx.arc(0, 0, 17, 0.4, Math.PI * 1.85);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(11, -18);
+      ctx.lineTo(19, -8);
+      ctx.lineTo(6, -7);
+      ctx.closePath();
+      ctx.fill();
+    } else if (cBtn.id === 'MUTE') {
+      // Speaker Icon
+      ctx.beginPath();
+      ctx.moveTo(-14, -7);
+      ctx.lineTo(-5, -7);
+      ctx.lineTo(5, -16);
+      ctx.lineTo(5, 16);
+      ctx.lineTo(-5, 7);
+      ctx.lineTo(-14, 7);
+      ctx.closePath();
+      ctx.fill();
+      if (sound.muted) {
+        ctx.strokeStyle = '#9e1444';
+        ctx.beginPath();
+        ctx.moveTo(11, -8);
+        ctx.lineTo(22, 8);
+        ctx.moveTo(22, -8);
+        ctx.lineTo(11, 8);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(8, 0, 10, -0.7, 0.7);
+        ctx.stroke();
+      }
+    } else if (cBtn.id === 'NEXT') {
+      // Minimalist "Next" ("далі") Arrow Icon
+      ctx.beginPath();
+      ctx.moveTo(-18, 0);
+      ctx.lineTo(16, 0);
+      ctx.moveTo(4, -13);
+      ctx.lineTo(18, 0);
+      ctx.lineTo(4, 13);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+// ============================================================================
+// DRAWING AMBIENT BUBBLES & CELEBRATION FX PARTICLES
+// ============================================================================
+function drawParticles() {
+  // Ambient iridescent soap bubbles
+  STATE.ambientBubbles.forEach(b => {
+    ctx.save();
+    const grad = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.3, 1, b.x, b.y, b.r);
+    grad.addColorStop(0, 'rgba(255, 245, 250, 0.45)');
+    grad.addColorStop(0.7, `hsla(${b.hue}, 80%, 75%, 0.18)`);
+    grad.addColorStop(1, `hsla(${(b.hue + 60) % 360}, 90%, 80%, 0.55)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Active burst/celebration particles
+  STATE.fxParticles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.translate(p.x, p.y);
+    if (p.rot) ctx.rotate(p.rot);
+
+    if (p.type === 'star') {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a1 = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+        const a2 = a1 + Math.PI / 5;
+        ctx.lineTo(Math.cos(a1) * p.r, Math.sin(a1) * p.r);
+        ctx.lineTo(Math.cos(a2) * (p.r * 0.45), Math.sin(a2) * (p.r * 0.45));
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (p.type === 'petal') {
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.r, p.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const grad = ctx.createRadialGradient(-p.r * 0.3, -p.r * 0.3, 1, 0, 0, p.r);
+      grad.addColorStop(0, 'rgba(255, 250, 245, 0.85)');
+      grad.addColorStop(1, p.color);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
+}
+
+// ============================================================================
+// MAIN RENDER LOOP
+// ============================================================================
+function gameLoop(now) {
+  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+  const time = now / 1000;
+
+  update(dt, time);
+
+  // Fill outer letterbox areas with matching dark teal mosaic so zero black/white bars appear
+  ctx.fillStyle = '#0e373f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
+
+  // Clip to virtual 1920x1080 stage
+  ctx.beginPath();
+  ctx.rect(0, 0, VW, VH);
+  ctx.clip();
+
+  drawBackground(time);
+  drawHippoLady(time);
+  drawBathtubAndDucks(time);
+  drawEquationPlaque(time);
+  drawNumberPad(time);
+  drawTopRightControls();
+  drawParticles();
+
+  ctx.restore();
+  requestAnimationFrame(gameLoop);
+}
+
+window.onload = function () {
+  generateTask();
+  requestAnimationFrame(gameLoop);
+};
+</script>
+</body>
+</html>
