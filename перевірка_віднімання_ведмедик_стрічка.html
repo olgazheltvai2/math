@@ -1,0 +1,2990 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Лісове ательє</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Nunito:wght@800;900&display=swap');
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1e130c;
+            font-family: 'Nunito', sans-serif;
+            cursor: none; /* Custom procedural cursor rendered on canvas */
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        /**
+         * WOODLAND BEAR TAILOR'S WORKSHOP
+         * Interactive visual explanation of checking subtraction with addition:
+         * A - B = C  because  C + B = A
+         * 100% Procedural Canvas 2D + Web Audio API Synthesizer (Zero external assets, zero white rectangles)
+         */
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Logical 16:9 widescreen coordinate space
+        const VW = 1920;
+        const VH = 1080;
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        // Language state: 'uk' -> "тому що", 'ru' -> "потому что"
+        let currentLang = 'uk';
+        const LANG_TEXT = {
+            uk: { button: 'УКР', because: 'тому що' },
+            ru: { button: 'РУС', because: 'потому что' }
+        };
+
+        // Game state machine
+        const STATE = {
+            INTRO: 0,
+            READY_TO_CUT: 1,
+            CUTTING: 2,
+            VERIFY_PHASE: 3,
+            CELEBRATING: 5,
+            TRANSITION_OUT: 6
+        };
+
+        let gameState = STATE.INTRO;
+        let stateTimer = 0;
+        let globalTime = 0;
+
+        // Current math problem: A - B = C, because C + B = A
+        let prob = {
+            A: 6,
+            B: 4,
+            C: 2
+        };
+        let lastKey = '';
+
+        // Pedagogical Color-Coding Themes (Gold = Whole A, Green = Cut B, Red = Remaining C)
+        const COLOR_THEMES = {
+            gold: {
+                main: '#e09f1f',
+                dark: '#875505',
+                light: '#ffe47a',
+                stitch: '#fff6cc',
+                badgeBg: '#9c6206',
+                patchBg: '#c98612',
+                patchText: '#fffbe0',
+                glow: 'rgba(255, 220, 90, 0.75)'
+            },
+            green: {
+                main: '#1f9e55',
+                dark: '#0c592b',
+                light: '#6be89b',
+                stitch: '#ffe885',
+                badgeBg: '#0b4f26',
+                patchBg: '#197a41',
+                patchText: '#eafff0',
+                glow: 'rgba(80, 235, 145, 0.75)'
+            },
+            red: {
+                main: '#d92b3c',
+                dark: '#820f1b',
+                light: '#ff7583',
+                stitch: '#ffe082',
+                badgeBg: '#6e0b15',
+                patchBg: '#b81d2d',
+                patchText: '#fff0f2',
+                glow: 'rgba(255, 95, 110, 0.75)'
+            },
+            neutralSlot: {
+                patchBg: '#4a2510',
+                patchText: '#ffd166'
+            }
+        };
+
+        // Interactive verification state for "тому що [ ? ] + [ ? ] = [ ? ]"
+        const verifyState = {
+            slots: [null, null, null], // { value, colorKey, popScale }
+            activeSlot: 0,
+            slotRects: [
+                { x: 0, y: 0, w: 78, h: 78 },
+                { x: 0, y: 0, w: 78, h: 78 },
+                { x: 0, y: 0, w: 78, h: 78 }
+            ],
+            slotWobble: [0, 0, 0],
+            isSewn: false,
+            isSewingNow: false,
+            sewTimer: 0,
+            traySlide: 0,       // 0..1 rises from bottom after cutting
+            hintPulseC: 0,      // Visual pulse on Red C piece when guided
+            hintPulseB: 0,      // Visual pulse on Green B piece when guided
+            hintPulseA: 0       // Visual pulse on Whole A when guided
+        };
+
+        // Bottom tray of 10 numbered tailor buttons (1..10)
+        const numberButtons = [];
+        for (let i = 1; i <= 10; i++) {
+            numberButtons.push({
+                num: i,
+                x: 0,
+                y: 0,
+                r: 44,
+                hover: false,
+                pressScale: 1,
+                wobble: 0
+            });
+        }
+
+        // Pointer / Cursor state in logical coordinates (VW x VH)
+        const pointer = {
+            x: VW * 0.5,
+            y: VH * 0.65,
+            vx: 0,
+            vy: 0,
+            isDown: false,
+            hoverCutZone: false,
+            hoverSewZone: false,
+            hoverLeftPiece: false,
+            hoverRightPiece: false,
+            hoverWholeBadge: false,
+            hoverLangBtn: false,
+            hoverNextBtn: false,
+            hoverSlotIdx: -1,
+            hoverNumBtnIdx: -1,
+            snipPhase: 0
+        };
+
+        // Verlet physics thread attached to the sewing needle
+        const THREAD_NODES = 22;
+        const THREAD_SEG_LEN = 11;
+        const threadNodes = [];
+        for (let i = 0; i < THREAD_NODES; i++) {
+            threadNodes.push({ x: pointer.x, y: pointer.y, oldX: pointer.x, oldY: pointer.y });
+        }
+
+        // Ribbon geometry & physics animation variables
+        const ribbonAnim = {
+            appearScale: 0,
+            splitGap: 0,         // 0 when whole, up to 115 when cut
+            leftTilt: 0,
+            rightTilt: 0,
+            cutProgress: 0,      // 0..1 during cutting
+            sewProgress: 0,      // 0..1 during sewing
+            leftRedMorph: 0,     // 0 = Gold before cut, 1 = Ruby Red after cut
+            partBadgesScale: 0,  // 0..1 pop-in for C badge
+            wholeBadgeScale: 1,  // 1 when whole, shrinks on cut, returns on sew
+            unitedGlow: 0,       // glow when sewn back together
+            activeNeedleX: 0,
+            activeNeedleY: 0,
+            activeNeedleAngle: 0
+        };
+
+        // Equation board animation state
+        const boardAnim = {
+            subAnswerScale: 0,    // pops in when cut
+            becausePanelSlide: 0, // unfolds 0..1 after cut
+            boardBounce: 0
+        };
+
+        // Bear Tailor character animation state
+        const bearAnim = {
+            breath: 0,
+            blinkTimer: 2.5,
+            blinkState: 0,
+            earTwitch: 0,
+            headTilt: 0,
+            curiousTiltTimer: 0,
+            joyLevel: 0,          // 0 = normal/focused, 1 = cheering
+            pawLeftOffset: { x: 0, y: 0 },
+            pawRightOffset: { x: 0, y: 0 },
+            lookX: 0,
+            lookY: 0
+        };
+
+        // Ambient dust motes in sunbeams
+        const dustMotes = [];
+        for (let i = 0; i < 45; i++) {
+            dustMotes.push({
+                x: Math.random() * VW,
+                y: Math.random() * VH,
+                r: 1.5 + Math.random() * 3.5,
+                speedY: -8 - Math.random() * 14,
+                speedX: 4 + Math.random() * 10,
+                phase: Math.random() * Math.PI * 2,
+                alpha: 0.25 + Math.random() * 0.55
+            });
+        }
+
+        // Active celebration particles (wooden buttons, golden stars, satin curls, thread sparks)
+        const particles = [];
+
+        // Interactive Top UI Button Hitboxes (Logical coords)
+        const langBtnRect = { x: 42, y: 36, w: 136, h: 68 };
+        const nextBtnRect = { x: VW - 178, y: 36, w: 136, h: 68 };
+
+        // ============================================================================
+        // WEB AUDIO API SYNTHESIZER (Rich, realistic, non-verbal sound effects)
+        // ============================================================================
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) {
+                        this.ctx = new AudioCtx();
+                    }
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            // Crisp metallic tailor's shears snip sound
+            playSnip(pitchShift = 1.0) {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // 1. Metallic blade friction burst (bandpass filtered white noise)
+                const bufferSize = this.ctx.sampleRate * 0.09;
+                const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+                }
+                const whiteNoise = this.ctx.createBufferSource();
+                whiteNoise.buffer = noiseBuffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(3200 * pitchShift, now);
+                filter.frequency.exponentialRampToValueAtTime(6400 * pitchShift, now + 0.08);
+                filter.Q.value = 3.5;
+
+                const noiseGain = this.ctx.createGain();
+                noiseGain.gain.setValueAtTime(0.45, now);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.085);
+
+                whiteNoise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(this.ctx.destination);
+                whiteNoise.start(now);
+
+                // 2. High steel ring resonance
+                const osc = this.ctx.createOscillator();
+                const oscGain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(1950 * pitchShift, now);
+                osc.frequency.exponentialRampToValueAtTime(4200 * pitchShift, now + 0.06);
+
+                oscGain.gain.setValueAtTime(0.22, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+
+                osc.connect(oscGain);
+                oscGain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.08);
+            }
+
+            // Wooden button / badge pop sound
+            playPop(freq = 440) {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq * 0.65, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 1.45, now + 0.09);
+                osc.frequency.exponentialRampToValueAtTime(freq, now + 0.16);
+
+                gain.gain.setValueAtTime(0.01, now);
+                gain.gain.linearRampToValueAtTime(0.32, now + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.19);
+            }
+
+            // Musical harp/pizzicato stitch sound
+            playStitch(stepIndex) {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const scaleFreqs = [392.00, 440.00, 493.88, 523.25, 587.33, 659.25, 783.99];
+                const freq = scaleFreqs[stepIndex % scaleFreqs.length];
+
+                // Plucked string harmonic
+                const osc1 = this.ctx.createOscillator();
+                const osc2 = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc1.type = 'triangle';
+                osc2.type = 'sine';
+                osc1.frequency.setValueAtTime(freq, now);
+                osc2.frequency.setValueAtTime(freq * 2, now);
+
+                gain.gain.setValueAtTime(0.01, now);
+                gain.gain.linearRampToValueAtTime(0.28, now + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+                osc1.connect(gain);
+                osc2.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc1.start(now);
+                osc2.start(now);
+                osc1.stop(now + 0.29);
+                osc2.stop(now + 0.29);
+            }
+
+            // Cheerful marimba chime when a number slot is filled correctly
+            playCorrectSlot(slotIndex = 0) {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const baseFreqs = [523.25, 659.25, 783.99];
+                const f = baseFreqs[slotIndex % 3];
+
+                [f, f * 1.5].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+                    gain.gain.setValueAtTime(0.001, now + idx * 0.055);
+                    gain.gain.linearRampToValueAtTime(0.28, now + idx * 0.055 + 0.015);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.28);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.055);
+                    osc.stop(now + idx * 0.055 + 0.3);
+                });
+            }
+
+            // Comical woody "boing" wobble when child picks a wrong number
+            playWrongBoing() {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(240, now);
+                osc.frequency.exponentialRampToValueAtTime(145, now + 0.12);
+                osc.frequency.exponentialRampToValueAtTime(210, now + 0.24);
+                osc.frequency.exponentialRampToValueAtTime(130, now + 0.35);
+
+                gain.gain.setValueAtTime(0.32, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.38);
+            }
+
+            // Joyful multi-instrument celebration fanfare
+            playCelebrationFanfare() {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                // Warm marimba + celesta chord arpeggio (C major -> G -> C6)
+                const notes = [
+                    { f: 523.25, t: 0.00, d: 0.35 },
+                    { f: 659.25, t: 0.09, d: 0.35 },
+                    { f: 783.99, t: 0.18, d: 0.35 },
+                    { f: 1046.50, t: 0.27, d: 0.65 },
+                    { f: 880.00, t: 0.48, d: 0.25 },
+                    { f: 1046.50, t: 0.62, d: 0.85 },
+                    { f: 1318.51, t: 0.62, d: 0.85 }
+                ];
+
+                notes.forEach(n => {
+                    const osc = this.ctx.createOscillator();
+                    const sub = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'triangle';
+                    sub.type = 'sine';
+                    osc.frequency.setValueAtTime(n.f, now + n.t);
+                    sub.frequency.setValueAtTime(n.f * 0.5, now + n.t);
+
+                    gain.gain.setValueAtTime(0.001, now + n.t);
+                    gain.gain.linearRampToValueAtTime(0.22, now + n.t + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+
+                    osc.connect(gain);
+                    sub.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now + n.t);
+                    sub.start(now + n.t);
+                    osc.stop(now + n.t + n.d + 0.02);
+                    sub.stop(now + n.t + n.d + 0.02);
+                });
+            }
+
+            // Soft wooden click for UI buttons
+            playClick() {
+                this.init();
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(220, now + 0.045);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.055);
+            }
+        }
+
+        const sound = new SoundEngine();
+
+        // ============================================================================
+        // PROBLEM GENERATOR & INITIALIZATION
+        // ============================================================================
+        function generateNewProblem(playAudio = false) {
+            let A, B, key;
+            do {
+                // Minuend from 5 to 10 for clear visual segmentation
+                A = Math.floor(Math.random() * 6) + 5; // 5..10
+                B = Math.floor(Math.random() * (A - 1)) + 1; // 1..(A-1)
+                key = `${A}-${B}`;
+            } while (key === lastKey);
+            lastKey = key;
+
+            prob.A = A;
+            prob.B = B;
+            prob.C = A - B;
+
+            // Reset animations
+            ribbonAnim.appearScale = 0;
+            ribbonAnim.splitGap = 0;
+            ribbonAnim.leftTilt = 0;
+            ribbonAnim.rightTilt = 0;
+            ribbonAnim.cutProgress = 0;
+            ribbonAnim.sewProgress = 0;
+            ribbonAnim.leftRedMorph = 0;
+            ribbonAnim.partBadgesScale = 0;
+            ribbonAnim.wholeBadgeScale = 1;
+            ribbonAnim.unitedGlow = 0;
+
+            boardAnim.subAnswerScale = 0;
+            boardAnim.becausePanelSlide = 0;
+            boardAnim.boardBounce = 0;
+
+            // Reset interactive addition verification state
+            verifyState.slots = [null, null, null];
+            verifyState.activeSlot = 0;
+            verifyState.slotWobble = [0, 0, 0];
+            verifyState.isSewn = false;
+            verifyState.isSewingNow = false;
+            verifyState.sewTimer = 0;
+            verifyState.traySlide = 0;
+            verifyState.hintPulseC = 0;
+            verifyState.hintPulseB = 0;
+            verifyState.hintPulseA = 0;
+
+            bearAnim.joyLevel = 0;
+            bearAnim.curiousTiltTimer = 0;
+
+            gameState = STATE.INTRO;
+            stateTimer = 0;
+
+            if (playAudio) {
+                sound.playPop(520);
+            }
+        }
+
+        // ============================================================================
+        // RESPONSIVE SCALING & COORDINATE MAPPING
+        // ============================================================================
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+
+            const scaleX = canvas.width / VW;
+            const scaleY = canvas.height / VH;
+            scale = Math.min(scaleX, scaleY);
+
+            offsetX = (canvas.width - VW * scale) * 0.5;
+            offsetY = (canvas.height - VH * scale) * 0.5;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function toLogicalCoords(clientX, clientY) {
+            const dpr = window.devicePixelRatio || 1;
+            const cx = clientX * dpr;
+            const cy = clientY * dpr;
+            return {
+                x: (cx - offsetX) / scale,
+                y: (cy - offsetY) / scale
+            };
+        }
+
+        // ============================================================================
+        // RIBBON GEOMETRY HELPERS
+        // ============================================================================
+        function getRibbonMetrics() {
+            const centerX = VW * 0.5;
+            const centerY = 782;
+            const unitWidth = Math.min(114, 920 / prob.A);
+            const totalW = prob.A * unitWidth;
+            const leftW = prob.C * unitWidth;
+            const rightW = prob.B * unitWidth;
+            const height = 100;
+
+            const startX = centerX - totalW * 0.5;
+            const cutX = startX + leftW;
+
+            return {
+                centerX,
+                centerY,
+                unitWidth,
+                totalW,
+                leftW,
+                rightW,
+                height,
+                startX,
+                cutX
+            };
+        }
+
+        function updateNumberButtonPositions() {
+            const trayCenterY = VH + 110 - verifyState.traySlide * 212; // Rises to y = 978
+            const spacing = 108;
+            const startX = VW * 0.5 - 4.5 * spacing;
+
+            for (let i = 0; i < 10; i++) {
+                // Slight graceful curve along the wooden tray
+                const norm = (i - 4.5) / 4.5;
+                const curveY = Math.pow(norm, 2) * 14;
+                numberButtons[i].x = startX + i * spacing;
+                numberButtons[i].y = trayCenterY + curveY;
+            }
+        }
+
+        // ============================================================================
+        // PARTICLE SPAWNERS (Sparks, Buttons, Golden Stars, Satin Curls)
+        // ============================================================================
+        function spawnCutSparks(x, y) {
+            for (let i = 0; i < 28; i++) {
+                const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * Math.PI * 1.4;
+                const speed = 120 + Math.random() * 360;
+                particles.push({
+                    type: Math.random() < 0.6 ? 'spark' : 'threadBit',
+                    x,
+                    y: y + (Math.random() - 0.5) * 80,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 80,
+                    gravity: 650,
+                    rot: Math.random() * Math.PI * 2,
+                    vRot: (Math.random() - 0.5) * 12,
+                    size: 5 + Math.random() * 8,
+                    color: Math.random() < 0.5 ? '#ffe57f' : '#ffffff',
+                    life: 0,
+                    maxLife: 0.45 + Math.random() * 0.35
+                });
+            }
+        }
+
+        function spawnCelebrationConfetti() {
+            const colors = ['#ff5964', '#ffca3a', '#8ac926', '#1982c4', '#b56576', '#ff9f1c'];
+            const m = getRibbonMetrics();
+
+            for (let i = 0; i < 65; i++) {
+                const pTypeRand = Math.random();
+                const type = pTypeRand < 0.42 ? 'button' : (pTypeRand < 0.75 ? 'star' : 'ribbon');
+                const spawnX = m.centerX + (Math.random() - 0.5) * 650;
+                const spawnY = m.centerY - 20 + (Math.random() - 0.5) * 80;
+                const angle = -Math.PI * 0.5 + (Math.random() - 0.5) * 1.35;
+                const speed = 380 + Math.random() * 680;
+
+                particles.push({
+                    type,
+                    x: spawnX,
+                    y: spawnY,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 180,
+                    gravity: 780,
+                    rot: Math.random() * Math.PI * 2,
+                    vRot: (Math.random() - 0.5) * 10,
+                    size: 14 + Math.random() * 14,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    life: 0,
+                    maxLife: 1.6 + Math.random() * 1.1
+                });
+            }
+        }
+
+        // ============================================================================
+        // INTERACTION HANDLERS (Mouse, Touch & Keyboard)
+        // ============================================================================
+        function pointInRect(px, py, r) {
+            return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+        }
+
+        function checkVictoryCondition() {
+            if (gameState !== STATE.VERIFY_PHASE) return;
+            const allSlotsFilled = verifyState.slots[0] !== null &&
+                                   verifyState.slots[1] !== null &&
+                                   verifyState.slots[2] !== null;
+
+            if (allSlotsFilled && verifyState.isSewn && !verifyState.isSewingNow) {
+                boardAnim.boardBounce = 1;
+                bearAnim.joyLevel = 1;
+                ribbonAnim.unitedGlow = 1;
+
+                sound.playCelebrationFanfare();
+                spawnCelebrationConfetti();
+
+                gameState = STATE.CELEBRATING;
+                stateTimer = 0;
+            }
+        }
+
+        function triggerCutAction() {
+            if (gameState !== STATE.READY_TO_CUT) return;
+            gameState = STATE.CUTTING;
+            stateTimer = 0;
+            sound.playSnip(1.0);
+            setTimeout(() => sound.playSnip(1.18), 140);
+
+            const m = getRibbonMetrics();
+            spawnCutSparks(m.cutX, m.centerY);
+        }
+
+        function triggerSewAction() {
+            if (gameState !== STATE.VERIFY_PHASE || verifyState.isSewn || verifyState.isSewingNow) return;
+            verifyState.isSewingNow = true;
+            verifyState.sewTimer = 0;
+            ribbonAnim.sewProgress = 0;
+            lastStitchSoundIdx = 0;
+            sound.playStitch(0);
+        }
+
+        // Validate and place a number (1..10) into the currently active addition slot: [ ? ] + [ ? ] = [ ? ]
+        function handleNumberInput(numVal, sourceBtnIdx = -1) {
+            if (gameState !== STATE.VERIFY_PHASE) return;
+
+            // Find target slot
+            let slotIdx = verifyState.activeSlot;
+            if (slotIdx < 0 || slotIdx > 2 || verifyState.slots[slotIdx] !== null) {
+                slotIdx = verifyState.slots.findIndex(s => s === null);
+                if (slotIdx === -1) return; // All slots already filled
+                verifyState.activeSlot = slotIdx;
+            }
+
+            let isCorrect = false;
+            let assignedColorKey = 'gold';
+
+            if (slotIdx === 0 || slotIdx === 1) {
+                // First two slots are the addends (parts C and B in either order)
+                const otherIdx = slotIdx === 0 ? 1 : 0;
+                const otherSlot = verifyState.slots[otherIdx];
+
+                if (!otherSlot) {
+                    // Either C (Red) or B (Green) is accepted in the first filled addend slot
+                    if (numVal === prob.C) {
+                        isCorrect = true;
+                        assignedColorKey = 'red';
+                    } else if (numVal === prob.B) {
+                        isCorrect = true;
+                        assignedColorKey = 'green';
+                    }
+                } else {
+                    // The other addend slot is already filled; require the remaining part
+                    if (otherSlot.colorKey === 'red' && numVal === prob.B) {
+                        isCorrect = true;
+                        assignedColorKey = 'green';
+                    } else if (otherSlot.colorKey === 'green' && numVal === prob.C) {
+                        isCorrect = true;
+                        assignedColorKey = 'red';
+                    }
+                }
+            } else if (slotIdx === 2) {
+                // Third slot is the sum (= A in Gold)
+                if (numVal === prob.A) {
+                    isCorrect = true;
+                    assignedColorKey = 'gold';
+                }
+            }
+
+            if (isCorrect) {
+                verifyState.slots[slotIdx] = {
+                    value: numVal,
+                    colorKey: assignedColorKey,
+                    popScale: 1.45
+                };
+                if (sourceBtnIdx >= 0) {
+                    numberButtons[sourceBtnIdx].pressScale = 1.28;
+                }
+                sound.playCorrectSlot(slotIdx);
+
+                // Sparkle burst on the filled slot
+                const sr = verifyState.slotRects[slotIdx];
+                if (sr) {
+                    spawnCutSparks(sr.x + sr.w * 0.5, sr.y + sr.h * 0.5);
+                }
+
+                // Advance activeSlot to the next empty slot
+                const nextEmpty = verifyState.slots.findIndex(s => s === null);
+                verifyState.activeSlot = nextEmpty;
+
+                checkVictoryCondition();
+            } else {
+                // Wrong number: play comical boing, wobble slot & button, and pulse the visual ribbon clue!
+                sound.playWrongBoing();
+                verifyState.slotWobble[slotIdx] = 1.0;
+                bearAnim.curiousTiltTimer = 0.85;
+
+                if (sourceBtnIdx >= 0) {
+                    numberButtons[sourceBtnIdx].wobble = 1.0;
+                }
+
+                // Trigger visual hint pulse on the corresponding ribbon part(s)
+                if (slotIdx === 0 || slotIdx === 1) {
+                    const otherIdx = slotIdx === 0 ? 1 : 0;
+                    const otherSlot = verifyState.slots[otherIdx];
+                    if (!otherSlot) {
+                        verifyState.hintPulseC = 1.0;
+                        verifyState.hintPulseB = 1.0;
+                    } else if (otherSlot.colorKey === 'red') {
+                        verifyState.hintPulseB = 1.0;
+                    } else {
+                        verifyState.hintPulseC = 1.0;
+                    }
+                } else {
+                    verifyState.hintPulseA = 1.0;
+                    verifyState.hintPulseC = 0.7;
+                    verifyState.hintPulseB = 0.7;
+                }
+            }
+        }
+
+        function updateHoverStates() {
+            pointer.hoverLangBtn = pointInRect(pointer.x, pointer.y, langBtnRect);
+            pointer.hoverNextBtn = pointInRect(pointer.x, pointer.y, nextBtnRect);
+
+            const m = getRibbonMetrics();
+            const halfGap = ribbonAnim.splitGap * 0.5;
+            const topY = m.centerY - m.height * 0.5;
+
+            // Reset hover flags
+            pointer.hoverCutZone = false;
+            pointer.hoverSewZone = false;
+            pointer.hoverLeftPiece = false;
+            pointer.hoverRightPiece = false;
+            pointer.hoverWholeBadge = false;
+            pointer.hoverSlotIdx = -1;
+            pointer.hoverNumBtnIdx = -1;
+
+            if (gameState === STATE.READY_TO_CUT) {
+                const ribbonBox = {
+                    x: m.startX - 60,
+                    y: m.centerY - m.height * 0.95,
+                    w: m.totalW + 120,
+                    h: m.height * 1.9
+                };
+                pointer.hoverCutZone = pointInRect(pointer.x, pointer.y, ribbonBox);
+            } else if (gameState === STATE.VERIFY_PHASE) {
+                // Check seam / gap zone for sewing
+                if (!verifyState.isSewn && !verifyState.isSewingNow) {
+                    const seamZone = {
+                        x: m.cutX - halfGap - 42,
+                        y: topY - 25,
+                        w: ribbonAnim.splitGap + 84,
+                        h: m.height + 50
+                    };
+                    pointer.hoverSewZone = pointInRect(pointer.x, pointer.y, seamZone);
+                }
+
+                // Check left Red (C) and right Green (B) ribbon pieces (so child can also click pieces directly!)
+                const leftPieceBox = {
+                    x: m.startX - halfGap - 10,
+                    y: topY - 10,
+                    w: m.leftW + 10,
+                    h: m.height + 20
+                };
+                const rightPieceBox = {
+                    x: m.cutX + halfGap,
+                    y: topY - 10,
+                    w: m.rightW + 10,
+                    h: m.height + 20
+                };
+                if (!pointer.hoverSewZone) {
+                    pointer.hoverLeftPiece = pointInRect(pointer.x, pointer.y, leftPieceBox);
+                    pointer.hoverRightPiece = pointInRect(pointer.x, pointer.y, rightPieceBox);
+                }
+
+                // If sewn, check top Golden 'A' badge above the ribbon
+                if (verifyState.isSewn) {
+                    const distToBadgeA = Math.hypot(pointer.x - m.centerX, pointer.y - (topY - 34));
+                    pointer.hoverWholeBadge = distToBadgeA <= 48;
+                }
+
+                // Check the 3 equation slots [ ? ] + [ ? ] = [ ? ]
+                for (let i = 0; i < 3; i++) {
+                    if (pointInRect(pointer.x, pointer.y, verifyState.slotRects[i])) {
+                        pointer.hoverSlotIdx = i;
+                        break;
+                    }
+                }
+
+                // Check the 10 number buttons in the bottom tray
+                updateNumberButtonPositions();
+                for (let i = 0; i < 10; i++) {
+                    const btn = numberButtons[i];
+                    const d = Math.hypot(pointer.x - btn.x, pointer.y - btn.y);
+                    btn.hover = d <= btn.r + 6;
+                    if (btn.hover) {
+                        pointer.hoverNumBtnIdx = i;
+                    }
+                }
+            }
+        }
+
+        function handlePointerDown(clientX, clientY) {
+            sound.init();
+            const pos = toLogicalCoords(clientX, clientY);
+            pointer.x = pos.x;
+            pointer.y = pos.y;
+            pointer.isDown = true;
+            updateHoverStates();
+
+            // 1. Check Language Toggle Button (УКР / РУС)
+            if (pointer.hoverLangBtn) {
+                currentLang = currentLang === 'uk' ? 'ru' : 'uk';
+                sound.playClick();
+                return;
+            }
+
+            // 2. Check Minimalistic Next Button (Skip/Next Problem immediately)
+            if (pointer.hoverNextBtn) {
+                sound.playClick();
+                generateNewProblem(true);
+                return;
+            }
+
+            // 3. Game Interactions by Phase
+            if (gameState === STATE.READY_TO_CUT && pointer.hoverCutZone) {
+                triggerCutAction();
+                return;
+            }
+
+            if (gameState === STATE.VERIFY_PHASE) {
+                // a) Clicking a number button 1..10
+                if (pointer.hoverNumBtnIdx >= 0) {
+                    const btn = numberButtons[pointer.hoverNumBtnIdx];
+                    handleNumberInput(btn.num, pointer.hoverNumBtnIdx);
+                    return;
+                }
+
+                // b) Clicking one of the [ ? ] slots on the board to select it
+                if (pointer.hoverSlotIdx >= 0) {
+                    if (verifyState.slots[pointer.hoverSlotIdx] === null) {
+                        verifyState.activeSlot = pointer.hoverSlotIdx;
+                        sound.playClick();
+                    }
+                    return;
+                }
+
+                // c) Clicking the seam between the two ribbon pieces to sew them together
+                if (pointer.hoverSewZone) {
+                    triggerSewAction();
+                    return;
+                }
+
+                // d) Clicking directly on the Red (C), Green (B), or Gold (A) ribbon pieces/badges
+                if (pointer.hoverWholeBadge && verifyState.isSewn) {
+                    handleNumberInput(prob.A, prob.A - 1);
+                    return;
+                }
+                if (pointer.hoverLeftPiece) {
+                    // If both addends are already filled and only sum A is left, and ribbon is sewn, allow clicking ribbon
+                    handleNumberInput(prob.C, prob.C - 1);
+                    return;
+                }
+                if (pointer.hoverRightPiece) {
+                    handleNumberInput(prob.B, prob.B - 1);
+                    return;
+                }
+            }
+
+            if (gameState === STATE.CELEBRATING && stateTimer > 0.6) {
+                // Clicking during celebration advances quickly
+                gameState = STATE.TRANSITION_OUT;
+                stateTimer = 0;
+            }
+        }
+
+        function handlePointerMove(clientX, clientY) {
+            const pos = toLogicalCoords(clientX, clientY);
+            const dx = pos.x - pointer.x;
+            const dy = pos.y - pointer.y;
+            pointer.vx = dx;
+            pointer.vy = dy;
+            pointer.x = pos.x;
+            pointer.y = pos.y;
+
+            // Animate scissor blades slightly when moving mouse
+            const speed = Math.hypot(dx, dy);
+            pointer.snipPhase += speed * 0.035;
+
+            updateHoverStates();
+
+            // Support dragging/swiping across the ribbon to cut or sew!
+            if (pointer.isDown) {
+                if (gameState === STATE.READY_TO_CUT && pointer.hoverCutZone) {
+                    triggerCutAction();
+                } else if (gameState === STATE.VERIFY_PHASE && pointer.hoverSewZone) {
+                    triggerSewAction();
+                }
+            }
+        }
+
+        function handlePointerUp() {
+            pointer.isDown = false;
+        }
+
+        window.addEventListener('pointerdown', e => handlePointerDown(e.clientX, e.clientY));
+        window.addEventListener('pointermove', e => handlePointerMove(e.clientX, e.clientY));
+        window.addEventListener('pointerup', handlePointerUp);
+
+        // Allow keyboard number entry (1-9, 0 for 10) during verification phase
+        window.addEventListener('keydown', e => {
+            if (gameState !== STATE.VERIFY_PHASE) return;
+            if (e.key >= '1' && e.key <= '9') {
+                const num = parseInt(e.key, 10);
+                handleNumberInput(num, num - 1);
+            } else if (e.key === '0') {
+                handleNumberInput(10, 9);
+            }
+        });
+
+        // ============================================================================
+        // PHYSICS & STATE UPDATE LOOP
+        // ============================================================================
+        let lastStitchSoundIdx = 0;
+
+        function update(dt) {
+            globalTime += dt;
+            stateTimer += dt;
+
+            // Update dust motes
+            for (const d of dustMotes) {
+                d.x += d.speedX * dt + Math.sin(globalTime * 1.2 + d.phase) * 6 * dt;
+                d.y += d.speedY * dt;
+                if (d.y < -20) d.y = VH + 20;
+                if (d.x > VW + 20) d.x = -20;
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.life += dt;
+                if (p.life >= p.maxLife) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+                p.vy += p.gravity * dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.rot += p.vRot * dt;
+            }
+
+            // Decay hint pulses, slot wobbles, and button animations
+            verifyState.hintPulseC = Math.max(0, verifyState.hintPulseC - dt * 1.8);
+            verifyState.hintPulseB = Math.max(0, verifyState.hintPulseB - dt * 1.8);
+            verifyState.hintPulseA = Math.max(0, verifyState.hintPulseA - dt * 1.8);
+
+            for (let i = 0; i < 3; i++) {
+                verifyState.slotWobble[i] = Math.max(0, verifyState.slotWobble[i] - dt * 2.8);
+                if (verifyState.slots[i] && verifyState.slots[i].popScale > 1) {
+                    verifyState.slots[i].popScale = Math.max(1, verifyState.slots[i].popScale - dt * 3.2);
+                }
+            }
+
+            for (let i = 0; i < 10; i++) {
+                const btn = numberButtons[i];
+                btn.wobble = Math.max(0, btn.wobble - dt * 2.8);
+                btn.pressScale += (1 - btn.pressScale) * Math.min(1, dt * 12);
+            }
+
+            // Update Bear Tailor animations
+            bearAnim.breath = Math.sin(globalTime * 2.2);
+            bearAnim.blinkTimer -= dt;
+            if (bearAnim.blinkTimer <= 0) {
+                bearAnim.blinkState = 1;
+                if (bearAnim.blinkTimer <= -0.14) {
+                    bearAnim.blinkState = 0;
+                    bearAnim.blinkTimer = 2.4 + Math.random() * 3.2;
+                }
+            }
+
+            if (bearAnim.curiousTiltTimer > 0) {
+                bearAnim.curiousTiltTimer = Math.max(0, bearAnim.curiousTiltTimer - dt);
+                bearAnim.headTilt = Math.sin(bearAnim.curiousTiltTimer * Math.PI * 4) * 0.14;
+            } else if (gameState !== STATE.CELEBRATING) {
+                bearAnim.headTilt += (0 - bearAnim.headTilt) * Math.min(1, dt * 8);
+            }
+
+            // Smooth eye tracking towards active work or cursor
+            const m = getRibbonMetrics();
+            let targetLookX = (pointer.x - VW * 0.5) / (VW * 0.5);
+            let targetLookY = (pointer.y - 520) / 500;
+            if (gameState === STATE.CUTTING || verifyState.isSewingNow) {
+                targetLookX = (m.cutX - VW * 0.5) / 450;
+                targetLookY = 0.65;
+            }
+            bearAnim.lookX += (Math.max(-1, Math.min(1, targetLookX)) - bearAnim.lookX) * Math.min(1, dt * 8);
+            bearAnim.lookY += (Math.max(-1, Math.min(1, targetLookY)) - bearAnim.lookY) * Math.min(1, dt * 8);
+
+            // State Machine Logic
+            if (gameState === STATE.INTRO) {
+                const t = Math.min(1, stateTimer / 0.45);
+                ribbonAnim.appearScale = t === 1 ? 1 : 1 - Math.pow(2, -10 * t) * Math.cos((t * 10 - 0.75) * (2 * Math.PI) / 3);
+                if (stateTimer >= 0.45) {
+                    ribbonAnim.appearScale = 1;
+                    gameState = STATE.READY_TO_CUT;
+                    stateTimer = 0;
+                }
+            } else if (gameState === STATE.READY_TO_CUT) {
+                ribbonAnim.wholeBadgeScale = 1 + Math.sin(globalTime * 4) * 0.03;
+            } else if (gameState === STATE.CUTTING) {
+                // 0.0 -> 0.32s: Scissors slice through ribbon
+                // 0.25 -> 0.95s: Ribbon splits into Red C and Green B, badges pop in, equation updates
+                ribbonAnim.cutProgress = Math.min(1, stateTimer / 0.32);
+
+                if (stateTimer > 0.22) {
+                    const splitT = Math.min(1, (stateTimer - 0.22) / 0.48);
+                    const easeOutBack = 1 + 1.70158 * Math.pow(splitT - 1, 3) + 1.70158 * Math.pow(splitT - 1, 2);
+                    ribbonAnim.splitGap = 115 * Math.min(1.12, easeOutBack);
+                    ribbonAnim.leftTilt = -0.035 * Math.sin(splitT * Math.PI);
+                    ribbonAnim.rightTilt = 0.045 * Math.sin(splitT * Math.PI);
+                    ribbonAnim.wholeBadgeScale = Math.max(0, 1 - splitT * 3);
+                    ribbonAnim.leftRedMorph = Math.min(1, splitT * 1.6);
+
+                    if (ribbonAnim.partBadgesScale === 0 && splitT > 0.2) {
+                        sound.playPop(587.33); // Pop for Red C badge & answer
+                    }
+                    ribbonAnim.partBadgesScale = Math.min(1.08, easeOutBack);
+                    boardAnim.subAnswerScale = Math.min(1.08, easeOutBack);
+                }
+
+                if (stateTimer > 0.50) {
+                    const slideT = Math.min(1, (stateTimer - 0.50) / 0.42);
+                    const easeSlide = 1 - Math.pow(1 - slideT, 3);
+                    boardAnim.becausePanelSlide = easeSlide;
+                    verifyState.traySlide = easeSlide;
+                }
+
+                if (stateTimer >= 0.96) {
+                    ribbonAnim.splitGap = 115;
+                    ribbonAnim.leftRedMorph = 1;
+                    ribbonAnim.partBadgesScale = 1;
+                    boardAnim.subAnswerScale = 1;
+                    boardAnim.becausePanelSlide = 1;
+                    verifyState.traySlide = 1;
+                    gameState = STATE.VERIFY_PHASE;
+                    stateTimer = 0;
+                    updateHoverStates();
+                }
+            } else if (gameState === STATE.VERIFY_PHASE) {
+                // Handle sewing sub-animation if active
+                if (verifyState.isSewingNow) {
+                    verifyState.sewTimer += dt;
+                    const duration = 0.92;
+                    const p = Math.min(1, verifyState.sewTimer / duration);
+                    ribbonAnim.sewProgress = p;
+
+                    const totalStitches = 6;
+                    const curStitchIdx = Math.floor(p * totalStitches);
+                    if (curStitchIdx > lastStitchSoundIdx && curStitchIdx < totalStitches) {
+                        lastStitchSoundIdx = curStitchIdx;
+                        sound.playStitch(curStitchIdx);
+                        spawnCutSparks(m.cutX, m.centerY + (p - 0.5) * m.height * 0.7);
+                    }
+
+                    // Pull the gap closed smoothly in the second half of sewing
+                    const pullT = Math.max(0, Math.min(1, (p - 0.22) / 0.78));
+                    const smoothPull = pullT * pullT * (3 - 2 * pullT);
+                    ribbonAnim.splitGap = 115 * (1 - smoothPull);
+
+                    // Calculate automated sewing needle position
+                    const stitchWave = Math.sin(p * Math.PI * totalStitches * 2);
+                    const halfGap = Math.max(18, ribbonAnim.splitGap * 0.5 + 16);
+                    ribbonAnim.activeNeedleX = m.cutX + stitchWave * halfGap;
+                    ribbonAnim.activeNeedleY = (m.centerY - m.height * 0.36) + p * (m.height * 0.72);
+                    ribbonAnim.activeNeedleAngle = stitchWave > 0 ? -0.35 : -2.75;
+
+                    if (verifyState.sewTimer >= duration) {
+                        verifyState.isSewingNow = false;
+                        verifyState.isSewn = true;
+                        ribbonAnim.splitGap = 0;
+                        ribbonAnim.sewProgress = 1;
+                        ribbonAnim.wholeBadgeScale = 1;
+                        sound.playPop(659.25);
+                        updateHoverStates();
+                        checkVictoryCondition();
+                    }
+                } else if (!verifyState.isSewn) {
+                    // Gentle float while waiting for needle stitch
+                    ribbonAnim.splitGap = 115 + Math.sin(globalTime * 3.5) * 4;
+                } else {
+                    ribbonAnim.splitGap = 0;
+                }
+            } else if (gameState === STATE.CELEBRATING) {
+                bearAnim.joyLevel = 1;
+                bearAnim.headTilt = Math.sin(stateTimer * 9) * 0.09;
+                boardAnim.boardBounce = Math.max(0, 1 - stateTimer * 2.5) * Math.sin(stateTimer * 18) * 0.12;
+                ribbonAnim.unitedGlow = 0.6 + Math.sin(stateTimer * 7) * 0.4;
+                verifyState.traySlide = Math.max(0, 1 - stateTimer * 1.8);
+
+                // Automatically advance to next problem after 2.8 seconds
+                if (stateTimer >= 2.8) {
+                    gameState = STATE.TRANSITION_OUT;
+                    stateTimer = 0;
+                }
+            } else if (gameState === STATE.TRANSITION_OUT) {
+                const t = Math.min(1, stateTimer / 0.32);
+                ribbonAnim.appearScale = 1 - t * t;
+                if (stateTimer >= 0.32) {
+                    generateNewProblem(true);
+                }
+            }
+
+            // Update Verlet physics thread attached to the needle eye
+            const needleUsingAuto = verifyState.isSewingNow;
+            const nX = needleUsingAuto ? ribbonAnim.activeNeedleX : pointer.x;
+            const nY = needleUsingAuto ? ribbonAnim.activeNeedleY : pointer.y;
+            const nAng = needleUsingAuto ? ribbonAnim.activeNeedleAngle : -2.35;
+
+            const needleLen = 92;
+            const anchorX = nX - Math.cos(nAng) * needleLen;
+            const anchorY = nY - Math.sin(nAng) * needleLen;
+
+            threadNodes[0].x = anchorX;
+            threadNodes[0].y = anchorY;
+
+            for (let i = 1; i < THREAD_NODES; i++) {
+                const node = threadNodes[i];
+                const vx = (node.x - node.oldX) * 0.88;
+                const vy = (node.y - node.oldY) * 0.88;
+                node.oldX = node.x;
+                node.oldY = node.y;
+                node.x += vx;
+                node.y += vy + 0.65; // subtle gravity droop
+            }
+
+            // Distance constraints relaxation
+            for (let iter = 0; iter < 5; iter++) {
+                threadNodes[0].x = anchorX;
+                threadNodes[0].y = anchorY;
+                for (let i = 0; i < THREAD_NODES - 1; i++) {
+                    const a = threadNodes[i];
+                    const b = threadNodes[i + 1];
+                    const dx = b.x - a.x;
+                    const dy = b.y - a.y;
+                    const dist = Math.hypot(dx, dy) || 0.0001;
+                    const diff = (dist - THREAD_SEG_LEN) / dist;
+                    if (i === 0) {
+                        b.x -= dx * diff;
+                        b.y -= dy * diff;
+                    } else {
+                        a.x += dx * diff * 0.5;
+                        a.y += dy * diff * 0.5;
+                        b.x -= dx * diff * 0.5;
+                        b.y -= dy * diff * 0.5;
+                    }
+                }
+            }
+        }
+
+        // ============================================================================
+        // PROCEDURAL DRAWING HELPERS
+        // ============================================================================
+        function drawRoundedRect(x, y, w, h, r) {
+            const radius = Math.min(r, w * 0.5, h * 0.5);
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.arcTo(x + w, y, x + w, y + h, radius);
+            ctx.arcTo(x + w, y + h, x, y + h, radius);
+            ctx.arcTo(x, y + h, x, y, radius);
+            ctx.arcTo(x, y, x + w, y, radius);
+            ctx.closePath();
+        }
+
+        function drawBrassRivet(x, y, r = 7) {
+            const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r);
+            grad.addColorStop(0, '#fff3b0');
+            grad.addColorStop(0.45, '#d49b27');
+            grad.addColorStop(1, '#5e3a04');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#3b2202';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // ============================================================================
+        // 1. LIVING WOODLAND WORKSHOP BACKGROUND
+        // ============================================================================
+        function drawBackground() {
+            // Warm timber wall gradient
+            const wallGrad = ctx.createLinearGradient(0, 0, 0, VH);
+            wallGrad.addColorStop(0, '#3d2314');
+            wallGrad.addColorStop(0.65, '#59341e');
+            wallGrad.addColorStop(1, '#2b170c');
+            ctx.fillStyle = wallGrad;
+            ctx.fillRect(0, 0, VW, VH);
+
+            // Vertical wooden wall planks with subtle woodgrain lines
+            ctx.strokeStyle = 'rgba(24, 11, 4, 0.35)';
+            ctx.lineWidth = 3;
+            for (let x = 0; x < VW; x += 120) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, 720);
+                ctx.stroke();
+
+                // Wood knot / grain accents
+                ctx.fillStyle = 'rgba(255, 200, 140, 0.03)';
+                ctx.fillRect(x + 12, 0, 35, 720);
+            }
+
+            // --- ARCHED FOREST WINDOW (Left Wall) ---
+            const winX = 230, winY = 290, winW = 250, winH = 340;
+            ctx.save();
+            // Window clipping path
+            ctx.beginPath();
+            ctx.arc(winX, winY - 40, winW * 0.5, Math.PI, 0, false);
+            ctx.lineTo(winX + winW * 0.5, winY + winH * 0.5);
+            ctx.lineTo(winX - winW * 0.5, winY + winH * 0.5);
+            ctx.closePath();
+            ctx.clip();
+
+            // Sunny forest sky
+            const skyGrad = ctx.createLinearGradient(winX, winY - 170, winX, winY + 170);
+            skyGrad.addColorStop(0, '#72c6ef');
+            skyGrad.addColorStop(0.6, '#bce7fd');
+            skyGrad.addColorStop(1, '#e8f7be');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(winX - 150, winY - 180, 300, 360);
+
+            // Warm sun glow
+            const sunGrad = ctx.createRadialGradient(winX - 35, winY - 85, 8, winX - 35, winY - 85, 110);
+            sunGrad.addColorStop(0, '#fffbe0');
+            sunGrad.addColorStop(0.4, 'rgba(255, 235, 130, 0.6)');
+            sunGrad.addColorStop(1, 'rgba(255, 235, 130, 0)');
+            ctx.fillStyle = sunGrad;
+            ctx.beginPath();
+            ctx.arc(winX - 35, winY - 85, 110, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Distant hills
+            ctx.fillStyle = '#68a357';
+            ctx.beginPath();
+            ctx.arc(winX - 50, winY + 180, 160, Math.PI, 0);
+            ctx.arc(winX + 70, winY + 190, 140, Math.PI, 0);
+            ctx.fill();
+
+            // Swaying woodland pine trees outside window
+            const treeSway = Math.sin(globalTime * 1.4) * 7;
+            const drawPine = (tx, ty, scaleT, col) => {
+                ctx.fillStyle = col;
+                for (let layer = 0; layer < 3; layer++) {
+                    const ly = ty - layer * 42 * scaleT;
+                    const lw = (68 - layer * 14) * scaleT;
+                    ctx.beginPath();
+                    ctx.moveTo(tx + treeSway * (layer + 1) * 0.35, ly - 65 * scaleT);
+                    ctx.lineTo(tx - lw, ly);
+                    ctx.lineTo(tx + lw, ly);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+            };
+            drawPine(winX - 65, winY + 145, 0.95, '#3b7a3e');
+            drawPine(winX + 55, winY + 155, 1.1, '#2b5e2e');
+            drawPine(winX + 5, winY + 165, 0.85, '#4c9141');
+
+            // Window mullions (wooden crossbars)
+            ctx.strokeStyle = '#3b2010';
+            ctx.lineWidth = 10;
+            ctx.beginPath();
+            ctx.moveTo(winX, winY - 170);
+            ctx.lineTo(winX, winY + 170);
+            ctx.moveTo(winX - 130, winY - 15);
+            ctx.lineTo(winX + 130, winY - 15);
+            ctx.stroke();
+            ctx.restore();
+
+            // Outer heavy carved oak window frame
+            ctx.strokeStyle = '#2d1608';
+            ctx.lineWidth = 16;
+            ctx.beginPath();
+            ctx.arc(winX, winY - 40, winW * 0.5, Math.PI, 0, false);
+            ctx.lineTo(winX + winW * 0.5, winY + winH * 0.5);
+            ctx.lineTo(winX - winW * 0.5, winY + winH * 0.5);
+            ctx.closePath();
+            ctx.stroke();
+
+            ctx.strokeStyle = '#7c4b27';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Wooden windowsill
+            drawRoundedRect(winX - 148, winY + winH * 0.5 - 8, 296, 26, 8);
+            ctx.fillStyle = '#6e4020';
+            ctx.fill();
+            ctx.strokeStyle = '#291407';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // --- ANTIQUE PENDULUM WALL CLOCK (Left-Center Wall) ---
+            const clkX = 485, clkY = 235;
+            // Swinging brass pendulum
+            const pendAngle = Math.sin(globalTime * Math.PI * 1.5) * 0.24;
+            ctx.save();
+            ctx.translate(clkX, clkY + 35);
+            ctx.rotate(pendAngle);
+            ctx.strokeStyle = '#d49b27';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, 95);
+            ctx.stroke();
+            drawBrassRivet(0, 98, 20);
+            ctx.restore();
+
+            // Clock wooden body
+            drawRoundedRect(clkX - 48, clkY - 52, 96, 104, 22);
+            ctx.fillStyle = '#4a2611';
+            ctx.fill();
+            ctx.strokeStyle = '#241005';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Clock dial (warm cream & gold, not white)
+            ctx.fillStyle = '#f2dfb3';
+            ctx.beginPath();
+            ctx.arc(clkX, clkY, 36, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#c48b23';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Clock hands
+            ctx.strokeStyle = '#381d0a';
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(clkX, clkY);
+            ctx.lineTo(clkX + Math.cos(globalTime * 0.1) * 18, clkY + Math.sin(globalTime * 0.1) * 18);
+            ctx.moveTo(clkX, clkY);
+            ctx.lineTo(clkX + Math.cos(globalTime * 0.8) * 26, clkY + Math.sin(globalTime * 0.8) * 26);
+            ctx.stroke();
+            drawBrassRivet(clkX, clkY, 4);
+
+            // --- RIGHT WALL TAILOR'S SHELVES WITH FABRIC ROLLS & SPOOLS ---
+            const shX = 1440, shY = 310, shW = 410;
+            // Upper shelf items: Bolts of patterned fabric
+            const fabrics = [
+                { x: shX + 30, w: 95, h: 42, c1: '#c93b4b', c2: '#ff8593' },
+                { x: shX + 38, w: 82, h: 36, yOff: -36, c1: '#2e77bd', c2: '#82c0ff' },
+                { x: shX + 150, w: 105, h: 44, c1: '#2a8f5b', c2: '#7be3ad' },
+                { x: shX + 160, w: 90, h: 38, yOff: -38, c1: '#d98a2b', c2: '#ffd08a' }
+            ];
+            fabrics.forEach(f => {
+                const fy = shY - f.h + (f.yOff || 0);
+                drawRoundedRect(f.x, fy, f.w, f.h, 16);
+                ctx.fillStyle = f.c1;
+                ctx.fill();
+                ctx.strokeStyle = '#2b1508';
+                ctx.lineWidth = 3.5;
+                ctx.stroke();
+                // Rolled cloth spiral end
+                ctx.fillStyle = f.c2;
+                ctx.beginPath();
+                ctx.ellipse(f.x + f.w - 14, fy + f.h * 0.5, 9, f.h * 0.36, 0, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Velvet pincushion on right side of shelf
+            const pcX = shX + 325, pcY = shY - 26;
+            ctx.fillStyle = '#c92a3a';
+            ctx.beginPath();
+            ctx.ellipse(pcX, pcY, 38, 26, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#3d1015';
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+            // Pins sticking out of pincushion
+            const pinAngles = [-0.4, 0.05, 0.45];
+            pinAngles.forEach((ang, idx) => {
+                const px = pcX + Math.sin(ang) * 32;
+                const py = pcY - Math.cos(ang) * 44;
+                ctx.strokeStyle = '#d9e2ec';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(pcX + ang * 18, pcY - 14);
+                ctx.lineTo(px, py);
+                ctx.stroke();
+                ctx.fillStyle = idx === 1 ? '#ffd166' : '#72ddf7';
+                ctx.beginPath();
+                ctx.arc(px, py, 6, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Wooden shelf plank 1
+            drawRoundedRect(shX, shY, shW, 24, 8);
+            ctx.fillStyle = '#734222';
+            ctx.fill();
+            ctx.strokeStyle = '#291407';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Lower shelf at y = 470 with Wooden Thread Spools
+            const sh2Y = 475;
+            const spoolColors = ['#e63946', '#f4a261', '#2a9d8f', '#8338ec', '#3a86ff'];
+            spoolColors.forEach((sc, i) => {
+                const sx = shX + 45 + i * 68;
+                const sy = sh2Y - 58;
+                // Thread body
+                ctx.fillStyle = sc;
+                ctx.fillRect(sx - 16, sy + 8, 32, 42);
+                // Diagonal thread texture lines
+                ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(sx - 14, sy + 18);
+                ctx.lineTo(sx + 14, sy + 24);
+                ctx.moveTo(sx - 14, sy + 32);
+                ctx.lineTo(sx + 14, sy + 38);
+                ctx.stroke();
+                // Wooden spool rims top & bottom
+                ctx.fillStyle = '#b57c4a';
+                drawRoundedRect(sx - 21, sy, 42, 10, 4);
+                ctx.fill();
+                ctx.strokeStyle = '#3b1f0b';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+                drawRoundedRect(sx - 21, sy + 48, 42, 10, 4);
+                ctx.fill();
+                ctx.stroke();
+            });
+
+            drawRoundedRect(shX, sh2Y, shW, 24, 8);
+            ctx.fillStyle = '#734222';
+            ctx.fill();
+            ctx.strokeStyle = '#291407';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // --- VOLUMETRIC SUNBEAMS FROM WINDOW ---
+            ctx.save();
+            const beamGrad = ctx.createLinearGradient(winX, winY - 60, winX + 750, VH);
+            beamGrad.addColorStop(0, 'rgba(255, 238, 165, 0.22)');
+            beamGrad.addColorStop(0.6, 'rgba(255, 228, 135, 0.08)');
+            beamGrad.addColorStop(1, 'rgba(255, 228, 135, 0)');
+            ctx.fillStyle = beamGrad;
+            ctx.beginPath();
+            ctx.moveTo(winX - 110, winY - 120);
+            ctx.lineTo(winX + 115, winY - 120);
+            ctx.lineTo(winX + 920, VH);
+            ctx.lineTo(winX + 260, VH);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // ============================================================================
+        // 2. REALISTIC WOODLAND BEAR TAILOR CHARACTER
+        // ============================================================================
+        function drawFurTuftCircle(cx, cy, r, numTufts, tuftLen, baseColor, highlightColor) {
+            const grad = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.25, r * 0.1, cx, cy, r * 1.08);
+            grad.addColorStop(0, highlightColor);
+            grad.addColorStop(0.65, baseColor);
+            grad.addColorStop(1, '#3d1e0b');
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            for (let i = 0; i <= numTufts; i++) {
+                const ang = (i / numTufts) * Math.PI * 2;
+                const nextAng = ((i + 0.5) / numTufts) * Math.PI * 2;
+                const radOuter = r + (i % 2 === 0 ? tuftLen : tuftLen * 0.4);
+                const ox = cx + Math.cos(ang) * radOuter;
+                const oy = cy + Math.sin(ang) * radOuter;
+                const ix = cx + Math.cos(nextAng) * (r - tuftLen * 0.25);
+                const iy = cy + Math.sin(nextAng) * (r - tuftLen * 0.25);
+                if (i === 0) ctx.moveTo(ox, oy);
+                else ctx.quadraticCurveTo(ox, oy, ix, iy);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = '#2b1306';
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+        }
+
+        function drawBearTailorCharacter() {
+            const bx = VW * 0.5;
+            const by = 560 + bearAnim.breath * 4 - bearAnim.joyLevel * Math.abs(Math.sin(globalTime * 10)) * 18;
+
+            ctx.save();
+            ctx.translate(bx, by);
+
+            // --- TORSO & TAILORED VELVET WAISTCOAT ---
+            // Bear furry shoulders & torso
+            drawFurTuftCircle(0, 125, 175, 36, 9, '#7a4424', '#9c5a33');
+
+            // Soft cream chest fur tuft
+            drawFurTuftCircle(0, 38, 62, 18, 8, '#dec097', '#f7e5c8');
+
+            // Tailored Forest-Green / Burgundy Velvet Waistcoat
+            ctx.fillStyle = '#204e39';
+            ctx.strokeStyle = '#112b1f';
+            ctx.lineWidth = 4;
+
+            // Left waistcoat panel
+            ctx.beginPath();
+            ctx.moveTo(-58, -10);
+            ctx.quadraticCurveTo(-155, 25, -165, 185);
+            ctx.lineTo(-18, 200);
+            ctx.quadraticCurveTo(-15, 75, -58, -10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Right waistcoat panel
+            ctx.beginPath();
+            ctx.moveTo(58, -10);
+            ctx.quadraticCurveTo(155, 25, 165, 185);
+            ctx.lineTo(18, 200);
+            ctx.quadraticCurveTo(15, 75, 58, -10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Golden brocade trim & brass waistcoat buttons
+            ctx.strokeStyle = '#e0a938';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([7, 5]);
+            ctx.beginPath();
+            ctx.moveTo(-48, 5);
+            ctx.quadraticCurveTo(-24, 85, -24, 185);
+            ctx.moveTo(48, 5);
+            ctx.quadraticCurveTo(24, 85, 24, 185);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            drawBrassRivet(0, 82, 8);
+            drawBrassRivet(0, 122, 8);
+            drawBrassRivet(0, 162, 8);
+
+            // --- YELLOW TAILOR'S MEASURING TAPE AROUND NECK ---
+            ctx.strokeStyle = '#2e1c05';
+            ctx.lineWidth = 22;
+            ctx.lineCap = 'butt';
+            ctx.beginPath();
+            ctx.moveTo(-88, -18);
+            ctx.quadraticCurveTo(-110, 75, -82, 175);
+            ctx.moveTo(88, -18);
+            ctx.quadraticCurveTo(110, 75, 82, 175);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#ffca3a';
+            ctx.lineWidth = 16;
+            ctx.beginPath();
+            ctx.moveTo(-88, -18);
+            ctx.quadraticCurveTo(-110, 75, -82, 175);
+            ctx.moveTo(88, -18);
+            ctx.quadraticCurveTo(110, 75, 82, 175);
+            ctx.stroke();
+
+            // Ruler tick marks on measuring tape
+            ctx.strokeStyle = '#3d2506';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([3, 9]);
+            ctx.beginPath();
+            ctx.moveTo(-84, -15);
+            ctx.quadraticCurveTo(-105, 75, -78, 170);
+            ctx.moveTo(84, -15);
+            ctx.quadraticCurveTo(105, 75, 78, 170);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // --- BEAR HEAD (With natural tilt & ear wiggle) ---
+            ctx.save();
+            ctx.translate(0, -68);
+            ctx.rotate(bearAnim.headTilt);
+
+            const earWiggle = bearAnim.joyLevel * Math.sin(globalTime * 18) * 0.14;
+
+            // Left Ear
+            ctx.save();
+            ctx.translate(-98, -82);
+            ctx.rotate(-0.35 + earWiggle);
+            drawFurTuftCircle(0, 0, 44, 16, 5, '#6e3b1e', '#8f502b');
+            ctx.fillStyle = '#d9b186';
+            ctx.beginPath();
+            ctx.arc(4, 4, 24, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Right Ear
+            ctx.save();
+            ctx.translate(98, -82);
+            ctx.rotate(0.35 - earWiggle);
+            drawFurTuftCircle(0, 0, 44, 16, 5, '#6e3b1e', '#8f502b');
+            ctx.fillStyle = '#d9b186';
+            ctx.beginPath();
+            ctx.arc(-4, 4, 24, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            // Main Furry Head
+            drawFurTuftCircle(0, 0, 122, 34, 8, '#7d4525', '#a66038');
+
+            // Subtle cheek fur fluff
+            drawFurTuftCircle(-75, 22, 48, 14, 6, '#7d4525', '#995732');
+            drawFurTuftCircle(75, 22, 48, 14, 6, '#7d4525', '#995732');
+
+            // --- EYES (Tracking pointer / work) ---
+            const eyePositions = [-46, 46];
+            eyePositions.forEach(ex => {
+                const ey = -22;
+                // Soft dark eye socket shading
+                ctx.fillStyle = '#4f2812';
+                ctx.beginPath();
+                ctx.ellipse(ex, ey, 22, 24, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                if (bearAnim.blinkState > 0) {
+                    // Closed happy/blinking eyelid
+                    ctx.strokeStyle = '#291206';
+                    ctx.lineWidth = 5;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.arc(ex, ey + 2, 15, 0.15, Math.PI - 0.15);
+                    ctx.stroke();
+                } else {
+                    // Warm cream sclera (no stark white!)
+                    ctx.fillStyle = '#faeed7';
+                    ctx.beginPath();
+                    ctx.ellipse(ex, ey, 17, 19, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#291206';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    // Iris & Pupil tracking cursor
+                    const px = ex + bearAnim.lookX * 5.5;
+                    const py = ey + bearAnim.lookY * 5.5;
+
+                    // Rich amber-brown iris
+                    ctx.fillStyle = '#5c2c0e';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 10.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Deep pupil
+                    ctx.fillStyle = '#140903';
+                    ctx.beginPath();
+                    ctx.arc(px, py, 6, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Specular catchlights
+                    ctx.fillStyle = '#fff8eb';
+                    ctx.beginPath();
+                    ctx.arc(px - 3.5, py - 3.5, 3.2, 0, Math.PI * 2);
+                    ctx.arc(px + 3, py + 3, 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Expressive furry eyebrows
+                const browLift = bearAnim.joyLevel * -7 + (gameState === STATE.CUTTING ? -5 : 0);
+                ctx.strokeStyle = '#3b1c0b';
+                ctx.lineWidth = 6.5;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(ex - 16, ey - 28 + browLift);
+                ctx.quadraticCurveTo(ex, ey - 35 + browLift, ex + 16, ey - 26 + browLift);
+                ctx.stroke();
+            });
+
+            // --- SOFT CREAM MUZZLE & GLOSSY NOSE ---
+            const muzGrad = ctx.createRadialGradient(0, 18, 8, 0, 32, 62);
+            muzGrad.addColorStop(0, '#fae8cc');
+            muzGrad.addColorStop(0.75, '#deb88a');
+            muzGrad.addColorStop(1, '#b58958');
+            ctx.fillStyle = muzGrad;
+            ctx.beginPath();
+            ctx.ellipse(0, 30, 56, 44, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#522c14';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // 3D Realistic Bear Nose
+            const noseGrad = ctx.createRadialGradient(-8, 6, 3, 0, 12, 26);
+            noseGrad.addColorStop(0, '#594136');
+            noseGrad.addColorStop(0.5, '#2b1b14');
+            noseGrad.addColorStop(1, '#120a07');
+            ctx.fillStyle = noseGrad;
+            ctx.beginPath();
+            ctx.moveTo(0, 28);
+            ctx.bezierCurveTo(-28, 22, -30, -2, 0, -2);
+            ctx.bezierCurveTo(30, -2, 28, 22, 0, 28);
+            ctx.closePath();
+            ctx.fill();
+
+            // Wet nose highlight
+            ctx.fillStyle = 'rgba(255, 245, 230, 0.55)';
+            ctx.beginPath();
+            ctx.ellipse(-7, 5, 8, 3.5, -0.2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Philtrum & Expressive Mouth
+            ctx.strokeStyle = '#361a0a';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, 27);
+            ctx.lineTo(0, 42);
+            ctx.stroke();
+
+            if (bearAnim.joyLevel > 0.3) {
+                // Big joyful open smile
+                ctx.fillStyle = '#6e1d27';
+                ctx.beginPath();
+                ctx.arc(0, 40, 22, 0.08, Math.PI - 0.08);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Pink tongue
+                ctx.fillStyle = '#e86f7c';
+                ctx.beginPath();
+                ctx.arc(0, 51, 11, Math.PI, 0);
+                ctx.fill();
+            } else if (gameState === STATE.CUTTING) {
+                // Cute focused "O" mouth while snipping
+                ctx.fillStyle = '#591a22';
+                ctx.beginPath();
+                ctx.ellipse(0, 46, 9, 11, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            } else {
+                // Warm friendly tailor's smile
+                ctx.beginPath();
+                ctx.moveTo(-22, 42);
+                ctx.quadraticCurveTo(-10, 54, 0, 42);
+                ctx.quadraticCurveTo(10, 54, 22, 42);
+                ctx.stroke();
+            }
+
+            ctx.restore(); // End head transform
+            ctx.restore(); // End bear transform
+        }
+
+        // ============================================================================
+        // 3. FOREGROUND TAILOR'S WORKBENCH & BEAR PAWS
+        // ============================================================================
+        function drawWorkbench() {
+            const tableTopY = 678;
+
+            // Rich carved walnut table surface
+            const woodGrad = ctx.createLinearGradient(0, tableTopY, 0, VH);
+            woodGrad.addColorStop(0, '#6e3f20');
+            woodGrad.addColorStop(0.15, '#542d14');
+            woodGrad.addColorStop(0.85, '#3b1d0b');
+            woodGrad.addColorStop(1, '#261105');
+            ctx.fillStyle = woodGrad;
+            ctx.fillRect(0, tableTopY, VW, VH - tableTopY);
+
+            // Top bevel highlight of workbench
+            ctx.fillStyle = '#8f5630';
+            ctx.fillRect(0, tableTopY, VW, 12);
+            ctx.strokeStyle = '#241005';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(0, tableTopY);
+            ctx.lineTo(VW, tableTopY);
+            ctx.stroke();
+
+            // Quilted Velvet Tailor's Cutting Mat in the center of the table
+            const matW = 1360, matH = 225;
+            const matX = (VW - matW) * 0.5, matY = 696;
+
+            // Drop shadow under mat
+            ctx.fillStyle = 'rgba(15, 6, 2, 0.55)';
+            drawRoundedRect(matX + 6, matY + 10, matW, matH, 28);
+            ctx.fill();
+
+            // Deep warm walnut-brown velvet mat so both Emerald Green and Ruby Red ribbons pop vividly
+            const matGrad = ctx.createRadialGradient(VW * 0.5, matY + matH * 0.5, 50, VW * 0.5, matY + matH * 0.5, matW * 0.6);
+            matGrad.addColorStop(0, '#3a2218');
+            matGrad.addColorStop(1, '#24130c');
+            ctx.fillStyle = matGrad;
+            drawRoundedRect(matX, matY, matW, matH, 26);
+            ctx.fill();
+
+            // Brass leather border & stitched inner line on mat
+            ctx.strokeStyle = '#8f5b29';
+            ctx.lineWidth = 7;
+            ctx.stroke();
+
+            ctx.strokeStyle = 'rgba(255, 218, 128, 0.35)';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([10, 8]);
+            drawRoundedRect(matX + 16, matY + 16, matW - 32, matH - 32, 18);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Corner brass rivets on cutting mat
+            drawBrassRivet(matX + 28, matY + 28, 7);
+            drawBrassRivet(matX + matW - 28, matY + 28, 7);
+            drawBrassRivet(matX + 28, matY + matH - 28, 7);
+            drawBrassRivet(matX + matW - 28, matY + matH - 28, 7);
+        }
+
+        // Draw Bear's Furry Paws holding the ribbon ends or clapping on celebration
+        function drawBearPaws() {
+            const m = getRibbonMetrics();
+            const halfGap = ribbonAnim.splitGap * 0.5;
+
+            let leftPawX = m.startX - halfGap - 18;
+            let leftPawY = m.centerY - 48;
+            let rightPawX = m.startX + m.totalW + halfGap + 18;
+            let rightPawY = m.centerY - 48;
+
+            if (bearAnim.joyLevel > 0.1) {
+                // Clapping paws animation near bear's chest!
+                const clapWave = Math.abs(Math.sin(globalTime * 11));
+                leftPawX = VW * 0.5 - 55 - clapWave * 95;
+                leftPawY = 635 - Math.sin(globalTime * 11) * 20;
+                rightPawX = VW * 0.5 + 55 + clapWave * 95;
+                rightPawY = 635 + Math.sin(globalTime * 11) * 20;
+            }
+
+            const drawSinglePaw = (px, py, isLeft) => {
+                ctx.save();
+                ctx.translate(px, py);
+                ctx.rotate(isLeft ? 0.25 : -0.25);
+
+                // Furry paw pad
+                drawFurTuftCircle(0, 0, 44, 16, 5, '#733e20', '#96542f');
+
+                // Warm leather-brown toe beans
+                ctx.fillStyle = '#47220e';
+                const beanOffsets = [
+                    { x: -20, y: 12, r: 9 },
+                    { x: 0, y: 18, r: 10 },
+                    { x: 20, y: 12, r: 9 }
+                ];
+                beanOffsets.forEach(b => {
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                // Central palm pad
+                ctx.beginPath();
+                ctx.ellipse(0, -3, 18, 13, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+            };
+
+            drawSinglePaw(leftPawX, leftPawY, true);
+            drawSinglePaw(rightPawX, rightPawY, false);
+        }
+
+        // ============================================================================
+        // 4. INTERACTIVE COLOR-CODED SATIN RIBBON (GOLD A -> RED C & GREEN B)
+        // ============================================================================
+        function drawNumberBadge(x, y, numberText, scaleFactor, colorTheme, isLargeHighlight = false, extraPulse = 0) {
+            if (scaleFactor <= 0.01) return;
+            ctx.save();
+            const finalScale = scaleFactor * (1 + extraPulse * 0.18 * Math.sin(globalTime * 16));
+            ctx.translate(x, y);
+            ctx.scale(finalScale, finalScale);
+
+            const r = isLargeHighlight ? 42 : 35;
+
+            if (extraPulse > 0.05) {
+                ctx.shadowColor = colorTheme.glow;
+                ctx.shadowBlur = 24;
+            }
+
+            // Soft drop shadow
+            ctx.fillStyle = 'rgba(15, 5, 0, 0.45)';
+            ctx.beginPath();
+            ctx.arc(0, 6, r + 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Scalloped / stitched cloth medallion background
+            const bgGrad = ctx.createRadialGradient(-r * 0.25, -r * 0.25, r * 0.1, 0, 0, r);
+            bgGrad.addColorStop(0, colorTheme.light);
+            bgGrad.addColorStop(0.55, colorTheme.main);
+            bgGrad.addColorStop(1, colorTheme.badgeBg);
+
+            ctx.fillStyle = bgGrad;
+            ctx.beginPath();
+            ctx.arc(0, 0, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Outer brass ring
+            ctx.strokeStyle = '#ffdf78';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Dashed golden thread stitching inside badge
+            ctx.strokeStyle = '#fff8d6';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.arc(0, 0, r - 6, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Numeral
+            ctx.font = `900 ${isLargeHighlight ? 48 : 40}px 'Fredoka', 'Nunito', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+            ctx.fillText(String(numberText), 0, 4);
+
+            ctx.fillStyle = '#fffbe8';
+            ctx.fillText(String(numberText), 0, 1);
+
+            ctx.restore();
+        }
+
+        function drawRibbonPiece(x, y, width, height, numUnits, theme, isLeftPiece, isSeparated, highlightPulse = 0) {
+            ctx.save();
+
+            if (highlightPulse > 0.02) {
+                ctx.shadowColor = theme.glow;
+                ctx.shadowBlur = 28 * highlightPulse;
+            }
+
+            // Drop shadow on velvet mat
+            ctx.fillStyle = 'rgba(8, 3, 1, 0.48)';
+            drawRoundedRect(x + 4, y + 10, width, height, 10);
+            ctx.fill();
+
+            // Rich Satin sheen vertical gradient
+            const satinGrad = ctx.createLinearGradient(x, y, x, y + height);
+            satinGrad.addColorStop(0, theme.dark);
+            satinGrad.addColorStop(0.22, theme.main);
+            satinGrad.addColorStop(0.48, theme.light);
+            satinGrad.addColorStop(0.78, theme.main);
+            satinGrad.addColorStop(1, theme.dark);
+
+            drawRoundedRect(x, y, width, height, 10);
+            ctx.fillStyle = satinGrad;
+            ctx.fill();
+
+            // Satin weave border
+            ctx.strokeStyle = highlightPulse > 0.1 ? '#fff3a1' : theme.dark;
+            ctx.lineWidth = highlightPulse > 0.1 ? 5 : 4;
+            ctx.stroke();
+
+            // Top and bottom golden stitched hem lines
+            ctx.strokeStyle = theme.stitch;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([9, 6]);
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y + 11);
+            ctx.lineTo(x + width - 10, y + 11);
+            ctx.moveTo(x + 10, y + height - 11);
+            ctx.lineTo(x + width - 10, y + height - 11);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Unit segment ruler marks along the ribbon
+            const unitW = width / numUnits;
+            for (let i = 1; i < numUnits; i++) {
+                const ux = x + i * unitW;
+                ctx.strokeStyle = 'rgba(255, 248, 210, 0.42)';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.moveTo(ux, y + 15);
+                ctx.lineTo(ux, y + height - 15);
+                ctx.stroke();
+
+                // Small decorative gold diamond in each unit
+                ctx.fillStyle = 'rgba(255, 240, 180, 0.30)';
+                ctx.beginPath();
+                ctx.arc(x + (i - 0.5) * unitW, y + height * 0.5, 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            ctx.restore();
+        }
+
+        function drawInteractiveRibbon() {
+            if (ribbonAnim.appearScale <= 0.01) return;
+
+            const m = getRibbonMetrics();
+            const halfGap = ribbonAnim.splitGap * 0.5;
+            const topY = m.centerY - m.height * 0.5;
+
+            ctx.save();
+            ctx.translate(m.centerX, m.centerY);
+            ctx.scale(ribbonAnim.appearScale, ribbonAnim.appearScale);
+            ctx.translate(-m.centerX, -m.centerY);
+
+            // 1. Left Piece (Length C = A - B):
+            // Starts as Warm Gold before cutting, and immediately turns Ruby RED upon cutting!
+            const leftCenterX = m.startX - halfGap + m.leftW * 0.5;
+            const leftPulse = Math.max(verifyState.hintPulseC, pointer.hoverLeftPiece ? 0.65 : 0);
+            ctx.save();
+            ctx.translate(leftCenterX, m.centerY);
+            ctx.rotate(ribbonAnim.leftTilt);
+            ctx.translate(-leftCenterX, -m.centerY);
+
+            if (ribbonAnim.leftRedMorph < 1) {
+                drawRibbonPiece(m.startX - halfGap, topY, m.leftW, m.height, prob.C, COLOR_THEMES.gold, true, ribbonAnim.splitGap > 0, 0);
+            }
+            if (ribbonAnim.leftRedMorph > 0) {
+                ctx.globalAlpha = ribbonAnim.leftRedMorph;
+                drawRibbonPiece(m.startX - halfGap, topY, m.leftW, m.height, prob.C, COLOR_THEMES.red, true, ribbonAnim.splitGap > 0, leftPulse);
+                ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+
+            // 2. Right Piece (Length B - Cut-off piece):
+            // Always colored in Emerald GREEN so child sees we are cutting off green B!
+            const rightCenterX = m.cutX + halfGap + m.rightW * 0.5;
+            const rightPulse = Math.max(verifyState.hintPulseB, pointer.hoverRightPiece ? 0.65 : 0);
+            ctx.save();
+            ctx.translate(rightCenterX, m.centerY);
+            ctx.rotate(ribbonAnim.rightTilt);
+            ctx.translate(-rightCenterX, -m.centerY);
+            drawRibbonPiece(m.cutX + halfGap, topY, m.rightW, m.height, prob.B, COLOR_THEMES.green, false, ribbonAnim.splitGap > 0, rightPulse);
+            ctx.restore();
+
+            // --- STEP 1 GUIDE: PULSING TAILOR'S CHALK CUT LINE ---
+            if (gameState === STATE.READY_TO_CUT || gameState === STATE.CUTTING) {
+                const pulse = 0.75 + Math.sin(globalTime * 6) * 0.25;
+                ctx.save();
+
+                // Hover glow when scissors are near
+                if (pointer.hoverCutZone && gameState === STATE.READY_TO_CUT) {
+                    ctx.strokeStyle = 'rgba(255, 238, 120, 0.55)';
+                    ctx.lineWidth = 18;
+                    ctx.beginPath();
+                    ctx.moveTo(m.cutX, topY - 18);
+                    ctx.lineTo(m.cutX, topY + m.height + 18);
+                    ctx.stroke();
+                }
+
+                // Tailor's chalk dashed cut line separating left part and green B part
+                ctx.strokeStyle = `rgba(255, 245, 170, ${pulse})`;
+                ctx.lineWidth = 5;
+                ctx.setLineDash([10, 8]);
+                const cutTop = topY - 16;
+                const cutBot = topY + m.height + 16 - ribbonAnim.cutProgress * (m.height + 32);
+                ctx.beginPath();
+                ctx.moveTo(m.cutX, cutTop);
+                ctx.lineTo(m.cutX, cutBot);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Pulsing target circle at bottom of cut line
+                if (gameState === STATE.READY_TO_CUT) {
+                    const ringR = 14 + Math.sin(globalTime * 6) * 3;
+                    ctx.fillStyle = '#ffe57f';
+                    ctx.beginPath();
+                    ctx.arc(m.cutX, topY + m.height + 22, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffe57f';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.arc(m.cutX, topY + m.height + 22, ringR, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            // --- STEP 2 GUIDE & SEWING STITCHES ---
+            if (gameState === STATE.VERIFY_PHASE || gameState === STATE.CELEBRATING || gameState === STATE.TRANSITION_OUT) {
+                const numStitches = 6;
+                const seamTop = topY + 14;
+                const seamBot = topY + m.height - 14;
+                const stepY = (seamBot - seamTop) / (numStitches - 1);
+
+                // While unsewn in VERIFY_PHASE, show glowing golden thread loops inviting the player to stitch
+                if (gameState === STATE.VERIFY_PHASE && !verifyState.isSewn && !verifyState.isSewingNow) {
+                    const glowAlpha = pointer.hoverSewZone ? 0.95 : (0.5 + Math.sin(globalTime * 5) * 0.3);
+                    ctx.strokeStyle = `rgba(255, 224, 102, ${glowAlpha})`;
+                    ctx.lineWidth = pointer.hoverSewZone ? 5.5 : 4;
+                    ctx.setLineDash([6, 6]);
+                    for (let i = 0; i < numStitches; i++) {
+                        const sy = seamTop + i * stepY;
+                        ctx.beginPath();
+                        ctx.moveTo(m.cutX - halfGap - 10, sy);
+                        ctx.lineTo(m.cutX + halfGap + 10, sy);
+                        ctx.stroke();
+
+                        // Eyelet holes on both ribbon edges
+                        ctx.fillStyle = '#ffe066';
+                        ctx.beginPath();
+                        ctx.arc(m.cutX - halfGap - 12, sy, 5, 0, Math.PI * 2);
+                        ctx.arc(m.cutX + halfGap + 12, sy, 5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.setLineDash([]);
+                }
+
+                // Draw active / completed golden cross-stitches across the seam
+                if (ribbonAnim.sewProgress > 0) {
+                    const activeStitches = Math.ceil(ribbonAnim.sewProgress * numStitches);
+                    ctx.save();
+                    ctx.strokeStyle = '#ffd147';
+                    ctx.lineWidth = 5.5;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+
+                    const spanX = Math.max(14, halfGap + 12);
+                    ctx.beginPath();
+                    for (let i = 0; i < activeStitches; i++) {
+                        const sy1 = seamTop + i * stepY;
+                        const sy2 = seamTop + Math.min(numStitches - 1, i + 1) * stepY;
+                        ctx.moveTo(m.cutX - spanX, sy1);
+                        ctx.lineTo(m.cutX + spanX, sy1);
+                        if (i < activeStitches - 1) {
+                            ctx.lineTo(m.cutX - spanX, sy2);
+                        }
+                    }
+                    ctx.stroke();
+
+                    // Highlight thread gleam
+                    ctx.strokeStyle = '#fff5b8';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Stitch anchor knots
+                    ctx.fillStyle = '#b87609';
+                    for (let i = 0; i < activeStitches; i++) {
+                        const sy = seamTop + i * stepY;
+                        ctx.beginPath();
+                        ctx.arc(m.cutX - spanX, sy, 4.5, 0, Math.PI * 2);
+                        ctx.arc(m.cutX + spanX, sy, 4.5, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+            }
+
+            // --- COLOR-CODED NUMBER BADGES ON RIBBON ---
+            // 1. Green Badge B on the right piece (visible right from the start so child sees B is green!)
+            const greenBadgeScale = verifyState.isSewn ? 0.88 : 1.0;
+            const badgeYOffset = verifyState.isSewn ? 14 : 0;
+            drawNumberBadge(rightCenterX, m.centerY + badgeYOffset, prob.B, greenBadgeScale, COLOR_THEMES.green, false, rightPulse);
+
+            // 2. Red Badge C on the left piece (pops in as soon as the ribbon is cut!)
+            if (ribbonAnim.partBadgesScale > 0.01) {
+                const redBadgeScale = verifyState.isSewn ? 0.88 : ribbonAnim.partBadgesScale;
+                drawNumberBadge(leftCenterX, m.centerY + badgeYOffset, prob.C, redBadgeScale, COLOR_THEMES.red, false, leftPulse);
+            }
+
+            // 3. Golden Whole Ribbon Bracket & Badge A (visible before cut AND once sewn back together!)
+            const showWholeBracket = (gameState === STATE.INTRO || gameState === STATE.READY_TO_CUT ||
+                                     (gameState === STATE.CUTTING && ribbonAnim.wholeBadgeScale > 0.05) ||
+                                     verifyState.isSewn);
+
+            if (showWholeBracket) {
+                const brScale = verifyState.isSewn ? (1.04 + Math.sin(globalTime * 6) * 0.04) : ribbonAnim.wholeBadgeScale;
+                const wholePulse = Math.max(verifyState.hintPulseA, pointer.hoverWholeBadge ? 0.7 : 0);
+
+                ctx.save();
+                ctx.globalAlpha = Math.min(1, brScale);
+                ctx.strokeStyle = '#ffd559';
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+                const brY = topY - 24;
+                ctx.beginPath();
+                ctx.moveTo(m.startX + 10, brY + 14);
+                ctx.quadraticCurveTo(m.startX + 10, brY, m.centerX - 52, brY);
+                ctx.moveTo(m.startX + m.totalW - 10, brY + 14);
+                ctx.quadraticCurveTo(m.startX + m.totalW - 10, brY, m.centerX + 52, brY);
+                ctx.stroke();
+                ctx.restore();
+
+                drawNumberBadge(m.centerX, topY - 30, prob.A, brScale, COLOR_THEMES.gold, true, wholePulse);
+            }
+
+            ctx.restore();
+        }
+
+        // ============================================================================
+        // 5. STYLIZED CARVED OAK & VELVET EQUATION BOARD + BOTTOM BUTTON TRAY
+        // ============================================================================
+        function drawClothNumberPatch(x, y, w, h, text, bgColor, textColor, popScale = 1, isInteractiveSlot = false, isActiveSlot = false, wobbleAmt = 0) {
+            ctx.save();
+            const wobbleX = wobbleAmt > 0 ? Math.sin(globalTime * 45) * 10 * wobbleAmt : 0;
+            ctx.translate(x + wobbleX, y);
+            ctx.scale(popScale, popScale);
+
+            const rx = -w * 0.5;
+            const ry = -h * 0.5;
+
+            if (isActiveSlot) {
+                ctx.shadowColor = 'rgba(255, 220, 95, 0.85)';
+                ctx.shadowBlur = 18 + Math.sin(globalTime * 7) * 6;
+            }
+
+            // Shadow
+            ctx.fillStyle = 'rgba(15, 6, 1, 0.45)';
+            drawRoundedRect(rx + 3, ry + 5, w, h, 16);
+            ctx.fill();
+
+            // Quilted fabric patch background
+            drawRoundedRect(rx, ry, w, h, 16);
+            ctx.fillStyle = bgColor;
+            ctx.fill();
+
+            ctx.strokeStyle = isActiveSlot ? '#ffe066' : '#2b1406';
+            ctx.lineWidth = isActiveSlot ? 5 : 3.5;
+            ctx.stroke();
+
+            // Golden dashed stitching inside patch
+            ctx.strokeStyle = isActiveSlot ? '#fff6bd' : 'rgba(255, 224, 130, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 5]);
+            drawRoundedRect(rx + 6, ry + 6, w - 12, h - 12, 11);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Text
+            ctx.font = "900 46px 'Fredoka', 'Nunito', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.fillText(text, 0, 4);
+            ctx.fillStyle = textColor;
+            ctx.fillText(text, 0, 1);
+
+            ctx.restore();
+        }
+
+        function drawEquationBoard() {
+            const hasVerification = boardAnim.becausePanelSlide > 0.01;
+            const baseW = 470;
+            const extraW = 690 * boardAnim.becausePanelSlide;
+            const totalW = baseW + extraW;
+            const boardH = 132;
+            const cx = VW * 0.5;
+            const cy = 100 + boardAnim.boardBounce * 22;
+            const bx = cx - totalW * 0.5;
+            const by = cy - boardH * 0.5;
+
+            ctx.save();
+
+            // Hanging brass chains from top of screen
+            ctx.strokeStyle = '#c48d25';
+            ctx.lineWidth = 7;
+            ctx.beginPath();
+            ctx.moveTo(bx + 75, 0);
+            ctx.lineTo(bx + 75, by + 12);
+            ctx.moveTo(bx + totalW - 75, 0);
+            ctx.lineTo(bx + totalW - 75, by + 12);
+            ctx.stroke();
+
+            // Board drop shadow
+            ctx.fillStyle = 'rgba(10, 4, 1, 0.55)';
+            drawRoundedRect(bx + 6, by + 12, totalW, boardH, 28);
+            ctx.fill();
+
+            // Carved Oak Outer Frame
+            const oakGrad = ctx.createLinearGradient(bx, by, bx, by + boardH);
+            oakGrad.addColorStop(0, '#804924');
+            oakGrad.addColorStop(0.5, '#593015');
+            oakGrad.addColorStop(1, '#3b1d0a');
+            drawRoundedRect(bx, by, totalW, boardH, 26);
+            ctx.fillStyle = oakGrad;
+            ctx.fill();
+            ctx.strokeStyle = '#210e03';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Inner Recessed Quilted Leather/Velvet Panel
+            const innerGrad = ctx.createLinearGradient(bx, by + 12, bx, by + boardH - 12);
+            innerGrad.addColorStop(0, '#361b0c');
+            innerGrad.addColorStop(1, '#261206');
+            drawRoundedRect(bx + 14, by + 14, totalW - 28, boardH - 28, 18);
+            ctx.fillStyle = innerGrad;
+            ctx.fill();
+
+            // Golden stitched inner border
+            ctx.strokeStyle = '#d49b27';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([8, 6]);
+            drawRoundedRect(bx + 22, by + 22, totalW - 44, boardH - 44, 14);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Corner brass rivets
+            drawBrassRivet(bx + 28, by + 28, 6.5);
+            drawBrassRivet(bx + totalW - 28, by + 28, 6.5);
+            drawBrassRivet(bx + 28, by + boardH - 28, 6.5);
+            drawBrassRivet(bx + totalW - 28, by + boardH - 28, 6.5);
+
+            // --- LEFT ZONE: COLOR-CODED SUBTRACTION EQUATION (Gold A - Green B = Red C) ---
+            const subStartX = bx + 82;
+            const eqY = cy;
+
+            // Patch A (Gold - Whole Ribbon)
+            drawClothNumberPatch(subStartX, eqY, 76, 78, String(prob.A), COLOR_THEMES.gold.patchBg, COLOR_THEMES.gold.patchText, 1);
+
+            // Operator '-'
+            ctx.font = "900 52px 'Fredoka', 'Nunito', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffd166';
+            ctx.fillText('−', subStartX + 66, eqY);
+
+            // Patch B (Emerald Green - Cut-off Piece)
+            drawClothNumberPatch(subStartX + 132, eqY, 76, 78, String(prob.B), COLOR_THEMES.green.patchBg, COLOR_THEMES.green.patchText, 1);
+
+            // Operator '='
+            ctx.fillStyle = '#ffd166';
+            ctx.fillText('=', subStartX + 198, eqY);
+
+            // Subtraction Result Patch ('?' initially, then Ruby Red C after cutting)
+            if (boardAnim.subAnswerScale > 0.05) {
+                drawClothNumberPatch(subStartX + 268, eqY, 80, 80, String(prob.C), COLOR_THEMES.red.patchBg, COLOR_THEMES.red.patchText, boardAnim.subAnswerScale);
+            } else {
+                const pulseQ = 1 + Math.sin(globalTime * 5) * 0.04;
+                drawClothNumberPatch(subStartX + 268, eqY, 76, 76, '?', '#4a2510', '#c99b68', pulseQ);
+            }
+
+            // --- RIGHT ZONE: INTERACTIVE VERIFICATION BY ADDITION ("тому що [ ? ] + [ ? ] = [ ? ]") ---
+            if (hasVerification) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(bx + baseW - 20, by, extraW + 15, boardH);
+                ctx.clip();
+
+                const verStartX = bx + baseW + 115;
+
+                // Leather ribbon banner for "тому що" / "потому что"
+                const conjText = LANG_TEXT[currentLang].because;
+                drawRoundedRect(verStartX - 108, eqY - 30, 216, 60, 14);
+                ctx.fillStyle = '#5e2c12';
+                ctx.fill();
+                ctx.strokeStyle = '#d49b27';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+
+                ctx.font = "800 32px 'Nunito', sans-serif";
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#ffe599';
+                ctx.fillText(conjText, verStartX, eqY + 1);
+
+                // Interactive Addition Slots: [ Slot 0 ] + [ Slot 1 ] = [ Slot 2 ]
+                const slotCentersX = [
+                    verStartX + 178,
+                    verStartX + 314,
+                    verStartX + 450
+                ];
+
+                // Operators '+' and '='
+                ctx.font = "900 50px 'Fredoka', 'Nunito', sans-serif";
+                ctx.fillStyle = '#ffd166';
+                ctx.fillText('+', verStartX + 246, eqY);
+                ctx.fillText('=', verStartX + 382, eqY);
+
+                for (let i = 0; i < 3; i++) {
+                    const sx = slotCentersX[i];
+                    const sw = 78, sh = 78;
+                    // Update logical hitbox for click selection
+                    verifyState.slotRects[i] = { x: sx - sw * 0.5, y: eqY - sh * 0.5, w: sw, h: sh };
+
+                    const slotData = verifyState.slots[i];
+                    const isActive = (gameState === STATE.VERIFY_PHASE && verifyState.activeSlot === i && slotData === null);
+                    const isHovered = (pointer.hoverSlotIdx === i && slotData === null);
+
+                    if (slotData !== null) {
+                        const theme = COLOR_THEMES[slotData.colorKey];
+                        drawClothNumberPatch(
+                            sx, eqY, 80, 80,
+                            String(slotData.value),
+                            theme.patchBg,
+                            theme.patchText,
+                            slotData.popScale,
+                            true, false, 0
+                        );
+                    } else {
+                        const pulseScale = isActive ? (1.03 + Math.sin(globalTime * 6) * 0.04) : (isHovered ? 1.05 : 1.0);
+                        drawClothNumberPatch(
+                            sx, eqY, sw, sh,
+                            '?',
+                            isActive ? '#633215' : '#43200c',
+                            isActive ? '#ffe89e' : '#b88756',
+                            pulseScale,
+                            true,
+                            isActive,
+                            verifyState.slotWobble[i]
+                        );
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        // Draw the curved wooden tray of 10 realistic tailor buttons (1..10) at the bottom of the workbench
+        function drawNumberButtonTray() {
+            if (verifyState.traySlide <= 0.01) return;
+            updateNumberButtonPositions();
+
+            ctx.save();
+            const trayY = VH + 110 - verifyState.traySlide * 212;
+            const trayW = 1190;
+            const trayH = 128;
+            const trayX = (VW - trayW) * 0.5;
+
+            // Tray drop shadow
+            ctx.fillStyle = 'rgba(8, 3, 0, 0.6)';
+            drawRoundedRect(trayX + 6, trayY - 52, trayW, trayH, 60);
+            ctx.fill();
+
+            // Carved mahogany wooden tray body
+            const trayGrad = ctx.createLinearGradient(trayX, trayY - 58, trayX, trayY + 70);
+            trayGrad.addColorStop(0, '#784321');
+            trayGrad.addColorStop(0.5, '#4f2911');
+            trayGrad.addColorStop(1, '#2e1506');
+            drawRoundedRect(trayX, trayY - 58, trayW, trayH, 60);
+            ctx.fillStyle = trayGrad;
+            ctx.fill();
+
+            ctx.strokeStyle = '#d49b27';
+            ctx.lineWidth = 4.5;
+            ctx.stroke();
+
+            // Recessed velvet groove inside tray
+            drawRoundedRect(trayX + 16, trayY - 44, trayW - 32, trayH - 28, 48);
+            ctx.fillStyle = '#261106';
+            ctx.fill();
+
+            // Draw each of the 10 carved tailor buttons
+            for (let i = 0; i < 10; i++) {
+                const btn = numberButtons[i];
+                const wobbleX = btn.wobble > 0 ? Math.sin(globalTime * 48) * 9 * btn.wobble : 0;
+                const scaleB = btn.pressScale * (btn.hover ? 1.1 : 1.0);
+
+                ctx.save();
+                ctx.translate(btn.x + wobbleX, btn.y);
+                ctx.scale(scaleB, scaleB);
+
+                // Button shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                ctx.beginPath();
+                ctx.arc(2, 6, btn.r, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Warm amber-wood & brass button rim
+                const bGrad = ctx.createRadialGradient(-12, -12, 4, 0, 0, btn.r);
+                if (btn.hover) {
+                    bGrad.addColorStop(0, '#ffe89e');
+                    bGrad.addColorStop(0.55, '#d99626');
+                    bGrad.addColorStop(1, '#784606');
+                } else {
+                    bGrad.addColorStop(0, '#f5cf7a');
+                    bGrad.addColorStop(0.6, '#b8761b');
+                    bGrad.addColorStop(1, '#5e3405');
+                }
+
+                ctx.fillStyle = bGrad;
+                ctx.beginPath();
+                ctx.arc(0, 0, btn.r, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = btn.hover ? '#fff6cc' : '#3b1d04';
+                ctx.lineWidth = 3.5;
+                ctx.stroke();
+
+                // Inner turned button recess
+                ctx.fillStyle = btn.hover ? '#965810' : '#754108';
+                ctx.beginPath();
+                ctx.arc(0, 0, btn.r * 0.76, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(255, 235, 175, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 4 subtle tailor button thread holes near edge of inner recess
+                ctx.fillStyle = 'rgba(35, 14, 2, 0.55)';
+                const holeOffset = btn.r * 0.52;
+                [[-holeOffset, -holeOffset], [holeOffset, -holeOffset], [-holeOffset, holeOffset], [holeOffset, holeOffset]].forEach(([hx, hy]) => {
+                    ctx.beginPath();
+                    ctx.arc(hx, hy, 3.2, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                // Embossed Number (1..10)
+                ctx.font = "900 38px 'Fredoka', 'Nunito', sans-serif";
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+                ctx.fillText(String(btn.num), 0, 3);
+                ctx.fillStyle = '#fff9e6';
+                ctx.fillText(String(btn.num), 0, 0);
+
+                ctx.restore();
+            }
+
+            ctx.restore();
+        }
+
+        // ============================================================================
+        // 6. TOP CORNER STYLIZED BUTTONS (Language Toggle & Minimalistic Next Arrow)
+        // ============================================================================
+        function drawStylizedUIButtons() {
+            // 1. Language Button (Top-Left: УКР / РУС)
+            ctx.save();
+            const lb = langBtnRect;
+            const lScale = pointer.hoverLangBtn ? 1.06 : 1.0;
+            ctx.translate(lb.x + lb.w * 0.5, lb.y + lb.h * 0.5);
+            ctx.scale(lScale, lScale);
+            ctx.translate(-(lb.x + lb.w * 0.5), -(lb.y + lb.h * 0.5));
+
+            // Shadow
+            ctx.fillStyle = 'rgba(10, 4, 1, 0.5)';
+            drawRoundedRect(lb.x + 3, lb.y + 6, lb.w, lb.h, 20);
+            ctx.fill();
+
+            // Wooden & Brass Button Body
+            const lGrad = ctx.createLinearGradient(lb.x, lb.y, lb.x, lb.y + lb.h);
+            lGrad.addColorStop(0, pointer.hoverLangBtn ? '#96562c' : '#7d4520');
+            lGrad.addColorStop(1, '#47230c');
+            drawRoundedRect(lb.x, lb.y, lb.w, lb.h, 20);
+            ctx.fillStyle = lGrad;
+            ctx.fill();
+            ctx.strokeStyle = '#d49b27';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Stitched inner border
+            ctx.strokeStyle = '#ffe299';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 5]);
+            drawRoundedRect(lb.x + 7, lb.y + 7, lb.w - 14, lb.h - 14, 14);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            drawBrassRivet(lb.x + 18, lb.y + lb.h * 0.5, 5);
+            drawBrassRivet(lb.x + lb.w - 18, lb.y + lb.h * 0.5, 5);
+
+            ctx.font = "900 28px 'Nunito', sans-serif";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#291204';
+            ctx.fillText(LANG_TEXT[currentLang].button, lb.x + lb.w * 0.5, lb.y + lb.h * 0.5 + 3);
+            ctx.fillStyle = '#fff0c2';
+            ctx.fillText(LANG_TEXT[currentLang].button, lb.x + lb.w * 0.5, lb.y + lb.h * 0.5 + 1);
+            ctx.restore();
+
+            // 2. Minimalistic "Next" Button (Top-Right: Stitched Tailor's Button with Golden Arrow)
+            ctx.save();
+            const nb = nextBtnRect;
+            const nScale = pointer.hoverNextBtn ? 1.06 : 1.0;
+            ctx.translate(nb.x + nb.w * 0.5, nb.y + nb.h * 0.5);
+            ctx.scale(nScale, nScale);
+            ctx.translate(-(nb.x + nb.w * 0.5), -(nb.y + nb.h * 0.5));
+
+            ctx.fillStyle = 'rgba(10, 4, 1, 0.5)';
+            drawRoundedRect(nb.x + 3, nb.y + 6, nb.w, nb.h, 20);
+            ctx.fill();
+
+            const nGrad = ctx.createLinearGradient(nb.x, nb.y, nb.x, nb.y + nb.h);
+            nGrad.addColorStop(0, pointer.hoverNextBtn ? '#2e7d56' : '#215e40');
+            nGrad.addColorStop(1, '#113824');
+            drawRoundedRect(nb.x, nb.y, nb.w, nb.h, 20);
+            ctx.fillStyle = nGrad;
+            ctx.fill();
+            ctx.strokeStyle = '#d49b27';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            ctx.strokeStyle = '#ffe299';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 5]);
+            drawRoundedRect(nb.x + 7, nb.y + 7, nb.w - 14, nb.h - 14, 14);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Custom-drawn embossed golden "Next" arrow icon
+            const acx = nb.x + nb.w * 0.5;
+            const acy = nb.y + nb.h * 0.5;
+            ctx.fillStyle = '#fff0b8';
+            ctx.strokeStyle = '#472802';
+            ctx.lineWidth = 3;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(acx - 26, acy - 10);
+            ctx.lineTo(acx + 2, acy - 10);
+            ctx.lineTo(acx + 2, acy - 21);
+            ctx.lineTo(acx + 28, acy);
+            ctx.lineTo(acx + 2, acy + 21);
+            ctx.lineTo(acx + 2, acy + 10);
+            ctx.lineTo(acx - 26, acy + 10);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        // ============================================================================
+        // 7. CELEBRATION PARTICLES (3D Wooden Buttons, Stars, Satin Curls)
+        // ============================================================================
+        function drawParticles() {
+            for (const p of particles) {
+                const alpha = Math.max(0, 1 - Math.pow(p.life / p.maxLife, 2));
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot);
+
+                if (p.type === 'button') {
+                    // Tailor's button with 4 thread holes
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#2b1204';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+
+                    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.size * 0.72, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    // 4 button holes
+                    ctx.fillStyle = '#2b1204';
+                    const hr = p.size * 0.25;
+                    [[-hr, -hr], [hr, -hr], [-hr, hr], [hr, hr]].forEach(([hx, hy]) => {
+                        ctx.beginPath();
+                        ctx.arc(hx, hy, 2.3, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+                } else if (p.type === 'star') {
+                    // Golden star
+                    ctx.fillStyle = '#ffe066';
+                    ctx.strokeStyle = '#9e6306';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    for (let i = 0; i < 10; i++) {
+                        const rad = i % 2 === 0 ? p.size : p.size * 0.45;
+                        const ang = (i * Math.PI) / 5;
+                        if (i === 0) ctx.moveTo(Math.cos(ang) * rad, Math.sin(ang) * rad);
+                        else ctx.lineTo(Math.cos(ang) * rad, Math.sin(ang) * rad);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                } else if (p.type === 'ribbon') {
+                    // Curly satin streamer
+                    ctx.fillStyle = p.color;
+                    drawRoundedRect(-p.size, -p.size * 0.35, p.size * 2, p.size * 0.7, 4);
+                    ctx.fill();
+                } else {
+                    // Golden thread spark
+                    ctx.fillStyle = p.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, p.size * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        // ============================================================================
+        // 8. CUSTOM PROCEDURAL CURSORS (Tailor's Shears & Sewing Needle with Thread)
+        // ============================================================================
+        function drawTailorsScissors(x, y, angle, bladeOpenAngle) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            // Drop shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+            ctx.beginPath();
+            ctx.ellipse(6, 12, 42, 18, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            const drawBladeAndHandle = (isUpper) => {
+                ctx.save();
+                ctx.rotate(isUpper ? -bladeOpenAngle : bladeOpenAngle);
+
+                // Steel Blade
+                const steelGrad = ctx.createLinearGradient(0, -10, 85, 10);
+                steelGrad.addColorStop(0, '#cfd8dc');
+                steelGrad.addColorStop(0.5, '#ffffff');
+                steelGrad.addColorStop(1, '#90a4ae');
+                ctx.fillStyle = steelGrad;
+                ctx.strokeStyle = '#37474f';
+                ctx.lineWidth = 2.5;
+
+                ctx.beginPath();
+                if (isUpper) {
+                    ctx.moveTo(-12, 4);
+                    ctx.lineTo(88, 0);
+                    ctx.quadraticCurveTo(65, -15, -12, -11);
+                } else {
+                    ctx.moveTo(-12, -4);
+                    ctx.lineTo(88, 0);
+                    ctx.quadraticCurveTo(65, 15, -12, 11);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+
+                // Sculpted Brass/Burgundy Handle Ring
+                const hY = isUpper ? 20 : -20;
+                ctx.strokeStyle = '#d49b27';
+                ctx.lineWidth = 9;
+                ctx.beginPath();
+                ctx.ellipse(-44, hY, 24, 15, isUpper ? -0.25 : 0.25, 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.strokeStyle = '#5c3804';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
+            };
+
+            drawBladeAndHandle(false);
+            drawBladeAndHandle(true);
+
+            // Central Brass Pivot Screw
+            drawBrassRivet(0, 0, 7);
+
+            ctx.restore();
+        }
+
+        function drawSewingNeedleAndThread(x, y, angle) {
+            // 1. Draw the physics-simulated golden thread trailing from the needle eye
+            ctx.save();
+            ctx.strokeStyle = 'rgba(20, 8, 0, 0.38)';
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(threadNodes[0].x + 3, threadNodes[0].y + 6);
+            for (let i = 1; i < THREAD_NODES - 1; i++) {
+                const xc = (threadNodes[i].x + threadNodes[i + 1].x) * 0.5 + 3;
+                const yc = (threadNodes[i].y + threadNodes[i + 1].y) * 0.5 + 6;
+                ctx.quadraticCurveTo(threadNodes[i].x + 3, threadNodes[i].y + 6, xc, yc);
+            }
+            ctx.stroke();
+
+            // Golden silk thread core
+            ctx.strokeStyle = '#ffd147';
+            ctx.lineWidth = 4.5;
+            ctx.beginPath();
+            ctx.moveTo(threadNodes[0].x, threadNodes[0].y);
+            for (let i = 1; i < THREAD_NODES - 1; i++) {
+                const xc = (threadNodes[i].x + threadNodes[i + 1].x) * 0.5;
+                const yc = (threadNodes[i].y + threadNodes[i + 1].y) * 0.5;
+                ctx.quadraticCurveTo(threadNodes[i].x, threadNodes[i].y, xc, yc);
+            }
+            ctx.stroke();
+
+            // Thread highlight
+            ctx.strokeStyle = '#fff6bd';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.restore();
+
+            // 2. Draw Gleaming Silver Sewing Needle (Tip at x, y)
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+
+            const needleLen = 96;
+            const needleGrad = ctx.createLinearGradient(-needleLen, -4, 0, 4);
+            needleGrad.addColorStop(0, '#b0bec5');
+            needleGrad.addColorStop(0.5, '#ffffff');
+            needleGrad.addColorStop(1, '#cfd8dc');
+
+            ctx.fillStyle = needleGrad;
+            ctx.strokeStyle = '#455a64';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(0, 0); // Sharp tip
+            ctx.lineTo(-needleLen + 10, -5.5);
+            ctx.arc(-needleLen + 10, 0, 5.5, -Math.PI * 0.5, Math.PI * 0.5, true);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Golden Needle Eye at the back
+            ctx.fillStyle = '#d49b27';
+            ctx.beginPath();
+            ctx.ellipse(-needleLen + 14, 0, 7, 2.6, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        function drawCustomCursor() {
+            const m = getRibbonMetrics();
+
+            // During active cutting animation, show the scissors slicing straight up the cut line!
+            if (gameState === STATE.CUTTING && ribbonAnim.cutProgress < 1) {
+                const topY = m.centerY - m.height * 0.5;
+                const scX = m.cutX;
+                const scY = (topY + m.height + 18) - ribbonAnim.cutProgress * (m.height + 36);
+                const snipAngle = 0.08 + Math.abs(Math.sin(ribbonAnim.cutProgress * Math.PI * 4)) * 0.42;
+                drawTailorsScissors(scX, scY, -Math.PI * 0.5, snipAngle);
+                return;
+            }
+
+            // During active sewing animation, draw the needle stitching across the ribbon seam
+            if (verifyState.isSewingNow) {
+                drawSewingNeedleAndThread(ribbonAnim.activeNeedleX, ribbonAnim.activeNeedleY, ribbonAnim.activeNeedleAngle);
+                return;
+            }
+
+            // Otherwise, draw tool at pointer position
+            if (gameState === STATE.INTRO || gameState === STATE.READY_TO_CUT || gameState === STATE.CUTTING) {
+                const hoverSnip = pointer.hoverCutZone ? Math.abs(Math.sin(globalTime * 9)) * 0.38 : 0.18 + Math.sin(pointer.snipPhase) * 0.1;
+                const targetAngle = pointer.hoverCutZone ? -Math.PI * 0.45 : -Math.PI * 0.25;
+                drawTailorsScissors(pointer.x, pointer.y, targetAngle, hoverSnip);
+            } else {
+                // Verification & Celebration: Needle with trailing physics thread
+                const needleAngle = pointer.hoverSewZone ? -2.1 + Math.sin(globalTime * 8) * 0.12 : -2.35;
+                drawSewingNeedleAndThread(pointer.x, pointer.y, needleAngle);
+            }
+        }
+
+        // ============================================================================
+        // MAIN RENDER LOOP
+        // ============================================================================
+        let prevTimestamp = performance.now();
+
+        function renderFrame(timestamp) {
+            const dt = Math.min(0.05, (timestamp - prevTimestamp) / 1000);
+            prevTimestamp = timestamp;
+
+            update(dt);
+
+            // Clear viewport with deep warm timber color
+            ctx.fillStyle = '#1a0e07';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            // Clip to 16:9 stage
+            ctx.beginPath();
+            ctx.rect(0, 0, VW, VH);
+            ctx.clip();
+
+            // 1. Living Woodland Workshop Background
+            drawBackground();
+
+            // 2. Realistic Bear Tailor Character
+            drawBearTailorCharacter();
+
+            // 3. Foreground Tailor's Workbench & Velvet Mat
+            drawWorkbench();
+
+            // 4. Interactive Color-Coded Satin Ribbon (with Cut & Sew states)
+            drawInteractiveRibbon();
+
+            // 5. Bear Tailor's Paws holding the ribbon / clapping
+            drawBearPaws();
+
+            // 6. Floating Golden Dust Motes in Sunbeams
+            for (const d of dustMotes) {
+                ctx.fillStyle = `rgba(255, 240, 175, ${d.alpha})`;
+                ctx.beginPath();
+                ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 7. Carved Oak & Stitched Velvet Equation Board
+            drawEquationBoard();
+
+            // 8. Interactive Wooden Tray of 10 Tailor Buttons (1..10)
+            drawNumberButtonTray();
+
+            // 9. Top Stylized Language (`УКР`/`РУС`) & Minimalistic `Next` Buttons
+            drawStylizedUIButtons();
+
+            // 10. Celebration Particles & Sparks
+            drawParticles();
+
+            // 11. Custom Procedural Cursor (Scissors or Needle with Thread)
+            drawCustomCursor();
+
+            ctx.restore();
+
+            requestAnimationFrame(renderFrame);
+        }
+
+        // Start game on load
+        window.onload = () => {
+            generateNewProblem(false);
+            requestAnimationFrame(renderFrame);
+        };
+    </script>
+</body>
+</html>
