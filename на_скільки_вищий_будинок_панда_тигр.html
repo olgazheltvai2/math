@@ -1,0 +1,2073 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Панда та тигреня будують будиночки</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: #14281d;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        #game-wrapper {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Background atmospheric & particle canvases */
+        #bg-canvas, #fx-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        #bg-canvas { z-index: 1; }
+        #fx-canvas { z-index: 25; }
+
+        /* Main responsive 16:9 SVG stage */
+        #stage-svg {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Interactive cursors & subtle hover highlights */
+        .interactive-tiger {
+            cursor: pointer;
+            transition: filter 0.25s ease;
+        }
+        .interactive-tiger:hover {
+            filter: drop-shadow(0 0 18px rgba(255, 215, 90, 0.75)) brightness(1.05);
+        }
+
+        .floor-interactive {
+            cursor: pointer;
+            transition: filter 0.18s ease;
+        }
+        .floor-interactive:hover {
+            filter: brightness(1.12) drop-shadow(0 0 10px rgba(255, 230, 130, 0.6));
+        }
+
+        /* Minimalist wooden/bamboo Next button (no text) */
+        #next-btn {
+            position: absolute;
+            top: 2.4vh;
+            right: 2.2vw;
+            z-index: 40;
+            width: clamp(58px, 6vw, 84px);
+            height: clamp(58px, 6vw, 84px);
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+            outline: none;
+            transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
+            filter: drop-shadow(0 8px 16px rgba(10, 28, 16, 0.55));
+        }
+
+        #next-btn:hover {
+            transform: scale(1.1) rotate(4deg);
+            filter: drop-shadow(0 10px 22px rgba(255, 215, 100, 0.55)) brightness(1.08);
+        }
+
+        #next-btn:active {
+            transform: scale(0.92) rotate(-3deg);
+        }
+
+        /* Sound toggle button (minimalist wooden icon in top-left) */
+        #sound-btn {
+            position: absolute;
+            top: 2.4vh;
+            left: 2.2vw;
+            z-index: 40;
+            width: clamp(46px, 4.6vw, 66px);
+            height: clamp(46px, 4.6vw, 66px);
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            padding: 0;
+            outline: none;
+            transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
+            filter: drop-shadow(0 6px 12px rgba(10, 28, 16, 0.5));
+        }
+
+        #sound-btn:hover {
+            transform: scale(1.09);
+            filter: drop-shadow(0 8px 16px rgba(255, 215, 100, 0.5)) brightness(1.08);
+        }
+
+        #sound-btn:active {
+            transform: scale(0.92);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <!-- Living Background Canvas (Waterfall, River, Clouds, Bamboo Wind, Sunbeams) -->
+    <canvas id="bg-canvas"></canvas>
+
+    <!-- Main Interactive SVG Stage (1920x1080 Widescreen Coordinate System) -->
+    <svg id="stage-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <!-- Soft Shadows -->
+            <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#0b1f13" flood-opacity="0.48"/>
+            </filter>
+            <filter id="soft-shadow" x="-15%" y="-15%" width="130%" height="130%">
+                <feDropShadow dx="0" dy="5" stdDeviation="4" flood-color="#112416" flood-opacity="0.38"/>
+            </filter>
+            <filter id="warm-glow" x="-35%" y="-35%" width="170%" height="170%">
+                <feGaussianBlur stdDeviation="8" result="blur"/>
+                <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+
+            <!-- Stone & Moss Gradients -->
+            <linearGradient id="stone-grad-1" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#8c9994"/>
+                <stop offset="45%" stop-color="#687672"/>
+                <stop offset="100%" stop-color="#434f4c"/>
+            </linearGradient>
+            <linearGradient id="stone-grad-2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#9ca8a3"/>
+                <stop offset="60%" stop-color="#75827d"/>
+                <stop offset="100%" stop-color="#515c58"/>
+            </linearGradient>
+            <linearGradient id="moss-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#76b843"/>
+                <stop offset="65%" stop-color="#4a8928"/>
+                <stop offset="100%" stop-color="#2e5c17"/>
+            </linearGradient>
+
+            <!-- Panda House (Bamboo & Jade Timber) Gradients -->
+            <linearGradient id="panda-wall-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#d7c297"/>
+                <stop offset="20%" stop-color="#f0dfb8"/>
+                <stop offset="50%" stop-color="#faeccd"/>
+                <stop offset="80%" stop-color="#e5cf9f"/>
+                <stop offset="100%" stop-color="#bfa36f"/>
+            </linearGradient>
+            <linearGradient id="bamboo-beam-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#709c46"/>
+                <stop offset="45%" stop-color="#527c2c"/>
+                <stop offset="100%" stop-color="#355618"/>
+            </linearGradient>
+            <linearGradient id="panda-roof-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#2cd49c"/>
+                <stop offset="40%" stop-color="#15996e"/>
+                <stop offset="85%" stop-color="#0d6649"/>
+                <stop offset="100%" stop-color="#07422f"/>
+            </linearGradient>
+
+            <!-- Tiger House (Warm Cedar, Amber & Terracotta) Gradients -->
+            <linearGradient id="tiger-wall-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#b86b35"/>
+                <stop offset="20%" stop-color="#db8b4e"/>
+                <stop offset="50%" stop-color="#eb9f63"/>
+                <stop offset="80%" stop-color="#d17e41"/>
+                <stop offset="100%" stop-color="#9e5320"/>
+            </linearGradient>
+            <linearGradient id="tiger-beam-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#7d3b18"/>
+                <stop offset="50%" stop-color="#59260c"/>
+                <stop offset="100%" stop-color="#3b1605"/>
+            </linearGradient>
+            <linearGradient id="tiger-roof-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#ff8c3b"/>
+                <stop offset="45%" stop-color="#d94e1f"/>
+                <stop offset="85%" stop-color="#9c290c"/>
+                <stop offset="100%" stop-color="#691603"/>
+            </linearGradient>
+
+            <!-- Window & Lantern Glows -->
+            <radialGradient id="window-cold-grad" cx="50%" cy="40%" r="60%">
+                <stop offset="0%" stop-color="#fff4cc"/>
+                <stop offset="55%" stop-color="#ffd269"/>
+                <stop offset="100%" stop-color="#c9841e"/>
+            </radialGradient>
+            <radialGradient id="window-lit-grad" cx="50%" cy="45%" r="65%">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="40%" stop-color="#ffea85"/>
+                <stop offset="80%" stop-color="#ffae2b"/>
+                <stop offset="100%" stop-color="#e06d06"/>
+            </radialGradient>
+            <radialGradient id="lantern-grad" cx="45%" cy="40%" r="60%">
+                <stop offset="0%" stop-color="#fff099"/>
+                <stop offset="45%" stop-color="#ff5e2b"/>
+                <stop offset="100%" stop-color="#a81305"/>
+            </radialGradient>
+            <linearGradient id="gold-trim" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#fff0a6"/>
+                <stop offset="45%" stop-color="#f2bd38"/>
+                <stop offset="100%" stop-color="#a66f08"/>
+            </linearGradient>
+
+            <!-- Panda Fur Realistic Gradients -->
+            <radialGradient id="panda-white-fur" cx="42%" cy="35%" r="65%">
+                <stop offset="0%" stop-color="#ffffff"/>
+                <stop offset="55%" stop-color="#f4f2eb"/>
+                <stop offset="85%" stop-color="#ded9cc"/>
+                <stop offset="100%" stop-color="#bdb5a4"/>
+            </radialGradient>
+            <radialGradient id="panda-dark-fur" cx="38%" cy="32%" r="68%">
+                <stop offset="0%" stop-color="#45484f"/>
+                <stop offset="45%" stop-color="#26282e"/>
+                <stop offset="85%" stop-color="#14151a"/>
+                <stop offset="100%" stop-color="#090a0d"/>
+            </radialGradient>
+            <radialGradient id="pink-blush" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ff8da1" stop-opacity="0.65"/>
+                <stop offset="100%" stop-color="#ff8da1" stop-opacity="0"/>
+            </radialGradient>
+
+            <!-- Tiger Cub Realistic Fur Gradients -->
+            <radialGradient id="tiger-orange-fur" cx="42%" cy="35%" r="65%">
+                <stop offset="0%" stop-color="#ffbe57"/>
+                <stop offset="48%" stop-color="#f58d25"/>
+                <stop offset="82%" stop-color="#d4620b"/>
+                <stop offset="100%" stop-color="#9c3d02"/>
+            </radialGradient>
+            <radialGradient id="tiger-cream-fur" cx="48%" cy="40%" r="60%">
+                <stop offset="0%" stop-color="#fffdf7"/>
+                <stop offset="65%" stop-color="#faeccf"/>
+                <stop offset="100%" stop-color="#dfc596"/>
+            </radialGradient>
+            <linearGradient id="tiger-stripe-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#381d0a"/>
+                <stop offset="100%" stop-color="#1a0b02"/>
+            </linearGradient>
+            <radialGradient id="tiger-eye-iris" cx="50%" cy="50%" r="55%">
+                <stop offset="0%" stop-color="#d4ff52"/>
+                <stop offset="60%" stop-color="#6ec21b"/>
+                <stop offset="100%" stop-color="#286605"/>
+            </radialGradient>
+
+            <!-- Stylized Organic Wood/Amber Speech Bubble Gradients -->
+            <radialGradient id="parchment-cloud-grad" cx="45%" cy="38%" r="65%">
+                <stop offset="0%" stop-color="#fff3cf"/>
+                <stop offset="55%" stop-color="#f7da94"/>
+                <stop offset="85%" stop-color="#e3b659"/>
+                <stop offset="100%" stop-color="#bd8528"/>
+            </radialGradient>
+            <linearGradient id="wood-rim-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#8c4f1f"/>
+                <stop offset="50%" stop-color="#5c2f0c"/>
+                <stop offset="100%" stop-color="#381903"/>
+            </linearGradient>
+            <linearGradient id="numeral-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="#802300"/>
+                <stop offset="50%" stop-color="#4d1300"/>
+                <stop offset="100%" stop-color="#290900"/>
+            </linearGradient>
+        </defs>
+
+        <!-- Subtle Bamboo Trellis Height Guides (Floors 1 to 6) for Visual Comparison -->
+        <g id="height-guides-layer" opacity="0.42"></g>
+
+        <!-- Foreground Meadow & Stone Path Layer -->
+        <g id="meadow-layer">
+            <!-- Distant riverbank hill -->
+            <path d="M0,850 Q480,810 960,855 Q1440,815 1920,845 L1920,1080 L0,1080 Z" fill="#234d26"/>
+            <!-- Main lush meadow -->
+            <path d="M0,885 Q380,845 760,885 Q1160,910 1540,865 Q1760,855 1920,880 L1920,1080 L0,1080 Z" fill="#2f6629"/>
+            <path d="M0,925 Q520,890 960,930 Q1420,900 1920,925 L1920,1080 L0,1080 Z" fill="#3b7d31"/>
+            <path d="M0,975 Q960,945 1920,980 L1920,1080 L0,1080 Z" fill="#285922"/>
+
+            <!-- Winding stepping stones between Panda and Tiger -->
+            <g opacity="0.85">
+                <ellipse cx="830" cy="955" rx="46" ry="15" fill="url(#stone-grad-2)"/>
+                <ellipse cx="935" cy="975" rx="54" ry="17" fill="url(#stone-grad-1)"/>
+                <ellipse cx="1055" cy="962" rx="48" ry="16" fill="url(#stone-grad-2)"/>
+                <ellipse cx="995" cy="1008" rx="62" ry="19" fill="url(#stone-grad-1)"/>
+            </g>
+
+            <!-- Decorative tuft grass & wildflowers -->
+            <g id="meadow-flowers"></g>
+        </g>
+
+        <!-- LEFT FOUNDATION & PANDA'S HOUSE -->
+        <g id="panda-building-zone">
+            <!-- Panda House Dynamic Floors Container -->
+            <g id="panda-floors-group"></g>
+
+            <!-- Stone & Moss Foundation (Top surface strictly at Y = 870) -->
+            <g id="panda-foundation" filter="url(#soft-shadow)">
+                <!-- Base stone shadow -->
+                <ellipse cx="640" cy="924" rx="225" ry="26" fill="rgba(10, 26, 14, 0.45)"/>
+                <!-- Main carved stones -->
+                <rect x="440" y="870" width="400" height="50" rx="14" fill="url(#stone-grad-1)" stroke="#333d3a" stroke-width="3"/>
+                <rect x="454" y="875" width="118" height="40" rx="8" fill="url(#stone-grad-2)"/>
+                <rect x="580" y="875" width="135" height="40" rx="8" fill="url(#stone-grad-1)"/>
+                <rect x="723" y="875" width="104" height="40" rx="8" fill="url(#stone-grad-2)"/>
+                <!-- Top wooden sill plate -->
+                <rect x="432" y="862" width="416" height="14" rx="6" fill="url(#bamboo-beam-grad)" stroke="#263f10" stroke-width="2"/>
+                <!-- Lush moss drapes -->
+                <path d="M440,872 Q465,895 485,876 Q505,902 530,874 Q550,886 565,872 Z" fill="url(#moss-grad)"/>
+                <path d="M740,872 Q765,898 788,876 Q810,896 832,872 Z" fill="url(#moss-grad)"/>
+            </g>
+        </g>
+
+        <!-- RIGHT FOUNDATION & TIGER'S HOUSE -->
+        <g id="tiger-building-zone">
+            <!-- Waiting timber pile before Tiger starts building -->
+            <g id="tiger-timber-pile" filter="url(#soft-shadow)">
+                <rect x="1150" y="838" width="125" height="24" rx="8" fill="url(#tiger-wall-grad)" stroke="#59260c" stroke-width="2.5"/>
+                <circle cx="1158" cy="850" r="8" fill="#f7da94"/>
+                <rect x="1285" y="840" width="110" height="22" rx="8" fill="url(#tiger-wall-grad)" stroke="#59260c" stroke-width="2.5"/>
+                <circle cx="1293" cy="851" r="7" fill="#f7da94"/>
+                <rect x="1195" y="818" width="140" height="23" rx="8" fill="url(#tiger-Roof-grad)" fill-opacity="0.9" style="fill: url(#tiger-wall-grad);" stroke="#59260c" stroke-width="2.5"/>
+                <circle cx="1204" cy="829" r="7.5" fill="#f7da94"/>
+                <!-- Golden roof tiles waiting -->
+                <path d="M1345,842 Q1385,815 1425,842 Z" fill="url(#tiger-roof-grad)" stroke="#691603" stroke-width="2"/>
+            </g>
+
+            <!-- Tiger House Dynamic Floors Container -->
+            <g id="tiger-floors-group"></g>
+
+            <!-- Stone & Moss Foundation (Top surface strictly at Y = 870) -->
+            <g id="tiger-foundation" class="interactive-tiger" filter="url(#soft-shadow)">
+                <ellipse cx="1280" cy="924" rx="225" ry="26" fill="rgba(10, 26, 14, 0.45)"/>
+                <rect x="1080" y="870" width="400" height="50" rx="14" fill="url(#stone-grad-1)" stroke="#333d3a" stroke-width="3"/>
+                <rect x="1094" y="875" width="128" height="40" rx="8" fill="url(#stone-grad-2)"/>
+                <rect x="1230" y="875" width="115" height="40" rx="8" fill="url(#stone-grad-1)"/>
+                <rect x="1353" y="875" width="114" height="40" rx="8" fill="url(#stone-grad-2)"/>
+                <!-- Top cedar sill plate -->
+                <rect x="1072" y="862" width="416" height="14" rx="6" fill="url(#tiger-beam-grad)" stroke="#3b1605" stroke-width="2"/>
+                <!-- Lush moss drapes -->
+                <path d="M1085,872 Q1110,896 1135,875 Q1158,895 1180,872 Z" fill="url(#moss-grad)"/>
+                <path d="M1370,872 Q1398,900 1422,876 Q1445,894 1468,872 Z" fill="url(#moss-grad)"/>
+            </g>
+        </g>
+
+        <!-- ARTICULATED PANDA RIG (Left Side, Base around X=265, Y=915) -->
+        <g id="panda-rig" transform="translate(265, 915)" filter="url(#drop-shadow)">
+            <!-- Ground shadow -->
+            <ellipse id="panda-shadow" cx="0" cy="18" rx="95" ry="22" fill="rgba(8, 22, 12, 0.48)"/>
+
+            <g id="panda-body-root">
+                <!-- Left Back Leg -->
+                <g id="panda-leg-l" transform="translate(-44, -36)">
+                    <ellipse cx="0" cy="22" rx="30" ry="34" fill="url(#panda-dark-fur)"/>
+                    <!-- Foot pad -->
+                    <ellipse cx="-4" cy="44" rx="26" ry="14" fill="#18191f"/>
+                    <circle cx="-16" cy="40" r="4.5" fill="#3a3d45"/>
+                    <circle cx="-4" cy="38" r="5" fill="#3a3d45"/>
+                    <circle cx="8" cy="40" r="4.5" fill="#3a3d45"/>
+                </g>
+
+                <!-- Right Back Leg -->
+                <g id="panda-leg-r" transform="translate(44, -36)">
+                    <ellipse cx="0" cy="22" rx="30" ry="34" fill="url(#panda-dark-fur)"/>
+                    <ellipse cx="6" cy="44" rx="26" ry="14" fill="#18191f"/>
+                    <circle cx="-6" cy="40" r="4.5" fill="#3a3d45"/>
+                    <circle cx="6" cy="38" r="5" fill="#3a3d45"/>
+                    <circle cx="18" cy="40" r="4.5" fill="#3a3d45"/>
+                </g>
+
+                <!-- Torso & Belly -->
+                <g id="panda-torso" transform="translate(0, -105)">
+                    <!-- Main chubby white body -->
+                    <ellipse cx="0" cy="15" rx="84" ry="88" fill="url(#panda-white-fur)"/>
+                    <!-- Soft belly fur shading -->
+                    <ellipse cx="6" cy="26" rx="64" ry="66" fill="#ffffff" opacity="0.55"/>
+                    <!-- Black shoulder band / vest -->
+                    <path d="M-76,-28 Q0,-6 76,-28 Q86,-62 52,-76 Q0,-64 -52,-76 Q-86,-62 -76,-28 Z" fill="url(#panda-dark-fur)"/>
+                    <!-- Cute bamboo carpenter belt -->
+                    <path d="M-81,38 Q0,58 81,38 L78,52 Q0,72 -78,52 Z" fill="url(#bamboo-beam-grad)" stroke="#284212" stroke-width="2"/>
+                    <rect x="-16" y="42" width="32" height="22" rx="6" fill="url(#gold-trim)" stroke="#784f04" stroke-width="2"/>
+
+                    <!-- Left Arm (Waving / Balancing) -->
+                    <g id="panda-arm-l" transform="translate(-72, -36)">
+                        <path d="M0,0 C-38,10 -56,52 -34,76 C-16,92 12,68 14,32 Z" fill="url(#panda-dark-fur)"/>
+                        <circle cx="-26" cy="64" r="18" fill="#1b1d24"/>
+                        <circle cx="-30" cy="66" r="7" fill="#3c3f4a"/>
+                    </g>
+
+                    <!-- Head Group -->
+                    <g id="panda-head" transform="translate(0, -98)">
+                        <!-- Left Ear -->
+                        <g id="panda-ear-l" transform="translate(-62, -62)">
+                            <circle cx="0" cy="0" r="27" fill="url(#panda-dark-fur)"/>
+                            <circle cx="2" cy="3" r="14" fill="#18191e"/>
+                        </g>
+                        <!-- Right Ear -->
+                        <g id="panda-ear-r" transform="translate(62, -62)">
+                            <circle cx="0" cy="0" r="27" fill="url(#panda-dark-fur)"/>
+                            <circle cx="-2" cy="3" r="14" fill="#18191e"/>
+                        </g>
+
+                        <!-- Main Head Fur -->
+                        <path d="M-78,8 C-84,-48 -48,-82 0,-82 C48,-82 84,-48 78,8 C84,48 48,72 0,72 C-48,72 -84,48 -78,8 Z" fill="url(#panda-white-fur)"/>
+                        <!-- Fluffy cheek tufts -->
+                        <path d="M-76,12 Q-92,22 -78,36 Q-88,42 -70,48 Z" fill="#e6e1d3"/>
+                        <path d="M76,12 Q92,22 78,36 Q88,42 70,48 Z" fill="#dcd6c5"/>
+
+                        <!-- Classic Panda Eye Patches -->
+                        <ellipse cx="-32" cy="-6" rx="24" ry="29" transform="rotate(16 -32 -6)" fill="url(#panda-dark-fur)"/>
+                        <ellipse cx="32" cy="-6" rx="24" ry="29" transform="rotate(-16 32 -6)" fill="url(#panda-dark-fur)"/>
+
+                        <!-- Eyes (With pupil tracking & eyelids) -->
+                        <g id="panda-eyes">
+                            <!-- Left Eye -->
+                            <circle cx="-29" cy="-8" r="12.5" fill="#ffffff"/>
+                            <g class="panda-pupil" transform="translate(3, 0)">
+                                <circle cx="-29" cy="-8" r="8" fill="#1b120c"/>
+                                <circle cx="-29" cy="-8" r="4.5" fill="#050505"/>
+                                <circle cx="-32" cy="-11" r="3.2" fill="#ffffff"/>
+                                <circle cx="-26" cy="-5" r="1.4" fill="#ffffff"/>
+                            </g>
+                            <!-- Right Eye -->
+                            <circle cx="29" cy="-8" r="12.5" fill="#ffffff"/>
+                            <g class="panda-pupil" transform="translate(3, 0)">
+                                <circle cx="29" cy="-8" r="8" fill="#1b120c"/>
+                                <circle cx="29" cy="-8" r="4.5" fill="#050505"/>
+                                <circle cx="26" cy="-11" r="3.2" fill="#ffffff"/>
+                                <circle cx="32" cy="-5" r="1.4" fill="#ffffff"/>
+                            </g>
+                            <!-- Blinking Eyelids -->
+                            <g id="panda-eyelids" opacity="0">
+                                <ellipse cx="-29" cy="-8" rx="14" ry="14" fill="#1c1e24"/>
+                                <path d="M-42,-6 Q-29,4 -16,-6" stroke="#0a0b0d" stroke-width="3" fill="none"/>
+                                <ellipse cx="29" cy="-8" rx="14" ry="14" fill="#1c1e24"/>
+                                <path d="M16,-6 Q29,4 42,-6" stroke="#0a0b0d" stroke-width="3" fill="none"/>
+                            </g>
+                        </g>
+
+                        <!-- Rosy Cheeks -->
+                        <ellipse cx="-52" cy="18" rx="16" ry="11" fill="url(#pink-blush)"/>
+                        <ellipse cx="52" cy="18" rx="16" ry="11" fill="url(#pink-blush)"/>
+
+                        <!-- Muzzle & Nose -->
+                        <ellipse cx="0" cy="18" rx="28" ry="22" fill="#ffffff"/>
+                        <path d="M-14,6 Q0,0 14,6 Q16,18 0,22 Q-16,18 -14,6 Z" fill="#1b1d24"/>
+                        <ellipse cx="-4" cy="9" rx="5" ry="2.5" fill="#575c69"/>
+
+                        <!-- Mouth (Happy smile) -->
+                        <path id="panda-mouth" d="M-16,28 Q0,42 16,28" stroke="#1b1d24" stroke-width="3.8" stroke-linecap="round" fill="none"/>
+                        <path id="panda-mouth-open" d="M-14,27 Q0,48 14,27 Z" fill="#d95b72" opacity="0"/>
+
+                        <!-- Master Builder Bamboo Headband -->
+                        <path d="M-72,-36 Q0,-56 72,-36 L75,-24 Q0,-44 -75,-24 Z" fill="url(#panda-roof-grad)" stroke="#07422f" stroke-width="2"/>
+                        <circle cx="0" cy="-37" r="10" fill="url(#gold-trim)" stroke="#784f04" stroke-width="2"/>
+                    </g>
+
+                    <!-- Right Arm (Holding Bamboo Mallet, swings toward house) -->
+                    <g id="panda-arm-r" transform="translate(65, -34)">
+                        <!-- Bamboo Carpenter Mallet -->
+                        <g id="panda-mallet" transform="translate(38, 36) rotate(25)">
+                            <!-- Wooden handle -->
+                            <rect x="-6" y="-75" width="12" height="90" rx="5" fill="url(#panda-wall-grad)" stroke="#6e5225" stroke-width="2"/>
+                            <!-- Heavy bamboo mallet head -->
+                            <g transform="translate(0, -78)">
+                                <rect x="-34" y="-22" width="68" height="44" rx="12" fill="url(#bamboo-beam-grad)" stroke="#233b0e" stroke-width="2.5"/>
+                                <rect x="-26" y="-22" width="8" height="44" fill="url(#gold-trim)"/>
+                                <rect x="18" y="-22" width="8" height="44" fill="url(#gold-trim)"/>
+                                <ellipse cx="32" cy="0" rx="5" ry="18" fill="#d9c498"/>
+                            </g>
+                        </g>
+                        <!-- Arm & Paw -->
+                        <path d="M-10,0 C25,5 54,28 46,56 C38,78 4,62 -8,30 Z" fill="url(#panda-dark-fur)"/>
+                        <circle cx="36" cy="46" r="19" fill="#181a20"/>
+                        <circle cx="40" cy="46" r="7" fill="#3a3d47"/>
+                    </g>
+                </g>
+            </g>
+        </g>
+
+        <!-- ARTICULATED TIGER CUB RIG (Right Side, Base around X=1655, Y=915) -->
+        <g id="tiger-rig" class="interactive-tiger" transform="translate(1655, 915)" filter="url(#drop-shadow)">
+            <!-- Ground shadow -->
+            <ellipse id="tiger-shadow" cx="0" cy="18" rx="92" ry="22" fill="rgba(8, 22, 12, 0.48)"/>
+
+            <g id="tiger-body-root">
+                <!-- Animated Striped Tail -->
+                <g id="tiger-tail" transform="translate(55, -48)">
+                    <path d="M0,0 C55,-10 95,-55 82,-98 C72,-125 46,-112 54,-86 C60,-65 36,-32 -4,-16 Z" fill="url(#tiger-orange-fur)" stroke="#7d3001" stroke-width="2"/>
+                    <!-- Tail dark tip & rings -->
+                    <path d="M82,-98 C72,-125 46,-112 54,-86 C58,-75 74,-82 82,-98 Z" fill="#241104"/>
+                    <path d="M44,-44 Q62,-52 68,-38" stroke="#241104" stroke-width="7" stroke-linecap="round" fill="none"/>
+                    <path d="M62,-68 Q78,-72 82,-58" stroke="#241104" stroke-width="7" stroke-linecap="round" fill="none"/>
+                    <path d="M24,-24 Q38,-32 44,-18" stroke="#241104" stroke-width="6" stroke-linecap="round" fill="none"/>
+                </g>
+
+                <!-- Left Leg -->
+                <g id="tiger-leg-l" transform="translate(-40, -38)">
+                    <ellipse cx="0" cy="22" rx="28" ry="34" fill="url(#tiger-orange-fur)"/>
+                    <!-- Leg stripes -->
+                    <path d="M-24,12 Q-8,18 -4,10" stroke="#241104" stroke-width="5" stroke-linecap="round" fill="none"/>
+                    <path d="M-22,26 Q-6,30 -2,22" stroke="#241104" stroke-width="5" stroke-linecap="round" fill="none"/>
+                    <!-- Cream paw -->
+                    <ellipse cx="-6" cy="46" rx="25" ry="14" fill="url(#tiger-cream-fur)"/>
+                    <path d="M-16,42 L-16,52 M-4,42 L-4,53 M8,42 L8,51" stroke="#8c4714" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
+
+                <!-- Right Leg -->
+                <g id="tiger-leg-r" transform="translate(40, -38)">
+                    <ellipse cx="0" cy="22" rx="28" ry="34" fill="url(#tiger-orange-fur)"/>
+                    <path d="M24,12 Q8,18 4,10" stroke="#241104" stroke-width="5" stroke-linecap="round" fill="none"/>
+                    <path d="M22,26 Q6,30 2,22" stroke="#241104" stroke-width="5" stroke-linecap="round" fill="none"/>
+                    <!-- Cream paw -->
+                    <ellipse cx="6" cy="46" rx="25" ry="14" fill="url(#tiger-cream-fur)"/>
+                    <path d="M-8,42 L-8,51 M4,42 L4,53 M16,42 L16,52" stroke="#8c4714" stroke-width="2.5" stroke-linecap="round"/>
+                </g>
+
+                <!-- Torso & Striped Body -->
+                <g id="tiger-torso" transform="translate(0, -104)">
+                    <!-- Main amber-orange body -->
+                    <ellipse cx="0" cy="14" rx="76" ry="84" fill="url(#tiger-orange-fur)"/>
+                    <!-- Tiger torso stripes -->
+                    <path d="M-74,-12 Q-46,-2 -38,-14" stroke="#241104" stroke-width="7" stroke-linecap="round" fill="none"/>
+                    <path d="M-75,12 Q-42,22 -34,10" stroke="#241104" stroke-width="7.5" stroke-linecap="round" fill="none"/>
+                    <path d="M-70,36 Q-42,44 -36,32" stroke="#241104" stroke-width="6.5" stroke-linecap="round" fill="none"/>
+                    <path d="M74,-12 Q46,-2 38,-14" stroke="#241104" stroke-width="7" stroke-linecap="round" fill="none"/>
+                    <path d="M75,12 Q42,22 34,10" stroke="#241104" stroke-width="7.5" stroke-linecap="round" fill="none"/>
+                    <path d="M70,36 Q42,44 36,32" stroke="#241104" stroke-width="6.5" stroke-linecap="round" fill="none"/>
+
+                    <!-- Fluffy Cream Chest & Belly -->
+                    <path d="M-46,-46 Q0,-30 46,-46 C58,-2 52,58 0,72 C-52,58 -58,-2 -46,-46 Z" fill="url(#tiger-cream-fur)"/>
+                    <!-- Fluffy chest tuft -->
+                    <path d="M-24,-40 Q-12,-24 0,-36 Q12,-24 24,-40 Q14,-56 0,-50 Q-14,-56 -24,-40 Z" fill="#fffdf7"/>
+
+                    <!-- Carpenter Leather Tool Belt -->
+                    <path d="M-73,38 Q0,56 73,38 L70,52 Q0,70 -70,52 Z" fill="url(#tiger-beam-grad)" stroke="#2b1003" stroke-width="2"/>
+                    <rect x="-15" y="42" width="30" height="20" rx="5" fill="url(#gold-trim)" stroke="#784f04" stroke-width="2"/>
+
+                    <!-- Left Arm (Holds Hammer & Swings toward House on Left) -->
+                    <g id="tiger-arm-l" transform="translate(-62, -32)">
+                        <!-- Wooden & Golden Builder's Hammer -->
+                        <g id="tiger-hammer" transform="translate(-38, 34) rotate(-28)">
+                            <rect x="-5.5" y="-74" width="11" height="88" rx="5" fill="url(#panda-wall-grad)" stroke="#5c2f0c" stroke-width="2"/>
+                            <g transform="translate(0, -76)">
+                                <rect x="-32" y="-18" width="64" height="36" rx="9" fill="url(#tiger-roof-grad)" stroke="#591502" stroke-width="2.5"/>
+                                <rect x="-35" y="-20" width="12" height="40" rx="4" fill="url(#gold-trim)"/>
+                                <rect x="23" y="-20" width="12" height="40" rx="4" fill="url(#gold-trim)"/>
+                            </g>
+                        </g>
+                        <!-- Arm & Striped Sleeve -->
+                        <path d="M10,0 C-24,6 -52,28 -44,54 C-36,76 -4,60 8,28 Z" fill="url(#tiger-orange-fur)"/>
+                        <path d="M-32,20 Q-16,28 -10,18" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <path d="M-40,36 Q-22,42 -16,32" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <circle cx="-35" cy="46" r="18" fill="url(#tiger-cream-fur)"/>
+                    </g>
+
+                    <!-- Head Group -->
+                    <g id="tiger-head" transform="translate(0, -96)">
+                        <!-- Left Ear -->
+                        <g id="tiger-ear-l" transform="translate(-60, -60)">
+                            <circle cx="0" cy="0" r="26" fill="#241104"/>
+                            <circle cx="2" cy="2" r="22" fill="url(#tiger-orange-fur)"/>
+                            <circle cx="-6" cy="-8" r="7" fill="#fffdf7" opacity="0.85"/>
+                            <circle cx="4" cy="5" r="12" fill="#f29c85"/>
+                        </g>
+                        <!-- Right Ear -->
+                        <g id="tiger-ear-r" transform="translate(60, -60)">
+                            <circle cx="0" cy="0" r="26" fill="#241104"/>
+                            <circle cx="-2" cy="2" r="22" fill="url(#tiger-orange-fur)"/>
+                            <circle cx="6" cy="-8" r="7" fill="#fffdf7" opacity="0.85"/>
+                            <circle cx="-4" cy="5" r="12" fill="#f29c85"/>
+                        </g>
+
+                        <!-- Fluffy White Cheek Ruffs -->
+                        <path d="M-74,-4 Q-102,12 -82,32 Q-98,44 -70,56 Q-45,68 0,68 Q45,68 70,56 Q98,44 82,32 Q102,12 74,-4 Z" fill="url(#tiger-cream-fur)"/>
+
+                        <!-- Main Tiger Head Dome -->
+                        <path d="M-74,6 C-80,-48 -46,-80 0,-80 C46,-80 80,-48 74,6 C76,42 44,64 0,64 C-44,64 -76,42 -74,6 Z" fill="url(#tiger-orange-fur)"/>
+
+                        <!-- Re-layer Cheek Ruffs on lower sides -->
+                        <path d="M-72,4 Q-96,18 -78,34 Q-88,46 -62,54 Q-42,38 -52,10 Z" fill="url(#tiger-cream-fur)"/>
+                        <path d="M72,4 Q96,18 78,34 Q88,46 62,54 Q42,38 52,10 Z" fill="url(#tiger-cream-fur)"/>
+
+                        <!-- Forehead & Cheek Stripes (Royal "Wang" pattern) -->
+                        <path d="M-26,-56 Q0,-46 26,-56" stroke="#241104" stroke-width="6.5" stroke-linecap="round" fill="none"/>
+                        <path d="M-34,-42 Q0,-32 34,-42" stroke="#241104" stroke-width="6.5" stroke-linecap="round" fill="none"/>
+                        <path d="M-18,-28 Q0,-22 18,-28" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <path d="M0,-64 L0,-22" stroke="#241104" stroke-width="6.5" stroke-linecap="round"/>
+                        <!-- Cheek stripes -->
+                        <path d="M-76,12 Q-56,16 -48,8" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <path d="M-78,26 Q-54,32 -46,22" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <path d="M76,12 Q56,16 48,8" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <path d="M78,26 Q54,32 46,22" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+
+                        <!-- Cream Eyebrow Spots -->
+                        <ellipse cx="-28" cy="-24" rx="13" ry="7" transform="rotate(-12 -28 -24)" fill="#fffdf7"/>
+                        <ellipse cx="28" cy="-24" rx="13" ry="7" transform="rotate(12 28 -24)" fill="#fffdf7"/>
+
+                        <!-- Expressive Emerald-Amber Eyes -->
+                        <g id="tiger-eyes">
+                            <!-- Left Eye -->
+                            <ellipse cx="-29" cy="-6" rx="15" ry="14" fill="#241104"/>
+                            <circle cx="-29" cy="-6" r="12.5" fill="#ffffff"/>
+                            <g class="tiger-pupil" transform="translate(-3, 0)">
+                                <circle cx="-29" cy="-6" r="8.5" fill="url(#tiger-eye-iris)"/>
+                                <circle cx="-29" cy="-6" r="4.8" fill="#0d0702"/>
+                                <circle cx="-32" cy="-9.5" r="3.2" fill="#ffffff"/>
+                                <circle cx="-26" cy="-3" r="1.5" fill="#ffffff"/>
+                            </g>
+
+                            <!-- Right Eye -->
+                            <ellipse cx="29" cy="-6" rx="15" ry="14" fill="#241104"/>
+                            <circle cx="29" cy="-6" r="12.5" fill="#ffffff"/>
+                            <g class="tiger-pupil" transform="translate(-3, 0)">
+                                <circle cx="29" cy="-6" r="8.5" fill="url(#tiger-eye-iris)"/>
+                                <circle cx="29" cy="-6" r="4.8" fill="#0d0702"/>
+                                <circle cx="26" cy="-9.5" r="3.2" fill="#ffffff"/>
+                                <circle cx="32" cy="-3" r="1.5" fill="#ffffff"/>
+                            </g>
+
+                            <!-- Sleepy / Blinking Eyelids -->
+                            <g id="tiger-eyelids" opacity="0">
+                                <ellipse cx="-29" cy="-6" rx="15" ry="14" fill="url(#tiger-orange-fur)"/>
+                                <path d="M-43,-4 Q-29,6 -15,-4" stroke="#241104" stroke-width="3.5" fill="none"/>
+                                <ellipse cx="29" cy="-6" rx="15" ry="14" fill="url(#tiger-orange-fur)"/>
+                                <path d="M15,-4 Q29,6 43,-4" stroke="#241104" stroke-width="3.5" fill="none"/>
+                            </g>
+                        </g>
+
+                        <!-- Muzzle & Pink Tiger Nose -->
+                        <ellipse cx="-14" cy="22" rx="20" ry="16" fill="#fffdf7"/>
+                        <ellipse cx="14" cy="22" rx="20" ry="16" fill="#fffdf7"/>
+                        <path d="M-15,8 Q0,2 15,8 Q17,20 0,24 Q-17,20 -15,8 Z" fill="#f07865" stroke="#361607" stroke-width="2.5"/>
+                        <ellipse cx="-4" cy="11" rx="4.5" ry="2" fill="#ffb6a8"/>
+
+                        <!-- Mouth (Changes between sleepy yawn / sheepish grin / happy smile) -->
+                        <path id="tiger-mouth-smile" d="M-18,30 Q-9,38 0,28 Q9,38 18,30" stroke="#241104" stroke-width="3.6" stroke-linecap="round" fill="none"/>
+                        <!-- Yawn / Excited Open Mouth -->
+                        <ellipse id="tiger-mouth-yawn" cx="0" cy="35" rx="12" ry="14" fill="#a82b3b" stroke="#241104" stroke-width="2.5" opacity="0"/>
+                    </g>
+
+                    <!-- Right Arm (Scratches head when late, waves when happy) -->
+                    <g id="tiger-arm-r" transform="translate(62, -32)">
+                        <path d="M-8,0 C24,8 48,36 34,64 C20,82 -8,62 -10,28 Z" fill="url(#tiger-orange-fur)"/>
+                        <path d="M28,22 Q12,28 8,18" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <path d="M34,38 Q18,44 12,34" stroke="#241104" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+                        <circle cx="24" cy="54" r="18" fill="url(#tiger-cream-fur)"/>
+                    </g>
+                </g>
+            </g>
+        </g>
+
+        <!-- TIGER CUB'S STYLIZED ORGANIC WOOD & AMBER PARCHMENT SPEECH CLOUD (NO WHITE BOX!) -->
+        <g id="tiger-speech-bubble" class="interactive-tiger" transform="translate(1570, 470)" filter="url(#drop-shadow)">
+            <!-- Speech cloud tail bubbles leading from Tiger Cub -->
+            <g id="bubble-tail">
+                <circle cx="52" cy="155" r="13" fill="url(#parchment-cloud-grad)" stroke="url(#wood-rim-grad)" stroke-width="5"/>
+                <circle cx="32" cy="122" r="20" fill="url(#parchment-cloud-grad)" stroke="url(#wood-rim-grad)" stroke-width="5.5"/>
+            </g>
+
+            <!-- Main organic cloud body -->
+            <g id="bubble-body">
+                <!-- Outer carved wooden frame -->
+                <path d="M-98,18 C-128,12 -136,-32 -106,-54 C-112,-92 -66,-118 -28,-98 C-6,-126 48,-122 68,-92 C108,-104 138,-68 118,-30 C142,-2 126,46 88,52 C78,86 24,94 -4,74 C-38,94 -88,76 -92,42 C-112,38 -112,22 -98,18 Z"
+                      fill="url(#wood-rim-grad)"/>
+                <!-- Warm golden parchment / wood-slice interior -->
+                <path d="M-90,15 C-116,10 -123,-28 -96,-48 C-101,-82 -60,-105 -26,-87 C-5,-112 43,-108 61,-82 C97,-92 124,-60 106,-26 C128,-1 113,41 79,46 C70,76 22,84 -4,66 C-34,84 -79,68 -82,37 C-100,34 -100,19 -90,15 Z"
+                      fill="url(#parchment-cloud-grad)" stroke="#f7e2ab" stroke-width="2.5"/>
+
+                <!-- Subtle wood grain rings inside cloud -->
+                <ellipse cx="6" cy="-14" rx="74" ry="52" fill="none" stroke="#d49e3d" stroke-width="2" stroke-dasharray="18 10" opacity="0.55"/>
+                <ellipse cx="6" cy="-14" rx="54" ry="38" fill="none" stroke="#d49e3d" stroke-width="1.5" stroke-dasharray="12 8" opacity="0.45"/>
+
+                <!-- Decorative Bamboo Leaves on corners of Speech Cloud -->
+                <g transform="translate(-95, -62) rotate(-25)">
+                    <path d="M0,0 Q-28,-18 -46,-4 Q-22,14 0,0 Z" fill="url(#moss-grad)" stroke="#1f420e" stroke-width="1.8"/>
+                    <path d="M0,0 Q-18,-34 -10,-52 Q12,-28 0,0 Z" fill="#6ab038" stroke="#1f420e" stroke-width="1.8"/>
+                </g>
+                <g transform="translate(102, 34) rotate(145)">
+                    <path d="M0,0 Q-26,-16 -42,-4 Q-20,12 0,0 Z" fill="url(#moss-grad)" stroke="#1f420e" stroke-width="1.8"/>
+                    <path d="M0,0 Q-16,-30 -8,-46 Q10,-24 0,0 Z" fill="#6ab038" stroke="#1f420e" stroke-width="1.8"/>
+                </g>
+
+                <!-- Mini roof icon at top of cloud to clearly symbolize house height -->
+                <path d="M-38,-62 Q6,-86 50,-62 L40,-54 Q6,-72 -28,-54 Z" fill="url(#tiger-roof-grad)" stroke="#591502" stroke-width="2"/>
+
+                <!-- Target Floor Numeral (1 to 6) -->
+                <text id="tiger-target-numeral" x="6" y="34" text-anchor="middle"
+                      font-family="'Segoe UI Black', 'Arial Rounded MT Bold', sans-serif"
+                      font-size="116" font-weight="900"
+                      fill="url(#numeral-grad)" stroke="#fff4cc" stroke-width="4" paint-order="stroke fill">4</text>
+            </g>
+        </g>
+    </svg>
+
+    <!-- Foreground Particle & Celebration Canvas (Woodchips, Sawdust, Fireflies, Sparkles) -->
+    <canvas id="fx-canvas"></canvas>
+
+    <!-- Minimalist Sound Toggle Button (Top Left, No Words) -->
+    <button id="sound-btn" aria-label="Sound">
+        <svg viewBox="0 0 100 100" width="100%" height="100%">
+            <circle cx="50" cy="50" r="45" fill="url(#wood-rim-grad)" stroke="#f2bd38" stroke-width="4"/>
+            <circle cx="50" cy="50" r="38" fill="url(#parchment-cloud-grad)"/>
+            <path d="M28,40 L42,40 L56,26 L56,74 L42,60 L28,60 Z" fill="#5c2f0c"/>
+            <g id="sound-waves">
+                <path d="M65,36 Q76,50 65,64" fill="none" stroke="#5c2f0c" stroke-width="5" stroke-linecap="round"/>
+                <path d="M73,27 Q90,50 73,73" fill="none" stroke="#5c2f0c" stroke-width="5" stroke-linecap="round"/>
+            </g>
+            <line id="sound-mute-slash" x1="26" y1="26" x2="74" y2="74" stroke="#b81d13" stroke-width="7" stroke-linecap="round" opacity="0"/>
+        </svg>
+    </button>
+
+    <!-- Minimalist "Next" ("Далі") Button (Top Right, No Words) -->
+    <button id="next-btn" aria-label="Next">
+        <svg viewBox="0 0 120 120" width="100%" height="100%">
+            <defs>
+                <radialGradient id="btn-wood" cx="40%" cy="35%" r="65%">
+                    <stop offset="0%" stop-color="#ffe79e"/>
+                    <stop offset="55%" stop-color="#eab044"/>
+                    <stop offset="100%" stop-color="#9e5b11"/>
+                </radialGradient>
+            </defs>
+            <!-- Bamboo & Gold Medallion Rim -->
+            <circle cx="60" cy="60" r="54" fill="#3d7022" stroke="#1e3d0d" stroke-width="4"/>
+            <!-- Bamboo leaf accent on button -->
+            <path d="M18,28 Q4,12 24,8 Q34,20 18,28 Z" fill="#68b536" stroke="#1e3d0d" stroke-width="2"/>
+            <path d="M102,92 Q116,108 96,112 Q86,100 102,92 Z" fill="#68b536" stroke="#1e3d0d" stroke-width="2"/>
+            <!-- Golden Wood Center -->
+            <circle cx="60" cy="60" r="44" fill="url(#btn-wood)" stroke="#fff3c4" stroke-width="3"/>
+            <!-- Bold Carved Forward Arrow -->
+            <path d="M36,46 L62,46 L62,30 L92,60 L62,90 L62,74 L36,74 Z"
+                  fill="#4d2003" stroke="#fff4cc" stroke-width="3" stroke-linejoin="round"/>
+        </svg>
+    </button>
+</div>
+
+<script>
+(() => {
+    'use strict';
+
+    // =========================================================================
+    // 1. PROCEDURAL WEB AUDIO API SOUND ENGINE (NO EXTERNAL AUDIO FILES)
+    // =========================================================================
+    class SoundEngine {
+        constructor() {
+            this.ctx = null;
+            this.muted = false;
+            // Pentatonic / Major scale frequencies for floors 1 to 6 + roof
+            this.floorNotes = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66];
+        }
+
+        init() {
+            if (!this.ctx) {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    this.ctx = new AudioCtx();
+                }
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+        }
+
+        toggleMute() {
+            this.init();
+            this.muted = !this.muted;
+            document.getElementById('sound-mute-slash').setAttribute('opacity', this.muted ? '1' : '0');
+            document.getElementById('sound-waves').setAttribute('opacity', this.muted ? '0.25' : '1');
+            if (!this.muted) this.playWoodTap(700);
+        }
+
+        // Warm marimba + wooden hammer tap when a floor is built
+        playFloorBuild(floorIndex, isTiger = false) {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            const baseFreq = this.floorNotes[Math.min(floorIndex - 1, this.floorNotes.length - 1)] * (isTiger ? 1.0 : 0.94);
+
+            // 1. Marimba harmonic tone
+            const osc = this.ctx.createOscillator();
+            const overtone = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'sine';
+            overtone.type = 'triangle';
+            osc.frequency.setValueAtTime(baseFreq, now);
+            overtone.frequency.setValueAtTime(baseFreq * 2, now);
+
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.26, now + 0.015);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+
+            osc.connect(gain);
+            overtone.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start(now);
+            overtone.start(now);
+            osc.stop(now + 0.44);
+            overtone.stop(now + 0.44);
+
+            // 2. Crisp wooden mallet knock
+            this.playWoodTap(isTiger ? 340 : 280);
+        }
+
+        playWoodTap(pitch = 320) {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(pitch, now);
+            osc.frequency.exponentialRampToValueAtTime(pitch * 0.42, now + 0.085);
+
+            gain.gain.setValueAtTime(0.28, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.095);
+        }
+
+        // Grand roof placement sound (deep drum + golden bell shimmer)
+        playRoofPlace() {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            // Low soft thud
+            const drum = this.ctx.createOscillator();
+            const drumGain = this.ctx.createGain();
+            drum.type = 'sine';
+            drum.frequency.setValueAtTime(150, now);
+            drum.frequency.exponentialRampToValueAtTime(48, now + 0.28);
+            drumGain.gain.setValueAtTime(0.35, now);
+            drumGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+            drum.connect(drumGain);
+            drumGain.connect(this.ctx.destination);
+            drum.start(now);
+            drum.stop(now + 0.32);
+
+            // High bell chime
+            const bell = this.ctx.createOscillator();
+            const bellGain = this.ctx.createGain();
+            bell.type = 'sine';
+            bell.frequency.setValueAtTime(1318.5, now + 0.04);
+            bellGain.gain.setValueAtTime(0.16, now + 0.04);
+            bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+            bell.connect(bellGain);
+            bellGain.connect(this.ctx.destination);
+            bell.start(now + 0.04);
+            bell.stop(now + 0.68);
+        }
+
+        // Organic pop + gentle chime when Tiger's thought bubble appears
+        playBubblePop() {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(320, now);
+            osc.frequency.exponentialRampToValueAtTime(740, now + 0.14);
+
+            gain.gain.setValueAtTime(0.01, now);
+            gain.gain.linearRampToValueAtTime(0.24, now + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.24);
+        }
+
+        // Joyful polyphonic celebration fanfare when both houses are complete
+        playCelebrationFanfare() {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+
+            const now = this.ctx.currentTime;
+            const melody = [
+                { f: 523.25, t: 0.00, d: 0.18 },
+                { f: 659.25, t: 0.13, d: 0.18 },
+                { f: 783.99, t: 0.26, d: 0.18 },
+                { f: 1046.50, t: 0.39, d: 0.45 },
+                { f: 880.00, t: 0.62, d: 0.18 },
+                { f: 1046.50, t: 0.78, d: 0.60 },
+                { f: 1318.51, t: 0.78, d: 0.60 }
+            ];
+
+            melody.forEach(note => {
+                const osc = this.ctx.createOscillator();
+                const sub = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'triangle';
+                sub.type = 'sine';
+                osc.frequency.setValueAtTime(note.f, now + note.t);
+                sub.frequency.setValueAtTime(note.f * 0.5, now + note.t);
+
+                gain.gain.setValueAtTime(0.001, now + note.t);
+                gain.gain.linearRampToValueAtTime(0.18, now + note.t + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + note.t + note.d);
+
+                osc.connect(gain);
+                sub.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(now + note.t);
+                sub.start(now + note.t);
+                osc.stop(now + note.t + note.d + 0.02);
+                sub.stop(now + note.t + note.d + 0.02);
+            });
+        }
+    }
+
+    const sound = new SoundEngine();
+
+    // =========================================================================
+    // 2. ARCHITECTURAL CONSTANTS & FLOOR GENERATOR (1 TO 6 FLOORS)
+    // =========================================================================
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const FOUNDATION_TOP_Y = 864;
+    const FLOOR_HEIGHT = 96; // 6 floors = 576px (top at Y = 288, roof peak ~190)
+    const PANDA_CENTER_X = 640;
+    const TIGER_CENTER_X = 1280;
+    const FLOOR_WIDTH = 344;
+
+    // Build subtle horizontal bamboo level lines & meadow wildflowers once
+    function initStaticStageDetails() {
+        const guidesGroup = document.getElementById('height-guides-layer');
+        for (let level = 1; level <= 6; level++) {
+            const y = FOUNDATION_TOP_Y - level * FLOOR_HEIGHT;
+            // Subtle dashed bamboo comparison line between the two houses
+            const line = document.createElementNS(SVG_NS, 'line');
+            line.setAttribute('x1', PANDA_CENTER_X - 190);
+            line.setAttribute('y1', y);
+            line.setAttribute('x2', TIGER_CENTER_X + 190);
+            line.setAttribute('y2', y);
+            line.setAttribute('stroke', '#d8f0b8');
+            line.setAttribute('stroke-width', '2');
+            line.setAttribute('stroke-dasharray', '8 14');
+            guidesGroup.appendChild(line);
+
+            // Small decorative bamboo node markers in the center gap (X = 960)
+            const marker = document.createElementNS(SVG_NS, 'circle');
+            marker.setAttribute('cx', '960');
+            marker.setAttribute('cy', y + FLOOR_HEIGHT / 2);
+            marker.setAttribute('r', '5');
+            marker.setAttribute('fill', '#a5d676');
+            guidesGroup.appendChild(marker);
+        }
+
+        // Populate meadow wildflowers
+        const flowerGroup = document.getElementById('meadow-flowers');
+        const flowerSpots = [
+            { x: 110, y: 950, c: '#ffdf6b' }, { x: 165, y: 985, c: '#ff9ebb' },
+            { x: 390, y: 960, c: '#ffffff' }, { x: 865, y: 920, c: '#ffdf6b' },
+            { x: 1030, y: 915, c: '#ff9ebb' }, { x: 1515, y: 965, c: '#ffdf6b' },
+            { x: 1790, y: 955, c: '#ffffff' }, { x: 1845, y: 990, c: '#ff9ebb' }
+        ];
+        flowerSpots.forEach(f => {
+            const g = document.createElementNS(SVG_NS, 'g');
+            g.setAttribute('transform', `translate(${f.x}, ${f.y})`);
+            const stem = document.createElementNS(SVG_NS, 'path');
+            stem.setAttribute('d', 'M0,18 Q-6,6 -12,-4 M0,18 Q6,4 12,-6 M0,18 L0,-8');
+            stem.setAttribute('stroke', '#4e9935');
+            stem.setAttribute('stroke-width', '3');
+            stem.setAttribute('stroke-linecap', 'round');
+            stem.setAttribute('fill', 'none');
+            g.appendChild(stem);
+
+            const blossom = document.createElementNS(SVG_NS, 'circle');
+            blossom.setAttribute('cx', '0');
+            blossom.setAttribute('cy', '-10');
+            blossom.setAttribute('r', '7');
+            blossom.setAttribute('fill', f.c);
+            g.appendChild(blossom);
+
+            const center = document.createElementNS(SVG_NS, 'circle');
+            center.setAttribute('cx', '0');
+            center.setAttribute('cy', '-10');
+            center.setAttribute('r', '3');
+            center.setAttribute('fill', '#e67e22');
+            g.appendChild(center);
+
+            flowerGroup.appendChild(g);
+        });
+    }
+
+    // Create a rich, detailed SVG group for a single floor (1..6)
+    function createFloorSVG(characterType, floorNumber, centerX) {
+        const isPanda = characterType === 'panda';
+        const targetY = FOUNDATION_TOP_Y - floorNumber * FLOOR_HEIGHT;
+        const leftX = centerX - FLOOR_WIDTH / 2;
+
+        const g = document.createElementNS(SVG_NS, 'g');
+        g.setAttribute('class', 'floor-interactive');
+        g.dataset.floor = floorNumber;
+        g.dataset.character = characterType;
+
+        // Main timber wall
+        const wall = document.createElementNS(SVG_NS, 'rect');
+        wall.setAttribute('x', leftX);
+        wall.setAttribute('y', 0);
+        wall.setAttribute('width', FLOOR_WIDTH);
+        wall.setAttribute('height', FLOOR_HEIGHT);
+        wall.setAttribute('rx', '6');
+        wall.setAttribute('fill', isPanda ? 'url(#panda-wall-grad)' : 'url(#tiger-wall-grad)');
+        wall.setAttribute('stroke', isPanda ? '#5e4924' : '#59260c');
+        wall.setAttribute('stroke-width', '3');
+        g.appendChild(wall);
+
+        // Horizontal wooden clapboard texture lines
+        for (let lineIdx = 1; lineIdx <= 3; lineIdx++) {
+            const hl = document.createElementNS(SVG_NS, 'line');
+            hl.setAttribute('x1', leftX + 14);
+            hl.setAttribute('y1', lineIdx * 24);
+            hl.setAttribute('x2', leftX + FLOOR_WIDTH - 14);
+            hl.setAttribute('y2', lineIdx * 24);
+            hl.setAttribute('stroke', isPanda ? '#bfa06b' : '#9c4f1e');
+            hl.setAttribute('stroke-width', '2');
+            hl.setAttribute('opacity', '0.65');
+            g.appendChild(hl);
+        }
+
+        // Side vertical structural pillars (Bamboo for Panda, Dark Cedar for Tiger)
+        [-FLOOR_WIDTH / 2 + 10, FLOOR_WIDTH / 2 - 26].forEach(offsetX => {
+            const pillar = document.createElementNS(SVG_NS, 'rect');
+            pillar.setAttribute('x', centerX + offsetX);
+            pillar.setAttribute('y', 0);
+            pillar.setAttribute('width', '16');
+            pillar.setAttribute('height', FLOOR_HEIGHT);
+            pillar.setAttribute('fill', isPanda ? 'url(#bamboo-beam-grad)' : 'url(#tiger-beam-grad)');
+            g.appendChild(pillar);
+        });
+
+        // Top & bottom cornice beams clearly separating each story for counting
+        const topBeam = document.createElementNS(SVG_NS, 'rect');
+        topBeam.setAttribute('x', leftX - 12);
+        topBeam.setAttribute('y', 0);
+        topBeam.setAttribute('width', FLOOR_WIDTH + 24);
+        topBeam.setAttribute('height', '13');
+        topBeam.setAttribute('rx', '5');
+        topBeam.setAttribute('fill', isPanda ? 'url(#bamboo-beam-grad)' : 'url(#tiger-beam-grad)');
+        topBeam.setAttribute('stroke', isPanda ? '#243d0e' : '#361404');
+        topBeam.setAttribute('stroke-width', '2');
+        g.appendChild(topBeam);
+
+        // Ground floor (Floor 1) has an arched front door in the center + 2 side windows;
+        // Upper floors have 2 large shuttered windows + decorative center balcony/emblem
+        if (floorNumber === 1) {
+            // Arched wooden doorway in center
+            const doorFrame = document.createElementNS(SVG_NS, 'path');
+            doorFrame.setAttribute('d', `M${centerX - 34},${FLOOR_HEIGHT} L${centerX - 34},34 A34,26 0 0,1 ${centerX + 34},34 L${centerX + 34},${FLOOR_HEIGHT} Z`);
+            doorFrame.setAttribute('fill', isPanda ? '#3d6320' : '#632409');
+            doorFrame.setAttribute('stroke', 'url(#gold-trim)');
+            doorFrame.setAttribute('stroke-width', '3.5');
+            g.appendChild(doorFrame);
+
+            const doorWindow = document.createElementNS(SVG_NS, 'circle');
+            doorWindow.setAttribute('cx', centerX);
+            doorWindow.setAttribute('cy', '46');
+            doorWindow.setAttribute('r', '15');
+            doorWindow.setAttribute('class', 'house-window-pane');
+            doorWindow.setAttribute('fill', 'url(#window-cold-grad)');
+            doorWindow.setAttribute('stroke', '#4d2608');
+            doorWindow.setAttribute('stroke-width', '2.5');
+            g.appendChild(doorWindow);
+
+            // Side windows on floor 1
+            [-104, 104].forEach(wx => {
+                g.appendChild(createWindowUnit(centerX + wx, 24, isPanda));
+            });
+        } else {
+            // Two large glowing windows + center flower box / bamboo lattice
+            [-95, 95].forEach(wx => {
+                g.appendChild(createWindowUnit(centerX + wx, 22, isPanda));
+            });
+
+            // Center carved decorative balcony rail
+            const balcony = document.createElementNS(SVG_NS, 'g');
+            const plaque = document.createElementNS(SVG_NS, 'rect');
+            plaque.setAttribute('x', centerX - 30);
+            plaque.setAttribute('y', 24);
+            plaque.setAttribute('width', '60');
+            plaque.setAttribute('height', '52');
+            plaque.setAttribute('rx', '8');
+            plaque.setAttribute('fill', isPanda ? '#466e24' : '#732c0d');
+            plaque.setAttribute('stroke', 'url(#gold-trim)');
+            plaque.setAttribute('stroke-width', '2.5');
+            balcony.appendChild(plaque);
+
+            // Visual dots on center plaque matching the floor number (1..6) for tactile counting!
+            const dotCoords = getDicePattern(floorNumber);
+            dotCoords.forEach(([dx, dy]) => {
+                const dot = document.createElementNS(SVG_NS, 'circle');
+                dot.setAttribute('cx', centerX + dx);
+                dot.setAttribute('cy', 50 + dy);
+                dot.setAttribute('r', '4.8');
+                dot.setAttribute('fill', '#fff2b2');
+                balcony.appendChild(dot);
+            });
+            g.appendChild(balcony);
+        }
+
+        // Interactive click on any built floor: plays its musical pitch & flashes windows
+        g.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            sound.playFloorBuild(floorNumber, !isPanda);
+            pulseFloorEffect(g, centerX, targetY + FLOOR_HEIGHT / 2);
+        });
+
+        return { element: g, targetY };
+    }
+
+    function getDicePattern(num) {
+        switch (num) {
+            case 1: return [[0, 0]];
+            case 2: return [[-11, -10], [11, 10]];
+            case 3: return [[-13, -12], [0, 0], [13, 12]];
+            case 4: return [[-12, -11], [12, -11], [-12, 11], [12, 11]];
+            case 5: return [[-13, -12], [13, -12], [0, 0], [-13, 12], [13, 12]];
+            case 6: return [[-12, -13], [12, -13], [-12, 0], [12, 0], [-12, 13], [12, 13]];
+            default: return [[0, 0]];
+        }
+    }
+
+    function createWindowUnit(cx, topY, isPanda) {
+        const wg = document.createElementNS(SVG_NS, 'g');
+
+        // Shutters
+        const shutterL = document.createElementNS(SVG_NS, 'rect');
+        shutterL.setAttribute('x', cx - 38);
+        shutterL.setAttribute('y', topY + 2);
+        shutterL.setAttribute('width', '12');
+        shutterL.setAttribute('height', '48');
+        shutterL.setAttribute('rx', '3');
+        shutterL.setAttribute('fill', isPanda ? '#26805b' : '#b83714');
+        wg.appendChild(shutterL);
+
+        const shutterR = document.createElementNS(SVG_NS, 'rect');
+        shutterR.setAttribute('x', cx + 26);
+        shutterR.setAttribute('y', topY + 2);
+        shutterR.setAttribute('width', '12');
+        shutterR.setAttribute('height', '48');
+        shutterR.setAttribute('rx', '3');
+        shutterR.setAttribute('fill', isPanda ? '#26805b' : '#b83714');
+        wg.appendChild(shutterR);
+
+        // Glowing glass pane
+        const pane = document.createElementNS(SVG_NS, 'rect');
+        pane.setAttribute('x', cx - 25);
+        pane.setAttribute('y', topY);
+        pane.setAttribute('width', '50');
+        pane.setAttribute('height', '52');
+        pane.setAttribute('rx', '8');
+        pane.setAttribute('class', 'house-window-pane');
+        pane.setAttribute('fill', 'url(#window-cold-grad)');
+        pane.setAttribute('stroke', isPanda ? '#38571b' : '#4f1e07');
+        pane.setAttribute('stroke-width', '3.5');
+        wg.appendChild(pane);
+
+        // Window muntin crossbars
+        const cross = document.createElementNS(SVG_NS, 'path');
+        cross.setAttribute('d', `M${cx},${topY} L${cx},${topY + 52} M${cx - 25},${topY + 26} L${cx + 25},${topY + 26}`);
+        cross.setAttribute('stroke', isPanda ? '#38571b' : '#4f1e07');
+        cross.setAttribute('stroke-width', '2.5');
+        wg.appendChild(cross);
+
+        // Cute flower box sill
+        const sill = document.createElementNS(SVG_NS, 'rect');
+        sill.setAttribute('x', cx - 30);
+        sill.setAttribute('y', topY + 49);
+        sill.setAttribute('width', '60');
+        sill.setAttribute('height', '9');
+        sill.setAttribute('rx', '3');
+        sill.setAttribute('fill', isPanda ? '#527c2c' : '#7d3b18');
+        wg.appendChild(sill);
+
+        return wg;
+    }
+
+    // Create ornate Pagoda Roof with hanging lanterns on top of the highest floor
+    function createRoofSVG(characterType, topFloorCount, centerX) {
+        const isPanda = characterType === 'panda';
+        const targetY = FOUNDATION_TOP_Y - topFloorCount * FLOOR_HEIGHT;
+        const g = document.createElementNS(SVG_NS, 'g');
+
+        // Hanging Glowing Lanterns on Left and Right Eaves
+        [-205, 205].forEach(offsetX => {
+            const lanternGroup = document.createElementNS(SVG_NS, 'g');
+            lanternGroup.setAttribute('class', 'hanging-lantern');
+            lanternGroup.setAttribute('transform', `translate(${centerX + offsetX}, 2)`);
+
+            const cord = document.createElementNS(SVG_NS, 'line');
+            cord.setAttribute('x1', '0');
+            cord.setAttribute('y1', '0');
+            cord.setAttribute('x2', '0');
+            cord.setAttribute('y2', '18');
+            cord.setAttribute('stroke', '#3d2208');
+            cord.setAttribute('stroke-width', '2.5');
+            lanternGroup.appendChild(cord);
+
+            const body = document.createElementNS(SVG_NS, 'ellipse');
+            body.setAttribute('cx', '0');
+            body.setAttribute('cy', '30');
+            body.setAttribute('rx', '14');
+            body.setAttribute('ry', '16');
+            body.setAttribute('fill', 'url(#lantern-grad)');
+            body.setAttribute('stroke', 'url(#gold-trim)');
+            body.setAttribute('stroke-width', '2');
+            lanternGroup.appendChild(body);
+
+            const tassel = document.createElementNS(SVG_NS, 'path');
+            tassel.setAttribute('d', 'M0,46 L-4,58 M0,46 L0,60 M0,46 L4,58');
+            tassel.setAttribute('stroke', '#ffcc33');
+            tassel.setAttribute('stroke-width', '2');
+            lanternGroup.appendChild(tassel);
+
+            g.appendChild(lanternGroup);
+        });
+
+        // Curved Asian Pagoda Canopy
+        const roofPath = document.createElementNS(SVG_NS, 'path');
+        roofPath.setAttribute(
+            'd',
+            `M${centerX - 235},8 C${centerX - 165},4 ${centerX - 95},-42 ${centerX},-78 C${centerX + 95},-42 ${centerX + 165},4 ${centerX + 235},8 C${centerX + 210},22 ${centerX - 210},22 ${centerX - 235},8 Z`
+        );
+        roofPath.setAttribute('fill', isPanda ? 'url(#panda-roof-grad)' : 'url(#tiger-roof-grad)');
+        roofPath.setAttribute('stroke', isPanda ? '#063826' : '#571202');
+        roofPath.setAttribute('stroke-width', '3.5');
+        g.appendChild(roofPath);
+
+        // Decorative roof ribs
+        [-130, -65, 0, 65, 130].forEach(rx => {
+            const rib = document.createElementNS(SVG_NS, 'path');
+            rib.setAttribute('d', `M${centerX},${-74} Q${centerX + rx * 0.65},${-25} ${centerX + rx},12`);
+            rib.setAttribute('stroke', 'url(#gold-trim)');
+            rib.setAttribute('stroke-width', '2.5');
+            rib.setAttribute('fill', 'none');
+            rib.setAttribute('opacity', '0.75');
+            g.appendChild(rib);
+        });
+
+        // Golden Spire Finial at the Peak
+        const spire = document.createElementNS(SVG_NS, 'path');
+        spire.setAttribute('d', `M${centerX - 12},-72 L${centerX},-106 L${centerX + 12},-72 Z`);
+        spire.setAttribute('fill', 'url(#gold-trim)');
+        spire.setAttribute('stroke', '#784f04');
+        spire.setAttribute('stroke-width', '2');
+        g.appendChild(spire);
+
+        const orb = document.createElementNS(SVG_NS, 'circle');
+        orb.setAttribute('cx', centerX);
+        orb.setAttribute('cy', '-88');
+        orb.setAttribute('r', '7');
+        orb.setAttribute('fill', '#fff5b8');
+        g.appendChild(orb);
+
+        return { element: g, targetY };
+    }
+
+    // =========================================================================
+    // 3. PARTICLE & LIVING ENVIRONMENT ENGINE (CANVAS 2D)
+    // =========================================================================
+    const bgCanvas = document.getElementById('bg-canvas');
+    const bgCtx = bgCanvas.getContext('2d');
+    const fxCanvas = document.getElementById('fx-canvas');
+    const fxCtx = fxCanvas.getContext('2d');
+
+    let viewW = 1920;
+    let viewH = 1080;
+
+    function resizeCanvases() {
+        viewW = window.innerWidth;
+        viewH = window.innerHeight;
+        bgCanvas.width = viewW;
+        bgCanvas.height = viewH;
+        fxCanvas.width = viewW;
+        fxCanvas.height = viewH;
+    }
+    window.addEventListener('resize', resizeCanvases);
+    resizeCanvases();
+
+    // Helper to convert 1920x1080 SVG coordinates (preserveAspectRatio="xMidYMid slice") to screen pixels
+    function svgToScreen(svgX, svgY) {
+        const scale = Math.max(viewW / 1920, viewH / 1080);
+        const offsetX = (viewW - 1920 * scale) / 2;
+        const offsetY = (viewH - 1080 * scale) / 2;
+        return {
+            x: offsetX + svgX * scale,
+            y: offsetY + svgY * scale,
+            scale
+        };
+    }
+
+    // Background living elements
+    const clouds = Array.from({ length: 6 }, (_, i) => ({
+        x: (i * 360) % 2100 - 100,
+        y: 75 + (i % 3) * 58,
+        w: 220 + (i % 3) * 65,
+        speed: 10 + (i % 3) * 5
+    }));
+
+    const waterfallDrops = Array.from({ length: 48 }, () => ({
+        xOffset: (Math.random() - 0.5) * 62,
+        yProgress: Math.random(),
+        speed: 0.45 + Math.random() * 0.35,
+        size: 3 + Math.random() * 5
+    }));
+
+    const bambooStalks = [
+        { x: 55, w: 18, phase: 0.2, color: '#275924' },
+        { x: 92, w: 24, phase: 1.1, color: '#35732e' },
+        { x: 135, w: 15, phase: 2.0, color: '#1f471d' },
+        { x: 1785, w: 16, phase: 0.7, color: '#1f471d' },
+        { x: 1828, w: 24, phase: 1.6, color: '#35732e' },
+        { x: 1872, w: 19, phase: 2.5, color: '#275924' }
+    ];
+
+    const floatingLeaves = Array.from({ length: 18 }, () => ({
+        x: Math.random() * 1920,
+        y: Math.random() * 1080,
+        vx: 18 + Math.random() * 24,
+        vy: 14 + Math.random() * 18,
+        rot: Math.random() * Math.PI * 2,
+        vRot: (Math.random() - 0.5) * 2.5,
+        size: 9 + Math.random() * 8
+    }));
+
+    const butterflies = Array.from({ length: 4 }, (_, i) => ({
+        x: 300 + i * 420,
+        y: 350 + (i % 2) * 180,
+        angle: Math.random() * Math.PI * 2,
+        wingPhase: Math.random() * 10,
+        hue: i % 2 === 0 ? '#ffcf40' : '#63e6be'
+    }));
+
+    // Foreground dynamic FX particles (woodchips, dust puffs, golden celebration sparkles)
+    const fxParticles = [];
+
+    function spawnBuildParticles(svgX, svgY, isTiger = false) {
+        const pt = svgToScreen(svgX, svgY);
+        // Dust puffs on left and right corners of floor
+        for (let i = 0; i < 18; i++) {
+            const side = i % 2 === 0 ? -1 : 1;
+            const spreadX = pt.x + side * (Math.random() * 140 * pt.scale);
+            fxParticles.push({
+                type: i % 3 === 0 ? 'dust' : 'woodchip',
+                x: spreadX,
+                y: pt.y,
+                vx: side * (40 + Math.random() * 160) * pt.scale,
+                vy: (-60 - Math.random() * 150) * pt.scale,
+                gravity: 420 * pt.scale,
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 10,
+                size: (i % 3 === 0 ? 16 + Math.random() * 14 : 6 + Math.random() * 7) * pt.scale,
+                life: 1.0,
+                decay: 1.2 + Math.random() * 0.7,
+                color: i % 3 === 0
+                    ? 'rgba(250, 240, 215, 0.65)'
+                    : (isTiger ? '#eb9f63' : '#a8d16c')
+            });
+        }
+    }
+
+    function spawnCelebrationSparkles(svgX, svgY, count = 32) {
+        const pt = svgToScreen(svgX, svgY);
+        const palette = ['#ffea79', '#ff9248', '#5cffb6', '#ffffff', '#ff6b9d'];
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (60 + Math.random() * 240) * pt.scale;
+            fxParticles.push({
+                type: 'sparkle',
+                x: pt.x + (Math.random() - 0.5) * 220 * pt.scale,
+                y: pt.y + (Math.random() - 0.5) * 120 * pt.scale,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 60 * pt.scale,
+                gravity: 140 * pt.scale,
+                rot: Math.random() * Math.PI,
+                vRot: (Math.random() - 0.5) * 6,
+                size: (7 + Math.random() * 9) * pt.scale,
+                life: 1.0,
+                decay: 0.55 + Math.random() * 0.45,
+                color: palette[i % palette.length]
+            });
+        }
+    }
+
+    function pulseFloorEffect(floorGroup, svgX, svgY) {
+        spawnCelebrationSparkles(svgX, svgY, 14);
+        floorGroup.style.transition = 'transform 0.16s ease';
+        floorGroup.style.transformOrigin = `${svgX}px ${svgY}px`;
+        floorGroup.querySelectorAll('.house-window-pane').forEach(p => {
+            p.setAttribute('fill', 'url(#window-lit-grad)');
+        });
+    }
+
+    // Render Living Valley Background on `bgCanvas`
+    function renderBackground(timeSec, dt) {
+        const scale = Math.max(viewW / 1920, viewH / 1080);
+        const offsetX = (viewW - 1920 * scale) / 2;
+        const offsetY = (viewH - 1080 * scale) / 2;
+
+        bgCtx.save();
+        bgCtx.clearRect(0, 0, viewW, viewH);
+        bgCtx.translate(offsetX, offsetY);
+        bgCtx.scale(scale, scale);
+
+        // 1. Warm Golden-Emerald Valley Sky Gradient
+        const skyGrad = bgCtx.createLinearGradient(0, 0, 0, 900);
+        skyGrad.addColorStop(0, '#499e8d');
+        skyGrad.addColorStop(0.38, '#8cd4a4');
+        skyGrad.addColorStop(0.75, '#e8f5b5');
+        skyGrad.addColorStop(1, '#f7dca1');
+        bgCtx.fillStyle = skyGrad;
+        bgCtx.fillRect(0, 0, 1920, 1080);
+
+        // 2. Soft Animated Sunbeams from Top-Center
+        bgCtx.save();
+        bgCtx.globalCompositeOperation = 'lighter';
+        for (let r = 0; r < 5; r++) {
+            const sway = Math.sin(timeSec * 0.4 + r) * 35;
+            const rayGrad = bgCtx.createLinearGradient(960, -50, 450 + r * 260 + sway, 850);
+            rayGrad.addColorStop(0, 'rgba(255, 250, 200, 0.16)');
+            rayGrad.addColorStop(1, 'rgba(255, 250, 200, 0)');
+            bgCtx.fillStyle = rayGrad;
+            bgCtx.beginPath();
+            bgCtx.moveTo(960, -60);
+            bgCtx.lineTo(340 + r * 260 + sway, 900);
+            bgCtx.lineTo(520 + r * 260 + sway, 900);
+            bgCtx.closePath();
+            bgCtx.fill();
+        }
+        bgCtx.restore();
+
+        // 3. Distant Misty Chinese Karst Mountains
+        const drawMountainRange = (peaks, color) => {
+            bgCtx.fillStyle = color;
+            bgCtx.beginPath();
+            bgCtx.moveTo(0, 900);
+            peaks.forEach((p, idx) => {
+                if (idx === 0) bgCtx.lineTo(p.x, p.y);
+                else {
+                    const prev = peaks[idx - 1];
+                    const midX = (prev.x + p.x) / 2;
+                    bgCtx.quadraticCurveTo(prev.x + (p.x - prev.x) * 0.35, prev.y, midX, (prev.y + p.y) / 2);
+                    bgCtx.quadraticCurveTo(prev.x + (p.x - prev.x) * 0.7, p.y, p.x, p.y);
+                }
+            });
+            bgCtx.lineTo(1920, 900);
+            bgCtx.closePath();
+            bgCtx.fill();
+        };
+
+        drawMountainRange([
+            { x: 0, y: 520 }, { x: 260, y: 270 }, { x: 560, y: 460 },
+            { x: 890, y: 220 }, { x: 1180, y: 430 }, { x: 1520, y: 250 }, { x: 1920, y: 490 }
+        ], 'rgba(72, 138, 114, 0.55)');
+
+        drawMountainRange([
+            { x: 0, y: 610 }, { x: 380, y: 390 }, { x: 740, y: 550 },
+            { x: 960, y: 370 }, { x: 1260, y: 540 }, { x: 1640, y: 380 }, { x: 1920, y: 590 }
+        ], '#3c7a5f');
+
+        // 4. Drifting Volumetric Clouds
+        clouds.forEach(c => {
+            c.x += c.speed * dt;
+            if (c.x > 2050) c.x = -250;
+            bgCtx.fillStyle = 'rgba(255, 252, 235, 0.65)';
+            bgCtx.beginPath();
+            bgCtx.arc(c.x, c.y, c.w * 0.22, 0, Math.PI * 2);
+            bgCtx.arc(c.x + c.w * 0.2, c.y - 14, c.w * 0.26, 0, Math.PI * 2);
+            bgCtx.arc(c.x + c.w * 0.44, c.y - 4, c.w * 0.21, 0, Math.PI * 2);
+            bgCtx.fill();
+        });
+
+        // 5. Center Mountain Waterfall & Shimmering Stream (around X = 960)
+        const wfGrad = bgCtx.createLinearGradient(915, 370, 1005, 880);
+        wfGrad.addColorStop(0, '#c2f7ed');
+        wfGrad.addColorStop(0.5, '#64d4c4');
+        wfGrad.addColorStop(1, '#31968a');
+        bgCtx.fillStyle = wfGrad;
+        bgCtx.beginPath();
+        bgCtx.moveTo(932, 375);
+        bgCtx.quadraticCurveTo(912, 620, 885, 880);
+        bgCtx.lineTo(1035, 880);
+        bgCtx.quadraticCurveTo(1008, 620, 988, 375);
+        bgCtx.closePath();
+        bgCtx.fill();
+
+        // Animated Waterfall Cascade Droplets & Mist
+        bgCtx.fillStyle = 'rgba(235, 255, 252, 0.72)';
+        waterfallDrops.forEach(d => {
+            d.yProgress = (d.yProgress + d.speed * dt) % 1;
+            const wy = 380 + d.yProgress * 490;
+            const spread = 1 + d.yProgress * 0.65;
+            const wx = 960 + d.xOffset * spread;
+            bgCtx.beginPath();
+            bgCtx.ellipse(wx, wy, d.size * 0.6, d.size * 2.4, 0, 0, Math.PI * 2);
+            bgCtx.fill();
+        });
+
+        // Waterfall splash mist at the base
+        for (let m = 0; m < 5; m++) {
+            const pulse = Math.sin(timeSec * 3 + m) * 8;
+            bgCtx.fillStyle = 'rgba(230, 255, 250, 0.42)';
+            bgCtx.beginPath();
+            bgCtx.arc(900 + m * 30, 868 + pulse * 0.4, 24 + pulse, 0, Math.PI * 2);
+            bgCtx.fill();
+        }
+
+        // 6. Swaying Bamboo Stalks on Left & Right Borders
+        bambooStalks.forEach(stalk => {
+            const sway = Math.sin(timeSec * 1.4 + stalk.phase) * 18;
+            bgCtx.strokeStyle = stalk.color;
+            bgCtx.lineWidth = stalk.w;
+            bgCtx.lineCap = 'round';
+            bgCtx.beginPath();
+            bgCtx.moveTo(stalk.x, 960);
+            bgCtx.quadraticCurveTo(stalk.x + sway * 0.5, 500, stalk.x + sway, 40);
+            bgCtx.stroke();
+
+            // Bamboo nodes
+            bgCtx.strokeStyle = '#68a656';
+            bgCtx.lineWidth = 3;
+            for (let ny = 160; ny < 860; ny += 140) {
+                const factor = (960 - ny) / 920;
+                const nx = stalk.x + sway * factor * factor;
+                bgCtx.beginPath();
+                bgCtx.moveTo(nx - stalk.w * 0.6, ny);
+                bgCtx.lineTo(nx + stalk.w * 0.6, ny);
+                bgCtx.stroke();
+            }
+        });
+
+        // 7. Floating Bamboo Leaves & Butterflies
+        floatingLeaves.forEach(leaf => {
+            leaf.x += leaf.vx * dt;
+            leaf.y += leaf.vy * dt + Math.sin(timeSec * 2 + leaf.x * 0.01) * 0.3;
+            leaf.rot += leaf.vRot * dt;
+            if (leaf.x > 1960) leaf.x = -40;
+            if (leaf.y > 1020) {
+                leaf.y = -30;
+                leaf.x = Math.random() * 1920;
+            }
+            bgCtx.save();
+            bgCtx.translate(leaf.x, leaf.y);
+            bgCtx.rotate(leaf.rot);
+            bgCtx.fillStyle = '#6abf40';
+            bgCtx.beginPath();
+            bgCtx.ellipse(0, 0, leaf.size, leaf.size * 0.36, 0, 0, Math.PI * 2);
+            bgCtx.fill();
+            bgCtx.restore();
+        });
+
+        butterflies.forEach((b, idx) => {
+            b.angle += (Math.sin(timeSec * 1.3 + idx) * 1.2) * dt;
+            b.x += Math.cos(b.angle) * 45 * dt;
+            b.y += Math.sin(b.angle) * 28 * dt;
+            if (b.x < 120) b.x = 1800;
+            if (b.x > 1800) b.x = 120;
+            if (b.y < 140) b.y = 140;
+            if (b.y > 720) b.y = 720;
+
+            const flap = Math.abs(Math.sin(timeSec * 11 + b.wingPhase));
+            bgCtx.save();
+            bgCtx.translate(b.x, b.y);
+            bgCtx.rotate(Math.cos(b.angle) * 0.25);
+            bgCtx.fillStyle = b.hue;
+            bgCtx.beginPath();
+            bgCtx.ellipse(-6 * flap, -3, 9 * flap, 6, -0.4, 0, Math.PI * 2);
+            bgCtx.ellipse(6 * flap, -3, 9 * flap, 6, 0.4, 0, Math.PI * 2);
+            bgCtx.fill();
+            bgCtx.restore();
+        });
+
+        bgCtx.restore();
+    }
+
+    // Render Foreground FX Particles on `fxCanvas`
+    function renderFXParticles(dt) {
+        fxCtx.clearRect(0, 0, viewW, viewH);
+        for (let i = fxParticles.length - 1; i >= 0; i--) {
+            const p = fxParticles[i];
+            p.life -= p.decay * dt;
+            if (p.life <= 0) {
+                fxParticles.splice(i, 1);
+                continue;
+            }
+            p.vy += p.gravity * dt;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.rot += p.vRot * dt;
+
+            fxCtx.save();
+            fxCtx.globalAlpha = Math.max(0, p.life);
+            fxCtx.translate(p.x, p.y);
+            fxCtx.rotate(p.rot);
+            fxCtx.fillStyle = p.color;
+
+            if (p.type === 'dust') {
+                fxCtx.beginPath();
+                fxCtx.arc(0, 0, p.size * (1.4 - p.life * 0.4), 0, Math.PI * 2);
+                fxCtx.fill();
+            } else if (p.type === 'woodchip') {
+                fxCtx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.66);
+            } else if (p.type === 'sparkle') {
+                // 4-point star sparkle
+                const s = p.size;
+                fxCtx.beginPath();
+                fxCtx.moveTo(0, -s);
+                fxCtx.quadraticCurveTo(0, 0, s, 0);
+                fxCtx.quadraticCurveTo(0, 0, 0, s);
+                fxCtx.quadraticCurveTo(0, 0, -s, 0);
+                fxCtx.quadraticCurveTo(0, 0, 0, -s);
+                fxCtx.fill();
+            }
+            fxCtx.restore();
+        }
+    }
+
+    // =========================================================================
+    // 4. GAME STATE & PROCEDURAL ANIMATION CONTROLLER
+    // =========================================================================
+    const STATE = {
+        PANDA_BUILDING: 'PANDA_BUILDING',
+        WAITING_FOR_TIGER: 'WAITING_FOR_TIGER',
+        TIGER_BUILDING: 'TIGER_BUILDING',
+        CELEBRATING: 'CELEBRATING'
+    };
+
+    let currentState = STATE.PANDA_BUILDING;
+    let pandaTargetFloors = 3;
+    let tigerTargetFloors = 4;
+    let lastComboKey = '';
+    let roundId = 0;
+
+    // Animated floor items currently on stage
+    let activeAnimatedFloors = [];
+
+    // Character animation state triggers
+    let pandaHammerPulse = 0;
+    let tigerHammerPulse = 0;
+    let bubbleScale = 0;
+    let bubbleTargetScale = 0;
+    let bubbleDocked = false; // When Tiger builds, bubble neatly shifts aside so we can still compare!
+
+    // DOM References
+    const pandaFloorsGroup = document.getElementById('panda-floors-group');
+    const tigerFloorsGroup = document.getElementById('tiger-floors-group');
+    const tigerTimberPile = document.getElementById('tiger-timber-pile');
+    const tigerBubble = document.getElementById('tiger-speech-bubble');
+    const tigerNumeral = document.getElementById('tiger-target-numeral');
+
+    // Panda Rig Parts
+    const pandaBodyRoot = document.getElementById('panda-body-root');
+    const pandaHead = document.getElementById('panda-head');
+    const pandaEarL = document.getElementById('panda-ear-l');
+    const pandaEarR = document.getElementById('panda-ear-r');
+    const pandaArmL = document.getElementById('panda-arm-l');
+    const pandaArmR = document.getElementById('panda-arm-r');
+    const pandaEyelids = document.getElementById('panda-eyelids');
+    const pandaMouthOpen = document.getElementById('panda-mouth-open');
+    const pandaPupils = document.querySelectorAll('.panda-pupil');
+
+    // Tiger Rig Parts
+    const tigerBodyRoot = document.getElementById('tiger-body-root');
+    const tigerHead = document.getElementById('tiger-head');
+    const tigerEarL = document.getElementById('tiger-ear-l');
+    const tigerEarR = document.getElementById('tiger-ear-r');
+    const tigerArmL = document.getElementById('tiger-arm-l');
+    const tigerArmR = document.getElementById('tiger-arm-r');
+    const tigerTail = document.getElementById('tiger-tail');
+    const tigerEyelids = document.getElementById('tiger-eyelids');
+    const tigerMouthYawn = document.getElementById('tiger-mouth-yawn');
+    const tigerPupils = document.querySelectorAll('.tiger-pupil');
+
+    // Pick a fresh random pair of (1..6, 1..6) without repeating the previous pair
+    function pickRandomHeights() {
+        let p, t, key;
+        do {
+            p = Math.floor(Math.random() * 6) + 1;
+            t = Math.floor(Math.random() * 6) + 1;
+            key = `${p}-${t}`;
+        } while (key === lastComboKey);
+        lastComboKey = key;
+        return { p, t };
+    }
+
+    // Start a fresh round (Infinite Generator)
+    function startNewRound() {
+        roundId++;
+        const myRound = roundId;
+
+        const { p, t } = pickRandomHeights();
+        pandaTargetFloors = p;
+        tigerTargetFloors = t;
+
+        // Clear previous houses
+        pandaFloorsGroup.innerHTML = '';
+        tigerFloorsGroup.innerHTML = '';
+        activeAnimatedFloors = [];
+
+        // Show Tiger's waiting timber pile & set numeral
+        tigerTimberPile.setAttribute('opacity', '1');
+        tigerNumeral.textContent = tigerTargetFloors;
+
+        currentState = STATE.PANDA_BUILDING;
+        bubbleScale = 0;
+        bubbleTargetScale = 0;
+        bubbleDocked = false;
+
+        // Schedule Tiger's speech bubble to pop up shortly after round starts
+        setTimeout(() => {
+            if (myRound !== roundId) return;
+            bubbleTargetScale = 1;
+            sound.playBubblePop();
+        }, 450);
+
+        // Schedule Panda's brisk floor-by-floor building
+        for (let f = 1; f <= pandaTargetFloors; f++) {
+            setTimeout(() => {
+                if (myRound !== roundId) return;
+                const floorObj = createFloorSVG('panda', f, PANDA_CENTER_X);
+                pandaFloorsGroup.appendChild(floorObj.element);
+                animateElementDropIn(floorObj.element, PANDA_CENTER_X, floorObj.targetY);
+
+                pandaHammerPulse = 1.0;
+                sound.playFloorBuild(f, false);
+                spawnBuildParticles(PANDA_CENTER_X, floorObj.targetY + FLOOR_HEIGHT, false);
+            }, (f - 1) * 340 + 180);
+        }
+
+        // Panda Roof Placement
+        setTimeout(() => {
+            if (myRound !== roundId) return;
+            const roofObj = createRoofSVG('panda', pandaTargetFloors, PANDA_CENTER_X);
+            pandaFloorsGroup.appendChild(roofObj.element);
+            animateElementDropIn(roofObj.element, PANDA_CENTER_X, roofObj.targetY);
+
+            pandaHammerPulse = 1.0;
+            sound.playRoofPlace();
+            spawnBuildParticles(PANDA_CENTER_X, roofObj.targetY, false);
+
+            if (currentState === STATE.PANDA_BUILDING) {
+                currentState = STATE.WAITING_FOR_TIGER;
+            }
+        }, pandaTargetFloors * 340 + 240);
+    }
+
+    // Triggered when child/teacher clicks on Tiger Cub, Speech Bubble, or Right Foundation
+    function triggerTigerBuild() {
+        sound.init();
+        if (currentState === STATE.TIGER_BUILDING || currentState === STATE.CELEBRATING) {
+            return;
+        }
+
+        const myRound = roundId;
+        currentState = STATE.TIGER_BUILDING;
+        bubbleDocked = true;
+        bubbleTargetScale = 0.78;
+        tigerTimberPile.setAttribute('opacity', '0');
+
+        // Build Tiger's house floor-by-floor up to `tigerTargetFloors`
+        for (let f = 1; f <= tigerTargetFloors; f++) {
+            setTimeout(() => {
+                if (myRound !== roundId) return;
+                const floorObj = createFloorSVG('tiger', f, TIGER_CENTER_X);
+                tigerFloorsGroup.appendChild(floorObj.element);
+                animateElementDropIn(floorObj.element, TIGER_CENTER_X, floorObj.targetY);
+
+                tigerHammerPulse = 1.0;
+                sound.playFloorBuild(f, true);
+                spawnBuildParticles(TIGER_CENTER_X, floorObj.targetY + FLOOR_HEIGHT, true);
+            }, (f - 1) * 330 + 60);
+        }
+
+        // Place Tiger's Pagoda Roof & Trigger Joyful Celebration
+        setTimeout(() => {
+            if (myRound !== roundId) return;
+            const roofObj = createRoofSVG('tiger', tigerTargetFloors, TIGER_CENTER_X);
+            tigerFloorsGroup.appendChild(roofObj.element);
+            animateElementDropIn(roofObj.element, TIGER_CENTER_X, roofObj.targetY);
+
+            tigerHammerPulse = 1.0;
+            sound.playRoofPlace();
+            spawnBuildParticles(TIGER_CENTER_X, roofObj.targetY, true);
+
+            // Start active non-verbal celebration!
+            setTimeout(() => {
+                if (myRound !== roundId) return;
+                triggerCelebration();
+            }, 260);
+        }, tigerTargetFloors * 330 + 120);
+    }
+
+    function triggerCelebration() {
+        currentState = STATE.CELEBRATING;
+        sound.playCelebrationFanfare();
+
+        // Warmly illuminate all windows on both houses
+        document.querySelectorAll('.house-window-pane').forEach(pane => {
+            pane.setAttribute('fill', 'url(#window-lit-grad)');
+        });
+
+        // Burst golden sparkles & fireflies around both houses
+        const pandaTopY = FOUNDATION_TOP_Y - pandaTargetFloors * FLOOR_HEIGHT;
+        const tigerTopY = FOUNDATION_TOP_Y - tigerTargetFloors * FLOOR_HEIGHT;
+        spawnCelebrationSparkles(PANDA_CENTER_X, (FOUNDATION_TOP_Y + pandaTopY) / 2, 36);
+        spawnCelebrationSparkles(TIGER_CENTER_X, (FOUNDATION_TOP_Y + tigerTopY) / 2, 36);
+    }
+
+    function animateElementDropIn(svgElem, centerX, targetY) {
+        activeAnimatedFloors.push({
+            el: svgElem,
+            cx: centerX,
+            targetY,
+            currentY: targetY - 120,
+            vy: 0,
+            scaleX: 0.75,
+            scaleY: 1.25,
+            settled: false
+        });
+    }
+
+    // Update spring physics for newly built floors & roofs
+    function updateBuildingPhysics(dt) {
+        activeAnimatedFloors.forEach(item => {
+            if (item.settled) return;
+            const stiffness = 210;
+            const damping = 14;
+            const dy = item.targetY - item.currentY;
+            item.vy += dy * stiffness * dt;
+            item.vy *= Math.exp(-damping * dt);
+            item.currentY += item.vy * dt;
+
+            // Squash & stretch recovery
+            item.scaleX += (1 - item.scaleX) * 12 * dt;
+            item.scaleY += (1 - item.scaleY) * 12 * dt;
+
+            if (Math.abs(dy) < 0.4 && Math.abs(item.vy) < 2) {
+                item.currentY = item.targetY;
+                item.scaleX = 1;
+                item.scaleY = 1;
+                item.settled = true;
+            }
+
+            item.el.setAttribute(
+                'transform',
+                `translate(0, ${item.currentY.toFixed(2)}) translate(${item.cx}, 0) scale(${item.scaleX.toFixed(3)}, ${item.scaleY.toFixed(3)}) translate(${-item.cx}, 0)`
+            );
+        });
+    }
+
+    // Update articulated Panda & Tiger Cub procedural animations
+    function updateCharactersAndBubble(timeSec, dt) {
+        // Decay hammer swing pulses
+        pandaHammerPulse = Math.max(0, pandaHammerPulse - dt * 3.8);
+        tigerHammerPulse = Math.max(0, tigerHammerPulse - dt * 3.8);
+
+        // 1. Speech Bubble spring animation & float
+        bubbleScale += (bubbleTargetScale - bubbleScale) * 9 * dt;
+        const floatY = Math.sin(timeSec * 2.6) * 8;
+        const floatRot = Math.sin(timeSec * 1.8) * 2.2;
+        const bx = bubbleDocked ? 1745 : 1565;
+        const by = (bubbleDocked ? 390 : 475) + floatY;
+        tigerBubble.setAttribute(
+            'transform',
+            `translate(${bx}, ${by.toFixed(1)}) scale(${Math.max(0, bubbleScale).toFixed(3)}) rotate(${floatRot.toFixed(2)})`
+        );
+
+        // 2. PANDA PROCEDURAL ANIMATION
+        const pandaBlink = (timeSec % 4.3) < 0.14;
+        pandaEyelids.setAttribute('opacity', pandaBlink ? '1' : '0');
+
+        let pandaJumpY = 0;
+        let pandaBodyTilt = Math.sin(timeSec * 2.2) * 1.6;
+        let pandaHeadTilt = Math.sin(timeSec * 1.7) * 2.8;
+        let pandaArmRAngle = Math.sin(timeSec * 2.5) * 8;
+        let pandaArmLAngle = Math.sin(timeSec * 2.1) * 6;
+        let pandaPupilX = 4;
+        let pandaPupilY = -1;
+
+        if (currentState === STATE.PANDA_BUILDING || pandaHammerPulse > 0.01) {
+            // Energetic hammering motion
+            const swing = Math.sin(pandaHammerPulse * Math.PI) * 68;
+            pandaArmRAngle = -25 + swing;
+            pandaBodyTilt = swing * 0.12;
+            pandaJumpY = -Math.abs(Math.sin(pandaHammerPulse * Math.PI)) * 14;
+            pandaPupilX = 5;
+            pandaPupilY = -3;
+            pandaMouthOpen.setAttribute('opacity', '0');
+        } else if (currentState === STATE.WAITING_FOR_TIGER) {
+            // Panda looks across at Tiger Cub waiting for him to start
+            pandaPupilX = 6;
+            pandaPupilY = 0;
+            pandaHeadTilt = 4 + Math.sin(timeSec * 2) * 2;
+            pandaMouthOpen.setAttribute('opacity', '0');
+        } else if (currentState === STATE.CELEBRATING) {
+            // Joyful jumping & waving dance
+            pandaJumpY = -Math.abs(Math.sin(timeSec * 7.5)) * 28;
+            pandaBodyTilt = Math.sin(timeSec * 7.5) * 6;
+            pandaHeadTilt = Math.sin(timeSec * 7.5) * 8;
+            pandaArmLAngle = 45 + Math.sin(timeSec * 14) * 25;
+            pandaArmRAngle = -35 + Math.cos(timeSec * 14) * 22;
+            pandaMouthOpen.setAttribute('opacity', '1');
+        }
+
+        const pandaBreath = 1 + Math.sin(timeSec * 3.2) * 0.018;
+        pandaBodyRoot.setAttribute(
+            'transform',
+            `translate(0, ${pandaJumpY.toFixed(1)}) scale(${(2 - pandaBreath).toFixed(3)}, ${pandaBreath.toFixed(3)}) rotate(${pandaBodyTilt.toFixed(2)})`
+        );
+        pandaHead.setAttribute('transform', `translate(0, -98) rotate(${pandaHeadTilt.toFixed(2)})`);
+        pandaEarL.setAttribute('transform', `translate(-62, -62) rotate(${(Math.sin(timeSec * 5) * 6).toFixed(2)})`);
+        pandaEarR.setAttribute('transform', `translate(62, -62) rotate(${(-Math.sin(timeSec * 5.4) * 6).toFixed(2)})`);
+        pandaArmR.setAttribute('transform', `translate(65, -34) rotate(${pandaArmRAngle.toFixed(2)})`);
+        pandaArmL.setAttribute('transform', `translate(-72, -36) rotate(${pandaArmLAngle.toFixed(2)})`);
+        pandaPupils.forEach(p => p.setAttribute('transform', `translate(${pandaPupilX}, ${pandaPupilY})`));
+
+        // 3. TIGER CUB PROCEDURAL ANIMATION
+        const tigerBlink = (timeSec % 3.8) > 3.64;
+        let tigerJumpY = 0;
+        let tigerBodyTilt = 0;
+        let tigerHeadTilt = 0;
+        let tigerArmLAngle = 0;
+        let tigerArmRAngle = 0;
+        let tigerPupilX = -4;
+        let tigerPupilY = 0;
+        const tailWag = Math.sin(timeSec * (currentState === STATE.WAITING_FOR_TIGER ? 2.6 : 6.5)) * 18;
+
+        if (currentState === STATE.PANDA_BUILDING || currentState === STATE.WAITING_FOR_TIGER) {
+            // Running late! Tiger sways sheepishly, stretches, yawns occasionally, and scratches his ear
+            const yawnCycle = Math.sin(timeSec * 1.4);
+            const isYawning = yawnCycle > 0.72;
+            tigerMouthYawn.setAttribute('opacity', isYawning ? '1' : '0');
+            tigerEyelids.setAttribute('opacity', (tigerBlink || isYawning) ? '1' : '0');
+
+            tigerBodyTilt = Math.sin(timeSec * 1.8) * 3.5;
+            tigerHeadTilt = -6 + Math.sin(timeSec * 2.1) * 5;
+            // Right arm raised scratching behind ear / stretching
+            tigerArmRAngle = -52 + Math.sin(timeSec * 6.5) * 14;
+            tigerArmLAngle = Math.sin(timeSec * 2) * 8;
+            // Looks up at his thought bubble numeral, then at his empty foundation
+            tigerPupilX = -3 + Math.sin(timeSec * 1.5) * 2;
+            tigerPupilY = -3 + Math.cos(timeSec * 1.5) * 2;
+        } else if (currentState === STATE.TIGER_BUILDING || tigerHammerPulse > 0.01) {
+            // Tiger springs into rapid, enthusiastic building!
+            tigerMouthYawn.setAttribute('opacity', '0');
+            tigerEyelids.setAttribute('opacity', tigerBlink ? '1' : '0');
+
+            const swing = Math.sin(tigerHammerPulse * Math.PI) * 72;
+            tigerArmLAngle = 28 - swing;
+            tigerArmRAngle = 15 + Math.sin(timeSec * 10) * 15;
+            tigerBodyTilt = -swing * 0.14;
+            tigerJumpY = -Math.abs(Math.sin(tigerHammerPulse * Math.PI)) * 16;
+            tigerPupilX = -6;
+            tigerPupilY = -2;
+        } else if (currentState === STATE.CELEBRATING) {
+            // Joyful celebration bounce & wave
+            tigerMouthYawn.setAttribute('opacity', '0');
+            tigerEyelids.setAttribute('opacity', tigerBlink ? '1' : '0');
+
+            tigerJumpY = -Math.abs(Math.cos(timeSec * 7.5)) * 30;
+            tigerBodyTilt = Math.cos(timeSec * 7.5) * 7;
+            tigerHeadTilt = Math.sin(timeSec * 7.5) * 9;
+            tigerArmLAngle = 35 + Math.sin(timeSec * 14) * 24;
+            tigerArmRAngle = -45 - Math.cos(timeSec * 14) * 26;
+            tigerPupilX = -4;
+            tigerPupilY = -1;
+        }
+
+        const tigerBreath = 1 + Math.sin(timeSec * 3.5 + 1) * 0.02;
+        tigerBodyRoot.setAttribute(
+            'transform',
+            `translate(0, ${tigerJumpY.toFixed(1)}) scale(${(2 - tigerBreath).toFixed(3)}, ${tigerBreath.toFixed(3)}) rotate(${tigerBodyTilt.toFixed(2)})`
+        );
+        tigerHead.setAttribute('transform', `translate(0, -96) rotate(${tigerHeadTilt.toFixed(2)})`);
+        tigerEarL.setAttribute('transform', `translate(-60, -60) rotate(${(Math.sin(timeSec * 6) * 7).toFixed(2)})`);
+        tigerEarR.setAttribute('transform', `translate(60, -60) rotate(${(-Math.cos(timeSec * 5.5) * 7).toFixed(2)})`);
+        tigerArmL.setAttribute('transform', `translate(-62, -32) rotate(${tigerArmLAngle.toFixed(2)})`);
+        tigerArmR.setAttribute('transform', `translate(62, -32) rotate(${tigerArmRAngle.toFixed(2)})`);
+        tigerTail.setAttribute('transform', `translate(55, -48) rotate(${tailWag.toFixed(2)})`);
+        tigerPupils.forEach(p => p.setAttribute('transform', `translate(${tigerPupilX.toFixed(1)}, ${tigerPupilY.toFixed(1)})`));
+
+        // 4. Gently sway hanging roof lanterns
+        const lanternAngle = Math.sin(timeSec * 3.2) * 7;
+        document.querySelectorAll('.hanging-lantern').forEach(l => {
+            const base = l.getAttribute('transform').split(' rotate')[0];
+            l.setAttribute('transform', `${base} rotate(${lanternAngle.toFixed(2)})`);
+        });
+    }
+
+    // =========================================================================
+    // 5. EVENT LISTENERS & MAIN ANIMATION LOOP
+    // =========================================================================
+    document.querySelectorAll('.interactive-tiger').forEach(el => {
+        el.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            triggerTigerBuild();
+        });
+    });
+
+    document.getElementById('next-btn').addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        sound.playWoodTap(540);
+        startNewRound();
+    });
+
+    document.getElementById('sound-btn').addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        sound.toggleMute();
+    });
+
+    // Initialize static SVG details and kick off first round + animation loop
+    initStaticStageDetails();
+    startNewRound();
+
+    let lastTime = performance.now();
+    function gameLoop(now) {
+        const dt = Math.min(0.05, (now - lastTime) / 1000);
+        lastTime = now;
+        const timeSec = now / 1000;
+
+        renderBackground(timeSec, dt);
+        updateBuildingPhysics(dt);
+        updateCharactersAndBubble(timeSec, dt);
+        renderFXParticles(dt);
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    window.onload = () => {
+        requestAnimationFrame(gameLoop);
+    };
+})();
+</script>
+</body>
+</html>
