@@ -1,0 +1,3099 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>&lt; = &gt;</title>
+  <!-- Підключення Firebase (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #130f26;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      font-family: Arial, sans-serif;
+    }
+
+    #game-viewport {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+    }
+
+    #game-root {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent;
+      transform-origin: center center;
+      transition: transform 0.2s ease;
+    }
+
+    /* Повноекранний Canvas зі сценою, нелюдськими персонажами та кристалами */
+    #scene-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+      background: transparent;
+    }
+
+    /* Шар інтерактивного інтерфейсу (завжди в межах екрана) */
+    #ui-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Верхній ряд: дві кристалічні скрижалі з прикладами та центральний магічний медальйон */
+    #top-comparison-bar {
+      position: absolute;
+      top: 7vh;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(14px, 2.8vw, 40px);
+      pointer-events: none;
+      width: 96vw;
+      max-width: 1100px;
+    }
+
+    /* Енергетичні підвіси до верхніх кристалічних скрижалей */
+    .plaque-wrapper {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .rope-hangers {
+      position: absolute;
+      top: -8vh;
+      left: 0;
+      right: 0;
+      height: 8.5vh;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 28px;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .rope-strand {
+      width: 6px;
+      height: 100%;
+      background: repeating-linear-gradient(
+        45deg,
+        #72efdd 0px,
+        #72efdd 5px,
+        #3a0ca3 5px,
+        #3a0ca3 10px
+      );
+      border-left: 1.5px solid #4cc9f0;
+      border-right: 1.5px solid #4cc9f0;
+      box-shadow: 0 0 10px rgba(76, 201, 240, 0.7);
+    }
+
+    /* Кристалічно-титанова скрижаль */
+    .wood-plaque {
+      position: relative;
+      min-width: clamp(210px, 25vw, 340px);
+      height: clamp(74px, 11vh, 108px);
+      padding: 8px 14px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(58, 12, 163, 0.85) 0%, rgba(29, 10, 74, 0.9) 100%);
+      border: 3.5px solid #4cc9f0;
+      box-shadow:
+        0 10px 24px rgba(8, 4, 25, 0.65),
+        0 0 16px rgba(76, 201, 240, 0.35),
+        inset 0 2px 3px rgba(255, 255, 255, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      backdrop-filter: blur(4px);
+    }
+
+    .plaque-brass-plate {
+      width: 100%;
+      height: 100%;
+      border-radius: 14px;
+      background: radial-gradient(circle at 50% 35%, #f4f9ff 0%, #d8ecff 68%, #a9cef4 100%);
+      border: 2.5px solid #3f37c9;
+      box-shadow:
+        inset 0 2px 5px rgba(25, 15, 70, 0.25),
+        0 1px 0 rgba(255, 255, 255, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      padding: 0 12px;
+    }
+
+    /* Сяючі кристалічні заклепки по кутах */
+    .rivet {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ffffff, #4cc9f0 70%, #1d3557 100%);
+      border: 1px solid #1d3557;
+      box-shadow: 0 0 5px rgba(76, 201, 240, 0.8);
+    }
+    .rivet.tl { top: 6px; left: 7px; }
+    .rivet.tr { top: 6px; right: 7px; }
+    .rivet.bl { bottom: 6px; left: 7px; }
+    .rivet.br { bottom: 6px; right: 7px; }
+
+    .expr-value {
+      font-size: clamp(22px, 3.1vw, 42px);
+      font-weight: 700;
+      color: #140a38;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 0 rgba(255, 255, 255, 0.85);
+      white-space: nowrap;
+      font-family: Arial, sans-serif;
+    }
+
+    /* Центральний кристалічний медальйон для знака [ ? ] */
+    #central-slot {
+      position: relative;
+      width: clamp(78px, 11vh, 110px);
+      height: clamp(78px, 11vh, 110px);
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #72efdd 0%, #4895ef 48%, #3a0ca3 85%, #4cc9f0 100%);
+      border: 4px solid #190933;
+      box-shadow:
+        0 10px 24px rgba(10, 4, 28, 0.65),
+        0 0 18px rgba(114, 239, 221, 0.45),
+        inset 0 3px 4px rgba(255, 255, 255, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+    }
+
+    #central-slot-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 42% 35%, #ffffff 0%, #dff2ff 70%, #a3cef1 100%);
+      border: 3px dashed #3a0ca3;
+      box-shadow: inset 0 4px 8px rgba(25, 10, 60, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #slot-sign-svg {
+      width: 62%;
+      height: 62%;
+      opacity: 0;
+      transform: scale(0.4);
+      transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    #slot-sign-svg.visible {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* ЦЕНТРАЛЬНА ПАНЕЛЬ КНОПОК (<, =, >) — стабільна, без фонових прямокутників, напівпрозора */
+    #center-buttons-dock {
+      position: absolute;
+      top: 25vh;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(14px, 2.2vw, 28px);
+      padding: clamp(10px, 1.5vh, 16px) clamp(20px, 2.6vw, 34px);
+      border-radius: 64px;
+      background: rgba(28, 14, 68, 0.72);
+      border: 3px solid rgba(114, 239, 221, 0.75);
+      box-shadow:
+        0 12px 26px rgba(10, 5, 28, 0.55),
+        0 0 18px rgba(76, 201, 240, 0.3),
+        inset 0 2px 3px rgba(255, 255, 255, 0.3);
+      pointer-events: auto;
+      backdrop-filter: blur(4px);
+    }
+
+    .sign-choice-btn {
+      position: relative;
+      width: clamp(64px, 9.2vh, 90px);
+      height: clamp(64px, 9.2vh, 90px);
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      outline: none;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .sign-choice-btn .btn-face {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #80ffdb 0%, #48bfe3 48%, #5e60ce 85%, #64dfdf 100%);
+      border: 3px solid #1b0a3d;
+      box-shadow:
+        0 6px 14px rgba(10, 4, 28, 0.6),
+        inset 0 2px 3px rgba(255, 255, 255, 0.85),
+        inset 0 -3px 5px rgba(42, 16, 99, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      transition: filter 0.16s ease, box-shadow 0.16s ease, transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .sign-choice-btn .btn-core {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 40% 32%, #ffffff 0%, #e2f1ff 65%, #b6d6f2 100%);
+      border: 2px solid #3a0ca3;
+      box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .sign-choice-btn:hover .btn-face {
+      filter: brightness(1.1);
+      box-shadow:
+        0 8px 20px rgba(114, 239, 221, 0.55),
+        0 6px 12px rgba(18, 8, 40, 0.6),
+        inset 0 2px 4px rgba(255, 255, 255, 0.95);
+      transform: scale(1.06);
+    }
+
+    .sign-choice-btn:active .btn-face {
+      filter: brightness(0.96);
+      transform: scale(0.95);
+    }
+
+    .sign-choice-btn svg {
+      pointer-events: none;
+      width: 56%;
+      height: 56%;
+    }
+
+    @keyframes wobbleFace {
+      0%, 100% { transform: rotate(0deg); }
+      20% { transform: rotate(-14deg); }
+      40% { transform: rotate(12deg); }
+      60% { transform: rotate(-9deg); }
+      80% { transform: rotate(6deg); }
+    }
+
+    .wobble-error .btn-face {
+      animation: wobbleFace 0.45s ease;
+    }
+
+    /* Мінімалістична кнопка "Далі" (правий верхній кут) */
+    #skip-next-btn {
+      position: absolute;
+      top: clamp(14px, 2.5vh, 26px);
+      right: clamp(16px, 2.5vw, 32px);
+      width: clamp(54px, 7.8vh, 72px);
+      height: clamp(54px, 7.8vh, 72px);
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: pointer;
+      outline: none;
+      pointer-events: auto;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #skip-next-btn .btn-face {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #7209b7 0%, #3a0ca3 60%, #1d0652 100%);
+      border: 3px solid #4cc9f0;
+      box-shadow:
+        0 8px 16px rgba(10, 4, 28, 0.55),
+        inset 0 2px 3px rgba(255, 255, 255, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      transition: filter 0.16s ease, transform 0.16s ease;
+    }
+
+    #skip-next-btn .btn-core {
+      pointer-events: none;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #80ffdb 0%, #4cc9f0 65%, #4361ee 100%);
+      border: 2px solid #1d0652;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #skip-next-btn:hover .btn-face {
+      filter: brightness(1.12);
+      transform: scale(1.06);
+    }
+
+    #skip-next-btn:active .btn-face {
+      transform: scale(0.94);
+    }
+
+    #skip-next-btn svg {
+      pointer-events: none;
+      width: 55%;
+      height: 55%;
+    }
+
+    /* Інструменти масштабування (Лупа+ та Лупа-) */
+    #zoom-controls {
+      position: fixed;
+      top: clamp(14px, 2.5vh, 26px);
+      left: clamp(16px, 2.5vw, 32px);
+      display: flex;
+      gap: 10px;
+      z-index: 85000;
+    }
+
+    .zoom-btn {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      border: 2px solid #4cc9f0;
+      background: rgba(29, 10, 74, 0.85);
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+      transition: transform 0.15s ease, background 0.15s ease;
+    }
+
+    .zoom-btn:hover {
+      background: rgba(58, 12, 163, 0.95);
+      transform: scale(1.07);
+    }
+
+    .zoom-btn:active {
+      transform: scale(0.94);
+    }
+
+    /* Кнопка налаштувань фонів (Theme Manager ⚙️) */
+    #theme-settings-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      border: 2px solid #4cc9f0;
+      background: rgba(29, 10, 74, 0.9);
+      color: #ffffff;
+      font-size: 26px;
+      cursor: pointer;
+      z-index: 85000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+      transition: transform 0.2s ease, background 0.2s ease;
+    }
+
+    #theme-settings-btn:hover {
+      transform: rotate(35deg) scale(1.08);
+      background: rgba(58, 12, 163, 0.95);
+    }
+
+    /* Модальне меню-галерея фонів */
+    #theme-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      z-index: 95000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    #theme-modal-backdrop.open {
+      display: flex;
+    }
+
+    #theme-modal {
+      width: min(680px, 94vw);
+      max-height: 60vh;
+      background: #1a1433;
+      border: 2px solid #4cc9f0;
+      border-radius: 18px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75);
+      color: #ffffff;
+    }
+
+    #theme-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(76, 201, 240, 0.3);
+      padding-bottom: 8px;
+    }
+
+    #theme-modal-title {
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    #theme-modal-close {
+      background: #e63946;
+      color: #ffffff;
+      border: none;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #theme-gallery-grid {
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 12px;
+      padding: 4px;
+    }
+
+    .theme-thumb-card {
+      position: relative;
+      height: 90px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      cursor: pointer;
+      background: #130f26;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-size: cover;
+      background-position: center;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+
+    .theme-thumb-card:hover {
+      transform: scale(1.04);
+      border-color: #72efdd;
+    }
+
+    .theme-thumb-card.active {
+      border-color: #ffd166;
+      box-shadow: 0 0 12px rgba(255, 209, 102, 0.7);
+    }
+
+    .theme-thumb-label {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.38);
+      color: #ffffff;
+      font-weight: bold;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+      padding: 6px;
+    }
+
+    /* Адаптивність для мобільних пристроїв */
+    @media (max-width: 768px) {
+      #top-comparison-bar {
+        top: 9vh;
+        gap: 8px;
+      }
+      .wood-plaque {
+        min-width: clamp(130px, 36vw, 220px);
+        height: 64px;
+        padding: 5px 8px;
+      }
+      .expr-value {
+        font-size: clamp(16px, 4.2vw, 24px);
+      }
+      #central-slot {
+        width: 62px;
+        height: 62px;
+        padding: 5px;
+      }
+      #center-buttons-dock {
+        top: 23vh;
+        padding: 8px 14px;
+        gap: 10px;
+      }
+      .sign-choice-btn {
+        width: 56px;
+        height: 56px;
+      }
+      #zoom-controls {
+        top: 10px;
+        left: 10px;
+      }
+      .zoom-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Кнопки масштабування (Лупа+ та Лупа-) -->
+  <div id="zoom-controls">
+    <button type="button" class="zoom-btn" id="zoom-in-btn" title="Наблизити">🔍+</button>
+    <button type="button" class="zoom-btn" id="zoom-out-btn" title="Віддалити">🔍-</button>
+  </div>
+
+  <!-- Кнопка відкриття галереї фонів -->
+  <button type="button" id="theme-settings-btn" title="Фони гри">⚙️</button>
+
+  <!-- Модальне вікно вибору динамічного фону -->
+  <div id="theme-modal-backdrop">
+    <div id="theme-modal">
+      <div id="theme-modal-header">
+        <span id="theme-modal-title">Вибір фону гри</span>
+        <button type="button" id="theme-modal-close">✕</button>
+      </div>
+      <div id="theme-gallery-grid"></div>
+    </div>
+  </div>
+
+  <div id="game-viewport">
+    <div id="game-root">
+      <!-- Повноекранне полотно з Лисеням, Дракончиком та Кристалічними Скринями -->
+      <canvas id="scene-canvas"></canvas>
+
+      <!-- Стабільний шар інтерактивних елементів -->
+      <div id="ui-layer">
+        <!-- Верхні кристалічні таблички з прикладами та центральний медальйон порівняння -->
+        <div id="top-comparison-bar">
+          <div class="plaque-wrapper">
+            <div class="rope-hangers">
+              <div class="rope-strand"></div>
+              <div class="rope-strand"></div>
+            </div>
+            <div class="wood-plaque" id="left-plaque">
+              <div class="plaque-brass-plate">
+                <span class="rivet tl"></span>
+                <span class="rivet tr"></span>
+                <span class="rivet bl"></span>
+                <span class="rivet br"></span>
+                <span class="expr-value" id="left-expr-dom">360 + 80</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="central-slot">
+            <div id="central-slot-inner">
+              <svg id="slot-sign-svg" viewBox="0 0 60 60">
+                <path id="slot-sign-path" d="" fill="none" stroke="#1d0652" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </div>
+          </div>
+
+          <div class="plaque-wrapper">
+            <div class="rope-hangers">
+              <div class="rope-strand"></div>
+              <div class="rope-strand"></div>
+            </div>
+            <div class="wood-plaque" id="right-plaque">
+              <div class="plaque-brass-plate">
+                <span class="rivet tl"></span>
+                <span class="rivet tr"></span>
+                <span class="rivet bl"></span>
+                <span class="rivet br"></span>
+                <span class="expr-value" id="right-expr-dom">400 + 80</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Центральні кнопки вибору знака (<, =, >) -->
+        <div id="center-buttons-dock">
+          <button type="button" class="sign-choice-btn" id="btn-less" aria-label="Less">
+            <span class="btn-face">
+              <span class="btn-core">
+                <svg viewBox="0 0 50 50">
+                  <path d="M33,12 L15,25 L33,38" fill="none" stroke="#1d0652" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </span>
+          </button>
+
+          <button type="button" class="sign-choice-btn" id="btn-equal" aria-label="Equal">
+            <span class="btn-face">
+              <span class="btn-core">
+                <svg viewBox="0 0 50 50">
+                  <path d="M14,18 L36,18 M14,32 L36,32" fill="none" stroke="#1d0652" stroke-width="8" stroke-linecap="round" />
+                </svg>
+              </span>
+            </span>
+          </button>
+
+          <button type="button" class="sign-choice-btn" id="btn-greater" aria-label="Greater">
+            <span class="btn-face">
+              <span class="btn-core">
+                <svg viewBox="0 0 50 50">
+                  <path d="M17,12 L35,25 L17,38" fill="none" stroke="#1d0652" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+            </span>
+          </button>
+        </div>
+
+        <!-- Мінімалістична кнопка переходу до наступного завдання -->
+        <button type="button" id="skip-next-btn" aria-label="Next">
+          <span class="btn-face">
+            <span class="btn-core">
+              <svg viewBox="0 0 50 50">
+                <path d="M13,25 L35,25 M25,14 L37,25 L25,36" fill="none" stroke="#1d0652" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ============================================================================
+       0. КОНФІГУРАЦІЯ ГРИ, FIREBASE ТА МЕНЕДЖЕР ДИНАМІЧНИХ ФОНІВ (THEME MANAGER)
+       ============================================================================ */
+    const CONFIG = {
+      gameId: 'comparison_crystals_1000',
+      firebaseConfig: {
+        databaseURL: 'https://lesson-13c44-default-rtdb.firebaseio.com/',
+        projectId: 'lesson-13c44'
+      },
+      bgBaseUrl: 'https://olgazheltvai2.github.io/images/backgrounds/'
+    };
+
+    window.db = null;
+    window.mySenderId = 'usr_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+    window.isRemoteAction = false;
+    window.hasCustomThemeBg = false;
+    const appStartTime = Date.now();
+
+    try {
+      if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) {
+          firebase.initializeApp(CONFIG.firebaseConfig);
+        }
+        window.db = firebase.database();
+      }
+    } catch (err) {
+      console.warn('Firebase працює в автономному режимі:', err);
+    }
+
+    function sendGameAction(type, payload = {}) {
+      if (!window.db || window.isRemoteAction) return;
+      try {
+        window.db.ref('game_action').set({
+          senderId: window.mySenderId,
+          timestamp: Date.now(),
+          type: type,
+          ...payload
+        });
+      } catch (e) {}
+    }
+
+    // Масштабування (Лупа+ та Лупа-)
+    let currentZoom = 1;
+    const gameRootEl = document.getElementById('game-root');
+    document.getElementById('zoom-in-btn').addEventListener('click', () => {
+      currentZoom = Math.min(1.6, +(currentZoom + 0.1).toFixed(2));
+      gameRootEl.style.transform = `scale(${currentZoom})`;
+    });
+    document.getElementById('zoom-out-btn').addEventListener('click', () => {
+      currentZoom = Math.max(0.6, +(currentZoom - 0.1).toFixed(2));
+      gameRootEl.style.transform = `scale(${currentZoom})`;
+    });
+
+    // Менеджер динамічних фонів із послідовним завантаженням (зупинка на 404)
+    const themeSettingsBtn = document.getElementById('theme-settings-btn');
+    const themeModalBackdrop = document.getElementById('theme-modal-backdrop');
+    const themeModalClose = document.getElementById('theme-modal-close');
+    const themeGalleryGrid = document.getElementById('theme-gallery-grid');
+    const savedBgKey = 'mySavedBg_' + CONFIG.gameId;
+
+    function applyBackgroundToPage(bgValue, saveLocal = true) {
+      if (!bgValue || bgValue === 'none') {
+        document.body.style.backgroundImage = 'none';
+        document.body.style.backgroundColor = '#130f26';
+        window.hasCustomThemeBg = false;
+      } else {
+        document.body.style.backgroundImage = `url('${bgValue}')`;
+        window.hasCustomThemeBg = true;
+      }
+      if (saveLocal) {
+        try {
+          localStorage.setItem(savedBgKey, bgValue || 'none');
+        } catch (e) {}
+      }
+      document.querySelectorAll('.theme-thumb-card').forEach((card) => {
+        card.classList.toggle('active', card.dataset.bgUrl === (bgValue || 'none'));
+      });
+    }
+
+    function selectThemeBackground(bgValue) {
+      applyBackgroundToPage(bgValue, true);
+      if (window.db) {
+        try {
+          window.db.ref('game_theme').set({
+            url: bgValue,
+            senderId: window.mySenderId,
+            timestamp: Date.now()
+          });
+        } catch (e) {}
+      }
+    }
+
+    function createThemeCard(label, bgUrl) {
+      const card = document.createElement('div');
+      card.className = 'theme-thumb-card';
+      card.dataset.bgUrl = bgUrl;
+      if (bgUrl !== 'none') {
+        card.style.backgroundImage = `url('${bgUrl}')`;
+      } else {
+        card.style.background = 'linear-gradient(135deg, #1b1035 0%, #0f172a 100%)';
+      }
+      const textSpan = document.createElement('div');
+      textSpan.className = 'theme-thumb-label';
+      textSpan.textContent = label;
+      card.appendChild(textSpan);
+
+      const currentSaved = localStorage.getItem(savedBgKey) || 'none';
+      if (currentSaved === bgUrl) {
+        card.classList.add('active');
+      }
+
+      card.addEventListener('click', () => {
+        selectThemeBackground(bgUrl);
+      });
+      themeGalleryGrid.appendChild(card);
+    }
+
+    let bgProbeStarted = false;
+    function initThemeManager() {
+      // Перша картка — обов'язково "Без фону"
+      createThemeCard('Без фону', 'none');
+
+      // Застосування збереженого індивідуального фону конкретної гри
+      try {
+        const savedBg = localStorage.getItem(savedBgKey);
+        if (savedBg) {
+          applyBackgroundToPage(savedBg, false);
+        }
+      } catch (e) {}
+
+      // Слухаємо синхронізацію фонів у Firebase (лише нові зміни під час сесії, щоб не перезаписати індивідуальний фон при старті)
+      if (window.db) {
+        let firstThemeSnapshot = true;
+        window.db.ref('game_theme').on('value', (snap) => {
+          const val = snap.val();
+          if (firstThemeSnapshot) {
+            firstThemeSnapshot = false;
+            const localSaved = localStorage.getItem(savedBgKey);
+            if (!localSaved && val && val.url) {
+              applyBackgroundToPage(val.url, true);
+            }
+            return;
+          }
+          if (val && val.url && val.senderId !== window.mySenderId) {
+            applyBackgroundToPage(val.url, true);
+          }
+        });
+      }
+    }
+
+    // Строго послідовне завантаження фонів по одному до background_1000.webp із негайною зупинкою при 404
+    function startSequentialBgLoading(index = 1) {
+      if (index > 1000) return;
+      const url = `${CONFIG.bgBaseUrl}background_${index}.webp`;
+      const probeImg = new Image();
+      probeImg.onload = () => {
+        createThemeCard(`Фон ${index}`, url);
+        startSequentialBgLoading(index + 1);
+      };
+      probeImg.onerror = () => {
+        // Отримано 404 — негайно зупиняємо подальшу перевірку
+        return;
+      };
+      probeImg.src = url;
+    }
+
+    themeSettingsBtn.addEventListener('click', () => {
+      themeModalBackdrop.classList.add('open');
+      if (!bgProbeStarted) {
+        bgProbeStarted = true;
+        startSequentialBgLoading(1);
+      }
+    });
+
+    themeModalClose.addEventListener('click', () => {
+      themeModalBackdrop.classList.remove('open');
+    });
+
+    themeModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === themeModalBackdrop) {
+        themeModalBackdrop.classList.remove('open');
+      }
+    });
+
+    /* ============================================================================
+       1. СИНТЕЗАТОР ЗВУКІВ (WEB AUDIO API)
+       ============================================================================ */
+    const SoundFX = (() => {
+      let ctx = null;
+
+      function getCtx() {
+        if (!ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          ctx = new AudioCtx();
+        }
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        return ctx;
+      }
+
+      function playHover() {
+        try {
+          const c = getCtx();
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(580, c.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(740, c.currentTime + 0.04);
+          gain.gain.setValueAtTime(0.05, c.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.045);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start();
+          osc.stop(c.currentTime + 0.05);
+        } catch (e) {}
+      }
+
+      function playClick() {
+        try {
+          const c = getCtx();
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(400, c.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, c.currentTime + 0.065);
+          gain.gain.setValueAtTime(0.18, c.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.075);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start();
+          osc.stop(c.currentTime + 0.08);
+        } catch (e) {}
+      }
+
+      function playLiftEffort() {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+
+          // Магічний кристалічний імпульс підйому
+          const osc = c.createOscillator();
+          const oGain = c.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(210, now);
+          osc.frequency.exponentialRampToValueAtTime(480, now + 0.36);
+          oGain.gain.setValueAtTime(0.16, now);
+          oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+          osc.connect(oGain);
+          oGain.connect(c.destination);
+          osc.start(now);
+          osc.stop(now + 0.4);
+        } catch (e) {}
+      }
+
+      function playVictoryAndSigh(isEqual = false) {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+          const chord = [523.25, 659.25, 783.99, 1046.5];
+          chord.forEach((freq, i) => {
+            const osc = c.createOscillator();
+            const gain = c.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, now + i * 0.07);
+            gain.gain.setValueAtTime(0.001, now + i * 0.07);
+            gain.gain.linearRampToValueAtTime(0.16, now + i * 0.07 + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.55);
+            osc.connect(gain);
+            gain.connect(c.destination);
+            osc.start(now + i * 0.07);
+            osc.stop(now + i * 0.07 + 0.58);
+          });
+
+          if (!isEqual) {
+            const sigh = c.createOscillator();
+            const sGain = c.createGain();
+            sigh.type = 'sine';
+            sigh.frequency.setValueAtTime(392, now + 0.34);
+            sigh.frequency.linearRampToValueAtTime(285, now + 0.85);
+            sGain.gain.setValueAtTime(0.001, now + 0.34);
+            sGain.gain.linearRampToValueAtTime(0.085, now + 0.44);
+            sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.88);
+            sigh.connect(sGain);
+            sGain.connect(c.destination);
+            sigh.start(now + 0.34);
+            sigh.stop(now + 0.9);
+          }
+        } catch (e) {}
+      }
+
+      function playCrystalThud() {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(160, now);
+          osc.frequency.exponentialRampToValueAtTime(55, now + 0.18);
+          gain.gain.setValueAtTime(0.28, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start(now);
+          osc.stop(now + 0.22);
+        } catch (e) {}
+      }
+
+      function playErrorBonk() {
+        try {
+          const c = getCtx();
+          const now = c.currentTime;
+          const osc = c.createOscillator();
+          const gain = c.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(230, now);
+          osc.frequency.linearRampToValueAtTime(150, now + 0.14);
+          osc.frequency.linearRampToValueAtTime(185, now + 0.24);
+          osc.frequency.linearRampToValueAtTime(125, now + 0.36);
+          gain.gain.setValueAtTime(0.2, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+          osc.connect(gain);
+          gain.connect(c.destination);
+          osc.start(now);
+          osc.stop(now + 0.4);
+        } catch (e) {}
+      }
+
+      return {
+        playHover,
+        playClick,
+        playLiftEffort,
+        playVictoryAndSigh,
+        playCrystalThud,
+        playErrorBonk
+      };
+    })();
+
+    /* ============================================================================
+       2. ПРИКЛАДИ ДО 1000, ЯКІ ПОРІВНЮЮТЬСЯ ЛОГІЧНО БЕЗ ОБЧИСЛЕНЬ
+       ============================================================================ */
+    const PHOTO_PROBLEMS = [
+      // 1. Однаковий другий доданок (360 < 400)
+      { leftText: '360 + 80',  leftVal: 440, rightText: '400 + 80',  rightVal: 480, sign: '<' },
+      // 2. Переставний закон додавання (a + b = b + a)
+      { leftText: '420 + 350', leftVal: 770, rightText: '350 + 420', rightVal: 770, sign: '=' },
+      // 3. Однакове зменшуване, різні від'ємники (відняли менше -> залишилось більше)
+      { leftText: '680 - 140', leftVal: 540, rightText: '680 - 230', rightVal: 450, sign: '>' },
+      // 4. Сума проти різниці однакових чисел
+      { leftText: '525 + 180', leftVal: 705, rightText: '525 - 180', rightVal: 345, sign: '>' },
+      // 5. Однаковий перший доданок, різні другі доданки
+      { leftText: '740 + 160', leftVal: 900, rightText: '740 + 120', rightVal: 860, sign: '>' },
+      // 6. Різні зменшувані, однаковий від'ємник (560 < 860)
+      { leftText: '560 - 240', leftVal: 320, rightText: '860 - 240', rightVal: 620, sign: '<' },
+      // 7. Переставний закон додавання трицифрових чисел
+      { leftText: '618 + 275', leftVal: 893, rightText: '275 + 618', rightVal: 893, sign: '=' },
+      // 8. Однакове зменшуване (відняли більше -> залишилось менше)
+      { leftText: '950 - 380', leftVal: 570, rightText: '950 - 280', rightVal: 670, sign: '<' },
+      // 9. Обидва доданки зліва більші за відповідні доданки справа
+      { leftText: '540 + 320', leftVal: 860, rightText: '410 + 210', rightVal: 620, sign: '>' },
+      // 10. Різниця проти суми тих самих чисел
+      { leftText: '490 - 170', leftVal: 320, rightText: '490 + 170', rightVal: 660, sign: '<' }
+    ];
+
+    let problemIdx = 0;
+    let currentProblem = PHOTO_PROBLEMS[0];
+    let isBusy = false;
+
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    // Генератор прикладів до 1000, які порівнюються БЕЗ обчислень
+    function getNextProblem() {
+      if (problemIdx < PHOTO_PROBLEMS.length) {
+        return PHOTO_PROBLEMS[problemIdx++];
+      }
+      const mode = randInt(1, 6);
+      let leftText, leftVal, rightText, rightVal;
+
+      if (mode === 1) {
+        // Переставний закон додавання: a + b = b + a (сума до 1000)
+        const a = randInt(12, 55) * 10 + randInt(0, 8);
+        const b = randInt(11, 40) * 10 + randInt(1, 9);
+        leftText = `${a} + ${b}`; leftVal = a + b;
+        rightText = `${b} + ${a}`; rightVal = b + a;
+      } else if (mode === 2) {
+        // Однаковий перший доданок, різні другі доданки: a + b vs a + c
+        const a = randInt(20, 68) * 10 + randInt(0, 5);
+        const b = randInt(4, 25) * 10;
+        let c = randInt(4, 25) * 10;
+        if (c === b) c += 30;
+        leftText = `${a} + ${b}`; leftVal = a + b;
+        rightText = `${a} + ${c}`; rightVal = a + c;
+      } else if (mode === 3) {
+        // Однаковий другий доданок, різні перші доданки: a + c vs b + c
+        const c = randInt(5, 24) * 10 + randInt(0, 8);
+        const a = randInt(20, 70) * 10;
+        let b = randInt(20, 70) * 10;
+        if (b === a) b += 40;
+        leftText = `${a} + ${c}`; leftVal = a + c;
+        rightText = `${b} + ${c}`; rightVal = b + c;
+      } else if (mode === 4) {
+        // Однакове зменшуване, різні від'ємники: a - b vs a - c (більший від'ємник -> менша різниця)
+        const a = randInt(45, 96) * 10 + randInt(0, 8);
+        const b = randInt(8, 38) * 10;
+        let c = randInt(8, 38) * 10;
+        if (c === b) c += 40;
+        leftText = `${a} - ${b}`; leftVal = a - b;
+        rightText = `${a} - ${c}`; rightVal = a - c;
+      } else if (mode === 5) {
+        // Різні зменшувані, однаковий від'ємник: a - c vs b - c
+        const c = randInt(10, 32) * 10 + randInt(0, 5);
+        const a = randInt(40, 92) * 10;
+        let b = randInt(40, 92) * 10;
+        if (b === a) b += 50;
+        leftText = `${a} - ${c}`; leftVal = a - c;
+        rightText = `${b} - ${c}`; rightVal = b + 0 - c;
+      } else {
+        // Додавання проти віднімання тих самих чисел: a + b vs a - b
+        const a = randInt(35, 68) * 10 + randInt(0, 5);
+        const b = randInt(6, 26) * 10;
+        if (Math.random() < 0.5) {
+          leftText = `${a} + ${b}`; leftVal = a + b;
+          rightText = `${a} - ${b}`; rightVal = a - b;
+        } else {
+          leftText = `${a} - ${b}`; leftVal = a - b;
+          rightText = `${a} + ${b}`; rightVal = a + b;
+        }
+      }
+
+      const sign = leftVal < rightVal ? '<' : leftVal > rightVal ? '>' : '=';
+      problemIdx++;
+      return { leftText, leftVal, rightText, rightVal, sign };
+    }
+
+    /* ============================================================================
+       3. ПРЯМОНОГА КІНЕМАТИКА НЕЛЮДСЬКИХ ПЕРСОНАЖІВ ТА POSE-СИСТЕМА
+       ============================================================================ */
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+    function easeOutBack(t) {
+      const c1 = 1.6;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+
+    const KEY_POSES = {
+      IDLE: {
+        kneeBend: 0,
+        torsoTiltDeg: 0,
+        headTiltDeg: 2,
+        shoulderDrop: 0,
+        boxX: 162,
+        boxY: -68,
+        boxRotDeg: 0,
+        handsOnBox: false,
+        frontHandX: 14,
+        frontHandY: -158,
+        backHandX: 28,
+        backHandY: -162,
+        mood: 'neutral'
+      },
+      REACH_BOX: {
+        kneeBend: 0.16,
+        torsoTiltDeg: 52,
+        headTiltDeg: -14,
+        shoulderDrop: 0,
+        boxX: 162,
+        boxY: -68,
+        boxRotDeg: 0,
+        handsOnBox: true,
+        frontHandX: 136,
+        frontHandY: -48,
+        backHandX: 178,
+        backHandY: -64,
+        mood: 'effort'
+      },
+      LIFT_PASSING: {
+        kneeBend: 0.05,
+        torsoTiltDeg: 18,
+        headTiltDeg: -4,
+        shoulderDrop: 0,
+        boxX: 134,
+        boxY: -136,
+        boxRotDeg: -4,
+        handsOnBox: true,
+        frontHandX: 108,
+        frontHandY: -114,
+        backHandX: 150,
+        backHandY: -130,
+        mood: 'effort'
+      },
+      HOLD_PROUD: {
+        kneeBend: 0,
+        torsoTiltDeg: -4,
+        headTiltDeg: 5,
+        shoulderDrop: 0,
+        boxX: 112,
+        boxY: -198,
+        boxRotDeg: -5,
+        handsOnBox: true,
+        frontHandX: 86,
+        frontHandY: -174,
+        backHandX: 128,
+        backHandY: -190,
+        mood: 'happy'
+      },
+      SAD_STANDING: {
+        kneeBend: 0,
+        torsoTiltDeg: 11,
+        headTiltDeg: 24,
+        shoulderDrop: 10,
+        boxX: 162,
+        boxY: -68,
+        boxRotDeg: 0,
+        handsOnBox: false,
+        frontHandX: 16,
+        frontHandY: -142,
+        backHandX: 26,
+        backHandY: -146,
+        mood: 'sad'
+      },
+      PUZZLED: {
+        kneeBend: 0,
+        torsoTiltDeg: -3,
+        headTiltDeg: -10,
+        shoulderDrop: 0,
+        boxX: 162,
+        boxY: -68,
+        boxRotDeg: 0,
+        handsOnBox: false,
+        frontHandX: 44,
+        frontHandY: -220,
+        backHandX: 56,
+        backHandY: -215,
+        mood: 'puzzled'
+      }
+    };
+
+    function blendPoses(a, b, t) {
+      return {
+        kneeBend: lerp(a.kneeBend, b.kneeBend, t),
+        torsoTiltDeg: lerp(a.torsoTiltDeg, b.torsoTiltDeg, t),
+        headTiltDeg: lerp(a.headTiltDeg, b.headTiltDeg, t),
+        shoulderDrop: lerp(a.shoulderDrop, b.shoulderDrop, t),
+        boxX: lerp(a.boxX, b.boxX, t),
+        boxY: lerp(a.boxY, b.boxY, t),
+        boxRotDeg: lerp(a.boxRotDeg, b.boxRotDeg, t),
+        handsOnBox: t > 0.15 ? b.handsOnBox : a.handsOnBox,
+        frontHandX: lerp(a.frontHandX, b.frontHandX, t),
+        frontHandY: lerp(a.frontHandY, b.frontHandY, t),
+        backHandX: lerp(a.backHandX, b.backHandX, t),
+        backHandY: lerp(a.backHandY, b.backHandY, t),
+        mood: t > 0.4 ? b.mood : a.mood
+      };
+    }
+
+    function solveArmIK(sx, sy, hx, hy, L1, L2) {
+      let dx = hx - sx;
+      let dy = hy - sy;
+      let d = Math.hypot(dx, dy);
+      const maxReach = L1 + L2 - 0.5;
+      const minReach = Math.abs(L1 - L2) + 0.5;
+      if (d > maxReach) {
+        dx = (dx / d) * maxReach;
+        dy = (dy / d) * maxReach;
+        d = maxReach;
+      } else if (d < minReach) {
+        d = minReach;
+      }
+      const baseAngle = Math.atan2(dy, dx);
+      const cosA = Math.max(-1, Math.min(1, (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d)));
+      const angleA = Math.acos(cosA);
+      const elbowAngle = baseAngle + angleA;
+      return {
+        ex: sx + Math.cos(elbowAngle) * L1,
+        ey: sy + Math.sin(elbowAngle) * L1,
+        hx: sx + dx,
+        hy: sy + dy
+      };
+    }
+
+    /* ============================================================================
+       4. ВІДМАЛЬОВУВАННЯ КОСМІЧНО-КРИСТАЛІЧНОЇ СЦЕНИ, ЛИСЕНЯТИ, ДРАКОНЧИКА ТА КРИСТАЛІВ
+       ============================================================================ */
+    const canvas = document.getElementById('scene-canvas');
+    const ctx = canvas.getContext('2d');
+
+    const VW = 1600;
+    const VH = 900;
+
+    let leftCharPose = { ...KEY_POSES.IDLE };
+    let rightCharPose = { ...KEY_POSES.IDLE };
+    let leftBlink = { timer: 120, closed: false };
+    let rightBlink = { timer: 170, closed: false };
+    let activeSequence = null;
+
+    // Зірки та туманності для власного фону (коли обрано "Без фону")
+    const stars = Array.from({ length: 48 }, (_, i) => ({
+      x: (i * 137.5) % VW,
+      y: (i * 73.1) % 490,
+      r: 1.2 + (i % 3) * 1.1,
+      phase: i * 0.7
+    }));
+
+    // Сяючі енергетичні метелики-світлячки
+    const energywisps = [
+      { x: 460, y: 470, vx: 0.7, vy: 0.2, phase: 0.4, color1: '#72efdd', color2: '#4cc9f0' },
+      { x: 1140, y: 450, vx: -0.65, vy: 0.25, phase: 2.1, color1: '#ff9e00', color2: '#ff007f' }
+    ];
+
+    // Кристалічні іскри в повітрі
+    const floatingShards = Array.from({ length: 14 }, () => ({
+      x: Math.random() * VW,
+      y: Math.random() * VH,
+      vx: 0.3 + Math.random() * 0.4,
+      vy: -0.35 - Math.random() * 0.4,
+      size: 5 + Math.random() * 5,
+      rot: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.04,
+      color: ['#72efdd', '#ffd166', '#f72585', '#4cc9f0'][Math.floor(Math.random() * 4)]
+    }));
+
+    const dynamicParticles = [];
+
+    function spawnEnergyWave(wx, wy) {
+      for (let i = 0; i < 16; i++) {
+        const offset = (Math.random() - 0.5) * 140;
+        dynamicParticles.push({
+          type: 'dust',
+          x: wx + offset,
+          y: wy + (Math.random() - 0.5) * 10,
+          vx: offset * 0.025 + (Math.random() - 0.5) * 1.5,
+          vy: -0.6 - Math.random() * 1.4,
+          r: 8 + Math.random() * 12,
+          alpha: 0.65,
+          decay: 0.016 + Math.random() * 0.008
+        });
+      }
+    }
+
+    function spawnVictoryStars(wx, wy) {
+      const palette = ['#72efdd', '#ffd166', '#f72585', '#4cc9f0', '#ffffff'];
+      for (let i = 0; i < 30; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2.2 + Math.random() * 5.2;
+        dynamicParticles.push({
+          type: 'star',
+          x: wx + (Math.random() - 0.5) * 90,
+          y: wy + (Math.random() - 0.5) * 70,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd - 1.6,
+          size: 6 + Math.random() * 6,
+          rot: Math.random() * Math.PI * 2,
+          vRot: (Math.random() - 0.5) * 0.14,
+          color: palette[i % palette.length],
+          alpha: 1,
+          decay: 0.016 + Math.random() * 0.008
+        });
+      }
+    }
+
+    function spawnSighCloud(wx, wy, dirX) {
+      for (let i = 0; i < 6; i++) {
+        dynamicParticles.push({
+          type: 'sigh',
+          x: wx,
+          y: wy,
+          vx: dirX * (1.1 + Math.random() * 1.2),
+          vy: -0.25 + (Math.random() - 0.5) * 0.5,
+          r: 5 + i * 2.2,
+          alpha: 0.5,
+          decay: 0.012
+        });
+      }
+    }
+
+    function resizeCanvas() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function roundRectPath(c, x, y, w, h, r) {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.lineTo(x + w - r, y);
+      c.quadraticCurveTo(x + w, y, x + w, y + r);
+      c.lineTo(x + w, y + h - r);
+      c.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      c.lineTo(x + r, y + h);
+      c.quadraticCurveTo(x, y + h, x, y + h - r);
+      c.lineTo(x, y + r);
+      c.quadraticCurveTo(x, y, x + r, y);
+      c.closePath();
+    }
+
+    function drawLimbSegment(c, x1, y1, x2, y2, r1, r2, fillStyle, strokeStyle) {
+      const ang = Math.atan2(y2 - y1, x2 - x1);
+      const len = Math.hypot(x2 - x1, y2 - y1);
+      c.save();
+      c.translate(x1, y1);
+      c.rotate(ang);
+      c.beginPath();
+      c.arc(0, 0, r1, Math.PI * 0.5, Math.PI * 1.5);
+      c.lineTo(len, -r2);
+      c.arc(len, 0, r2, -Math.PI * 0.5, Math.PI * 0.5);
+      c.closePath();
+      c.fillStyle = fillStyle;
+      c.fill();
+      if (strokeStyle) {
+        c.lineWidth = 2.2;
+        c.strokeStyle = strokeStyle;
+        c.stroke();
+      }
+      c.restore();
+    }
+
+    // 1. Новий фантастичний фон: Кристалічна Обсерваторія (прозорий при виборі фону з GitHub)
+    function drawBackgroundScene(c, timeSec) {
+      if (!window.hasCustomThemeBg) {
+        // Космічне небо з полярним сяйвом
+        const skyGrad = c.createLinearGradient(0, 0, 0, 610);
+        skyGrad.addColorStop(0, '#0b0726');
+        skyGrad.addColorStop(0.45, '#1e1147');
+        skyGrad.addColorStop(0.82, '#3b1d6e');
+        skyGrad.addColorStop(1, '#5a2a82');
+        c.fillStyle = skyGrad;
+        c.fillRect(-300, -200, VW + 600, 810);
+
+        // Мерехтливі зірки
+        stars.forEach((st) => {
+          const alpha = 0.35 + 0.65 * Math.abs(Math.sin(timeSec * 1.8 + st.phase));
+          c.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+          c.beginPath();
+          c.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+          c.fill();
+        });
+
+        // Хвилі полярного сяйва (Aurora Borealis)
+        c.save();
+        const aurGrad = c.createLinearGradient(0, 80, 0, 360);
+        aurGrad.addColorStop(0, 'rgba(114, 239, 221, 0)');
+        aurGrad.addColorStop(0.5, 'rgba(114, 239, 221, 0.22)');
+        aurGrad.addColorStop(1, 'rgba(247, 37, 133, 0)');
+        c.fillStyle = aurGrad;
+        c.beginPath();
+        c.moveTo(-200, 260);
+        for (let x = -200; x <= VW + 200; x += 80) {
+          const y = 190 + Math.sin(x * 0.004 + timeSec * 0.8) * 45;
+          c.lineTo(x, y);
+        }
+        c.lineTo(VW + 200, 380);
+        c.lineTo(-200, 380);
+        c.closePath();
+        c.fill();
+        c.restore();
+
+        // Фантастична планета з кільцем у небі
+        c.save();
+        c.translate(1240, 145);
+        const planetGrad = c.createRadialGradient(-18, -18, 8, 0, 0, 56);
+        planetGrad.addColorStop(0, '#ffd166');
+        planetGrad.addColorStop(0.6, '#f77f00');
+        planetGrad.addColorStop(1, '#7209b7');
+        c.fillStyle = planetGrad;
+        c.beginPath();
+        c.arc(0, 0, 56, 0, Math.PI * 2);
+        c.fill();
+
+        c.strokeStyle = 'rgba(114, 239, 221, 0.65)';
+        c.lineWidth = 7;
+        c.beginPath();
+        c.ellipse(0, 4, 108, 22, -0.22, 0, Math.PI * 2);
+        c.stroke();
+        c.restore();
+
+        // Далекі кристалічні хребти
+        const ridge1 = c.createLinearGradient(0, 360, 0, 560);
+        ridge1.addColorStop(0, '#3a0ca3');
+        ridge1.addColorStop(1, '#1d0a42');
+        c.fillStyle = ridge1;
+        c.beginPath();
+        c.moveTo(-250, 560);
+        c.lineTo(120, 390);
+        c.lineTo(380, 465);
+        c.lineTo(740, 370);
+        c.lineTo(1080, 470);
+        c.lineTo(1420, 380);
+        c.lineTo(1850, 460);
+        c.lineTo(1850, 580);
+        c.lineTo(-250, 580);
+        c.closePath();
+        c.fill();
+
+        // Великі сяючі кристалічні кластери по краях сцени (замість дерев)
+        drawCrystalCluster(c, 115, 535, Math.sin(timeSec * 1.2) * 0.015, 1.05, '#f72585', '#7209b7');
+        drawCrystalCluster(c, 1485, 535, Math.cos(timeSec * 1.1) * 0.015, 1.08, '#72efdd', '#4361ee');
+      }
+
+      // Напівпрозорий парапет Кристалічної Платформи
+      const wallGrad = c.createLinearGradient(0, 520, 0, 598);
+      wallGrad.addColorStop(0, 'rgba(67, 97, 238, 0.55)');
+      wallGrad.addColorStop(1, 'rgba(29, 10, 74, 0.75)');
+      c.fillStyle = wallGrad;
+      c.fillRect(-250, 520, VW + 500, 78);
+
+      c.strokeStyle = 'rgba(114, 239, 221, 0.55)';
+      c.lineWidth = 2.5;
+      c.beginPath();
+      c.moveTo(-250, 520);
+      c.lineTo(VW + 250, 520);
+      c.stroke();
+
+      // Сяючі руни вздовж бортика платформи
+      for (let rx = 80; rx < VW; rx += 160) {
+        const glow = 0.4 + 0.4 * Math.sin(timeSec * 2.5 + rx * 0.02);
+        c.fillStyle = `rgba(114, 239, 221, ${glow})`;
+        c.beginPath();
+        c.moveTo(rx, 542);
+        c.lineTo(rx + 12, 558);
+        c.lineTo(rx, 574);
+        c.lineTo(rx - 12, 558);
+        c.closePath();
+        c.fill();
+      }
+
+      // Кристалічна тераса-міст (напівпрозора, щоб не перекривати динамічний фон)
+      const deckAlpha = window.hasCustomThemeBg ? 0.58 : 0.88;
+      const deckGrad = c.createLinearGradient(0, 595, 0, 920);
+      deckGrad.addColorStop(0, `rgba(45, 24, 98, ${deckAlpha})`);
+      deckGrad.addColorStop(0.5, `rgba(28, 15, 68, ${deckAlpha})`);
+      deckGrad.addColorStop(1, `rgba(15, 8, 40, ${deckAlpha})`);
+      c.fillStyle = deckGrad;
+      c.fillRect(-300, 595, VW + 600, 340);
+
+      // Енергетичні лінії кристалічної підлоги у перспективі
+      c.strokeStyle = 'rgba(76, 201, 240, 0.35)';
+      c.lineWidth = 2;
+      for (let rowY = 595; rowY <= 900; rowY += 48) {
+        c.beginPath();
+        c.moveTo(-300, rowY);
+        c.lineTo(VW + 300, rowY);
+        c.stroke();
+      }
+
+      const deckSeams = [220, 510, 800, 1090, 1380];
+      deckSeams.forEach((topX) => {
+        const botX = 800 + (topX - 800) * 1.38;
+        c.beginPath();
+        c.moveTo(topX, 595);
+        c.lineTo(botX, 960);
+        c.stroke();
+      });
+    }
+
+    function drawCrystalCluster(c, baseX, baseY, swayRad, scale, colorTop, colorBot) {
+      c.save();
+      c.translate(baseX, baseY);
+      c.scale(scale, scale);
+      c.rotate(swayRad);
+
+      const shards = [
+        { x: -45, h: 170, w: 36, rot: -0.22 },
+        { x: 42,  h: 155, w: 34, rot: 0.24 },
+        { x: 0,   h: 235, w: 48, rot: 0.02 }
+      ];
+      shards.forEach((sh) => {
+        c.save();
+        c.translate(sh.x, 0);
+        c.rotate(sh.rot);
+        const cg = c.createLinearGradient(0, -sh.h, 0, 0);
+        cg.addColorStop(0, '#ffffff');
+        cg.addColorStop(0.25, colorTop);
+        cg.addColorStop(1, colorBot);
+        c.fillStyle = cg;
+        c.strokeStyle = '#ffffff';
+        c.lineWidth = 1.8;
+        c.beginPath();
+        c.moveTo(-sh.w / 2, 0);
+        c.lineTo(-sh.w * 0.38, -sh.h * 0.78);
+        c.lineTo(0, -sh.h);
+        c.lineTo(sh.w * 0.38, -sh.h * 0.78);
+        c.lineTo(sh.w / 2, 0);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.restore();
+      });
+
+      c.restore();
+    }
+
+    // 2. Малювання Магічної Кристалічної Скрині-Жеоди з прикладом (замість картонної коробки)
+    function drawCrystalRelic(c, isRightDragonSide, exprText) {
+      const w = 172;
+      const h = 136;
+      const x = -w / 2;
+      const y = -h / 2;
+
+      c.save();
+      if (isRightDragonSide) {
+        c.scale(-1, 1);
+      }
+
+      // Сяюча корона з гранованих кристалів зверху скрині
+      const gemColor1 = isRightDragonSide ? '#80ffdb' : '#ffd166';
+      const gemColor2 = isRightDragonSide ? '#00b4d8' : '#f72585';
+      const gemColor3 = isRightDragonSide ? '#03045e' : '#7209b7';
+
+      const topCrystals = [
+        { cx: -42, ch: 32, cw: 34, tilt: -0.18 },
+        { cx: 42,  ch: 30, cw: 32, tilt: 0.18 },
+        { cx: 0,   ch: 42, cw: 44, tilt: 0 }
+      ];
+      topCrystals.forEach((cr) => {
+        c.save();
+        c.translate(cr.cx, y + 6);
+        c.rotate(cr.tilt);
+        const cg = c.createLinearGradient(0, -cr.ch, 0, 0);
+        cg.addColorStop(0, '#ffffff');
+        cg.addColorStop(0.35, gemColor1);
+        cg.addColorStop(1, gemColor2);
+        c.fillStyle = cg;
+        c.strokeStyle = '#ffffff';
+        c.lineWidth = 2;
+        c.beginPath();
+        c.moveTo(-cr.cw / 2, 0);
+        c.lineTo(-cr.cw * 0.35, -cr.ch * 0.7);
+        c.lineTo(0, -cr.ch);
+        c.lineTo(cr.cw * 0.35, -cr.ch * 0.7);
+        c.lineTo(cr.cw / 2, 0);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.restore();
+      });
+
+      // Енергетичні бічні кільця-ручки, за які тримаються лапи персонажів
+      c.strokeStyle = '#ffd166';
+      c.lineWidth = 5;
+      c.beginPath();
+      c.arc(x - 6, 6, 16, 0, Math.PI * 2);
+      c.arc(x + w + 6, 6, 16, 0, Math.PI * 2);
+      c.stroke();
+
+      // Основний гранований корпус Кристалічної Скрині
+      const bodyGrad = c.createLinearGradient(0, y, 0, y + h);
+      bodyGrad.addColorStop(0, gemColor1);
+      bodyGrad.addColorStop(0.5, gemColor2);
+      bodyGrad.addColorStop(1, gemColor3);
+      c.fillStyle = bodyGrad;
+      c.strokeStyle = '#ffd166';
+      c.lineWidth = 3.5;
+
+      c.beginPath();
+      c.moveTo(x + 18, y);
+      c.lineTo(x + w - 18, y);
+      c.lineTo(x + w + 8, y + 28);
+      c.lineTo(x + w - 6, y + h);
+      c.lineTo(x + 6, y + h);
+      c.lineTo(x - 8, y + 28);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      // Внутрішні грані кристала
+      c.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(x + 18, y); c.lineTo(x + 24, y + h);
+      c.moveTo(x + w - 18, y); c.lineTo(x + w - 24, y + h);
+      c.stroke();
+
+      // Сяюча табличка з прикладом на кристалі
+      const pw = 148;
+      const ph = 78;
+      const px = -pw / 2;
+      const py = -ph / 2 + 4;
+
+      const frameGrad = c.createLinearGradient(px, py, px + pw, py + ph);
+      frameGrad.addColorStop(0, '#ffd166');
+      frameGrad.addColorStop(0.5, '#f77f00');
+      frameGrad.addColorStop(1, '#9b5de5');
+      c.fillStyle = frameGrad;
+      roundRectPath(c, px, py, pw, ph, 12);
+      c.fill();
+      c.strokeStyle = '#240046';
+      c.lineWidth = 2.2;
+      c.stroke();
+
+      const plateGrad = c.createLinearGradient(0, py + 5, 0, py + ph - 5);
+      plateGrad.addColorStop(0, '#ffffff');
+      plateGrad.addColorStop(1, '#dff2ff');
+      c.fillStyle = plateGrad;
+      roundRectPath(c, px + 5, py + 5, pw - 10, ph - 10, 8);
+      c.fill();
+
+      // Текст прикладу (Arial)
+      c.fillStyle = '#140a38';
+      c.font = 'bold 28px Arial, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(exprText, 0, py + ph / 2 + 1);
+
+      c.restore();
+    }
+
+    // 3. Малювання нелюдських персонажів:
+    // isDragon = false -> Рудий Лис-Звіздар (ліворуч)
+    // isDragon = true  -> Сапфіровий Дракончик (праворуч)
+    function drawCreatureAndRelic(c, isDragon, baseX, baseY, pose, exprText, timeSec, blinkState) {
+      c.save();
+      c.translate(baseX, baseY);
+      if (isDragon) {
+        c.scale(-1, 1);
+      }
+
+      const breath = Math.sin(timeSec * 2.5 + (isDragon ? 1.4 : 0)) * 2.0;
+
+      // Прямі лапи у стоячих позах (kneeBend === 0)
+      const legLength = 172;
+      const kneeBend = pose.kneeBend;
+
+      const fAnkle = { x: 0, y: -15 };
+      const bAnkle = { x: 22, y: -19 };
+
+      const fKnee = {
+        x: fAnkle.x + kneeBend * 38,
+        y: fAnkle.y - 86 + kneeBend * 14
+      };
+      const bKnee = {
+        x: bAnkle.x + kneeBend * 36,
+        y: bAnkle.y - 86 + kneeBend * 14
+      };
+
+      const hip = {
+        x: fAnkle.x + kneeBend * 16,
+        y: fAnkle.y - legLength + kneeBend * 38 + (kneeBend === 0 ? breath * 0.4 : 0)
+      };
+      const backHip = {
+        x: hip.x + 20,
+        y: hip.y - 4
+      };
+
+      const torsoRad = (pose.torsoTiltDeg * Math.PI) / 180;
+      const torsoLen = 114;
+
+      const neckBase = {
+        x: hip.x + Math.sin(torsoRad) * torsoLen,
+        y: hip.y - Math.cos(torsoRad) * torsoLen + breath * 0.7 + pose.shoulderDrop
+      };
+
+      const frontShoulder = {
+        x: neckBase.x - Math.cos(torsoRad) * 6,
+        y: neckBase.y - Math.sin(torsoRad) * 6 + 10
+      };
+      const backShoulder = {
+        x: neckBase.x + Math.cos(torsoRad) * 14,
+        y: neckBase.y + Math.sin(torsoRad) * 14 + 8
+      };
+
+      let fHandTarget = { x: pose.frontHandX, y: pose.frontHandY + breath };
+      let bHandTarget = { x: pose.backHandX, y: pose.backHandY + breath };
+
+      if (pose.handsOnBox) {
+        fHandTarget = { x: pose.boxX - 24, y: pose.boxY + 26 };
+        bHandTarget = { x: pose.boxX + 18, y: pose.boxY + 12 };
+      }
+
+      const frontArmIK = solveArmIK(frontShoulder.x, frontShoulder.y, fHandTarget.x, fHandTarget.y, 76, 74);
+      const backArmIK = solveArmIK(backShoulder.x, backShoulder.y, bHandTarget.x, bHandTarget.y, 76, 74);
+
+      // Енергетичні тіні під персонажем та під кристалом
+      c.save();
+      c.fillStyle = 'rgba(10, 5, 28, 0.45)';
+      c.beginPath();
+      c.ellipse(12, 2, 62, 15, 0, 0, Math.PI * 2);
+      c.fill();
+
+      const liftHeight = Math.max(0, -68 - pose.boxY);
+      const boxShadowScale = Math.max(0.48, 1 - liftHeight / 230);
+      c.fillStyle = `rgba(10, 5, 28, ${0.48 * boxShadowScale})`;
+      c.beginPath();
+      c.ellipse(pose.boxX, 4, 98 * boxShadowScale, 20 * boxShadowScale, 0, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+
+      // Палітра хутра Лиса vs луски Дракончика
+      const furMain = isDragon ? '#0096c7' : '#f77f00';
+      const furDark = isDragon ? '#023e8a' : '#d62828';
+      const furStroke = isDragon ? '#03045e' : '#6a040f';
+      const pawFill = isDragon ? '#48cae4' : '#3d1e05';
+
+      /* ---------------- ШАР 0: ХВІСТ ТА КРИЛА (ПОЗАДУ ТУЛУБА) ---------------- */
+      c.save();
+      c.translate(hip.x - 14, hip.y - 8);
+      const tailWag = Math.sin(timeSec * (pose.mood === 'happy' ? 8 : 2.8)) * (pose.mood === 'happy' ? 0.22 : 0.08);
+      c.rotate(tailWag);
+
+      if (!isDragon) {
+        // Пишний лисячий хвіст із білим кінчиком
+        c.fillStyle = '#f77f00';
+        c.strokeStyle = '#6a040f';
+        c.lineWidth = 2.5;
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.bezierCurveTo(-48, -10, -95, -55, -82, -105);
+        c.bezierCurveTo(-68, -125, -28, -95, -18, -52);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        // Білий пухнастий кінчик хвоста
+        c.fillStyle = '#fff8eb';
+        c.beginPath();
+        c.arc(-74, -92, 22, 0, Math.PI * 2);
+        c.fill();
+      } else {
+        // Лускатий хвіст Дракончика з кристалічним наконечником
+        c.fillStyle = '#0077b6';
+        c.strokeStyle = '#03045e';
+        c.lineWidth = 2.5;
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.quadraticCurveTo(-65, 12, -92, -45);
+        c.quadraticCurveTo(-55, -35, -10, -18);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        // Сяючий кристал на кінчику хвоста дракона
+        c.fillStyle = '#80ffdb';
+        c.beginPath();
+        c.moveTo(-92, -45);
+        c.lineTo(-108, -62);
+        c.lineTo(-85, -65);
+        c.closePath();
+        c.fill();
+        c.stroke();
+      }
+      c.restore();
+
+      /* ---------------- ШАР 1: ЗАДНЯ ЛАПА (ВЕРХНЯ) ---------------- */
+      drawLimbSegment(c, backShoulder.x, backShoulder.y, backArmIK.ex, backArmIK.ey, 13, 11, furDark, furStroke);
+      drawLimbSegment(c, backArmIK.ex, backArmIK.ey, backArmIK.hx, backArmIK.hy, 10.5, 8.5, furMain, furStroke);
+      c.fillStyle = pawFill;
+      c.strokeStyle = furStroke;
+      c.lineWidth = 2;
+      c.beginPath();
+      c.ellipse(backArmIK.hx + 3, backArmIK.hy + 2, 10, 8, 0.2, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      /* ---------------- ШАР 2: ПРЯМІ НИЖНІ ЛАПИ ТА ЧОБІТКИ ---------------- */
+      drawLimbSegment(c, backHip.x, backHip.y, bKnee.x, bKnee.y, 16, 13.5, furDark, furStroke);
+      drawLimbSegment(c, bKnee.x, bKnee.y, bAnkle.x, bAnkle.y, 13, 11, furDark, furStroke);
+      drawAstroBoot(c, bAnkle.x, bAnkle.y, isDragon ? '#03045e' : '#5a189a', '#72efdd');
+
+      drawLimbSegment(c, hip.x, hip.y, fKnee.x, fKnee.y, 17, 14, furMain, furStroke);
+      drawLimbSegment(c, fKnee.x, fKnee.y, fAnkle.x, fAnkle.y, 13.5, 11.5, furMain, furStroke);
+      drawAstroBoot(c, fAnkle.x, fAnkle.y, isDragon ? '#023e8a' : '#7209b7', '#ffd166', '#72efdd');
+
+      /* ---------------- ШАР 3: ТУЛУБ, КРИЛА ТА ГОЛОВА ІСТОТИ ---------------- */
+      c.save();
+      c.translate(hip.x, hip.y);
+      c.rotate(torsoRad);
+
+      // Крильця Дракончика за спиною
+      if (isDragon) {
+        c.save();
+        const wingFlap = Math.sin(timeSec * (pose.mood === 'happy' ? 9 : 3.2)) * 0.14;
+        c.translate(-18, -88);
+        c.rotate(wingFlap);
+        c.fillStyle = 'rgba(114, 239, 221, 0.75)';
+        c.strokeStyle = '#03045e';
+        c.lineWidth = 2.5;
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.quadraticCurveTo(-55, -52, -88, -18);
+        c.quadraticCurveTo(-60, 2, -48, 22);
+        c.quadraticCurveTo(-25, 10, 0, 18);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.restore();
+      }
+
+      // Основа тулуба
+      c.fillStyle = furMain;
+      c.strokeStyle = furStroke;
+      c.lineWidth = 2.4;
+      roundRectPath(c, -24, -114, 50, 114, 20);
+      c.fill();
+      c.stroke();
+
+      // Світле хутро на грудях Лиса або золоті лусочки на животі Дракончика
+      c.fillStyle = isDragon ? '#ffd166' : '#fff3d6';
+      c.beginPath();
+      c.ellipse(12, -58, 14, 42, 0, 0, Math.PI * 2);
+      c.fill();
+
+      // Космічний жилет-оберіг
+      c.fillStyle = isDragon ? '#3a0ca3' : '#2b9348';
+      c.strokeStyle = '#ffd166';
+      c.lineWidth = 2;
+      roundRectPath(c, -22, -108, 36, 56, 10);
+      c.fill();
+      c.stroke();
+
+      // ГОЛОВА ЛИСЕНЯТИ / ДРАКОНЧИКА
+      c.save();
+      c.translate(4, -122);
+      const headRad = (pose.headTiltDeg * Math.PI) / 180;
+      c.rotate(headRad);
+
+      const earDroop = pose.mood === 'sad' ? 0.35 : pose.mood === 'happy' ? -0.12 : 0;
+
+      if (!isDragon) {
+        // Заднє гостре вушко Лиса
+        c.save();
+        c.translate(-10, -52);
+        c.rotate(-0.25 + earDroop);
+        c.fillStyle = '#d62828';
+        c.strokeStyle = '#6a040f';
+        c.lineWidth = 2.2;
+        c.beginPath();
+        c.moveTo(-12, 0);
+        c.lineTo(0, -38);
+        c.lineTo(14, 0);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.restore();
+      } else {
+        // Задній золотий ріжок Дракончика
+        c.save();
+        c.translate(-8, -54);
+        c.rotate(-0.3 + earDroop * 0.5);
+        c.fillStyle = '#ffd166';
+        c.strokeStyle = '#03045e';
+        c.lineWidth = 2.2;
+        c.beginPath();
+        c.moveTo(-9, 0);
+        c.quadraticCurveTo(-18, -28, -4, -38);
+        c.quadraticCurveTo(8, -20, 9, 0);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.restore();
+      }
+
+      // Голова та витягнута мордочка (3/4 профіль)
+      c.fillStyle = furMain;
+      c.strokeStyle = furStroke;
+      c.lineWidth = 2.4;
+      c.beginPath();
+      c.moveTo(-25, -38);
+      c.bezierCurveTo(-25, -66, 22, -66, 28, -40);
+      // Виступаючий носик/мордочка
+      c.lineTo(44, -28);
+      c.quadraticCurveTo(45, -14, 26, -10);
+      c.bezierCurveTo(6, -3, -25, -10, -25, -38);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      // Пухнаста біла щічка Лиса або гребінець Дракончика
+      if (!isDragon) {
+        c.fillStyle = '#fff8eb';
+        c.beginPath();
+        c.moveTo(-12, -22);
+        c.quadraticCurveTo(10, -26, 38, -18);
+        c.quadraticCurveTo(18, -4, -6, -10);
+        c.closePath();
+        c.fill();
+
+        // Чорний кінчик лисячого носика
+        c.fillStyle = '#1b0a05';
+        c.beginPath();
+        c.arc(42, -26, 5.5, 0, Math.PI * 2);
+        c.fill();
+      } else {
+        // Ніздря дракончика
+        c.fillStyle = '#03045e';
+        c.beginPath();
+        c.arc(37, -25, 3, 0, Math.PI * 2);
+        c.fill();
+      }
+
+      // Переднє вушко Лиса або передній ріжок і плавничок Дракончика
+      if (!isDragon) {
+        c.save();
+        c.translate(-14, -50);
+        c.rotate(-0.08 + earDroop);
+        c.fillStyle = '#f77f00';
+        c.strokeStyle = '#6a040f';
+        c.lineWidth = 2.2;
+        c.beginPath();
+        c.moveTo(-14, 4);
+        c.lineTo(-2, -38);
+        c.lineTo(14, 2);
+        c.closePath();
+        c.fill();
+        c.stroke();
+
+        c.fillStyle = '#fff3d6';
+        c.beginPath();
+        c.moveTo(-8, 0);
+        c.lineTo(-2, -26);
+        c.lineTo(7, 0);
+        c.closePath();
+        c.fill();
+        c.restore();
+      } else {
+        c.save();
+        c.translate(-15, -52);
+        c.rotate(-0.15 + earDroop * 0.5);
+        c.fillStyle = '#ffd166';
+        c.strokeStyle = '#03045e';
+        c.lineWidth = 2.2;
+        c.beginPath();
+        c.moveTo(-10, 2);
+        c.quadraticCurveTo(-22, -26, -6, -40);
+        c.quadraticCurveTo(8, -22, 8, 2);
+        c.closePath();
+        c.fill();
+        c.stroke();
+        c.restore();
+      }
+
+      // Виразні очі істоти
+      const eyePositions = [
+        { x: 4, y: -36, rx: 6.5, ry: 7.2 },
+        { x: 20, y: -37, rx: 5.5, ry: 6.2 }
+      ];
+      eyePositions.forEach((ep) => {
+        if (blinkState.closed) {
+          c.strokeStyle = furStroke;
+          c.lineWidth = 2.6;
+          c.beginPath();
+          c.moveTo(ep.x - ep.rx, ep.y);
+          c.quadraticCurveTo(ep.x, ep.y + 3, ep.x + ep.rx, ep.y);
+          c.stroke();
+        } else {
+          c.fillStyle = '#ffffff';
+          c.strokeStyle = furStroke;
+          c.lineWidth = 1.6;
+          c.beginPath();
+          c.ellipse(ep.x, ep.y, ep.rx, ep.ry, 0, 0, Math.PI * 2);
+          c.fill();
+          c.stroke();
+
+          const lookY = pose.mood === 'sad' ? 1.8 : 0.4;
+          c.fillStyle = isDragon ? '#ff9e00' : '#2b9348';
+          c.beginPath();
+          c.arc(ep.x + 1.4, ep.y + lookY, ep.rx * 0.65, 0, Math.PI * 2);
+          c.fill();
+
+          c.fillStyle = '#10002b';
+          c.beginPath();
+          c.arc(ep.x + 1.6, ep.y + lookY, ep.rx * 0.35, 0, Math.PI * 2);
+          c.fill();
+
+          c.fillStyle = '#ffffff';
+          c.beginPath();
+          c.arc(ep.x + 0.3, ep.y - 1.8 + lookY * 0.5, 1.6, 0, Math.PI * 2);
+          c.fill();
+        }
+      });
+
+      // Брови залежно від емоції
+      c.strokeStyle = furStroke;
+      c.lineWidth = 2.8;
+      c.lineCap = 'round';
+      c.beginPath();
+      if (pose.mood === 'sad') {
+        c.moveTo(-3, -45); c.quadraticCurveTo(3, -49, 9, -51);
+        c.moveTo(15, -51); c.quadraticCurveTo(21, -49, 26, -45);
+      } else if (pose.mood === 'effort') {
+        c.moveTo(-3, -49); c.lineTo(9, -45);
+        c.moveTo(15, -45); c.lineTo(26, -49);
+      } else if (pose.mood === 'happy') {
+        c.moveTo(-3, -49); c.quadraticCurveTo(3, -54, 9, -49);
+        c.moveTo(15, -49); c.quadraticCurveTo(21, -54, 26, -48);
+      } else {
+        c.moveTo(-3, -47); c.quadraticCurveTo(3, -51, 9, -48);
+        c.moveTo(15, -48); c.quadraticCurveTo(21, -51, 26, -47);
+      }
+      c.stroke();
+
+      // Ротик залежно від емоції
+      c.strokeStyle = furStroke;
+      c.lineWidth = 2.5;
+      c.beginPath();
+      if (pose.mood === 'happy') {
+        c.fillStyle = '#e63946';
+        c.moveTo(10, -17);
+        c.quadraticCurveTo(19, -7, 27, -16);
+        c.closePath();
+        c.fill();
+        c.stroke();
+      } else if (pose.mood === 'sad') {
+        c.moveTo(12, -11);
+        c.quadraticCurveTo(19, -17, 26, -11);
+        c.stroke();
+      } else if (pose.mood === 'effort') {
+        c.moveTo(11, -14);
+        c.lineTo(25, -15);
+        c.stroke();
+      } else if (pose.mood === 'puzzled') {
+        c.fillStyle = furStroke;
+        c.arc(18, -14, 3.5, 0, Math.PI * 2);
+        c.fill();
+      } else {
+        c.moveTo(11, -16);
+        c.quadraticCurveTo(19, -11, 26, -16);
+        c.stroke();
+      }
+
+      c.restore(); // кінець голови
+      c.restore(); // кінець тулуба
+
+      /* ---------------- ШАР 4: 3D-КРИСТАЛІЧНА СКРИНЯ (МІЖ ЛАПАМИ) ---------------- */
+      c.save();
+      c.translate(pose.boxX, pose.boxY);
+      c.rotate((pose.boxRotDeg * Math.PI) / 180);
+      drawCrystalRelic(c, isDragon, exprText);
+      c.restore();
+
+      /* ---------------- ШАР 5: ПЕРЕДНЯ ЛАПА (ПОВЕРХ КРИСТАЛА) ---------------- */
+      drawLimbSegment(c, frontShoulder.x, frontShoulder.y, frontArmIK.ex, frontArmIK.ey, 13.5, 11.5, furMain, furStroke);
+      drawLimbSegment(c, frontArmIK.ex, frontArmIK.ey, frontArmIK.hx, frontArmIK.hy, 11, 9, furMain, furStroke);
+
+      c.fillStyle = pawFill;
+      c.strokeStyle = furStroke;
+      c.lineWidth = 2;
+      c.beginPath();
+      c.ellipse(frontArmIK.hx + 3, frontArmIK.hy + 2, 10.5, 8.5, 0.2, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+
+      c.restore();
+    }
+
+    function drawAstroBoot(c, ankleX, ankleY, mainColor, soleColor, stripeColor) {
+      c.save();
+      c.translate(ankleX, ankleY);
+      c.fillStyle = mainColor;
+      c.strokeStyle = '#10002b';
+      c.lineWidth = 2;
+      c.beginPath();
+      c.moveTo(-15, -4);
+      c.lineTo(27, -1);
+      c.quadraticCurveTo(43, 0, 44, 12);
+      c.lineTo(-17, 12);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      c.fillStyle = soleColor;
+      c.beginPath();
+      c.moveTo(24, -1);
+      c.quadraticCurveTo(42, 0, 44, 12);
+      c.lineTo(22, 12);
+      c.closePath();
+      c.fill();
+      c.stroke();
+
+      if (stripeColor) {
+        c.fillStyle = stripeColor;
+        c.beginPath();
+        c.arc(2, 4, 4, 0, Math.PI * 2);
+        c.fill();
+      }
+
+      c.fillStyle = soleColor;
+      roundRectPath(c, -18, 10, 63, 6.5, 3);
+      c.fill();
+      c.stroke();
+      c.restore();
+    }
+
+    /* ============================================================================
+       5. СЦЕНАРІЇ АНІМАЦІЇ ПІСЛЯ ВИБОРУ ЗНАКА
+       ============================================================================ */
+    function startVictorySequence(winner) {
+      const t0 = performance.now();
+      let liftSoundDone = false;
+      let winSoundDone = false;
+      let thudSoundDone = false;
+
+      activeSequence = (now) => {
+        const dt = (now - t0) / 1000;
+
+        const evalWinnerPose = (s) => {
+          if (s < 0.52) {
+            return blendPoses(KEY_POSES.IDLE, KEY_POSES.REACH_BOX, easeInOutCubic(s / 0.52));
+          } else if (s < 0.85) {
+            if (!liftSoundDone) {
+              liftSoundDone = true;
+              SoundFX.playLiftEffort();
+              if (winner === 'left' || winner === 'both') spawnEnergyWave(462, 770);
+              if (winner === 'right' || winner === 'both') spawnEnergyWave(1138, 770);
+            }
+            return blendPoses(KEY_POSES.REACH_BOX, KEY_POSES.LIFT_PASSING, easeInOutCubic((s - 0.52) / 0.33));
+          } else if (s < 1.22) {
+            const p = Math.min(1, easeOutBack((s - 0.85) / 0.37));
+            return blendPoses(KEY_POSES.LIFT_PASSING, KEY_POSES.HOLD_PROUD, p);
+          } else if (s < 2.55) {
+            if (!winSoundDone) {
+              winSoundDone = true;
+              SoundFX.playVictoryAndSigh(winner === 'both');
+              if (winner === 'left' || winner === 'both') spawnVictoryStars(430, 560);
+              if (winner === 'right' || winner === 'both') spawnVictoryStars(1170, 560);
+              if (winner === 'left') spawnSighCloud(1250, 560, -1);
+              if (winner === 'right') spawnSighCloud(350, 560, 1);
+            }
+            const bob = Math.sin((s - 1.22) * 5.2) * 3.5;
+            return {
+              ...KEY_POSES.HOLD_PROUD,
+              kneeBend: 0,
+              boxY: KEY_POSES.HOLD_PROUD.boxY + bob
+            };
+          } else if (s < 3.12) {
+            return blendPoses(KEY_POSES.HOLD_PROUD, KEY_POSES.REACH_BOX, easeInOutCubic((s - 2.55) / 0.57));
+          } else if (s < 3.60) {
+            if (!thudSoundDone) {
+              thudSoundDone = true;
+              SoundFX.playCrystalThud();
+              if (winner === 'left' || winner === 'both') spawnEnergyWave(462, 770);
+              if (winner === 'right' || winner === 'both') spawnEnergyWave(1138, 770);
+            }
+            return blendPoses(KEY_POSES.REACH_BOX, KEY_POSES.IDLE, easeInOutCubic((s - 3.12) / 0.48));
+          }
+          return KEY_POSES.IDLE;
+        };
+
+        const evalLoserPose = (s) => {
+          if (s < 0.65) {
+            return KEY_POSES.IDLE;
+          } else if (s < 1.20) {
+            return blendPoses(KEY_POSES.IDLE, KEY_POSES.SAD_STANDING, easeInOutCubic((s - 0.65) / 0.55));
+          } else if (s < 2.95) {
+            const sighWave = Math.sin((s - 1.20) * 3.4) * 2.5;
+            return {
+              ...KEY_POSES.SAD_STANDING,
+              kneeBend: 0,
+              headTiltDeg: KEY_POSES.SAD_STANDING.headTiltDeg + sighWave
+            };
+          } else if (s < 3.60) {
+            return blendPoses(KEY_POSES.SAD_STANDING, KEY_POSES.IDLE, easeInOutCubic((s - 2.95) / 0.65));
+          }
+          return KEY_POSES.IDLE;
+        };
+
+        if (winner === 'left') {
+          leftCharPose = evalWinnerPose(dt);
+          rightCharPose = evalLoserPose(dt);
+        } else if (winner === 'right') {
+          leftCharPose = evalLoserPose(dt);
+          rightCharPose = evalWinnerPose(dt);
+        } else {
+          leftCharPose = evalWinnerPose(dt);
+          rightCharPose = evalWinnerPose(dt);
+        }
+
+        if (dt >= 3.62) {
+          activeSequence = null;
+          leftCharPose = { ...KEY_POSES.IDLE };
+          rightCharPose = { ...KEY_POSES.IDLE };
+          if (!window.isRemoteAction) {
+            advanceToNextProblem(true);
+          } else {
+            isBusy = false;
+          }
+        }
+      };
+    }
+
+    function startWrongSequence(clickedBtn) {
+      const t0 = performance.now();
+      SoundFX.playErrorBonk();
+      if (clickedBtn) {
+        clickedBtn.classList.remove('wobble-error');
+        void clickedBtn.offsetWidth;
+        clickedBtn.classList.add('wobble-error');
+      }
+
+      activeSequence = (now) => {
+        const dt = (now - t0) / 1000;
+        if (dt < 0.22) {
+          const p = dt / 0.22;
+          leftCharPose = blendPoses(KEY_POSES.IDLE, KEY_POSES.PUZZLED, p);
+          rightCharPose = blendPoses(KEY_POSES.IDLE, KEY_POSES.PUZZLED, p);
+        } else if (dt < 0.58) {
+          leftCharPose = { ...KEY_POSES.PUZZLED };
+          rightCharPose = { ...KEY_POSES.PUZZLED };
+        } else if (dt < 0.82) {
+          const p = (dt - 0.58) / 0.24;
+          leftCharPose = blendPoses(KEY_POSES.PUZZLED, KEY_POSES.IDLE, p);
+          rightCharPose = blendPoses(KEY_POSES.PUZZLED, KEY_POSES.IDLE, p);
+        } else {
+          hideSlotSign();
+          leftCharPose = { ...KEY_POSES.IDLE };
+          rightCharPose = { ...KEY_POSES.IDLE };
+          activeSequence = null;
+          isBusy = false;
+        }
+      };
+    }
+
+    /* ============================================================================
+       6. ПРИВ'ЯЗКА DOM-КНОПОК, ПЕРЕМИКАННЯ ЗАВДАНЬ ТА FIREBASE СИНХРОНІЗАЦІЯ
+       ============================================================================ */
+    const leftExprDom = document.getElementById('left-expr-dom');
+    const rightExprDom = document.getElementById('right-expr-dom');
+    const leftPlaque = document.getElementById('left-plaque');
+    const rightPlaque = document.getElementById('right-plaque');
+    const slotSignSvg = document.getElementById('slot-sign-svg');
+    const slotSignPath = document.getElementById('slot-sign-path');
+
+    const btnLess = document.getElementById('btn-less');
+    const btnEqual = document.getElementById('btn-equal');
+    const btnGreater = document.getElementById('btn-greater');
+    const btnSkip = document.getElementById('skip-next-btn');
+
+    function showSlotSign(sign) {
+      if (sign === '<') {
+        slotSignPath.setAttribute('d', 'M38,14 L18,30 L38,46');
+      } else if (sign === '>') {
+        slotSignPath.setAttribute('d', 'M22,14 L42,30 L22,46');
+      } else {
+        slotSignPath.setAttribute('d', 'M16,22 L44,22 M16,38 L44,38');
+      }
+      slotSignSvg.classList.add('visible');
+    }
+
+    function hideSlotSign() {
+      slotSignSvg.classList.remove('visible');
+    }
+
+    function onSelectSign(chosenSign, btnEl, fromRemote = false) {
+      if (isBusy && !fromRemote) return;
+      isBusy = true;
+      SoundFX.playClick();
+      showSlotSign(chosenSign);
+
+      if (!fromRemote) {
+        sendGameAction('select_sign', { chosenSign: chosenSign });
+      }
+
+      if (chosenSign === currentProblem.sign) {
+        const winner =
+          currentProblem.sign === '>' ? 'left' :
+          currentProblem.sign === '<' ? 'right' : 'both';
+        startVictorySequence(winner);
+      } else {
+        startWrongSequence(btnEl);
+      }
+    }
+
+    function applyProblemData(probObj) {
+      hideSlotSign();
+      currentProblem = probObj;
+
+      leftPlaque.style.transform = 'scale(0.9)';
+      rightPlaque.style.transform = 'scale(0.9)';
+
+      setTimeout(() => {
+        leftExprDom.textContent = currentProblem.leftText;
+        rightExprDom.textContent = currentProblem.rightText;
+        leftPlaque.style.transform = 'scale(1)';
+        rightPlaque.style.transform = 'scale(1)';
+        isBusy = false;
+      }, 160);
+    }
+
+    function advanceToNextProblem(broadcast = true) {
+      const nextProb = getNextProblem();
+      applyProblemData(nextProb);
+      if (broadcast) {
+        sendGameAction('set_problem', {
+          problem: nextProb,
+          problemIdx: problemIdx
+        });
+      }
+    }
+
+    [btnLess, btnEqual, btnGreater, btnSkip].forEach((b) => {
+      b.addEventListener('mouseenter', () => SoundFX.playHover());
+    });
+
+    btnLess.addEventListener('click', () => onSelectSign('<', btnLess, false));
+    btnEqual.addEventListener('click', () => onSelectSign('=', btnEqual, false));
+    btnGreater.addEventListener('click', () => onSelectSign('>', btnGreater, false));
+
+    btnSkip.addEventListener('click', () => {
+      SoundFX.playClick();
+      activeSequence = null;
+      leftCharPose = { ...KEY_POSES.IDLE };
+      rightCharPose = { ...KEY_POSES.IDLE };
+      advanceToNextProblem(true);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === '<' || e.key === ',') {
+        onSelectSign('<', btnLess, false);
+      } else if (e.key === 'ArrowDown' || e.key === '=' || e.key === 'Enter') {
+        onSelectSign('=', btnEqual, false);
+      } else if (e.key === 'ArrowRight' || e.key === '>' || e.key === '.') {
+        onSelectSign('>', btnGreater, false);
+      }
+    });
+
+    // Прослуховування дій у Firebase (game_action)
+    if (window.db) {
+      window.db.ref('game_action').on('value', (snap) => {
+        const data = snap.val();
+        if (!data || !data.timestamp) return;
+        if (data.senderId === window.mySenderId) return;
+        if (data.timestamp < appStartTime) return;
+
+        window.isRemoteAction = true;
+        try {
+          if (data.type === 'select_sign' && data.chosenSign) {
+            const targetBtn =
+              data.chosenSign === '<' ? btnLess :
+              data.chosenSign === '>' ? btnGreater : btnEqual;
+            onSelectSign(data.chosenSign, targetBtn, true);
+          } else if (data.type === 'set_problem' && data.problem) {
+            activeSequence = null;
+            leftCharPose = { ...KEY_POSES.IDLE };
+            rightCharPose = { ...KEY_POSES.IDLE };
+            if (typeof data.problemIdx === 'number') {
+              problemIdx = data.problemIdx;
+            }
+            applyProblemData(data.problem);
+          } else if (data.type === 'draw_line' && window.handleRemoteDrawLine) {
+            window.handleRemoteDrawLine(data);
+          } else if (data.type === 'clear_canvas' && window.handleRemoteClearCanvas) {
+            window.handleRemoteClearCanvas();
+          }
+        } finally {
+          window.isRemoteAction = false;
+        }
+      });
+    }
+
+    /* ============================================================================
+       7. ГОЛОВНИЙ ЦИКЛ ВІДМАЛЬОВУВАННЯ (60 FPS)
+       ============================================================================ */
+    function updateBlink(blinkObj) {
+      blinkObj.timer--;
+      if (blinkObj.timer <= 0) {
+        blinkObj.closed = true;
+        if (blinkObj.timer <= -8) {
+          blinkObj.closed = false;
+          blinkObj.timer = 110 + Math.floor(Math.random() * 160);
+        }
+      }
+    }
+
+    function drawWispsAndParticles(c, timeSec) {
+      // Сяючі енергетичні метелики
+      energywisps.forEach((b) => {
+        b.x += b.vx;
+        b.y += Math.sin(timeSec * 3.5 + b.phase) * 0.65;
+        if (b.x < 180 || b.x > 1420) b.vx *= -1;
+
+        const wingScale = 0.35 + Math.abs(Math.sin(timeSec * 11 + b.phase)) * 0.65;
+        c.save();
+        c.translate(b.x, b.y);
+        c.rotate(b.vx > 0 ? 0.2 : -0.2);
+        c.scale(1, wingScale);
+
+        c.fillStyle = b.color1;
+        c.beginPath();
+        c.ellipse(-5, -4, 9, 6, -0.4, 0, Math.PI * 2);
+        c.ellipse(5, -4, 9, 6, 0.4, 0, Math.PI * 2);
+        c.fill();
+
+        c.fillStyle = b.color2;
+        c.beginPath();
+        c.ellipse(-4, 4, 6, 4.5, 0.3, 0, Math.PI * 2);
+        c.ellipse(4, 4, 6, 4.5, -0.3, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      });
+
+      // Кристалічні іскри
+      floatingShards.forEach((lf) => {
+        lf.x += lf.vx + Math.sin(timeSec + lf.rot) * 0.25;
+        lf.y += lf.vy;
+        lf.rot += lf.vRot;
+        if (lf.y < -30) {
+          lf.y = VH + 20;
+          lf.x = Math.random() * VW;
+        }
+        if (lf.x > VW + 40) lf.x = -30;
+
+        c.save();
+        c.translate(lf.x, lf.y);
+        c.rotate(lf.rot);
+        c.fillStyle = lf.color;
+        c.beginPath();
+        c.moveTo(0, -lf.size);
+        c.lineTo(lf.size * 0.55, 0);
+        c.lineTo(0, lf.size);
+        c.lineTo(-lf.size * 0.55, 0);
+        c.closePath();
+        c.fill();
+        c.restore();
+      });
+
+      // Динамічні ефекти
+      for (let i = dynamicParticles.length - 1; i >= 0; i--) {
+        const p = dynamicParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= p.decay;
+        if (p.alpha <= 0) {
+          dynamicParticles.splice(i, 1);
+          continue;
+        }
+
+        c.save();
+        c.globalAlpha = Math.max(0, p.alpha);
+        if (p.type === 'dust' || p.type === 'sigh') {
+          p.r += 0.24;
+          c.fillStyle = p.type === 'dust' ? '#72efdd' : '#e6f4f8';
+          c.beginPath();
+          c.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          c.fill();
+        } else if (p.type === 'star') {
+          p.vy += 0.13;
+          p.rot += p.vRot;
+          c.translate(p.x, p.y);
+          c.rotate(p.rot);
+          c.fillStyle = p.color;
+          const s = p.size;
+          c.beginPath();
+          c.moveTo(0, -s);
+          c.lineTo(s * 0.35, -s * 0.35);
+          c.lineTo(s, 0);
+          c.lineTo(s * 0.35, s * 0.35);
+          c.lineTo(0, s);
+          c.lineTo(-s * 0.35, s * 0.35);
+          c.lineTo(-s, 0);
+          c.lineTo(-s * 0.35, -s * 0.35);
+          c.closePath();
+          c.fill();
+        }
+        c.restore();
+      }
+    }
+
+    function renderLoop(now) {
+      const timeSec = now / 1000;
+
+      if (activeSequence) {
+        activeSequence(now);
+      }
+
+      updateBlink(leftBlink);
+      updateBlink(rightBlink);
+
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const scaleX = canvas.width / VW;
+      const scaleY = canvas.height / VH;
+      const scale = Math.min(scaleX, scaleY);
+      const offsetX = (canvas.width - VW * scale) / 2;
+      const offsetY = (canvas.height - VH * scale) / 2;
+
+      ctx.translate(offsetX, offsetY);
+      ctx.scale(scale, scale);
+
+      // 1. Фон Кристалічної Обсерваторії (прозорий при виборі зовнішнього фону)
+      drawBackgroundScene(ctx, timeSec);
+
+      // 2. Лисеня ліворуч (X = 300, Y = 770) та Дракончик праворуч (X = 1300, Y = 770)
+      drawCreatureAndRelic(ctx, false, 300, 770, leftCharPose, currentProblem.leftText, timeSec, leftBlink);
+      drawCreatureAndRelic(ctx, true, 1300, 770, rightCharPose, currentProblem.rightText, timeSec, rightBlink);
+
+      // 3. Енергетичні метелики та іскри
+      drawWispsAndParticles(ctx, timeSec);
+
+      ctx.restore();
+      requestAnimationFrame(renderLoop);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initThemeManager();
+      currentProblem = getNextProblem();
+      leftExprDom.textContent = currentProblem.leftText;
+      rightExprDom.textContent = currentProblem.rightText;
+      requestAnimationFrame(renderLoop);
+    });
+  </script>
+
+  <!-- ============================================================================
+       8. ГЛОБАЛЬНИЙ ІНСТРУМЕНТ МАЛЮВАННЯ (ОЛІВЕЦЬ / ГУМКА) ІЗ СИНХРОНІЗАЦІЄЮ
+       ============================================================================ -->
+  <style>
+    #global-draw-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 90000;
+      pointer-events: none;
+      touch-action: none;
+    }
+
+    #toggle-draw-btn-global {
+      position: fixed;
+      bottom: 85px;
+      right: 20px;
+      padding: 12px 18px;
+      border-radius: 30px;
+      background: #8e44ad;
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      z-index: 90001;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+      transition: transform 0.15s ease;
+    }
+
+    #toggle-draw-btn-global:hover {
+      transform: scale(1.05);
+    }
+
+    #draw-panel-global {
+      position: fixed;
+      bottom: 145px;
+      right: 20px;
+      width: 250px;
+      background: #1f1b2e;
+      border: 2px solid #8e44ad;
+      border-radius: 16px;
+      z-index: 90002;
+      display: none;
+      flex-direction: column;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+      color: #ffffff;
+      overflow: hidden;
+    }
+
+    #draw-panel-header {
+      background: #8e44ad;
+      padding: 8px 12px;
+      cursor: move;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      touch-action: none;
+    }
+
+    #draw-drag-grip {
+      width: 40px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 3px;
+    }
+
+    #close-draw-panel-btn {
+      background: transparent;
+      border: none;
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    #draw-panel-body {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .draw-tools-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .draw-tool-btn {
+      flex: 1;
+      padding: 8px 6px;
+      border-radius: 10px;
+      border: 2px solid rgba(255, 255, 255, 0.25);
+      background: #2d2640;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .draw-tool-btn.active {
+      background: #8e44ad;
+      border-color: #ffffff;
+    }
+
+    .draw-controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    #draw-size-slider {
+      flex: 1;
+      cursor: pointer;
+    }
+
+    #draw-color-picker {
+      width: 40px;
+      height: 34px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    #draw-clear-btn {
+      width: 100%;
+      padding: 8px;
+      border-radius: 10px;
+      border: none;
+      background: #e74c3c;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+  </style>
+
+  <canvas id="global-draw-canvas"></canvas>
+  <button type="button" id="toggle-draw-btn-global">✏️ Малювати</button>
+
+  <div id="draw-panel-global">
+    <div id="draw-panel-header">
+      <div id="draw-drag-grip"></div>
+      <button type="button" id="close-draw-panel-btn">✕</button>
+    </div>
+    <div id="draw-panel-body">
+      <div class="draw-tools-row">
+        <button type="button" class="draw-tool-btn active" id="tool-pencil-btn">✏️ Олівець</button>
+        <button type="button" class="draw-tool-btn" id="tool-eraser-btn">🧽 Гумка</button>
+      </div>
+      <div class="draw-controls-row">
+        <input type="range" id="draw-size-slider" min="1" max="50" value="6" />
+        <input type="color" id="draw-color-picker" value="#ffeb3b" />
+      </div>
+      <button type="button" id="draw-clear-btn">🗑️ Очистити</button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const drawCanvas = document.getElementById('global-draw-canvas');
+      const dCtx = drawCanvas.getContext('2d');
+      const toggleBtn = document.getElementById('toggle-draw-btn-global');
+      const drawPanel = document.getElementById('draw-panel-global');
+      const closeBtn = document.getElementById('close-draw-panel-btn');
+      const pencilBtn = document.getElementById('tool-pencil-btn');
+      const eraserBtn = document.getElementById('tool-eraser-btn');
+      const sizeSlider = document.getElementById('draw-size-slider');
+      const colorPicker = document.getElementById('draw-color-picker');
+      const clearBtn = document.getElementById('draw-clear-btn');
+      const panelHeader = document.getElementById('draw-panel-header');
+
+      let drawingEnabled = false;
+      let isDrawing = false;
+      let currentTool = 'pencil';
+      let lastPos = { x: 0, y: 0 };
+
+      function resizeDrawCanvas() {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = drawCanvas.width;
+        tempCanvas.height = drawCanvas.height;
+        if (drawCanvas.width > 0 && drawCanvas.height > 0) {
+          tempCanvas.getContext('2d').drawImage(drawCanvas, 0, 0);
+        }
+        drawCanvas.width = window.innerWidth;
+        drawCanvas.height = window.innerHeight;
+        if (tempCanvas.width > 0 && tempCanvas.height > 0) {
+          dCtx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, drawCanvas.width, drawCanvas.height);
+        }
+      }
+      window.addEventListener('resize', resizeDrawCanvas);
+      resizeDrawCanvas();
+
+      // Перерахунок координат відносно ігрової області (1600x900), щоб лінії збігалися на різних екранах
+      function getGameViewportRect() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const scale = Math.min(w / 1600, h / 900);
+        const rw = 1600 * scale;
+        const rh = 900 * scale;
+        const rx = (w - rw) / 2;
+        const ry = (h - rh) / 2;
+        return { rx, ry, rw, rh, scale };
+      }
+
+      function toNormalizedCoords(clientX, clientY) {
+        const r = getGameViewportRect();
+        return {
+          nx: (clientX - r.rx) / r.rw,
+          ny: (clientY - r.ry) / r.rh
+        };
+      }
+
+      function fromNormalizedCoords(nx, ny) {
+        const r = getGameViewportRect();
+        return {
+          x: r.rx + nx * r.rw,
+          y: r.ry + ny * r.rh,
+          scale: r.scale
+        };
+      }
+
+      function renderStroke(nx1, ny1, nx2, ny2, color, size, tool) {
+        const p1 = fromNormalizedCoords(nx1, ny1);
+        const p2 = fromNormalizedCoords(nx2, ny2);
+        dCtx.save();
+        dCtx.lineCap = 'round';
+        dCtx.lineJoin = 'round';
+        dCtx.lineWidth = Math.max(1, size * p1.scale);
+        if (tool === 'eraser') {
+          dCtx.globalCompositeOperation = 'destination-out';
+          dCtx.strokeStyle = 'rgba(0,0,0,1)';
+        } else {
+          dCtx.globalCompositeOperation = 'source-over';
+          dCtx.strokeStyle = color;
+        }
+        dCtx.beginPath();
+        dCtx.moveTo(p1.x, p1.y);
+        dCtx.lineTo(p2.x, p2.y);
+        dCtx.stroke();
+        dCtx.restore();
+      }
+
+      window.handleRemoteDrawLine = function (data) {
+        renderStroke(data.nx1, data.ny1, data.nx2, data.ny2, data.color, data.size, data.tool);
+      };
+
+      window.handleRemoteClearCanvas = function () {
+        dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      };
+
+      // Відкриття панелі одразу вмикає олівець
+      toggleBtn.addEventListener('click', () => {
+        drawPanel.style.display = 'flex';
+        drawingEnabled = true;
+        currentTool = 'pencil';
+        pencilBtn.classList.add('active');
+        eraserBtn.classList.remove('active');
+        drawCanvas.style.pointerEvents = 'auto';
+      });
+
+      // Закриття панелі на хрестик вимикає малювання
+      closeBtn.addEventListener('click', () => {
+        drawPanel.style.display = 'none';
+        drawingEnabled = false;
+        isDrawing = false;
+        drawCanvas.style.pointerEvents = 'none';
+      });
+
+      pencilBtn.addEventListener('click', () => {
+        currentTool = 'pencil';
+        pencilBtn.classList.add('active');
+        eraserBtn.classList.remove('active');
+      });
+
+      eraserBtn.addEventListener('click', () => {
+        currentTool = 'eraser';
+        eraserBtn.classList.add('active');
+        pencilBtn.classList.remove('active');
+      });
+
+      clearBtn.addEventListener('click', () => {
+        dCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        sendGameAction('clear_canvas', {});
+      });
+
+      function startDraw(clientX, clientY) {
+        if (!drawingEnabled) return;
+        isDrawing = true;
+        lastPos = toNormalizedCoords(clientX, clientY);
+      }
+
+      function moveDraw(clientX, clientY) {
+        if (!drawingEnabled || !isDrawing) return;
+        const curPos = toNormalizedCoords(clientX, clientY);
+        const color = colorPicker.value;
+        const size = parseFloat(sizeSlider.value) || 6;
+
+        renderStroke(lastPos.nx, lastPos.ny, curPos.nx, curPos.ny, color, size, currentTool);
+        sendGameAction('draw_line', {
+          nx1: lastPos.nx,
+          ny1: lastPos.ny,
+          nx2: curPos.nx,
+          ny2: curPos.ny,
+          color: color,
+          size: size,
+          tool: currentTool
+        });
+        lastPos = curPos;
+      }
+
+      function endDraw() {
+        isDrawing = false;
+      }
+
+      drawCanvas.addEventListener('mousedown', (e) => startDraw(e.clientX, e.clientY));
+      window.addEventListener('mousemove', (e) => moveDraw(e.clientX, e.clientY));
+      window.addEventListener('mouseup', endDraw);
+
+      drawCanvas.addEventListener('touchstart', (e) => {
+        if (!drawingEnabled) return;
+        const t = e.touches[0];
+        startDraw(t.clientX, t.clientY);
+      }, { passive: false });
+
+      drawCanvas.addEventListener('touchmove', (e) => {
+        if (!drawingEnabled || !isDrawing) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        moveDraw(t.clientX, t.clientY);
+      }, { passive: false });
+
+      drawCanvas.addEventListener('touchend', endDraw);
+
+      // Перетягування панелі малювання мишкою та тачем
+      let draggingPanel = false;
+      let dragOffsetX = 0;
+      let dragOffsetY = 0;
+
+      function startPanelDrag(clientX, clientY) {
+        draggingPanel = true;
+        const rect = drawPanel.getBoundingClientRect();
+        dragOffsetX = clientX - rect.left;
+        dragOffsetY = clientY - rect.top;
+        drawPanel.style.bottom = 'auto';
+        drawPanel.style.right = 'auto';
+        drawPanel.style.left = rect.left + 'px';
+        drawPanel.style.top = rect.top + 'px';
+      }
+
+      function movePanelDrag(clientX, clientY) {
+        if (!draggingPanel) return;
+        const maxX = window.innerWidth - drawPanel.offsetWidth;
+        const maxY = window.innerHeight - drawPanel.offsetHeight;
+        const nx = Math.max(0, Math.min(maxX, clientX - dragOffsetX));
+        const ny = Math.max(0, Math.min(maxY, clientY - dragOffsetY));
+        drawPanel.style.left = nx + 'px';
+        drawPanel.style.top = ny + 'px';
+      }
+
+      panelHeader.addEventListener('mousedown', (e) => {
+        if (e.target === closeBtn) return;
+        startPanelDrag(e.clientX, e.clientY);
+      });
+      window.addEventListener('mousemove', (e) => movePanelDrag(e.clientX, e.clientY));
+      window.addEventListener('mouseup', () => { draggingPanel = false; });
+
+      panelHeader.addEventListener('touchstart', (e) => {
+        if (e.target === closeBtn) return;
+        const t = e.touches[0];
+        startPanelDrag(t.clientX, t.clientY);
+      }, { passive: true });
+      window.addEventListener('touchmove', (e) => {
+        if (!draggingPanel) return;
+        const t = e.touches[0];
+        movePanelDrag(t.clientX, t.clientY);
+      }, { passive: true });
+      window.addEventListener('touchend', () => { draggingPanel = false; });
+    })();
+  </script>
+
+  <!-- ============================================================================
+       9. УНІВЕРСАЛЬНИЙ БЛОК КОНТРОЛЮ (ІДЕНТИФІКАЦІЯ, РАДАР ТА БЛОКУВАННЯ)
+       ============================================================================ -->
+  <div id="block-overlay" style="display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.88); z-index: 999999; align-items: center; justify-content: center; text-align: center; padding: 20px;">
+    <div style="color: #ff3b30; font-size: clamp(26px, 4vw, 48px); font-weight: bold; font-family: Arial, sans-serif; text-shadow: 0 2px 10px rgba(0,0,0,0.8);">
+      Зачекай! Зараз не твій урок.
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const blockOverlay = document.getElementById('block-overlay');
+
+      // 1. Отримання та збереження імені користувача
+      const urlParams = new URLSearchParams(window.location.search);
+      let myName = urlParams.get('user');
+      if (myName && myName.trim() !== '') {
+        myName = myName.trim();
+        sessionStorage.setItem('myUserName', myName);
+      } else {
+        myName = sessionStorage.getItem('myUserName');
+        if (!myName) {
+          myName = 'Гість_' + Math.floor(Math.random() * 1000);
+          sessionStorage.setItem('myUserName', myName);
+        }
+      }
+
+      if (!window.db) return;
+
+      // 2. Радар та унікальні вкладки
+      const tabId = 'tab_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now();
+      const safeName = myName.replace(/[.#$[\]/]/g, '_');
+      const myTabRef = window.db.ref('online_users/' + safeName + '/' + tabId);
+
+      function registerPresence() {
+        window.db.ref('.info/connected').on('value', (snap) => {
+          if (snap.val() === true) {
+            myTabRef.onDisconnect().remove();
+            myTabRef.set({
+              name: myName,
+              game: CONFIG.gameId,
+              timestamp: firebase.database.ServerValue.TIMESTAMP
+            });
+          }
+        });
+      }
+      registerPresence();
+
+      window.addEventListener('beforeunload', () => {
+        try {
+          myTabRef.remove();
+        } catch (e) {}
+      });
+
+      // 3. Примусове оновлення списку та блокування
+      let firstRefreshSnap = true;
+      window.db.ref('force_refresh').on('value', () => {
+        if (firstRefreshSnap) {
+          firstRefreshSnap = false;
+          return;
+        }
+        myTabRef.set({
+          name: myName,
+          game: CONFIG.gameId,
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+      });
+
+      window.db.ref('blocked_users/' + safeName).on('value', (snap) => {
+        if (snap.val() === true) {
+          blockOverlay.style.display = 'flex';
+        } else {
+          blockOverlay.style.display = 'none';
+        }
+      });
+
+      // 4. Повернення в Лобі (з імунітетом першої секунди при прямому відкритті)
+      let isImmunityActive = true;
+      setTimeout(() => {
+        isImmunityActive = false;
+      }, 1200);
+
+      window.db.ref('current_activity').on('value', (snap) => {
+        if (isImmunityActive) return;
+        const val = snap.val();
+        if (val === 'lobby' || (val && val.status === 'lobby')) {
+          window.location.href = 'https://olgazheltvai2.github.io/rizne/lobby.html?user=' + encodeURIComponent(myName);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
