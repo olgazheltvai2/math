@@ -1,0 +1,2436 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>1-10 Динозаврики</title>
+  <style>
+    /* ==========================================================================
+       RESET & FULL-VIEWPORT WIDESCREEN SETUP
+       Two-layer SVG architecture:
+       1) #bg-svg (preserveAspectRatio="xMidYMid slice") fills 100vw x 100vh
+       2) #stage-svg (preserveAspectRatio="xMidYMid meet") keeps all interactive
+          dino eggs, mama dinosaur, and buttons 100% inside the screen on any aspect ratio.
+       CRITICAL: Never apply CSS transform to SVG elements positioned via
+       transform="translate(X,Y)", so buttons and eggs NEVER jump/run away!
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #1c2e24;
+      font-family: 'Georgia', 'Trebuchet MS', serif;
+      cursor: default;
+      touch-action: manipulation;
+    }
+
+    #game-viewport {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: radial-gradient(circle at 35% 25%, #3b6e52 0%, #182b20 100%);
+    }
+
+    /* Layer 1: Full-bleed Prehistoric Valley Background */
+    #bg-svg {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* Layer 2: Contained Interactive Stage (Mama Dino, Eggs, Stone/Wood UI Controls) */
+    #stage-svg {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 10;
+      pointer-events: auto;
+    }
+
+    /* Layer 3: Particle & Sunbeam Spores Canvas overlay */
+    #fx-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    /* ==========================================================================
+       AMBIENT PREHISTORIC VALLEY ANIMATIONS
+       ========================================================================== */
+    @keyframes pendulumSwing {
+      0%   { transform: rotate(-10deg); }
+      50%  { transform: rotate(10deg); }
+      100% { transform: rotate(-10deg); }
+    }
+
+    @keyframes curtainSwayLeft {
+      0%, 100% { transform: skewX(0deg) scaleX(1); }
+      50%      { transform: skewX(-2.2deg) scaleX(1.02); }
+    }
+
+    @keyframes curtainSwayRight {
+      0%, 100% { transform: skewX(0deg) scaleX(1); }
+      50%      { transform: skewX(2.0deg) scaleX(0.98); }
+    }
+
+    @keyframes leafSway1 {
+      0%, 100% { transform: rotate(0deg); }
+      50%      { transform: rotate(3.6deg); }
+    }
+
+    @keyframes leafSway2 {
+      0%, 100% { transform: rotate(0deg); }
+      50%      { transform: rotate(-3.2deg); }
+    }
+
+    @keyframes cloudDrift {
+      0%   { transform: translateX(-40px); }
+      50%  { transform: translateX(40px); }
+      100% { transform: translateX(-40px); }
+    }
+
+    @keyframes sunbeamPulse {
+      0%, 100% { opacity: 0.42; }
+      50%      { opacity: 0.68; }
+    }
+
+    #clock-pendulum {
+      transform-origin: 1235px 110px;
+      animation: pendulumSwing 3.2s ease-in-out infinite;
+    }
+
+    #curtain-left {
+      transform-origin: 140px 420px;
+      animation: curtainSwayLeft 6.5s ease-in-out infinite;
+    }
+
+    #curtain-right {
+      transform-origin: 1460px 420px;
+      animation: curtainSwayRight 7.8s ease-in-out infinite;
+    }
+
+    #plant-foliage-1 {
+      transform-origin: 360px 460px;
+      animation: leafSway1 5.2s ease-in-out infinite;
+    }
+
+    #plant-foliage-2 {
+      transform-origin: 1260px 470px;
+      animation: leafSway2 6.4s ease-in-out infinite;
+    }
+
+    #window-clouds {
+      animation: cloudDrift 36s ease-in-out infinite;
+    }
+
+    .sunbeam-ray {
+      animation: sunbeamPulse 6s ease-in-out infinite;
+      mix-blend-mode: screen;
+    }
+
+    /* ==========================================================================
+       SAFE INTERACTIVE STATES (NO CSS TRANSFORM ON POSITIONED <g> ELEMENTS!)
+       All hover/active feedback uses filter on outer group or inner local visual
+       ========================================================================== */
+    .interactive-node {
+      cursor: pointer;
+      pointer-events: all;
+      transition: filter 0.2s ease;
+    }
+
+    .interactive-node:hover {
+      filter: brightness(1.12) drop-shadow(0 6px 14px rgba(255, 225, 120, 0.55));
+    }
+
+    .interactive-node:active {
+      filter: brightness(0.95) drop-shadow(0 2px 6px rgba(255, 200, 90, 0.4));
+    }
+
+    .hit-target {
+      fill: rgba(255, 255, 255, 0.001);
+      pointer-events: all;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-viewport">
+    <!-- ========================================================================
+         LAYER 1: PREHISTORIC JURASSIC VALLEY SVG (1600x900, slice to fill screen)
+         ======================================================================== -->
+    <svg id="bg-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="bg-shadow-deep" x="-20%" y="-20%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#0d1f14" flood-opacity="0.55" />
+        </filter>
+        <filter id="bg-shadow-soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#122619" flood-opacity="0.45" />
+        </filter>
+        <filter id="bg-sun-blur" x="-10%" y="-10%" width="120%" height="120%">
+          <feGaussianBlur stdDeviation="18" />
+        </filter>
+
+        <!-- Prehistoric Sky & Valley Gradients -->
+        <linearGradient id="sky-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#6cc3d9" />
+          <stop offset="45%" stop-color="#a8e6cf" />
+          <stop offset="80%" stop-color="#fdffab" />
+          <stop offset="100%" stop-color="#ffd394" />
+        </linearGradient>
+
+        <linearGradient id="distant-mountain-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#6b8c9e" />
+          <stop offset="60%" stop-color="#4e736b" />
+          <stop offset="100%" stop-color="#345448" />
+        </linearGradient>
+
+        <linearGradient id="mid-hills-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#5e9e6e" />
+          <stop offset="60%" stop-color="#3e784f" />
+          <stop offset="100%" stop-color="#275235" />
+        </linearGradient>
+
+        <linearGradient id="jungle-ground-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#4e7d44" />
+          <stop offset="35%" stop-color="#3c6635" />
+          <stop offset="75%" stop-color="#2b4d26" />
+          <stop offset="100%" stop-color="#1a3317" />
+        </linearGradient>
+
+        <linearGradient id="canyon-ledge-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#a67c52" />
+          <stop offset="35%" stop-color="#855c38" />
+          <stop offset="100%" stop-color="#54361d" />
+        </linearGradient>
+
+        <linearGradient id="sunbeam-grad" x1="0%" y1="0%" x2="60%" y2="100%">
+          <stop offset="0%" stop-color="#fff9d6" stop-opacity="0.45" />
+          <stop offset="50%" stop-color="#ffe78c" stop-opacity="0.22" />
+          <stop offset="100%" stop-color="#ffcc4d" stop-opacity="0" />
+        </linearGradient>
+
+        <linearGradient id="palm-trunk-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#7a4e2d" />
+          <stop offset="50%" stop-color="#9c6840" />
+          <stop offset="100%" stop-color="#4f2f18" />
+        </linearGradient>
+      </defs>
+
+      <!-- Warm Jurassic Sky -->
+      <rect x="0" y="0" width="1600" height="540" fill="url(#sky-grad)" />
+
+      <!-- Glowing Prehistoric Sun -->
+      <circle cx="310" cy="145" r="88" fill="#fffbe0" fill-opacity="0.75" filter="url(#bg-sun-blur)" />
+      <circle cx="310" cy="145" r="52" fill="#fffdf2" />
+
+      <!-- Drifting Clouds & Friendly Pterodactyls in the Sky -->
+      <g id="window-clouds">
+        <path d="M180 185 Q205 155 240 168 Q275 142 315 165 Q345 158 360 185 Z" fill="#ffffff" fill-opacity="0.78" />
+        <path d="M680 125 Q710 98 750 110 Q785 88 825 112 Q855 108 870 130 Z" fill="#ffffff" fill-opacity="0.72" />
+        <path d="M1180 165 Q1205 140 1240 150 Q1270 132 1305 152 Q1330 148 1345 168 Z" fill="#ffffff" fill-opacity="0.75" />
+
+        <!-- Cute Distant Pterodactyl Silhouette -->
+        <g transform="translate(560, 145) scale(0.85)" fill="#527a78" opacity="0.65">
+          <path d="M0 0 Q-22 -18 -48 -8 Q-26 -2 -8 6 L-18 12 L0 8 L14 14 L8 6 Q28 -2 50 -10 Q24 -18 0 0 Z" />
+          <polygon points="0,0 12,-8 22,-5 6,3" />
+        </g>
+      </g>
+
+      <!-- Distant Prehistoric Volcano & Misty Mountains -->
+      <g id="distant-mountains">
+        <!-- Gentle Steam Puffs from Volcano -->
+        <circle cx="1035" cy="105" r="28" fill="#fff8eb" fill-opacity="0.45" filter="url(#bg-sun-blur)" />
+        <circle cx="1065" cy="78" r="38" fill="#fff8eb" fill-opacity="0.35" filter="url(#bg-sun-blur)" />
+        <circle cx="1105" cy="58" r="46" fill="#fff8eb" fill-opacity="0.25" filter="url(#bg-sun-blur)" />
+
+        <!-- Mountain Peaks -->
+        <polygon points="-40,460 180,240 430,460" fill="url(#distant-mountain-grad)" opacity="0.75" />
+        <polygon points="320,460 610,210 910,460" fill="url(#distant-mountain-grad)" opacity="0.85" />
+        <!-- Iconic Flat-Topped Volcano -->
+        <polygon points="780,460 995,140 1075,140 1290,460" fill="url(#distant-mountain-grad)" />
+        <!-- Warm Lava Rim Glow -->
+        <ellipse cx="1035" cy="140" rx="40" ry="7" fill="#ff9b54" opacity="0.55" />
+        <polygon points="1180,460 1440,225 1660,460" fill="url(#distant-mountain-grad)" opacity="0.8" />
+      </g>
+
+      <!-- Lush Midground Jungle Hills & Sparkling Waterfall -->
+      <g id="midground-hills" filter="url(#bg-shadow-soft)">
+        <path d="M-20 480 Q240 340 560 430 Q880 330 1220 420 Q1440 350 1620 430 L1620 550 L-20 550 Z" fill="url(#mid-hills-grad)" />
+        <!-- Distant Waterfall on Right Hill -->
+        <path d="M1355 382 C1362 425, 1358 465, 1368 510 L1395 510 C1385 465, 1388 425, 1378 382 Z" fill="#bef2ff" opacity="0.65" />
+        <ellipse cx="1380" cy="510" rx="34" ry="8" fill="#e0faff" opacity="0.7" />
+      </g>
+
+      <!-- Left & Right Swaying Prehistoric Cycad / Palm Trees -->
+      <g id="curtain-left" filter="url(#bg-shadow-deep)">
+        <path d="M95 535 Q125 340 165 160 L195 165 Q162 340 142 535 Z" fill="url(#palm-trunk-grad)" />
+        <g transform="translate(178, 165)">
+          <path d="M0 0 C-65 -25, -135 5, -165 55 C-105 35, -50 25, 0 12 Z" fill="#2d6e3e" />
+          <path d="M0 0 C-45 -65, -115 -75, -155 -40 C-95 -35, -45 -18, 0 5 Z" fill="#3f8c52" />
+          <path d="M0 0 C15 -75, 85 -95, 135 -60 C80 -45, 35 -25, 0 5 Z" fill="#4ca360" />
+          <path d="M0 0 C65 -35, 145 -10, 175 40 C115 20, 55 15, 0 12 Z" fill="#388049" />
+          <path d="M0 0 C45 15, 95 55, 110 105 C65 65, 30 35, 0 15 Z" fill="#285e36" />
+        </g>
+      </g>
+
+      <g id="curtain-right" filter="url(#bg-shadow-deep)">
+        <path d="M1515 535 Q1485 350 1435 175 L1405 180 Q1448 350 1468 535 Z" fill="url(#palm-trunk-grad)" />
+        <g transform="translate(1420, 178)">
+          <path d="M0 0 C65 -25, 135 5, 165 55 C105 35, 50 25, 0 12 Z" fill="#2d6e3e" />
+          <path d="M0 0 C45 -65, 115 -75, 155 -40 C95 -35, 45 -18, 0 5 Z" fill="#3f8c52" />
+          <path d="M0 0 C-15 -75, -85 -95, -135 -60 C-80 -45, -35 -25, 0 5 Z" fill="#4ca360" />
+          <path d="M0 0 C-65 -35, -145 -10, -175 40 C-115 20, -55 15, 0 12 Z" fill="#388049" />
+        </g>
+      </g>
+
+      <!-- Hanging Prehistoric Vine & Glowing Amber Sun-Crystal (Replaces Wall Clock) -->
+      <g id="wall-clock" filter="url(#bg-shadow-soft)">
+        <g id="clock-pendulum">
+          <path d="M1235 0 Q1228 65 1235 125" fill="none" stroke="#366938" stroke-width="5" stroke-linecap="round" />
+          <path d="M1235 45 C1215 38, 1205 52, 1222 58 Z" fill="#529e54" />
+          <path d="M1235 82 C1255 75, 1265 89, 1248 95 Z" fill="#529e54" />
+          <!-- Amber Sun-Dial Medallion -->
+          <circle cx="1235" cy="140" r="32" fill="#d9822b" stroke="#6e3809" stroke-width="3" />
+          <circle cx="1235" cy="140" r="25" fill="#ffcf6b" />
+          <line id="clock-hour-hand" x1="1235" y1="140" x2="1223" y2="128" stroke="#6e3809" stroke-width="3.5" stroke-linecap="round" />
+          <line id="clock-min-hand" x1="1235" y1="140" x2="1235" y2="119" stroke="#6e3809" stroke-width="2.5" stroke-linecap="round" />
+          <circle cx="1235" cy="140" r="4" fill="#6e3809" />
+        </g>
+      </g>
+
+      <!-- Canyon Stone Rim & Prehistoric Mossy Ground -->
+      <path d="M0 495 Q400 465 800 485 T1600 475 L1600 545 L0 545 Z" fill="url(#canyon-ledge-grad)" stroke="#3d2612" stroke-width="3" />
+      <rect x="0" y="520" width="1600" height="380" fill="url(#jungle-ground-grad)" />
+
+      <!-- Decorative Moss Patches, Ferns & Warm Canyon Stones -->
+      <g id="plant-foliage-1" filter="url(#bg-shadow-soft)">
+        <path d="M360 515 C310 465, 250 455, 220 490 C260 505, 315 515, 360 515 Z" fill="#2e6b34" />
+        <path d="M360 512 C330 445, 285 415, 255 438 C280 472, 325 498, 360 512 Z" fill="#438f49" />
+        <path d="M365 512 C395 445, 445 425, 468 450 C435 480, 395 502, 365 512 Z" fill="#397d3f" />
+        <path d="M362 508 C360 438, 382 405, 405 420 C402 460, 382 490, 362 508 Z" fill="#59ab5e" />
+        <!-- Prehistoric Red/Orange Hibiscus Flower -->
+        <circle cx="315" cy="465" r="14" fill="#f26444" />
+        <circle cx="315" cy="465" r="6" fill="#ffe066" />
+      </g>
+
+      <g id="plant-foliage-2" filter="url(#bg-shadow-soft)">
+        <path d="M1260 520 C1210 475, 1165 485, 1145 515 C1185 522, 1230 522, 1260 520 Z" fill="#2e6b34" />
+        <path d="M1265 516 C1305 462, 1365 465, 1385 495 C1345 512, 1300 518, 1265 516 Z" fill="#438f49" />
+        <path d="M1262 514 C1245 452, 1240 412, 1262 400 C1282 425, 1275 472, 1262 514 Z" fill="#59ab5e" />
+        <circle cx="1315" cy="482" r="13" fill="#ff758f" />
+        <circle cx="1315" cy="482" r="5.5" fill="#ffe066" />
+      </g>
+
+      <!-- Smooth River Stones around the clearing -->
+      <g fill="#6e5a49" stroke="#3b2e23" stroke-width="2" opacity="0.75">
+        <ellipse cx="145" cy="610" rx="42" ry="18" />
+        <ellipse cx="185" cy="622" rx="25" ry="12" fill="#856f5b" />
+        <ellipse cx="1445" cy="605" rx="48" ry="20" />
+        <ellipse cx="1400" cy="618" rx="28" ry="13" fill="#856f5b" />
+      </g>
+
+      <!-- Sunlit Clearing Reflection Patch -->
+      <ellipse cx="800" cy="720" rx="580" ry="145" fill="#ffe79e" fill-opacity="0.12" filter="url(#bg-sun-blur)" />
+
+      <!-- Volumetric Diagonal Golden Sunbeams -->
+      <g id="volumetric-sunbeams" pointer-events="none">
+        <polygon class="sunbeam-ray" points="160,0 410,0 920,900 440,900" fill="url(#sunbeam-grad)" />
+        <polygon class="sunbeam-ray" style="animation-delay: -2.5s;" points="440,0 680,0 1320,900 840,900" fill="url(#sunbeam-grad)" />
+      </g>
+    </svg>
+
+    <!-- ========================================================================
+         LAYER 2: INTERACTIVE STAGE & UI SVG (1600x900, preserveAspectRatio="xMidYMid meet")
+         Guaranteed 100% visible inside any screen aspect ratio!
+         ======================================================================== -->
+    <svg id="stage-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="shadow-deep" x="-20%" y="-20%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#140c04" flood-opacity="0.55" />
+        </filter>
+        <filter id="shadow-soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#1c1106" flood-opacity="0.45" />
+        </filter>
+        <filter id="glow-gold" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="6" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <!-- Cozy Prehistoric Woven Dino Nest Gradients -->
+        <radialGradient id="rug-base-grad" cx="50%" cy="48%" r="52%" fx="45%" fy="42%">
+          <stop offset="0%" stop-color="#f2dfb6" />
+          <stop offset="38%" stop-color="#d9b87c" />
+          <stop offset="62%" stop-color="#b08246" />
+          <stop offset="78%" stop-color="#608543" />
+          <stop offset="90%" stop-color="#8c5a2b" />
+          <stop offset="100%" stop-color="#4d2e12" />
+        </radialGradient>
+
+        <pattern id="rug-weave" width="26" height="14" patternUnits="userSpaceOnUse">
+          <path d="M0 7 Q6.5 1.5 13 7 T26 7" stroke="#523214" stroke-width="1.4" fill="none" stroke-opacity="0.22" />
+          <path d="M0 14 Q6.5 8.5 13 14 T26 14" stroke="#fff5d6" stroke-width="1" fill="none" stroke-opacity="0.22" />
+        </pattern>
+
+        <!-- Carved Wood & Amber Stone Button Gradients -->
+        <radialGradient id="wood-btn-face" cx="35%" cy="30%" r="70%">
+          <stop offset="0%" stop-color="#d99b66" />
+          <stop offset="55%" stop-color="#9e6234" />
+          <stop offset="90%" stop-color="#693b19" />
+          <stop offset="100%" stop-color="#47250d" />
+        </radialGradient>
+
+        <linearGradient id="wood-btn-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f0be8a" />
+          <stop offset="50%" stop-color="#874f25" />
+          <stop offset="100%" stop-color="#3b1d09" />
+        </linearGradient>
+
+        <linearGradient id="shelf-wood-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#8c5836" />
+          <stop offset="20%" stop-color="#724427" />
+          <stop offset="85%" stop-color="#59331b" />
+          <stop offset="100%" stop-color="#3d2110" />
+        </linearGradient>
+
+        <radialGradient id="felt-badge-grad" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#fffdf5" />
+          <stop offset="75%" stop-color="#f2dfc2" />
+          <stop offset="100%" stop-color="#cfa97e" />
+        </radialGradient>
+
+        <!-- Mama Dinosaur Scales & Skin Gradients (Friendly Meadow-Green & Golden-Cream Dino) -->
+        <radialGradient id="cat-body-grad" cx="42%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#8cd96c" />
+          <stop offset="55%" stop-color="#52ab46" />
+          <stop offset="88%" stop-color="#2e7a2c" />
+          <stop offset="100%" stop-color="#1b4f1b" />
+        </radialGradient>
+
+        <radialGradient id="cat-head-grad" cx="45%" cy="38%" r="60%">
+          <stop offset="0%" stop-color="#98e376" />
+          <stop offset="58%" stop-color="#5ab54c" />
+          <stop offset="90%" stop-color="#348232" />
+          <stop offset="100%" stop-color="#1e571e" />
+        </radialGradient>
+
+        <radialGradient id="cat-cream-fur" cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stop-color="#fff8d6" />
+          <stop offset="65%" stop-color="#f5dc99" />
+          <stop offset="100%" stop-color="#d4ac63" />
+        </radialGradient>
+
+        <linearGradient id="cat-ear-inner" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffb86b" />
+          <stop offset="60%" stop-color="#eb7d3c" />
+          <stop offset="100%" stop-color="#b54818" />
+        </linearGradient>
+
+        <radialGradient id="cat-eye-iris" cx="45%" cy="45%" r="55%">
+          <stop offset="0%" stop-color="#ffe169" />
+          <stop offset="45%" stop-color="#d98a2b" />
+          <stop offset="85%" stop-color="#7d3e09" />
+          <stop offset="100%" stop-color="#3d1b02" />
+        </radialGradient>
+      </defs>
+
+      <!-- ====================================================================
+           1. COZY PREHISTORIC NEST ON THE CANYON FLOOR
+           ==================================================================== -->
+      <g id="cozy-rug" filter="url(#shadow-deep)">
+        <!-- Outer Fern Leaves & Twigs -->
+        <ellipse cx="800" cy="735" rx="652" ry="145" fill="none" stroke="#5c8a3c" stroke-width="16" stroke-dasharray="18 14" stroke-linecap="round" />
+        <ellipse cx="800" cy="735" rx="642" ry="138" fill="none" stroke="#9e6d36" stroke-width="12" stroke-dasharray="10 12" stroke-linecap="round" />
+        <!-- Main Woven Nest Bowl -->
+        <ellipse cx="800" cy="732" rx="634" ry="134" fill="url(#rug-base-grad)" stroke="#4f3014" stroke-width="5" />
+        <ellipse cx="800" cy="732" rx="585" ry="118" fill="none" stroke="#fae5b8" stroke-width="3.5" stroke-dasharray="14 9" stroke-opacity="0.55" />
+        <ellipse cx="800" cy="732" rx="510" ry="102" fill="none" stroke="#527834" stroke-width="4" stroke-dasharray="12 10" stroke-opacity="0.5" />
+        <ellipse cx="800" cy="732" rx="420" ry="82" fill="none" stroke="#fff2cf" stroke-width="3.5" stroke-dasharray="16 10" stroke-opacity="0.6" />
+        <ellipse cx="800" cy="732" rx="630" ry="131" fill="url(#rug-weave)" />
+      </g>
+
+      <!-- ====================================================================
+           2. NEST TASK EMBLEM (Shows Direction Arrow & Step Pips +1/+2/+3 or -1/-2/-3)
+           ==================================================================== -->
+      <g id="task-emblem-group" transform="translate(800, 614)" filter="url(#shadow-soft)">
+        <rect x="-118" y="-30" width="236" height="60" rx="30" fill="url(#wood-btn-rim)" stroke="#3b1d09" stroke-width="3" />
+        <rect x="-111" y="-23" width="222" height="46" rx="23" fill="url(#felt-badge-grad)" stroke="#8c5830" stroke-width="2" stroke-dasharray="6 4" />
+        <g id="task-emblem-content"></g>
+      </g>
+
+      <!-- ====================================================================
+           3. CONNECTING NEST VINE & DIRECTIONAL DINO FOOTPRINT TRAIL
+           ==================================================================== -->
+      <g id="yarn-connecting-layer"></g>
+      <g id="paw-trail-layer"></g>
+
+      <!-- ====================================================================
+           4. ANIMATED MAMA DINOSAUR
+           ==================================================================== -->
+      <g id="kitten-root" transform="translate(800, 645)">
+        <!-- Floor Shadow beneath Mama Dino -->
+        <ellipse id="kitten-shadow" cx="0" cy="46" rx="78" ry="20" fill="#140c04" fill-opacity="0.48" filter="url(#shadow-soft)" />
+
+        <!-- Happy Dino Coo / Rumble Ripples -->
+        <g id="purr-ripples" opacity="0" pointer-events="none">
+          <circle id="purr-ring-1" cx="4" cy="-52" r="46" fill="none" stroke="#ffe596" stroke-width="2.5" stroke-dasharray="8 6" opacity="0.65" />
+          <circle id="purr-ring-2" cx="4" cy="-52" r="68" fill="none" stroke="#ffd275" stroke-width="2" stroke-dasharray="5 8" opacity="0.4" />
+        </g>
+
+        <!-- Flip Group (Scales X to 1 or -1 depending on walking direction) -->
+        <g id="kitten-flip-group" transform="scale(1, 1)">
+          <!-- Body Bounce / Breathing / Hop Group -->
+          <g id="kitten-body-rig" transform="translate(0, 0)">
+
+            <!-- SWAYING DINOSAUR TAIL WITH CUTE BACK PLATES -->
+            <g id="cat-tail-group" transform="translate(-42, 8)">
+              <!-- Tail Spines -->
+              <path d="M-24 -18 L-34 -34 L-16 -24 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.4" />
+              <path d="M-46 -32 L-58 -48 L-38 -40 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.4" />
+              <path d="M-64 -52 L-76 -66 L-56 -58 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.4" />
+              <!-- Main Tail Body -->
+              <path id="cat-tail-path" d="M6 -12 C-32 -14, -68 -36, -84 -72 C-90 -84, -74 -90, -64 -74 C-46 -46, -16 -30, 12 -6 Z" fill="url(#cat-body-grad)" stroke="#1b4f1b" stroke-width="2.2" />
+              <!-- Tail Underbelly Stripe -->
+              <path d="M2 8 C-26 2, -56 -18, -76 -58" fill="none" stroke="url(#cat-cream-fur)" stroke-width="6" stroke-linecap="round" opacity="0.85" />
+            </g>
+
+            <!-- BACK HIND LEG -->
+            <g id="leg-bl" transform="translate(-30, 14)">
+              <ellipse cx="0" cy="0" rx="24" ry="27" fill="url(#cat-body-grad)" stroke="#1b4f1b" stroke-width="2" />
+              <ellipse cx="-2" cy="23" rx="16" ry="9" fill="#46963b" stroke="#1b4f1b" stroke-width="1.8" />
+              <!-- 3 Cute Dino Toenails -->
+              <polygon points="-14,26 -9,18 -4,26" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="-5,28 0,19 5,28" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="4,26 9,18 13,26" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+            </g>
+
+            <!-- PLUMP MAMA DINO TORSO & BACK CREST PLATES -->
+            <g id="cat-torso">
+              <!-- Back Stego/Dino Plates -->
+              <path d="M-38 -36 L-46 -56 L-24 -48 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.6" />
+              <path d="M-18 -50 L-22 -72 L-2 -56 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.6" />
+              <path d="M4 -56 L4 -76 L20 -54 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.6" />
+
+              <!-- Main Plump Dino Body -->
+              <path d="M-48 12 C-56 -32, -28 -60, 8 -58 C44 -56, 62 -22, 52 16 C42 38, -38 38, -48 12 Z" fill="url(#cat-body-grad)" stroke="#1b4f1b" stroke-width="2.2" />
+
+              <!-- Cute Decorative Dino Spots on Back -->
+              <circle cx="-24" cy="-26" r="8" fill="#286e26" opacity="0.55" />
+              <circle cx="-6" cy="-34" r="10" fill="#286e26" opacity="0.55" />
+              <circle cx="-12" cy="-14" r="6.5" fill="#286e26" opacity="0.5" />
+
+              <!-- Soft Ribbed Cream Dino Belly -->
+              <path d="M-8 -44 C-22 -20, -18 14, 12 22 C38 16, 48 -14, 34 -42 C20 -32, 4 -32, -8 -44 Z" fill="url(#cat-cream-fur)" />
+              <path d="M-6 -22 Q16 -14 34 -22 M-8 -6 Q16 2 36 -6 M-4 8 Q16 15 32 8" fill="none" stroke="#c99b49" stroke-width="2" stroke-linecap="round" opacity="0.7" />
+            </g>
+
+            <!-- BACK RIGHT HAUNCH -->
+            <g id="leg-br" transform="translate(26, 16)">
+              <ellipse cx="0" cy="0" rx="20" ry="23" fill="url(#cat-body-grad)" stroke="#1b4f1b" stroke-width="1.8" />
+              <ellipse cx="4" cy="21" rx="15" ry="8.5" fill="#46963b" stroke="#1b4f1b" stroke-width="1.8" />
+              <polygon points="-5,24 0,16 5,24" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="3,25 8,17 13,25" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="11,23 15,16 19,23" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+            </g>
+
+            <!-- FRONT LEFT LEG -->
+            <g id="leg-fl" transform="translate(-10, 12)">
+              <path d="M-11 -14 L-12 22 C-12 29, 11 29, 11 22 L9 -14 Z" fill="url(#cat-body-grad)" stroke="#1b4f1b" stroke-width="1.8" />
+              <ellipse cx="0" cy="26" rx="13.5" ry="8" fill="#46963b" stroke="#1b4f1b" stroke-width="1.6" />
+              <polygon points="-9,29 -5,21 -1,29" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="-1,30 3,22 7,30" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="6,28 10,21 13,28" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+            </g>
+
+            <!-- FRONT RIGHT LEG -->
+            <g id="leg-fr" transform="translate(20, 12)">
+              <path d="M-10 -14 L-11 22 C-11 29, 12 29, 12 22 L10 -14 Z" fill="url(#cat-body-grad)" stroke="#1b4f1b" stroke-width="1.8" />
+              <ellipse cx="1" cy="26" rx="13.5" ry="8" fill="#46963b" stroke="#1b4f1b" stroke-width="1.6" />
+              <polygon points="-7,29 -3,21 1,29" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="1,30 5,22 9,30" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+              <polygon points="8,28 12,21 15,28" fill="#fff5d6" stroke="#8c6d3b" stroke-width="1.2" />
+            </g>
+
+            <!-- EXPRESSIVE MAMA DINOSAUR HEAD & GRACEFUL NECK -->
+            <g id="cat-head" transform="translate(12, -68)">
+              <!-- Graceful Curved Dino Neck -->
+              <path d="M-18 32 C-16 12, -10 -4, 4 -12 C18 -4, 22 14, 18 34 Z" fill="url(#cat-head-grad)" stroke="#1b4f1b" stroke-width="2" />
+
+              <!-- LEFT HEAD CREST / CROWN FRILL (Animated via ear-l) -->
+              <g id="ear-l" transform="translate(-26, -32)">
+                <path d="M-6 12 C-24 -6, -26 -28, -10 -34 C4 -30, 12 -12, 10 6 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.8" />
+                <circle cx="-10" cy="-16" r="4" fill="#ffe394" opacity="0.8" />
+              </g>
+
+              <!-- RIGHT HEAD CREST / CROWN FLOWER (Animated via ear-r) -->
+              <g id="ear-r" transform="translate(18, -34)">
+                <path d="M-10 6 C-12 -12, -4 -30, 10 -34 C24 -28, 22 -6, 6 12 Z" fill="url(#cat-ear-inner)" stroke="#8f360d" stroke-width="1.8" />
+                <!-- Cute Prehistoric Tropical Flower on Mama Dino's Head -->
+                <circle cx="-2" cy="-6" r="9" fill="#ff758f" stroke="#a82846" stroke-width="1.2" />
+                <circle cx="6" cy="-12" r="8" fill="#ff8fa3" stroke="#a82846" stroke-width="1.2" />
+                <circle cx="2" cy="-9" r="4.5" fill="#ffe066" />
+              </g>
+
+              <!-- MAIN DINO HEAD & ROUNDED SNOUT -->
+              <path d="M-8 -42 C24 -42, 46 -22, 54 0 C62 8, 60 24, 44 32 C28 40, -24 40, -38 30 C-50 20, -48 -4, -38 -20 C-32 -34, -20 -42, -8 -42 Z" fill="url(#cat-head-grad)" stroke="#1b4f1b" stroke-width="2" />
+
+              <!-- Forehead Scales & Cute Freckles -->
+              <circle cx="-4" cy="-28" r="4.5" fill="#286e26" opacity="0.5" />
+              <circle cx="8" cy="-25" r="3.5" fill="#286e26" opacity="0.5" />
+              <circle cx="-30" cy="8" r="3.5" fill="#286e26" opacity="0.45" />
+
+              <!-- Warm Cream Lower Jaw / Snout Highlight -->
+              <path d="M-24 16 C-22 6, 0 4, 24 6 C42 8, 52 16, 44 28 C28 38, -14 38, -24 16 Z" fill="url(#cat-cream-fur)" />
+
+              <!-- Rosy Affectionate Cheek Blushes -->
+              <g id="cat-blush" opacity="0" style="transition: opacity 0.35s ease;">
+                <ellipse cx="-26" cy="14" rx="10" ry="6" fill="#ff7a7a" opacity="0.58" />
+                <ellipse cx="32" cy="14" rx="10" ry="6" fill="#ff7a7a" opacity="0.58" />
+              </g>
+
+              <!-- WARM GOLDEN-AMBER DINO EYES WITH LONG KIND EYELASHES -->
+              <g id="cat-eyes-open">
+                <g id="eye-l" transform="translate(-16, -6)">
+                  <path d="M-12 -6 L-17 -11 M-6 -11 L-9 -16" stroke="#1b4f1b" stroke-width="2.2" stroke-linecap="round" />
+                  <ellipse cx="0" cy="0" rx="12.5" ry="12" fill="#172e12" />
+                  <ellipse cx="0" cy="0" rx="11.2" ry="10.8" fill="url(#cat-eye-iris)" />
+                  <g id="pupil-group-l">
+                    <ellipse id="pupil-l" cx="1" cy="0" rx="5.5" ry="8.8" fill="#140d06" />
+                    <circle cx="-3.5" cy="-4" r="3.4" fill="#ffffff" />
+                    <circle cx="3.5" cy="3.5" r="1.6" fill="#ffffff" opacity="0.85" />
+                  </g>
+                  <ellipse id="eyelid-l" cx="0" cy="0" rx="12.5" ry="12" fill="url(#cat-head-grad)" transform="scale(1, 0)" />
+                </g>
+
+                <g id="eye-r" transform="translate(20, -6)">
+                  <path d="M6 -11 L9 -16 M12 -6 L17 -11" stroke="#1b4f1b" stroke-width="2.2" stroke-linecap="round" />
+                  <ellipse cx="0" cy="0" rx="12.5" ry="12" fill="#172e12" />
+                  <ellipse cx="0" cy="0" rx="11.2" ry="10.8" fill="url(#cat-eye-iris)" />
+                  <g id="pupil-group-r">
+                    <ellipse id="pupil-r" cx="1" cy="0" rx="5.5" ry="8.8" fill="#140d06" />
+                    <circle cx="-3.5" cy="-4" r="3.4" fill="#ffffff" />
+                    <circle cx="3.5" cy="3.5" r="1.6" fill="#ffffff" opacity="0.85" />
+                  </g>
+                  <ellipse id="eyelid-r" cx="0" cy="0" rx="12.5" ry="12" fill="url(#cat-head-grad)" transform="scale(1, 0)" />
+                </g>
+              </g>
+
+              <!-- Happy Smiling Closed Eyes -->
+              <g id="cat-eyes-happy" opacity="0">
+                <path d="M-27 -4 Q-16 -17 -5 -4" fill="none" stroke="#1b4f1b" stroke-width="3.8" stroke-linecap="round" />
+                <path d="M9 -4 Q20 -17 31 -4" fill="none" stroke="#1b4f1b" stroke-width="3.8" stroke-linecap="round" />
+              </g>
+
+              <!-- CUTE DINO SNOUT NOSTRILS & GENTLE SMILE -->
+              <ellipse cx="2" cy="8" rx="3" ry="2" fill="#1e571e" />
+              <ellipse cx="14" cy="8" rx="3" ry="2" fill="#1e571e" />
+              <path id="cat-mouth-open" d="M-2 19 Q8 31 18 19 Z" fill="#e86b72" stroke="#6e282c" stroke-width="1.2" opacity="0" />
+              <path id="cat-mouth-line" d="M-8 18 Q8 26 24 17" fill="none" stroke="#1e571e" stroke-width="2.5" stroke-linecap="round" />
+            </g>
+          </g>
+        </g>
+
+        <!-- Static Transparent Hitbox for Petting Mama Dinosaur -->
+        <rect id="kitten-interactive-hitbox" class="hit-target" x="-80" y="-135" width="165" height="190" rx="30" />
+      </g>
+
+      <!-- ====================================================================
+           5. INTERACTIVE DINOSAUR EGGS CONTAINER (2 to 4 Eggs in the Nest)
+           ==================================================================== -->
+      <g id="yarn-balls-layer"></g>
+
+      <!-- ====================================================================
+           6. COLLAPSIBLE NUMBER LINE HELPER SHELF (1 .. 10)
+           ==================================================================== -->
+      <g id="helper-shelf-wrapper" transform="translate(0, -220)">
+        <line x1="330" y1="-60" x2="330" y2="62" stroke="#528a3c" stroke-width="7" stroke-dasharray="8 4" />
+        <line x1="1270" y1="-60" x2="1270" y2="62" stroke="#528a3c" stroke-width="7" stroke-dasharray="8 4" />
+        <circle cx="330" cy="60" r="8" fill="#3b1f0c" />
+        <circle cx="1270" cy="60" r="8" fill="#3b1f0c" />
+
+        <!-- Carved Prehistoric Wood & Vine Shelf Board -->
+        <g filter="url(#shadow-deep)">
+          <rect x="265" y="20" width="1070" height="106" rx="24" fill="url(#shelf-wood-grad)" stroke="#3b1f0c" stroke-width="4.5" />
+          <rect x="278" y="31" width="1044" height="84" rx="18" fill="#4f2b14" stroke="#9e673c" stroke-width="2" />
+          <path d="M315 74 Q800 90 1285 74" fill="none" stroke="#8cd96c" stroke-width="3.5" stroke-dasharray="9 6" opacity="0.65" />
+        </g>
+
+        <!-- 10 Miniature Hatched Dino Eggs (1..10) -->
+        <g id="shelf-balls-container"></g>
+      </g>
+
+      <!-- ====================================================================
+           7. SAFE WOODEN UI CONTROLS (Well inside 1600x900 safe margins!)
+           NO CSS transform on outer <g transform="translate(X,Y)">!
+           ==================================================================== -->
+      <!-- TOP-LEFT (x=95, y=75): Toggle Full Number Line (1..10) Helper Button -->
+      <g id="btn-toggle-helper" class="interactive-node" transform="translate(95, 75)" filter="url(#shadow-deep)">
+        <g id="btn-helper-visual">
+          <circle cx="0" cy="0" r="46" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3.5" />
+          <circle cx="0" cy="0" r="38" fill="url(#wood-btn-face)" stroke="#f0be8a" stroke-width="1.5" stroke-opacity="0.5" />
+          <circle cx="0" cy="0" r="33" fill="none" stroke="#f7dec1" stroke-width="2" stroke-dasharray="5 5" opacity="0.6" />
+          <!-- Icon: Connected 1..10 Dino Eggs Garland -->
+          <path d="M-24 10 Q0 20 24 10" fill="none" stroke="#a8f085" stroke-width="3" stroke-linecap="round" />
+          <ellipse cx="-18" cy="-4" rx="9" ry="11.5" fill="#e06348" stroke="#471d14" stroke-width="1.8" />
+          <text x="-18" y="0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff8eb">1</text>
+          <ellipse cx="0" cy="-9" rx="9.5" ry="12" fill="#e09b36" stroke="#47320d" stroke-width="1.8" />
+          <text x="0" y="-5" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff8eb">2</text>
+          <ellipse cx="18" cy="-4" rx="9" ry="11.5" fill="#5a9e6f" stroke="#163b28" stroke-width="1.8" />
+          <text x="18" y="0" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff8eb">10</text>
+          <circle id="helper-active-ring" cx="0" cy="0" r="43" fill="none" stroke="#ffe17d" stroke-width="3.5" opacity="0" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="52" />
+      </g>
+
+      <!-- TOP-RIGHT SAFE CONTROLS: Teacher Direction Peg, Step Peg, and Sound Toggle -->
+      <!-- 1) Direction Filter Peg (⇄ / → / ←) at (x=1295, y=75) -->
+      <g id="btn-filter-dir" class="interactive-node" transform="translate(1295, 75)" filter="url(#shadow-deep)">
+        <g id="btn-dir-visual">
+          <circle cx="0" cy="0" r="36" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3" />
+          <circle cx="0" cy="0" r="29" fill="url(#wood-btn-face)" />
+          <circle cx="0" cy="0" r="25" fill="none" stroke="#f7dec1" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.55" />
+          <g id="dir-filter-icon">
+            <!-- Default: Both Directions ⇄ -->
+            <path d="M-14 -5 L10 -5 M5 -10 L12 -5 L5 0" fill="none" stroke="#ffe49e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M14 6 L-10 6 M-5 1 L-12 6 L-5 11" fill="none" stroke="#ffbfa3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="42" />
+      </g>
+
+      <!-- 2) Step Size Filter Peg (1..3 / 1 / 2 / 3) at (x=1385, y=75) -->
+      <g id="btn-filter-step" class="interactive-node" transform="translate(1385, 75)" filter="url(#shadow-deep)">
+        <g id="btn-step-visual">
+          <circle cx="0" cy="0" r="36" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3" />
+          <circle cx="0" cy="0" r="29" fill="url(#wood-btn-face)" />
+          <circle cx="0" cy="0" r="25" fill="none" stroke="#f7dec1" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.55" />
+          <text id="step-filter-text" x="0" y="7" text-anchor="middle" font-size="20" font-weight="bold" fill="#ffe49e" stroke="#3b1d09" stroke-width="1" paint-order="stroke">1-3</text>
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="42" />
+      </g>
+
+      <!-- 3) Sound Mute/Unmute Wooden Button at (x=1485, y=75) -->
+      <g id="btn-toggle-sound" class="interactive-node" transform="translate(1485, 75)" filter="url(#shadow-deep)">
+        <g id="btn-sound-visual">
+          <circle cx="0" cy="0" r="40" fill="url(#wood-btn-rim)" stroke="#2e1607" stroke-width="3.2" />
+          <circle cx="0" cy="0" r="32" fill="url(#wood-btn-face)" stroke="#f0be8a" stroke-width="1.5" stroke-opacity="0.5" />
+          <circle cx="0" cy="0" r="27" fill="none" stroke="#f7dec1" stroke-width="1.8" stroke-dasharray="5 5" opacity="0.55" />
+          <path d="M-13 -5 L-5 -5 L4 -14 L4 14 L-5 5 L-13 5 Z" fill="#f7cf86" stroke="#4a2810" stroke-width="2" stroke-linejoin="round" />
+          <g id="sound-waves-icon" stroke="#ffe5a8" stroke-width="2.8" stroke-linecap="round" fill="none">
+            <path d="M9 -7 Q16 0 9 7" />
+            <path d="M15 -13 Q24 0 15 13" />
+          </g>
+          <line id="sound-mute-slash" x1="-15" y1="-15" x2="17" y2="17" stroke="#e0533c" stroke-width="4.2" stroke-linecap="round" opacity="0" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="46" />
+      </g>
+
+      <!-- BOTTOM-RIGHT (x=1485, y=805): Minimalist "Next" ("Далі") Wooden Button -->
+      <g id="btn-next-round" class="interactive-node" transform="translate(1485, 805)" filter="url(#shadow-deep)">
+        <g id="btn-next-visual">
+          <circle id="next-pulse-halo" cx="0" cy="0" r="60" fill="none" stroke="#ffe27a" stroke-width="4" opacity="0" />
+          <circle cx="0" cy="0" r="54" fill="#5e9e47" stroke="#1e3b12" stroke-width="3.8" />
+          <circle cx="0" cy="0" r="50" fill="none" stroke="#c8f2b6" stroke-width="2.8" stroke-dasharray="8 6" opacity="0.65" />
+          <circle cx="0" cy="0" r="42" fill="url(#wood-btn-face)" stroke="#f0be8a" stroke-width="2" />
+          <circle cx="0" cy="0" r="36" fill="none" stroke="#f7dec1" stroke-width="1.8" stroke-dasharray="6 5" opacity="0.65" />
+          <path d="M-16 -6 L4 -6 L4 -17 L22 0 L4 17 L4 6 L-16 6 Z" fill="#ffd97d" stroke="#4a260c" stroke-width="2.6" stroke-linejoin="round" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="60" />
+      </g>
+    </svg>
+
+    <!-- Floating Golden Spores & Hatching Celebration Particles Canvas -->
+    <canvas id="fx-canvas"></canvas>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. COLOR PALETTE FOR THE 10 DINOSAUR EGGS & BABY DINOS
+       ========================================================================== */
+    const YARN_PALETTE = [
+      { base: '#e06348', light: '#fca690', dark: '#7d2616', strand: '#ffd0c4', shell: '#fff5e6', spots: '#c9452c' }, // 1: Coral Dino
+      { base: '#e6a132', light: '#fad689', dark: '#80500c', strand: '#ffebb8', shell: '#fff9eb', spots: '#c77d14' }, // 2: Sunny Amber Dino
+      { base: '#57a86b', light: '#9ee3ae', dark: '#21542f', strand: '#c8f7d4', shell: '#f2fcf4', spots: '#3b824d' }, // 3: Meadow Green Dino
+      { base: '#4993c4', light: '#91d0f7', dark: '#1a4a69', strand: '#c2e7ff', shell: '#f0f9ff', spots: '#2b6e9c' }, // 4: Sky Azure Dino
+      { base: '#9b6bc2', light: '#d1aae8', dark: '#492761', strand: '#ebd5fa', shell: '#faf2ff', spots: '#75439c' }, // 5: Lavender Dino
+      { base: '#d9628a', light: '#f7a6c2', dark: '#6e203b', strand: '#ffd4e2', shell: '#fff2f7', spots: '#b03b63' }, // 6: Berry Rose Dino
+      { base: '#38a39a', light: '#82e3db', dark: '#15524d', strand: '#bdf7f2', shell: '#effcfa', spots: '#207870' }, // 7: Lagoon Teal Dino
+      { base: '#de7838', light: '#fcae7c', dark: '#75330b', strand: '#ffd4b8', shell: '#fff6f0', spots: '#b55318' }, // 8: Tangerine Dino
+      { base: '#6977c2', light: '#aab5f0', dark: '#293266', strand: '#d4dbff', shell: '#f2f4ff', spots: '#47559e' }, // 9: Indigo Dino
+      { base: '#c45249', light: '#f09790', dark: '#611b15', strand: '#ffc9c4', shell: '#fff2f0', spots: '#963028' }  // 10: Ruby Dino
+    ];
+
+    /* ==========================================================================
+       HELPER: Bounce any inner visual <g> smoothly via JS without touching
+       the outer <g transform="translate(X, Y)"> positioning!
+       ========================================================================== */
+    function animateInnerScale(el, peakScale = 1.14, duration = 320) {
+      if (!el) return;
+      const start = performance.now();
+      function step(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const s = 1 + (peakScale - 1) * Math.sin(t * Math.PI);
+        el.setAttribute('transform', `scale(${s.toFixed(3)})`);
+        if (t < 1) requestAnimationFrame(step);
+        else el.setAttribute('transform', 'scale(1)');
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ==========================================================================
+       2. SYNTHESIZED WEB AUDIO ENGINE (Gentle Dino Rumble/Coo, Hatching Crack & Notes)
+       ========================================================================== */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.purrGain = null;
+        this.purrStopTimer = null;
+        this.isPurring = false;
+        this.numberFreqs = [
+          261.63, // 1: C4
+          293.66, // 2: D4
+          329.63, // 3: E4
+          392.00, // 4: G4
+          440.00, // 5: A4
+          523.25, // 6: C5
+          587.33, // 7: D5
+          659.25, // 8: E5
+          783.99, // 9: G5
+          880.00  // 10: A5
+        ];
+      }
+
+      init() {
+        try {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) {
+              this.ctx = new AudioCtx();
+              this.setupPurrGenerator();
+            }
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        } catch (err) {
+          // Ignore audio context restrictions if blocked
+        }
+      }
+
+      setupPurrGenerator() {
+        if (!this.ctx) return;
+        const ctx = this.ctx;
+
+        this.purrGain = ctx.createGain();
+        this.purrGain.gain.value = 0.0001;
+        this.purrGain.connect(ctx.destination);
+
+        const subOsc = ctx.createOscillator();
+        subOsc.type = 'triangle';
+        subOsc.frequency.value = 28.0;
+
+        const breathLfo = ctx.createOscillator();
+        breathLfo.type = 'sine';
+        breathLfo.frequency.value = 0.45;
+        const breathFreqGain = ctx.createGain();
+        breathFreqGain.gain.value = 2.0;
+        breathLfo.connect(breathFreqGain);
+        breathFreqGain.connect(subOsc.frequency);
+
+        const subFilter = ctx.createBiquadFilter();
+        subFilter.type = 'lowpass';
+        subFilter.frequency.value = 105;
+
+        const subLevel = ctx.createGain();
+        subLevel.gain.value = 0.35;
+
+        subOsc.connect(subFilter);
+        subFilter.connect(subLevel);
+        subLevel.connect(this.purrGain);
+
+        const bufferSize = ctx.sampleRate * 2;
+        const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          b0 = 0.99886 * b0 + white * 0.0555179;
+          b1 = 0.99332 * b1 + white * 0.0750759;
+          b2 = 0.96900 * b2 + white * 0.1538520;
+          b3 = 0.86650 * b3 + white * 0.3104856;
+          b4 = 0.55000 * b4 + white * 0.5329522;
+          b5 = -0.7616 * b5 - white * 0.0168980;
+          output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.04;
+          b6 = white * 0.115926;
+        }
+
+        const noiseNode = ctx.createBufferSource();
+        noiseNode.buffer = noiseBuffer;
+        noiseNode.loop = true;
+
+        const bandpass = ctx.createBiquadFilter();
+        bandpass.type = 'bandpass';
+        bandpass.frequency.value = 220;
+        bandpass.Q.value = 2.2;
+
+        const rattleModGain = ctx.createGain();
+        rattleModGain.gain.value = 0.24;
+
+        const rattleLfo = ctx.createOscillator();
+        rattleLfo.type = 'sine';
+        rattleLfo.frequency.value = 24.0;
+        const rattleDepth = ctx.createGain();
+        rattleDepth.gain.value = 0.20;
+        rattleLfo.connect(rattleDepth);
+        rattleDepth.connect(rattleModGain.gain);
+
+        noiseNode.connect(bandpass);
+        bandpass.connect(rattleModGain);
+        rattleModGain.connect(this.purrGain);
+
+        subOsc.start();
+        breathLfo.start();
+        noiseNode.start();
+        rattleLfo.start();
+      }
+
+      triggerQuietPurr(durationMs = 3400, intensity = 0.085) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx || !this.purrGain) return;
+
+        const now = this.ctx.currentTime;
+        this.isPurring = true;
+        this.purrGain.gain.cancelScheduledValues(now);
+        this.purrGain.gain.setValueAtTime(Math.max(0.001, this.purrGain.gain.value), now);
+        this.purrGain.gain.linearRampToValueAtTime(intensity, now + 0.4);
+
+        if (this.purrStopTimer) clearTimeout(this.purrStopTimer);
+        this.purrStopTimer = setTimeout(() => {
+          if (!this.ctx || !this.purrGain) return;
+          const t = this.ctx.currentTime;
+          this.purrGain.gain.cancelScheduledValues(t);
+          this.purrGain.gain.setValueAtTime(this.purrGain.gain.value, t);
+          this.purrGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.8);
+          this.isPurring = false;
+        }, durationMs);
+      }
+
+      playPawStep() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(105 + Math.random() * 20, now);
+        osc.frequency.exponentialRampToValueAtTime(42, now + 0.075);
+
+        gain.gain.setValueAtTime(0.055, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.085);
+      }
+
+      playEggCrackAndBabyChirp() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        // 1) Crisp Eggshell Pop/Crack
+        const crackOsc = this.ctx.createOscillator();
+        const crackGain = this.ctx.createGain();
+        crackOsc.type = 'triangle';
+        crackOsc.frequency.setValueAtTime(480, now);
+        crackOsc.frequency.exponentialRampToValueAtTime(190, now + 0.045);
+        crackGain.gain.setValueAtTime(0.11, now);
+        crackGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        crackOsc.connect(crackGain);
+        crackGain.connect(this.ctx.destination);
+        crackOsc.start(now);
+        crackOsc.stop(now + 0.055);
+
+        // 2) Cute Baby Dino Squeak
+        const chirpOsc = this.ctx.createOscillator();
+        const chirpGain = this.ctx.createGain();
+        chirpOsc.type = 'sine';
+        chirpOsc.frequency.setValueAtTime(580, now + 0.05);
+        chirpOsc.frequency.exponentialRampToValueAtTime(920, now + 0.16);
+        chirpOsc.frequency.exponentialRampToValueAtTime(760, now + 0.24);
+        chirpGain.gain.setValueAtTime(0.001, now + 0.05);
+        chirpGain.gain.linearRampToValueAtTime(0.075, now + 0.08);
+        chirpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        chirpOsc.connect(chirpGain);
+        chirpGain.connect(this.ctx.destination);
+        chirpOsc.start(now + 0.05);
+        chirpOsc.stop(now + 0.26);
+      }
+
+      playNumberReveal(numberOneToTen, isHatching = false) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        if (isHatching) {
+          this.playEggCrackAndBabyChirp();
+        }
+
+        const now = this.ctx.currentTime;
+        const idx = Math.max(0, Math.min(9, numberOneToTen - 1));
+        const freq = this.numberFreqs[idx];
+
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain1 = this.ctx.createGain();
+        const gain2 = this.ctx.createGain();
+
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(freq, now);
+
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(freq * 2, now);
+
+        gain1.gain.setValueAtTime(0.001, now);
+        gain1.gain.linearRampToValueAtTime(0.22, now + 0.018);
+        gain1.gain.exponentialRampToValueAtTime(0.0008, now + 0.75);
+
+        gain2.gain.setValueAtTime(0.001, now);
+        gain2.gain.linearRampToValueAtTime(0.07, now + 0.012);
+        gain2.gain.exponentialRampToValueAtTime(0.0005, now + 0.28);
+
+        osc1.connect(gain1);
+        osc2.connect(gain2);
+        gain1.connect(this.ctx.destination);
+        gain2.connect(this.ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.78);
+        osc2.stop(now + 0.30);
+      }
+
+      playKittenChirp() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const mod = this.ctx.createOscillator();
+        const modGain = this.ctx.createGain();
+        const mainGain = this.ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(380, now);
+        osc.frequency.exponentialRampToValueAtTime(620, now + 0.16);
+        osc.frequency.exponentialRampToValueAtTime(490, now + 0.28);
+
+        mod.type = 'sine';
+        mod.frequency.value = 26;
+        modGain.gain.value = 22;
+
+        mod.connect(modGain);
+        modGain.connect(osc.frequency);
+
+        mainGain.gain.setValueAtTime(0.001, now);
+        mainGain.gain.linearRampToValueAtTime(0.09, now + 0.04);
+        mainGain.gain.exponentialRampToValueAtTime(0.0008, now + 0.29);
+
+        osc.connect(mainGain);
+        mainGain.connect(this.ctx.destination);
+
+        osc.start(now);
+        mod.start(now);
+        osc.stop(now + 0.30);
+        mod.stop(now + 0.30);
+      }
+
+      playCelebrationFanfare(styleIndex = 0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const chordPatterns = [
+          [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50],
+          [329.63, 392.00, 523.25, 587.33, 659.25, 783.99, 1046.50],
+          [261.63, 392.00, 440.00, 523.25, 659.25, 880.00, 1046.50],
+          [293.66, 392.00, 493.88, 587.33, 783.99, 987.77, 1174.66]
+        ];
+
+        const notes = chordPatterns[styleIndex % chordPatterns.length];
+        notes.forEach((freq, idx) => {
+          const delay = idx * 0.085;
+          const now = this.ctx.currentTime + delay;
+          const osc = this.ctx.createOscillator();
+          const oscHarm = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = styleIndex % 2 === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(freq, now);
+
+          oscHarm.type = 'sine';
+          oscHarm.frequency.setValueAtTime(freq * 1.5, now);
+
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.linearRampToValueAtTime(0.14, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.9);
+
+          const harmGain = this.ctx.createGain();
+          harmGain.gain.setValueAtTime(0.03, now);
+          harmGain.gain.exponentialRampToValueAtTime(0.0005, now + 0.45);
+
+          osc.connect(gain);
+          oscHarm.connect(harmGain);
+          gain.connect(this.ctx.destination);
+          harmGain.connect(this.ctx.destination);
+
+          osc.start(now);
+          oscHarm.start(now);
+          osc.stop(now + 0.95);
+          oscHarm.stop(now + 0.5);
+        });
+      }
+
+      playWoodClick() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.055);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.065);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* ==========================================================================
+       3. CANVAS PARTICLE & EGGSHELL BURST ENGINE
+       Maps stage-svg (1600x900 meet) coordinates accurately to screen pixels
+       ========================================================================== */
+    class ParticleSystem {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.dustMotes = [];
+        this.particles = [];
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.initDustMotes();
+      }
+
+      resize() {
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+      }
+
+      // Convert stage-svg (1600x900 meet) coordinates to screen canvas coordinates
+      svgToScreen(svgX, svgY) {
+        const scale = Math.min(this.width / 1600, this.height / 900);
+        const offsetX = (this.width - 1600 * scale) / 2;
+        const offsetY = (this.height - 900 * scale) / 2;
+        return {
+          x: offsetX + svgX * scale,
+          y: offsetY + svgY * scale,
+          scale
+        };
+      }
+
+      initDustMotes() {
+        this.dustMotes = [];
+        for (let i = 0; i < 50; i++) {
+          this.dustMotes.push({
+            x: Math.random() * this.width,
+            y: Math.random() * this.height,
+            r: 1.2 + Math.random() * 2.4,
+            vx: 0.12 + Math.random() * 0.2,
+            vy: -0.08 + Math.random() * 0.22,
+            phase: Math.random() * Math.PI * 2,
+            alpha: 0.2 + Math.random() * 0.55
+          });
+        }
+      }
+
+      spawnYarnRevealBurst(svgX, svgY, colorObj) {
+        const pos = this.svgToScreen(svgX, svgY - 12);
+        const colors = [colorObj.shell, colorObj.base, colorObj.light, '#ffe58f', '#fffdf2'];
+
+        for (let i = 0; i < 30; i++) {
+          const angle = (Math.PI * 2 * i) / 30 + (Math.random() - 0.5) * 0.3;
+          const speed = (2.8 + Math.random() * 6.5) * pos.scale;
+          this.particles.push({
+            type: i % 3 === 0 ? 'star' : (i % 2 === 0 ? 'shell' : 'yarn'),
+            x: pos.x,
+            y: pos.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2.4 * pos.scale,
+            gravity: 0.15 * pos.scale,
+            size: (6 + Math.random() * 7) * pos.scale,
+            color: colors[i % colors.length],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 0.18,
+            life: 1,
+            decay: 0.015 + Math.random() * 0.012
+          });
+        }
+      }
+
+      spawnPurrHearts(svgX, svgY) {
+        const pos = this.svgToScreen(svgX, svgY);
+        const colors = ['#ff8fa3', '#ffb3c1', '#ffd6a5', '#ffe599'];
+        for (let i = 0; i < 6; i++) {
+          this.particles.push({
+            type: 'heart',
+            x: pos.x + (Math.random() - 0.5) * 55 * pos.scale,
+            y: pos.y - 18 * pos.scale,
+            vx: (Math.random() - 0.5) * 1.2 * pos.scale,
+            vy: (-1.4 - Math.random() * 1.4) * pos.scale,
+            gravity: -0.01 * pos.scale,
+            size: (10 + Math.random() * 7) * pos.scale,
+            color: colors[i % colors.length],
+            rot: (Math.random() - 0.5) * 0.4,
+            vRot: (Math.random() - 0.5) * 0.02,
+            life: 1,
+            decay: 0.012 + Math.random() * 0.008
+          });
+        }
+      }
+
+      spawnRoundCelebration(styleIndex, ballPositions, catPos) {
+        const palette = ['#ff758f', '#ffd166', '#06d6a0', '#4ea8de', '#c77dff', '#ff9f1c'];
+
+        if (styleIndex === 0) {
+          ballPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y);
+            for (let i = 0; i < 5; i++) {
+              this.particles.push({
+                type: 'butterfly',
+                x: pos.x + (Math.random() - 0.5) * 45 * pos.scale,
+                y: pos.y,
+                vx: (Math.random() - 0.5) * 3.2 * pos.scale,
+                vy: (-2.0 - Math.random() * 2.4) * pos.scale,
+                gravity: -0.015 * pos.scale,
+                size: (13 + Math.random() * 8) * pos.scale,
+                color: palette[(i + b.num) % palette.length],
+                wingPhase: Math.random() * Math.PI * 2,
+                rot: 0,
+                vRot: 0,
+                life: 1,
+                decay: 0.007 + Math.random() * 0.005
+              });
+            }
+          });
+        } else if (styleIndex === 1) {
+          const cPos = this.svgToScreen(catPos.x, catPos.y - 60);
+          for (let i = 0; i < 36; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (1.5 + Math.random() * 4.8) * cPos.scale;
+            this.particles.push({
+              type: i % 2 === 0 ? 'heart' : 'star',
+              x: cPos.x + (Math.random() - 0.5) * 160 * cPos.scale,
+              y: cPos.y + (Math.random() - 0.5) * 50 * cPos.scale,
+              vx: Math.cos(angle) * speed * 0.7,
+              vy: -Math.abs(Math.sin(angle) * speed) - 1.2 * cPos.scale,
+              gravity: -0.01 * cPos.scale,
+              size: (10 + Math.random() * 9) * cPos.scale,
+              color: palette[i % palette.length],
+              rot: (Math.random() - 0.5) * 0.5,
+              vRot: (Math.random() - 0.5) * 0.03,
+              life: 1,
+              decay: 0.009 + Math.random() * 0.006
+            });
+          }
+        } else if (styleIndex === 2) {
+          ballPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y - 25);
+            for (let i = 0; i < 20; i++) {
+              const angle = (Math.PI * 2 * i) / 20;
+              const speed = (2.8 + Math.random() * 6.0) * pos.scale;
+              this.particles.push({
+                type: 'ribbon',
+                x: pos.x,
+                y: pos.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 3.2 * pos.scale,
+                gravity: 0.12 * pos.scale,
+                size: (11 + Math.random() * 9) * pos.scale,
+                color: palette[(i + b.num) % palette.length],
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.14,
+                life: 1,
+                decay: 0.01 + Math.random() * 0.007
+              });
+            }
+          });
+        } else {
+          ballPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y);
+            for (let i = 0; i < 18; i++) {
+              const angle = (Math.PI * 2 * i) / 18;
+              const speed = (2 + Math.random() * 4.2) * pos.scale;
+              this.particles.push({
+                type: 'star',
+                x: pos.x,
+                y: pos.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1.5 * pos.scale,
+                gravity: 0.04 * pos.scale,
+                size: (9 + Math.random() * 8) * pos.scale,
+                color: i % 2 === 0 ? '#ffe885' : '#9bf6ff',
+                rot: Math.random() * Math.PI,
+                vRot: 0.08,
+                life: 1,
+                decay: 0.01 + Math.random() * 0.006
+              });
+            }
+          });
+        }
+      }
+
+      updateAndDraw(time) {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        for (let m of this.dustMotes) {
+          m.x += m.vx + Math.sin(time * 0.001 + m.phase) * 0.18;
+          m.y += m.vy + Math.cos(time * 0.0012 + m.phase) * 0.12;
+          if (m.x > this.width + 10) m.x = -10;
+          if (m.y > this.height + 10) m.y = -10;
+          if (m.y < -10) m.y = this.height + 10;
+
+          const twinkle = 0.5 + 0.5 * Math.sin(time * 0.003 + m.phase);
+          ctx.save();
+          ctx.globalAlpha = m.alpha * twinkle;
+          ctx.fillStyle = '#fff2b2';
+          ctx.shadowColor = '#ffd966';
+          ctx.shadowBlur = 6;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const p = this.particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += p.gravity;
+          p.rot += p.vRot;
+          p.life -= p.decay;
+
+          if (p.life <= 0) {
+            this.particles.splice(i, 1);
+            continue;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+
+          if (p.type === 'star') {
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 8;
+            this.drawFourPointStar(ctx, 0, 0, p.size, p.size * 0.38);
+          } else if (p.type === 'heart') {
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 6;
+            this.drawHeart(ctx, 0, 0, p.size);
+          } else if (p.type === 'shell') {
+            ctx.fillStyle = p.color;
+            ctx.strokeStyle = '#8c6d46';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(-p.size * 0.6, -p.size * 0.4);
+            ctx.lineTo(p.size * 0.7, -p.size * 0.1);
+            ctx.lineTo(0, p.size * 0.7);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          } else if (p.type === 'yarn' || p.type === 'ribbon') {
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = p.type === 'ribbon' ? 4 : 3;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-p.size, 0);
+            ctx.quadraticCurveTo(-p.size * 0.3, -p.size * 0.7, 0, 0);
+            ctx.quadraticCurveTo(p.size * 0.3, p.size * 0.7, p.size, 0);
+            ctx.stroke();
+          } else if (p.type === 'butterfly') {
+            p.wingPhase += 0.24;
+            p.x += Math.sin(p.wingPhase * 0.3) * 1.2;
+            const wingW = Math.abs(Math.cos(p.wingPhase)) * p.size;
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = '#fff3b0';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.ellipse(-wingW * 0.5, -2, wingW * 0.65, p.size * 0.5, -0.3, 0, Math.PI * 2);
+            ctx.ellipse(wingW * 0.5, -2, wingW * 0.65, p.size * 0.5, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#4a2508';
+            ctx.fillRect(-1.5, -p.size * 0.35, 3, p.size * 0.7);
+          }
+
+          ctx.restore();
+        }
+      }
+
+      drawFourPointStar(ctx, x, y, outerR, innerR) {
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const r = i % 2 === 0 ? outerR : innerR;
+          const a = (i * Math.PI) / 4;
+          if (i === 0) ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+          else ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      drawHeart(ctx, x, y, size) {
+        const s = size * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(x, y + s * 0.6);
+        ctx.bezierCurveTo(x - s * 1.3, y - s * 0.2, x - s * 0.7, y - s * 1.2, x, y - s * 0.4);
+        ctx.bezierCurveTo(x + s * 0.7, y - s * 1.2, x + s * 1.3, y - s * 0.2, x, y + s * 0.6);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    /* ==========================================================================
+       4. SVG DINOSAUR EGG & HATCHING BABY DINO GENERATOR
+       - Unrevealed: Whole speckled prehistoric egg with a mystery crack swirl.
+       - Revealed: Cracked bottom eggshell cradle + adorable Baby Dinosaur
+         popping out of the egg + clear Number Badge on the shell front!
+       ========================================================================== */
+    function createYarnBallSVG(number, x, y, radius, isRevealed, isNextHint = false) {
+      const palette = YARN_PALETTE[(number - 1) % YARN_PALETTE.length];
+      const ns = 'http://www.w3.org/2000/svg';
+      const g = document.createElementNS(ns, 'g');
+      g.setAttribute('class', 'interactive-node');
+      g.setAttribute('transform', `translate(${x}, ${y})`);
+      g.dataset.number = number;
+
+      const shellGradId = `egg-shell-${number}-${Math.round(x)}-${Math.round(y)}`;
+      const dinoGradId = `baby-dino-${number}-${Math.round(x)}-${Math.round(y)}`;
+      const r = radius;
+      const fontSize = Math.round(r * 0.78);
+      const badgeScale = isRevealed ? 1 : 0.001;
+      const badgeOpacity = isRevealed ? 1 : 0;
+      const mysteryOpacity = isRevealed ? 0 : 1;
+
+      const pawHintHtml = (!isRevealed && isNextHint) ? `
+        <g class="paw-hint-indicator" transform="translate(0, ${-r * 1.35})">
+          <circle cx="0" cy="0" r="19" fill="#ffe484" fill-opacity="0.48" filter="url(#glow-gold)" />
+          <!-- 3-Toed Dino Footprint Hint -->
+          <path d="M-8 6 C-8 -2, 8 -2, 8 6 C8 11, -8 11, -8 6 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.5" />
+          <path d="M-7 0 L-11 -9 L-3 -3 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" stroke-linejoin="round" />
+          <path d="M-3 -2 L0 -12 L3 -2 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" stroke-linejoin="round" />
+          <path d="M3 -3 L11 -9 L7 0 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" stroke-linejoin="round" />
+        </g>
+      ` : '';
+
+      // Egg dimensions relative to radius r
+      const eggW = r * 0.92;
+      const eggTopY = -r * 1.12;
+      const eggBotY = r * 0.96;
+
+      g.innerHTML = `
+        <defs>
+          <radialGradient id="${shellGradId}" cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#ffffff" />
+            <stop offset="50%" stop-color="${palette.shell}" />
+            <stop offset="88%" stop-color="#d9c3a3" />
+            <stop offset="100%" stop-color="#9e8260" />
+          </radialGradient>
+          <radialGradient id="${dinoGradId}" cx="38%" cy="35%" r="65%">
+            <stop offset="0%" stop-color="${palette.light}" />
+            <stop offset="55%" stop-color="${palette.base}" />
+            <stop offset="100%" stop-color="${palette.dark}" />
+          </radialGradient>
+        </defs>
+
+        <!-- Nest Shadow -->
+        <ellipse cx="0" cy="${r * 0.92}" rx="${r * 0.95}" ry="${r * 0.28}" fill="#1f1105" fill-opacity="0.52" />
+
+        <!-- Cozy Nest Grass Blades behind Egg -->
+        <path d="M${-r * 0.85} ${r * 0.78} Q${-r * 1.1} ${r * 0.4} ${-r * 0.95} ${r * 0.25} Q${-r * 0.75} ${r * 0.5} ${-r * 0.65} ${r * 0.82} Z" fill="#6b9e44" />
+        <path d="M${r * 0.82} ${r * 0.78} Q${r * 1.12} ${r * 0.42} ${r * 0.95} ${r * 0.22} Q${r * 0.75} ${r * 0.48} ${r * 0.62} ${r * 0.82} Z" fill="#588a36" />
+
+        <!-- Inner Rotator / Scaler Group at local (0,0) -->
+        <g class="yarn-ball-rotator" transform="scale(1)">
+          <!-- Soft Golden Highlight Ring if this is the next suggested egg to click -->
+          <ellipse class="next-ball-halo" cx="0" cy="${-r * 0.08}" rx="${r * 1.02}" ry="${r * 1.15}" fill="none" stroke="#ffe27a" stroke-width="4" opacity="${(!isRevealed && isNextHint) ? '0.85' : '0'}" />
+
+          <!-- ================================================================
+               1. UNHATCHED WHOLE DINOSAUR EGG (Shown when !isRevealed)
+               ================================================================ -->
+          <g class="mystery-knot-overlay" opacity="${mysteryOpacity}">
+            <!-- Whole Ovoid Egg Shape -->
+            <path d="M 0 ${eggTopY}
+                     C ${eggW * 0.72} ${eggTopY}, ${eggW * 1.05} ${-r * 0.2}, ${eggW} ${r * 0.25}
+                     C ${eggW * 0.95} ${r * 0.75}, ${eggW * 0.55} ${eggBotY}, 0 ${eggBotY}
+                     C ${-eggW * 0.55} ${eggBotY}, ${-eggW * 0.95} ${r * 0.75}, ${-eggW} ${r * 0.25}
+                     C ${-eggW * 1.05} ${-r * 0.2}, ${-eggW * 0.72} ${eggTopY}, 0 ${eggTopY} Z"
+                  fill="url(#${shellGradId})" stroke="#6e5236" stroke-width="2.5" />
+
+            <!-- Colorful Prehistoric Egg Spots -->
+            <ellipse cx="${-r * 0.34}" cy="${-r * 0.42}" rx="${r * 0.2}" ry="${r * 0.26}" transform="rotate(-18 ${-r * 0.34} ${-r * 0.42})" fill="${palette.base}" opacity="0.82" />
+            <ellipse cx="${r * 0.36}" cy="${-r * 0.15}" rx="${r * 0.24}" ry="${r * 0.18}" transform="rotate(22 ${r * 0.36} ${-r * 0.15})" fill="${palette.light}" opacity="0.85" />
+            <circle cx="${-r * 0.22}" cy="${r * 0.35}" r="${r * 0.22}" fill="${palette.spots}" opacity="0.78" />
+            <circle cx="${r * 0.28}" cy="${r * 0.48}" r="${r * 0.14}" fill="${palette.base}" opacity="0.8" />
+            <circle cx="${0}" cy="${-r * 0.72}" r="${r * 0.13}" fill="${palette.spots}" opacity="0.75" />
+
+            <!-- Specular Shine on Whole Egg -->
+            <ellipse cx="${-r * 0.28}" cy="${-r * 0.52}" rx="${r * 0.16}" ry="${r * 0.32}" transform="rotate(18 ${-r * 0.28} ${-r * 0.52})" fill="#ffffff" fill-opacity="0.45" />
+
+            <!-- Zig-Zag Mystery Crack Line Across Middle -->
+            <path d="M ${-eggW * 0.72} ${-r * 0.05}
+                     L ${-r * 0.35} ${r * 0.12}
+                     L ${-r * 0.08} ${-r * 0.12}
+                     L ${r * 0.22} ${r * 0.14}
+                     L ${r * 0.48} ${-r * 0.08}
+                     L ${eggW * 0.72} ${r * 0.06}"
+                  fill="none" stroke="#5c4024" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.85" />
+          </g>
+
+          <!-- ================================================================
+               2. HATCHED BABY DINOSAUR + LOWER EGGSHELL + NUMBER BADGE
+               ================================================================ -->
+          <g class="yarn-number-badge" transform="scale(${badgeScale})" opacity="${badgeOpacity}">
+            <!-- Back Interior of Cracked Lower Shell -->
+            <path d="M ${-eggW * 0.92} ${r * 0.08}
+                     Q 0 ${-r * 0.18} ${eggW * 0.92} ${r * 0.08}
+                     L ${eggW * 0.85} ${r * 0.45}
+                     L ${-eggW * 0.85} ${r * 0.45} Z"
+                  fill="#b89b78" stroke="#6e5236" stroke-width="2" />
+
+            <!-- ADORABLE HATCHED BABY DINOSAUR PEEKING OUT -->
+            <g class="baby-dino-character" transform="translate(0, ${-r * 0.34})">
+              <!-- Tilted Jaunty Top Eggshell Hat on Baby Dino's Head -->
+              <g transform="translate(${r * 0.12}, ${-r * 0.62}) rotate(22)">
+                <path d="M ${-r * 0.42} 0 C ${-r * 0.35} ${-r * 0.42}, ${r * 0.35} ${-r * 0.42}, ${r * 0.42} 0 L ${r * 0.18} ${-r * 0.08} L 0 ${r * 0.06} L ${-r * 0.2} ${-r * 0.08} Z"
+                      fill="url(#${shellGradId})" stroke="#6e5236" stroke-width="2" />
+                <circle cx="${-r * 0.1}" cy="${-r * 0.18}" r="${r * 0.09}" fill="${palette.base}" opacity="0.85" />
+              </g>
+
+              <!-- Baby Dino Head & Chubby Torso -->
+              <path d="M ${-r * 0.48} ${r * 0.42}
+                       C ${-r * 0.52} ${r * 0.05}, ${-r * 0.45} ${-r * 0.52}, 0 ${-r * 0.52}
+                       C ${r * 0.45} ${-r * 0.52}, ${r * 0.52} ${r * 0.05}, ${r * 0.48} ${r * 0.42} Z"
+                    fill="url(#${dinoGradId})" stroke="${palette.dark}" stroke-width="2.2" />
+
+              <!-- Cute Baby Crest Spikes -->
+              <path d="M ${-r * 0.18} ${-r * 0.48} L 0 ${-r * 0.68} L ${r * 0.18} ${-r * 0.48} Z" fill="${palette.strand}" stroke="${palette.dark}" stroke-width="1.5" />
+
+              <!-- Rosy Baby Cheeks -->
+              <ellipse cx="${-r * 0.3}" cy="${-r * 0.04}" rx="${r * 0.1}" ry="${r * 0.06}" fill="#ff7a8a" opacity="0.65" />
+              <ellipse cx="${r * 0.3}" cy="${-r * 0.04}" rx="${r * 0.1}" ry="${r * 0.06}" fill="#ff7a8a" opacity="0.65" />
+
+              <!-- Big Sparkling Baby Dino Eyes -->
+              <circle cx="${-r * 0.2}" cy="${-r * 0.18}" r="${r * 0.13}" fill="#1a0f07" />
+              <circle cx="${-r * 0.24}" cy="${-r * 0.22}" r="${r * 0.048}" fill="#ffffff" />
+              <circle cx="${-r * 0.16}" cy="${-r * 0.14}" r="${r * 0.024}" fill="#ffffff" />
+
+              <circle cx="${r * 0.2}" cy="${-r * 0.18}" r="${r * 0.13}" fill="#1a0f07" />
+              <circle cx="${r * 0.16}" cy="${-r * 0.22}" r="${r * 0.048}" fill="#ffffff" />
+              <circle cx="${r * 0.24}" cy="${-r * 0.14}" r="${r * 0.024}" fill="#ffffff" />
+
+              <!-- Happy Baby Dino Smile & Tiny Tooth -->
+              <path d="M ${-r * 0.14} ${-r * 0.02} Q 0 ${r * 0.12} ${r * 0.14} ${-r * 0.02}" fill="#e85d68" stroke="${palette.dark}" stroke-width="1.8" stroke-linecap="round" />
+              <polygon points="${-r * 0.05},${r * 0.01} ${r * 0.05},${r * 0.01} 0,${r * 0.08}" fill="#ffffff" />
+            </g>
+
+            <!-- Front Cracked Lower Eggshell Cradle -->
+            <path d="M ${-eggW * 0.95} ${r * 0.06}
+                     L ${-r * 0.62} ${r * 0.24}
+                     L ${-r * 0.32} ${r * 0.02}
+                     L 0 ${r * 0.24}
+                     L ${r * 0.34} ${r * 0.02}
+                     L ${r * 0.64} ${r * 0.24}
+                     L ${eggW * 0.95} ${r * 0.06}
+                     C ${eggW * 0.96} ${r * 0.68}, ${eggW * 0.55} ${eggBotY}, 0 ${eggBotY}
+                     C ${-eggW * 0.55} ${eggBotY}, ${-eggW * 0.96} ${r * 0.68}, ${-eggW * 0.95} ${r * 0.06} Z"
+                  fill="url(#${shellGradId})" stroke="#6e5236" stroke-width="2.5" stroke-linejoin="round" />
+
+            <!-- Baby Dino Little Paws Resting on the Rim of the Shell -->
+            <ellipse cx="${-r * 0.56}" cy="${r * 0.14}" rx="${r * 0.15}" ry="${r * 0.1}" fill="${palette.light}" stroke="${palette.dark}" stroke-width="1.8" />
+            <ellipse cx="${r * 0.56}" cy="${r * 0.14}" rx="${r * 0.15}" ry="${r * 0.1}" fill="${palette.light}" stroke="${palette.dark}" stroke-width="1.8" />
+
+            <!-- Clear Number Emblem on the Front of the Cracked Shell -->
+            <g transform="translate(0, ${r * 0.52})">
+              <circle cx="0" cy="0" r="${r * 0.48}" fill="url(#felt-badge-grad)" stroke="${palette.dark}" stroke-width="2.5" />
+              <text x="0" y="${fontSize * 0.35}" text-anchor="middle" font-size="${fontSize}" font-weight="bold" fill="#3b1d0a" stroke="#fff6e6" stroke-width="1.5" paint-order="stroke">${number}</text>
+            </g>
+          </g>
+        </g>
+
+        <!-- Foreground Nest Grass Blades -->
+        <path d="M${-r * 0.45} ${r * 0.94} Q${-r * 0.55} ${r * 0.72} ${-r * 0.38} ${r * 0.65} Q${-r * 0.32} ${r * 0.82} ${-r * 0.28} ${r * 0.95} Z" fill="#7ab54c" />
+        <path d="M${r * 0.42} ${r * 0.94} Q${r * 0.55} ${r * 0.72} ${r * 0.38} ${r * 0.65} Q${r * 0.32} ${r * 0.82} ${r * 0.28} ${r * 0.95} Z" fill="#7ab54c" />
+
+        ${pawHintHtml}
+
+        <!-- Generous Static Transparent Hit Target so clicks NEVER fail -->
+        <circle class="hit-target" cx="0" cy="0" r="${r * 1.22}" />
+      `;
+
+      return g;
+    }
+
+    /* ==========================================================================
+       5. MAMA DINOSAUR ANIMATION & EMOTION CONTROLLER
+       Handles smooth walking between eggs, 5+ emotional states, blinking, cooing
+       ========================================================================== */
+    class KittenController {
+      constructor() {
+        this.root = document.getElementById('kitten-root');
+        this.flipGroup = document.getElementById('kitten-flip-group');
+        this.bodyRig = document.getElementById('kitten-body-rig');
+        this.head = document.getElementById('cat-head');
+        this.tailGroup = document.getElementById('cat-tail-group');
+        this.earL = document.getElementById('ear-l');
+        this.earR = document.getElementById('ear-r');
+        this.legFL = document.getElementById('leg-fl');
+        this.legFR = document.getElementById('leg-fr');
+        this.legBL = document.getElementById('leg-bl');
+        this.legBR = document.getElementById('leg-br');
+        this.eyesOpen = document.getElementById('cat-eyes-open');
+        this.eyesHappy = document.getElementById('cat-eyes-happy');
+        this.eyelidL = document.getElementById('eyelid-l');
+        this.eyelidR = document.getElementById('eyelid-r');
+        this.pupilL = document.getElementById('pupil-l');
+        this.pupilR = document.getElementById('pupil-r');
+        this.blush = document.getElementById('cat-blush');
+        this.mouthOpen = document.getElementById('cat-mouth-open');
+        this.purrRipples = document.getElementById('purr-ripples');
+
+        this.x = 800;
+        this.y = 645;
+        this.facing = 1;
+        this.emotion = 'calm';
+        this.emotionTimer = null;
+        this.walkState = null;
+        this.lastStepTime = 0;
+
+        this.nextBlinkTime = performance.now() + 2400;
+        this.isBlinking = false;
+      }
+
+      setPositionImmediate(x, y, facing = 1) {
+        this.walkState = null;
+        this.x = x;
+        this.y = y;
+        this.facing = facing;
+        this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+        this.flipGroup.setAttribute('transform', `scale(${this.facing}, 1)`);
+        this.setEmotion('calm');
+      }
+
+      setEmotion(emotionName, durationMs = 0) {
+        this.emotion = emotionName;
+        if (this.emotionTimer) {
+          clearTimeout(this.emotionTimer);
+          this.emotionTimer = null;
+        }
+
+        this.eyesOpen.setAttribute('opacity', '1');
+        this.eyesHappy.setAttribute('opacity', '0');
+        this.blush.style.opacity = '0';
+        this.mouthOpen.setAttribute('opacity', '0');
+        this.pupilL.setAttribute('rx', '5.5');
+        this.pupilR.setAttribute('rx', '5.5');
+
+        if (emotionName === 'curious') {
+          this.pupilL.setAttribute('rx', '7.8');
+          this.pupilR.setAttribute('rx', '7.8');
+          this.mouthOpen.setAttribute('opacity', '0.7');
+        } else if (emotionName === 'purring') {
+          this.eyesOpen.setAttribute('opacity', '0');
+          this.eyesHappy.setAttribute('opacity', '1');
+          this.blush.style.opacity = '1';
+        } else if (emotionName === 'excited') {
+          this.pupilL.setAttribute('rx', '8.2');
+          this.pupilR.setAttribute('rx', '8.2');
+          this.blush.style.opacity = '0.85';
+          this.mouthOpen.setAttribute('opacity', '1');
+        } else if (emotionName === 'celebrating') {
+          this.eyesOpen.setAttribute('opacity', '0');
+          this.eyesHappy.setAttribute('opacity', '1');
+          this.blush.style.opacity = '1';
+          this.mouthOpen.setAttribute('opacity', '1');
+        }
+
+        if (durationMs > 0) {
+          this.emotionTimer = setTimeout(() => {
+            if (this.emotion !== 'walking') {
+              this.setEmotion('calm');
+            }
+          }, durationMs);
+        }
+      }
+
+      walkTo(targetX, targetY, onArrive) {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 6) {
+          this.x = targetX;
+          this.y = targetY;
+          this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+          if (onArrive) onArrive();
+          return;
+        }
+
+        this.facing = dx >= 0 ? 1 : -1;
+        this.flipGroup.setAttribute('transform', `scale(${this.facing}, 1)`);
+        this.setEmotion('walking');
+
+        const duration = Math.min(900, Math.max(340, dist * 1.35));
+        this.walkState = {
+          startX: this.x,
+          startY: this.y,
+          targetX,
+          targetY,
+          startTime: performance.now(),
+          duration,
+          onArrive
+        };
+      }
+
+      update(now) {
+        if (this.walkState) {
+          const elapsed = now - this.walkState.startTime;
+          const t = Math.min(1, elapsed / this.walkState.duration);
+          const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+          this.x = this.walkState.startX + (this.walkState.targetX - this.walkState.startX) * ease;
+          this.y = this.walkState.startY + (this.walkState.targetY - this.walkState.startY) * ease;
+
+          const stepPhase = elapsed * 0.026;
+          const bounceY = -Math.abs(Math.sin(stepPhase)) * 10;
+          const bodyTilt = Math.sin(stepPhase) * 3.2;
+
+          this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+          this.bodyRig.setAttribute('transform', `translate(0, ${bounceY}) rotate(${bodyTilt})`);
+
+          const flSwing = Math.sin(stepPhase) * 22;
+          const frSwing = -Math.sin(stepPhase) * 22;
+          this.legFL.setAttribute('transform', `translate(-10, 12) rotate(${flSwing})`);
+          this.legFR.setAttribute('transform', `translate(20, 12) rotate(${frSwing})`);
+          this.legBL.setAttribute('transform', `translate(-30, 14) rotate(${frSwing * 0.6})`);
+          this.legBR.setAttribute('transform', `translate(26, 16) rotate(${flSwing * 0.6})`);
+
+          if (now - this.lastStepTime > 170) {
+            sound.playPawStep();
+            this.lastStepTime = now;
+          }
+
+          if (t >= 1) {
+            const cb = this.walkState.onArrive;
+            this.walkState = null;
+            this.legFL.setAttribute('transform', 'translate(-10, 12)');
+            this.legFR.setAttribute('transform', 'translate(20, 12)');
+            this.legBL.setAttribute('transform', 'translate(-30, 14)');
+            this.legBR.setAttribute('transform', 'translate(26, 16)');
+            this.bodyRig.setAttribute('transform', 'translate(0, 0)');
+            if (cb) cb();
+          }
+          return;
+        }
+
+        const breath = Math.sin(now * 0.0032);
+        const tailAngle = Math.sin(now * 0.0028) * 12 + (this.emotion === 'celebrating' ? Math.sin(now * 0.015) * 16 : 0);
+        this.tailGroup.setAttribute('transform', `translate(-42, 8) rotate(${tailAngle})`);
+
+        if (sound.isPurring || this.emotion === 'purring') {
+          const vibX = Math.sin(now * 0.16) * 0.8;
+          const vibY = Math.cos(now * 0.18) * 0.6;
+          this.bodyRig.setAttribute('transform', `translate(${vibX}, ${breath * 1.8 + vibY}) scale(1, ${1 + breath * 0.012})`);
+          const ripplePulse = 0.4 + 0.35 * Math.sin(now * 0.008);
+          this.purrRipples.setAttribute('opacity', ripplePulse.toFixed(2));
+        } else if (this.emotion === 'celebrating') {
+          const hopY = -Math.abs(Math.sin(now * 0.009)) * 20;
+          const stretch = 1 + Math.sin(now * 0.009) * 0.06;
+          this.bodyRig.setAttribute('transform', `translate(0, ${hopY}) scale(${1 / stretch}, ${stretch})`);
+          const pawWave = Math.sin(now * 0.018) * 24;
+          this.legFL.setAttribute('transform', `translate(-10, 6) rotate(${pawWave})`);
+          this.legFR.setAttribute('transform', `translate(20, 6) rotate(${-pawWave})`);
+          this.purrRipples.setAttribute('opacity', '0');
+        } else {
+          this.bodyRig.setAttribute('transform', `translate(0, ${breath * 1.8}) scale(1, ${1 + breath * 0.01})`);
+          this.legFL.setAttribute('transform', 'translate(-10, 12)');
+          this.legFR.setAttribute('transform', 'translate(20, 12)');
+          this.purrRipples.setAttribute('opacity', '0');
+        }
+
+        let headTilt = Math.sin(now * 0.0018) * 2.5;
+        if (this.emotion === 'curious') headTilt = 10 + Math.sin(now * 0.004) * 3;
+        else if (this.emotion === 'purring') headTilt = -6 + Math.sin(now * 0.003) * 2;
+        else if (this.emotion === 'excited') headTilt = -4 + Math.cos(now * 0.006) * 4;
+        this.head.setAttribute('transform', `translate(12, -68) rotate(${headTilt})`);
+
+        const earTwitchL = Math.sin(now * 0.0025) * 4 + (this.emotion === 'curious' ? -8 : 0);
+        const earTwitchR = -Math.cos(now * 0.0029) * 4 + (this.emotion === 'curious' ? 8 : 0);
+        this.earL.setAttribute('transform', `translate(-26, -32) rotate(${earTwitchL})`);
+        this.earR.setAttribute('transform', `translate(18, -34) rotate(${earTwitchR})`);
+
+        if (!this.isBlinking && now > this.nextBlinkTime) {
+          this.isBlinking = true;
+          this.blinkStart = now;
+          this.nextBlinkTime = now + 2600 + Math.random() * 2800;
+        }
+
+        if (this.isBlinking) {
+          const bt = (now - this.blinkStart) / 180;
+          if (bt >= 1) {
+            this.isBlinking = false;
+            this.eyelidL.setAttribute('transform', 'scale(1, 0)');
+            this.eyelidR.setAttribute('transform', 'scale(1, 0)');
+          } else {
+            const closeAmt = Math.sin(bt * Math.PI);
+            this.eyelidL.setAttribute('transform', `scale(1, ${closeAmt})`);
+            this.eyelidR.setAttribute('transform', `scale(1, ${closeAmt})`);
+          }
+        }
+      }
+    }
+
+    /* ==========================================================================
+       6. MAIN GAME CONTROLLER
+       ========================================================================== */
+    class NumberLineCatGame {
+      constructor() {
+        this.canvas = document.getElementById('fx-canvas');
+        this.particles = new ParticleSystem(this.canvas);
+        this.kitten = new KittenController();
+
+        this.yarnLayer = document.getElementById('yarn-balls-layer');
+        this.connectingLayer = document.getElementById('yarn-connecting-layer');
+        this.pawTrailLayer = document.getElementById('paw-trail-layer');
+        this.taskEmblemContent = document.getElementById('task-emblem-content');
+        this.shelfContainer = document.getElementById('shelf-balls-container');
+        this.helperShelfWrapper = document.getElementById('helper-shelf-wrapper');
+        this.helperActiveRing = document.getElementById('helper-active-ring');
+        this.nextPulseHalo = document.getElementById('next-pulse-halo');
+
+        // Optional teacher filters (0 = All, 1 = Forward +, -1 = Backward -)
+        this.dirFilter = 0;
+        // Step filter (0 = All 1..3, or 1, 2, 3)
+        this.stepFilter = 0;
+
+        this.roundData = null;
+        this.lastSignature = '';
+        this.celebrationCounter = 0;
+        this.helperOpen = false;
+        this.shelfCurrentY = -220;
+        this.shelfTargetY = -220;
+
+        this.buildHelperShelf();
+        this.bindEvents();
+        this.generateNewRound(true);
+        this.startLoop();
+      }
+
+      /* ------------------------------------------------------------------------
+         Build the 1..10 Collapsible Helper Shelf at the top of the screen
+         ------------------------------------------------------------------------ */
+      buildHelperShelf() {
+        this.shelfContainer.innerHTML = '';
+        const ns = 'http://www.w3.org/2000/svg';
+        const startX = 346;
+        const spacing = 101;
+
+        for (let num = 1; num <= 10; num++) {
+          const cx = startX + (num - 1) * spacing;
+          const cy = 75;
+
+          const itemGroup = document.createElementNS(ns, 'g');
+          itemGroup.setAttribute('id', `shelf-item-${num}`);
+
+          const ring = document.createElementNS(ns, 'circle');
+          ring.setAttribute('id', `shelf-ring-${num}`);
+          ring.setAttribute('cx', cx);
+          ring.setAttribute('cy', cy);
+          ring.setAttribute('r', '36');
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', '#ffe27a');
+          ring.setAttribute('stroke-width', '3.5');
+          ring.setAttribute('opacity', '0');
+          itemGroup.appendChild(ring);
+
+          const miniBall = createYarnBallSVG(num, cx, cy, 26, true, false);
+          miniBall.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            sound.init();
+            sound.playNumberReveal(num, false);
+            sound.triggerQuietPurr(1800, 0.06);
+            this.particles.spawnYarnRevealBurst(cx, cy, YARN_PALETTE[num - 1]);
+            const rotator = miniBall.querySelector('.yarn-ball-rotator');
+            animateInnerScale(rotator, 1.2, 320);
+          });
+
+          itemGroup.appendChild(miniBall);
+          this.shelfContainer.appendChild(itemGroup);
+        }
+      }
+
+      updateHelperShelfHighlights() {
+        if (!this.roundData) return;
+        for (let num = 1; num <= 10; num++) {
+          const ring = document.getElementById(`shelf-ring-${num}`);
+          if (!ring) continue;
+
+          const ballItem = this.roundData.balls.find((b) => b.num === num);
+          if (!ballItem) {
+            ring.setAttribute('opacity', '0');
+          } else if (ballItem.num === this.roundData.startNum) {
+            ring.setAttribute('stroke', '#ffd966');
+            ring.setAttribute('stroke-dasharray', 'none');
+            ring.setAttribute('opacity', '0.95');
+          } else {
+            ring.setAttribute('stroke', ballItem.revealed ? '#9ef0b6' : '#ffd966');
+            ring.setAttribute('stroke-dasharray', ballItem.revealed ? 'none' : '6 4');
+            ring.setAttribute('opacity', '0.8');
+          }
+        }
+      }
+
+      /* ------------------------------------------------------------------------
+         Render the visual non-verbal Task Emblem on the nest (+1/+2/+3 or -1/-2/-3)
+         ------------------------------------------------------------------------ */
+      renderTaskEmblem() {
+        if (!this.roundData || !this.taskEmblemContent) return;
+        const { dir, steps } = this.roundData;
+        const signStr = dir === 1 ? `+${steps}` : `-${steps}`;
+        const arrowColor = dir === 1 ? '#3c8c50' : '#c95238';
+
+        // Draw direction arrow, step badge, and mini dino-egg pips
+        let pipsHtml = '';
+        for (let i = 0; i < steps; i++) {
+          const px = 38 + i * 22;
+          pipsHtml += `<ellipse cx="${px}" cy="0" rx="7" ry="9" fill="${arrowColor}" stroke="#fff6e6" stroke-width="1.8" />`;
+        }
+
+        const arrowPath = dir === 1
+          ? `<path d="M-88 0 L-46 0 M-58 -11 L-44 0 L-58 11" fill="none" stroke="${arrowColor}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />`
+          : `<path d="M-44 0 L-86 0 M-74 -11 L-88 0 L-74 11" fill="none" stroke="${arrowColor}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />`;
+
+        this.taskEmblemContent.innerHTML = `
+          ${arrowPath}
+          <text x="-6" y="10" text-anchor="middle" font-size="30" font-weight="bold" fill="#3b1d0a" stroke="#fff8eb" stroke-width="1.5" paint-order="stroke">${signStr}</text>
+          ${pipsHtml}
+        `;
+      }
+
+      /* ------------------------------------------------------------------------
+         Generate a New Counting Task:
+         steps in {1, 2, 3}, direction in {+1 (forward), -1 (backward)}
+         ------------------------------------------------------------------------ */
+      generateNewRound(isFirstRound = false) {
+        let steps, dir, startNum, sig;
+        let attempts = 0;
+
+        do {
+          steps = this.stepFilter !== 0 ? this.stepFilter : [1, 2, 3][Math.floor(Math.random() * 3)];
+          dir = this.dirFilter !== 0 ? this.dirFilter : (Math.random() < 0.5 ? 1 : -1);
+
+          if (dir === 1) {
+            const maxStart = 10 - steps;
+            startNum = 1 + Math.floor(Math.random() * maxStart);
+          } else {
+            const minStart = 1 + steps;
+            startNum = minStart + Math.floor(Math.random() * (10 - minStart + 1));
+          }
+          sig = `${startNum}:${dir}:${steps}`;
+          attempts++;
+        } while (sig === this.lastSignature && attempts < 15);
+
+        this.lastSignature = sig;
+
+        const totalBalls = steps + 1;
+        const nums = [];
+        for (let i = 0; i <= steps; i++) {
+          nums.push(startNum + dir * i);
+        }
+        // Sort left-to-right in ascending order so:
+        // Forward (+): startNum is on the LEFT, unhatched eggs on the RIGHT.
+        // Backward (-): startNum is on the RIGHT, unhatched eggs on the LEFT.
+        nums.sort((a, b) => a - b);
+
+        const spacing = totalBalls === 4 ? 225 : totalBalls === 3 ? 255 : 280;
+        const centerX = 800;
+        const baseY = 745;
+
+        const balls = nums.map((num, idx) => {
+          const x = centerX + (idx - (totalBalls - 1) / 2) * spacing;
+          const y = baseY + Math.abs(idx - (totalBalls - 1) / 2) * 7;
+          return {
+            num,
+            x,
+            y,
+            revealed: num === startNum
+          };
+        });
+
+        this.roundData = {
+          startNum,
+          dir,
+          steps,
+          balls,
+          completed: false
+        };
+
+        if (this.nextPulseHalo) {
+          this.nextPulseHalo.setAttribute('opacity', '0');
+        }
+
+        this.renderTaskEmblem();
+        this.renderRoundScene(isFirstRound);
+        this.updateHelperShelfHighlights();
+      }
+
+      getNextSequentialBall() {
+        if (!this.roundData) return null;
+        const { startNum, dir, steps, balls } = this.roundData;
+        for (let i = 1; i <= steps; i++) {
+          const targetNum = startNum + dir * i;
+          const found = balls.find((b) => b.num === targetNum);
+          if (found && !found.revealed) return found;
+        }
+        return null;
+      }
+
+      /* ------------------------------------------------------------------------
+         Render Connecting Nest Vine, Dino Footprint Trail, and Dino Eggs
+         ------------------------------------------------------------------------ */
+      renderRoundScene(placeCatImmediately = false) {
+        this.yarnLayer.innerHTML = '';
+        this.connectingLayer.innerHTML = '';
+        this.pawTrailLayer.innerHTML = '';
+
+        const ns = 'http://www.w3.org/2000/svg';
+        const { balls, startNum, dir } = this.roundData;
+        const nextBall = this.getNextSequentialBall();
+
+        // 1) Twining prehistoric vine connecting the eggs in the nest
+        if (balls.length >= 2) {
+          let pathD = `M ${balls[0].x} ${balls[0].y + 38}`;
+          for (let i = 1; i < balls.length; i++) {
+            const prev = balls[i - 1];
+            const curr = balls[i];
+            const midX = (prev.x + curr.x) / 2;
+            const waveY = prev.y + 46 + (i % 2 === 0 ? -12 : 12);
+            pathD += ` Q ${midX} ${waveY} ${curr.x} ${curr.y + 38}`;
+          }
+
+          const strandShadow = document.createElementNS(ns, 'path');
+          strandShadow.setAttribute('d', pathD);
+          strandShadow.setAttribute('fill', 'none');
+          strandShadow.setAttribute('stroke', '#331e09');
+          strandShadow.setAttribute('stroke-width', '8');
+          strandShadow.setAttribute('stroke-linecap', 'round');
+          strandShadow.setAttribute('opacity', '0.45');
+          this.connectingLayer.appendChild(strandShadow);
+
+          const strandMain = document.createElementNS(ns, 'path');
+          strandMain.setAttribute('d', pathD);
+          strandMain.setAttribute('fill', 'none');
+          strandMain.setAttribute('stroke', '#689e3c');
+          strandMain.setAttribute('stroke-width', '5.5');
+          strandMain.setAttribute('stroke-linecap', 'round');
+          this.connectingLayer.appendChild(strandMain);
+
+          const strandTwist = document.createElementNS(ns, 'path');
+          strandTwist.setAttribute('d', pathD);
+          strandTwist.setAttribute('fill', 'none');
+          strandTwist.setAttribute('stroke', '#b8e878');
+          strandTwist.setAttribute('stroke-width', '2.5');
+          strandTwist.setAttribute('stroke-dasharray', '8 8');
+          strandTwist.setAttribute('stroke-linecap', 'round');
+          this.connectingLayer.appendChild(strandTwist);
+        }
+
+        // 2) Directional glowing 3-toed dinosaur footprint trail on the nest
+        const startBall = balls.find((b) => b.num === startNum);
+        const endBall = balls.find((b) => b.num === startNum + dir * this.roundData.steps);
+        if (startBall && endBall) {
+          const totalDist = endBall.x - startBall.x;
+          const pawCount = this.roundData.steps * 2;
+          for (let p = 1; p <= pawCount; p++) {
+            const frac = p / (pawCount + 1);
+            const px = startBall.x + totalDist * frac;
+            const py = 695 + (p % 2 === 0 ? -6 : 6);
+            const angle = dir === 1 ? 90 : -90;
+
+            const paw = document.createElementNS(ns, 'g');
+            paw.setAttribute('transform', `translate(${px}, ${py}) rotate(${angle}) scale(0.75)`);
+            paw.setAttribute('opacity', '0.38');
+            paw.innerHTML = `
+              <path d="M-7 5 C-7 -2, 7 -2, 7 5 C7 9, -7 9, -7 5 Z" fill="#fff0c2" />
+              <path d="M-6 0 L-10 -8 L-2 -3 Z" fill="#fff0c2" />
+              <path d="M-2.5 -2 L0 -11 L2.5 -2 Z" fill="#fff0c2" />
+              <path d="M2 -3 L10 -8 L6 0 Z" fill="#fff0c2" />
+            `;
+            this.pawTrailLayer.appendChild(paw);
+          }
+        }
+
+        // 3) Render each interactive Dinosaur Egg (radius 58)
+        balls.forEach((b) => {
+          const isHint = nextBall && nextBall.num === b.num;
+          const ballEl = createYarnBallSVG(b.num, b.x, b.y, 58, b.revealed, isHint);
+          b.element = ballEl;
+
+          ballEl.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            this.handleYarnBallClick(b);
+          });
+
+          this.yarnLayer.appendChild(ballEl);
+        });
+
+        // 4) Position Mama Dinosaur beside the starting hatched egg
+        if (startBall) {
+          const catTargetX = startBall.x;
+          const catTargetY = startBall.y - 92;
+          const faceDir = dir === 1 ? 1 : -1;
+
+          if (placeCatImmediately) {
+            this.kitten.setPositionImmediate(catTargetX, catTargetY, faceDir);
+            sound.triggerQuietPurr(2600, 0.065);
+          } else {
+            this.kitten.walkTo(catTargetX, catTargetY, () => {
+              this.kitten.facing = faceDir;
+              this.kitten.flipGroup.setAttribute('transform', `scale(${faceDir}, 1)`);
+              this.kitten.setEmotion('curious', 2000);
+              sound.triggerQuietPurr(2600, 0.075);
+            });
+          }
+        }
+      }
+
+      /* ------------------------------------------------------------------------
+         Handle Clicking a Dinosaur Egg:
+         1) Immediately hatches the baby dinosaur & reveals the number with crack/chirp & sparkles
+         2) Walks Mama Dinosaur over to stand beside the newly hatched baby dino,
+            nuzzles/coos affectionately, and floats hearts!
+         ------------------------------------------------------------------------ */
+      handleYarnBallClick(ballObj) {
+        sound.init();
+
+        const rotator = ballObj.element ? ballObj.element.querySelector('.yarn-ball-rotator') : null;
+        animateInnerScale(rotator, 1.16, 360);
+
+        if (!ballObj.revealed) {
+          // Immediately hatch the baby dinosaur and show its number badge!
+          ballObj.revealed = true;
+
+          const badge = ballObj.element.querySelector('.yarn-number-badge');
+          const knot = ballObj.element.querySelector('.mystery-knot-overlay');
+
+          if (knot) knot.setAttribute('opacity', '0');
+          if (badge) {
+            badge.setAttribute('opacity', '1');
+            animateInnerScale(badge, 1.18, 380);
+          }
+
+          this.refreshPawHints();
+          this.updateHelperShelfHighlights();
+
+          sound.playNumberReveal(ballObj.num, true);
+          this.particles.spawnYarnRevealBurst(ballObj.x, ballObj.y, YARN_PALETTE[ballObj.num - 1]);
+        } else {
+          // Clicking an already hatched baby dinosaur makes it bounce and play its note
+          sound.playNumberReveal(ballObj.num, false);
+          this.particles.spawnYarnRevealBurst(ballObj.x, ballObj.y, YARN_PALETTE[ballObj.num - 1]);
+        }
+
+        // Walk Mama Dinosaur over to stand beside the hatched baby dinosaur
+        const targetCatX = ballObj.x;
+        const targetCatY = ballObj.y - 92;
+
+        this.kitten.walkTo(targetCatX, targetCatY, () => {
+          const nextUnrevealed = this.getNextSequentialBall();
+          if (nextUnrevealed && nextUnrevealed.num !== ballObj.num) {
+            const lookDir = nextUnrevealed.x >= ballObj.x ? 1 : -1;
+            this.kitten.facing = lookDir;
+            this.kitten.flipGroup.setAttribute('transform', `scale(${lookDir}, 1)`);
+          }
+
+          const emotions = ['purring', 'excited', 'curious'];
+          const chosenEmotion = emotions[ballObj.num % emotions.length];
+          this.kitten.setEmotion(chosenEmotion, 3200);
+          sound.triggerQuietPurr(3500, 0.088);
+          this.particles.spawnPurrHearts(this.kitten.x, this.kitten.y - 55);
+
+          // Check if all eggs in this round are now hatched
+          const allDone = this.roundData.balls.every((b) => b.revealed);
+          if (allDone && !this.roundData.completed) {
+            this.roundData.completed = true;
+            setTimeout(() => this.triggerRoundCompleteCelebration(), 260);
+          }
+        });
+      }
+
+      refreshPawHints() {
+        const oldHints = this.yarnLayer.querySelectorAll('.paw-hint-indicator');
+        oldHints.forEach((h) => h.remove());
+
+        const allHalos = this.yarnLayer.querySelectorAll('.next-ball-halo');
+        allHalos.forEach((h) => h.setAttribute('opacity', '0'));
+
+        const nextBall = this.getNextSequentialBall();
+        if (nextBall && nextBall.element) {
+          const halo = nextBall.element.querySelector('.next-ball-halo');
+          if (halo) halo.setAttribute('opacity', '0.85');
+
+          const ns = 'http://www.w3.org/2000/svg';
+          const hintG = document.createElementNS(ns, 'g');
+          hintG.setAttribute('class', 'paw-hint-indicator');
+          hintG.setAttribute('transform', 'translate(0, -78)');
+          hintG.innerHTML = `
+            <circle cx="0" cy="0" r="19" fill="#ffe484" fill-opacity="0.48" filter="url(#glow-gold)" />
+            <path d="M-8 6 C-8 -2, 8 -2, 8 6 C8 11, -8 11, -8 6 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.5" />
+            <path d="M-7 0 L-11 -9 L-3 -3 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" stroke-linejoin="round" />
+            <path d="M-3 -2 L0 -12 L3 -2 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" stroke-linejoin="round" />
+            <path d="M3 -3 L11 -9 L7 0 Z" fill="#fff3c4" stroke="#8c5319" stroke-width="1.3" stroke-linejoin="round" />
+          `;
+          const hitTarget = nextBall.element.querySelector('.hit-target');
+          nextBall.element.insertBefore(hintG, hitTarget);
+        }
+      }
+
+      /* ------------------------------------------------------------------------
+         Active, Varied Non-Verbal Celebration when all eggs are hatched!
+         ------------------------------------------------------------------------ */
+      triggerRoundCompleteCelebration() {
+        const styleIdx = this.celebrationCounter % 4;
+        this.celebrationCounter++;
+
+        sound.playCelebrationFanfare(styleIdx);
+        sound.triggerQuietPurr(4200, 0.095);
+        this.kitten.setEmotion('celebrating', 3400);
+
+        if (this.nextPulseHalo) {
+          this.nextPulseHalo.setAttribute('opacity', '0.9');
+        }
+
+        this.particles.spawnRoundCelebration(styleIdx, this.roundData.balls, {
+          x: this.kitten.x,
+          y: this.kitten.y
+        });
+
+        const orderedBalls = [...this.roundData.balls].sort((a, b) =>
+          this.roundData.dir === 1 ? a.num - b.num : b.num - a.num
+        );
+
+        orderedBalls.forEach((b, idx) => {
+          setTimeout(() => {
+            if (!b.element) return;
+            const rotator = b.element.querySelector('.yarn-ball-rotator');
+            animateInnerScale(rotator, 1.2, 420);
+          }, idx * 120);
+        });
+      }
+
+      /* ------------------------------------------------------------------------
+         Bind UI Controls & Mama Dino Petting Interaction via reliable pointerdown
+         ------------------------------------------------------------------------ */
+      bindEvents() {
+        // Petting / Clicking directly on Mama Dinosaur
+        const catHitbox = document.getElementById('kitten-interactive-hitbox');
+        catHitbox.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playKittenChirp();
+          sound.triggerQuietPurr(3800, 0.095);
+          this.kitten.setEmotion('purring', 3200);
+          this.particles.spawnPurrHearts(this.kitten.x, this.kitten.y - 65);
+        });
+
+        // Toggle 1..10 Full Number Line Helper Shelf
+        const btnHelper = document.getElementById('btn-toggle-helper');
+        const btnHelperVisual = document.getElementById('btn-helper-visual');
+        btnHelper.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnHelperVisual, 0.9, 180);
+          this.helperOpen = !this.helperOpen;
+          this.shelfTargetY = this.helperOpen ? 0 : -220;
+          this.helperActiveRing.setAttribute('opacity', this.helperOpen ? '0.95' : '0');
+        });
+
+        // Teacher Direction Filter Peg (Cycles: Both ⇄ -> Forward → -> Backward ←)
+        const btnDir = document.getElementById('btn-filter-dir');
+        const btnDirVisual = document.getElementById('btn-dir-visual');
+        const dirIcon = document.getElementById('dir-filter-icon');
+        btnDir.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnDirVisual, 0.9, 180);
+
+          if (this.dirFilter === 0) {
+            this.dirFilter = 1;
+            dirIcon.innerHTML = `<path d="M-15 0 L13 0 M4 -9 L15 0 L4 9" fill="none" stroke="#a8f0b8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />`;
+          } else if (this.dirFilter === 1) {
+            this.dirFilter = -1;
+            dirIcon.innerHTML = `<path d="M15 0 L-13 0 M-4 -9 L-15 0 L-4 9" fill="none" stroke="#ffbfa3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />`;
+          } else {
+            this.dirFilter = 0;
+            dirIcon.innerHTML = `
+              <path d="M-14 -5 L10 -5 M5 -10 L12 -5 L5 0" fill="none" stroke="#ffe49e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M14 6 L-10 6 M-5 1 L-12 6 L-5 11" fill="none" stroke="#ffbfa3" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+            `;
+          }
+          this.generateNewRound(false);
+        });
+
+        // Teacher Step Filter Peg (Cycles: 1-3 -> 1 -> 2 -> 3)
+        const btnStep = document.getElementById('btn-filter-step');
+        const btnStepVisual = document.getElementById('btn-step-visual');
+        const stepText = document.getElementById('step-filter-text');
+        btnStep.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnStepVisual, 0.9, 180);
+
+          this.stepFilter = (this.stepFilter + 1) % 4;
+          stepText.textContent = this.stepFilter === 0 ? '1-3' : String(this.stepFilter);
+          this.generateNewRound(false);
+        });
+
+        // Toggle Sound Mute / Unmute
+        const btnSound = document.getElementById('btn-toggle-sound');
+        const btnSoundVisual = document.getElementById('btn-sound-visual');
+        const muteSlash = document.getElementById('sound-mute-slash');
+        const soundWaves = document.getElementById('sound-waves-icon');
+        btnSound.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          animateInnerScale(btnSoundVisual, 0.9, 180);
+          sound.muted = !sound.muted;
+          if (sound.muted) {
+            muteSlash.setAttribute('opacity', '1');
+            soundWaves.setAttribute('opacity', '0.25');
+            if (sound.purrGain && sound.ctx) {
+              sound.purrGain.gain.setValueAtTime(0.0001, sound.ctx.currentTime);
+            }
+          } else {
+            muteSlash.setAttribute('opacity', '0');
+            soundWaves.setAttribute('opacity', '1');
+            sound.playWoodClick();
+          }
+        });
+
+        // Minimalist "Next" ("Далі") Button — immediately generates a new round
+        const btnNext = document.getElementById('btn-next-round');
+        const btnNextVisual = document.getElementById('btn-next-visual');
+        btnNext.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playWoodClick();
+          animateInnerScale(btnNextVisual, 0.9, 180);
+          this.generateNewRound(false);
+        });
+
+        window.addEventListener('pointerdown', () => {
+          sound.init();
+        }, { once: true });
+      }
+
+      /* ------------------------------------------------------------------------
+         Main Animation Loop (Mama Dino, Shelf Slide, Particles, Amber Dial Hands)
+         ------------------------------------------------------------------------ */
+      startLoop() {
+        const hourHand = document.getElementById('clock-hour-hand');
+        const minHand = document.getElementById('clock-min-hand');
+
+        const loop = (now) => {
+          this.kitten.update(now);
+          this.particles.updateAndDraw(now);
+
+          // Smoothly animate collapsible 1..10 helper shelf
+          if (Math.abs(this.shelfTargetY - this.shelfCurrentY) > 0.4) {
+            this.shelfCurrentY += (this.shelfTargetY - this.shelfCurrentY) * 0.14;
+            this.helperShelfWrapper.setAttribute('transform', `translate(0, ${this.shelfCurrentY.toFixed(1)})`);
+          }
+
+          // Subtle breathing pulse on footprint hint & next button halo
+          const hintPulse = 1 + Math.sin(now * 0.005) * 0.08;
+          const pawHint = this.yarnLayer.querySelector('.paw-hint-indicator');
+          if (pawHint) {
+            const floatY = -78 + Math.sin(now * 0.004) * 5;
+            pawHint.setAttribute('transform', `translate(0, ${floatY.toFixed(1)}) scale(${hintPulse.toFixed(3)})`);
+          }
+
+          // Amber sun-dial hands
+          const minAngle = (now * 0.0004) % 360;
+          const hourAngle = (now * 0.000033) % 360 - 45;
+          if (minHand && hourHand) {
+            minHand.setAttribute('transform', `rotate(${minAngle} 1235 140)`);
+            hourHand.setAttribute('transform', `rotate(${hourAngle} 1235 140)`);
+          }
+
+          requestAnimationFrame(loop);
+        };
+
+        requestAnimationFrame(loop);
+      }
+    }
+
+    window.onload = function () {
+      new NumberLineCatGame();
+    };
+  </script>
+</body>
+</html>
