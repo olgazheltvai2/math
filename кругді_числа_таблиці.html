@@ -1,0 +1,2067 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>10-100</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap');
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Fredoka', sans-serif;
+    background: #0a192f;
+  }
+
+  /* Main Widescreen Stage */
+  #stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Living Background SVG & Particle Canvas */
+  #bg-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  #env-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  #fx-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 30;
+    pointer-events: none;
+  }
+
+  /* Board Container */
+  #board-wrapper {
+    position: relative;
+    z-index: 10;
+    width: min(82vh, 84vw);
+    height: min(82vh, 84vw);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.6s ease;
+  }
+
+  /* Stylized Outer Frame per Theme */
+  #board-frame {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    padding: 3.4%;
+    border-radius: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    box-shadow:
+      0 24px 60px rgba(0, 0, 0, 0.55),
+      inset 0 3px 8px rgba(255, 255, 255, 0.35),
+      inset 0 -8px 18px rgba(0, 0, 0, 0.45);
+  }
+
+  /* Corner Ornaments SVG overlay on frame */
+  #frame-ornaments {
+    position: absolute;
+    inset: -2.5%;
+    width: 105%;
+    height: 105%;
+    pointer-events: none;
+    z-index: 15;
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  /* Inner Recessed Well */
+  #board-well {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 26px;
+    padding: 2.2%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+      inset 0 8px 24px rgba(0, 0, 0, 0.65),
+      inset 0 0 0 3px rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+    transition: all 0.8s ease;
+  }
+
+  /* 8x8 Grid of Number Tiles */
+  #number-grid {
+    position: relative;
+    z-index: 5;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    gap: 1.4%;
+    transition: opacity 0.85s ease, transform 0.85s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Individual Stylized Tile */
+  .num-tile {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 18%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: clamp(14px, 2.7vh, 28px);
+    letter-spacing: -0.5px;
+    transition:
+      transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 0.28s ease,
+      background 0.4s ease,
+      opacity 0.55s ease;
+    transform-style: preserve-3d;
+    overflow: hidden;
+  }
+
+  .num-tile::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0) 55%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.04) 0px, rgba(255, 255, 255, 0.04) 3px, transparent 3px, transparent 7px);
+    pointer-events: none;
+  }
+
+  .num-tile::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border-radius: 15%;
+    border: 1.5px solid rgba(255, 255, 255, 0.22);
+    pointer-events: none;
+  }
+
+  .num-tile:hover {
+    transform: translateY(-3px) scale(1.05);
+    z-index: 6;
+  }
+
+  .num-tile:active {
+    transform: scale(0.92);
+  }
+
+  .tile-label {
+    position: relative;
+    z-index: 2;
+    pointer-events: none;
+    transition: transform 0.35s ease, opacity 0.45s ease, color 0.35s ease, text-shadow 0.35s ease;
+  }
+
+  /* Painted (Colored) Mosaic Tile State */
+  .num-tile.painted {
+    animation: tileFlipPaint 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  .num-tile.painted .tile-label {
+    color: rgba(255, 255, 255, 0.92) !important;
+    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.55) !important;
+    transform: scale(1.06);
+  }
+
+  /* When board is completed, labels on painted tiles softly fade so mosaic shines */
+  .mosaic-complete .num-tile.painted .tile-label {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+
+  .mosaic-complete .num-tile.painted {
+    border-radius: 10%;
+    transform: scale(1.03);
+  }
+
+  /* Non-round tile dissolving away at completion */
+  .num-tile.dissolve {
+    pointer-events: none;
+    opacity: 0 !important;
+    transform: scale(0.25) rotate(18deg) !important;
+  }
+
+  /* Wrong click wobble */
+  .num-tile.wobble {
+    animation: wrongWobble 0.46s ease;
+  }
+
+  /* Subtle hint shimmer if child pauses long */
+  .num-tile.hint-pulse {
+    animation: hintGlow 1.6s ease-in-out infinite;
+  }
+
+  @keyframes tileFlipPaint {
+    0% { transform: scale(0.8) rotateY(0deg); }
+    45% { transform: scale(1.16) rotateY(90deg); }
+    100% { transform: scale(1) rotateY(0deg); }
+  }
+
+  @keyframes wrongWobble {
+    0%, 100% { transform: translateX(0) rotate(0deg); }
+    20% { transform: translateX(-7px) rotate(-6deg); }
+    40% { transform: translateX(7px) rotate(6deg); }
+    60% { transform: translateX(-5px) rotate(-4deg); }
+    80% { transform: translateX(4px) rotate(3deg); }
+  }
+
+  @keyframes hintGlow {
+    0%, 100% { filter: brightness(1); transform: scale(1); }
+    50% { filter: brightness(1.28) drop-shadow(0 0 10px rgba(255, 230, 100, 0.85)); transform: scale(1.05); }
+  }
+
+  /* Realistic Transformed Artwork Stage */
+  #realistic-stage {
+    position: absolute;
+    inset: 0;
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.72);
+    transition:
+      opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.95s cubic-bezier(0.34, 1.56, 0.64, 1);
+    cursor: pointer;
+  }
+
+  #realistic-stage.active {
+    opacity: 1;
+    pointer-events: auto;
+    transform: scale(1);
+  }
+
+  #realistic-stage svg {
+    width: 92%;
+    height: 92%;
+    overflow: visible;
+    filter: drop-shadow(0 18px 28px rgba(0, 0, 0, 0.45));
+  }
+
+  /* Minimalist Stylized Controls (Top-Right Next Button & Theme Orbs) */
+  #top-controls {
+    position: fixed;
+    top: 2.4vh;
+    right: 2.4vw;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* Minimalist Stylized Next Arrow Button */
+  #next-btn {
+    position: relative;
+    width: clamp(56px, 7.8vh, 76px);
+    height: clamp(56px, 7.8vh, 76px);
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 30% 25%, #ffd54f 0%, #ff8f00 65%, #e65100 100%);
+    box-shadow:
+      0 10px 25px rgba(0, 0, 0, 0.45),
+      inset 0 4px 8px rgba(255, 255, 255, 0.65),
+      inset 0 -5px 10px rgba(140, 40, 0, 0.6),
+      0 0 0 4px rgba(255, 255, 255, 0.22);
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, filter 0.25s ease;
+  }
+
+  #next-btn:hover {
+    transform: scale(1.1) translateX(3px);
+    filter: brightness(1.08);
+    box-shadow:
+      0 14px 32px rgba(255, 143, 0, 0.55),
+      inset 0 4px 8px rgba(255, 255, 255, 0.75),
+      inset 0 -5px 10px rgba(140, 40, 0, 0.6),
+      0 0 0 5px rgba(255, 230, 128, 0.45);
+  }
+
+  #next-btn:active {
+    transform: scale(0.93);
+  }
+
+  #next-btn.celebrate-pulse {
+    animation: nextBtnPulse 1.3s ease-in-out infinite;
+  }
+
+  @keyframes nextBtnPulse {
+    0%, 100% {
+      transform: scale(1);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.45), 0 0 0 4px rgba(255, 230, 100, 0.35), 0 0 25px rgba(255, 196, 0, 0.6);
+    }
+    50% {
+      transform: scale(1.14);
+      box-shadow: 0 14px 35px rgba(0,0,0,0.55), 0 0 0 10px rgba(255, 230, 100, 0.55), 0 0 45px rgba(255, 215, 0, 0.95);
+    }
+  }
+
+  /* Subtle Theme Indicator Gems (No Text, Pure Visual Jewels) */
+  #theme-gems {
+    display: flex;
+    gap: 10px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(25, 35, 50, 0.55), rgba(10, 15, 25, 0.7));
+    box-shadow:
+      inset 0 2px 4px rgba(255, 255, 255, 0.2),
+      0 6px 18px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(6px);
+  }
+
+  .theme-gem {
+    width: clamp(16px, 2.2vh, 22px);
+    height: clamp(16px, 2.2vh, 22px);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, opacity 0.3s ease;
+    opacity: 0.55;
+    box-shadow: inset 0 2px 4px rgba(255,255,255,0.6), 0 2px 5px rgba(0,0,0,0.5);
+  }
+
+  .theme-gem:hover {
+    transform: scale(1.25);
+    opacity: 0.9;
+  }
+
+  .theme-gem.active {
+    opacity: 1;
+    transform: scale(1.32);
+    box-shadow:
+      inset 0 2px 5px rgba(255,255,255,0.85),
+      0 0 12px currentColor,
+      0 0 0 2.5px rgba(255,255,255,0.85);
+  }
+
+  /* Realistic Creature Idle & Interactive Animations */
+  @keyframes turtleSwim {
+    0%, 100% { transform: translateY(0px) rotate(-2deg); }
+    50% { transform: translateY(-14px) rotate(3deg); }
+  }
+  @keyframes flipperLeft {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(-24deg) scaleY(0.92); }
+  }
+  @keyframes flipperRight {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(24deg) scaleY(0.92); }
+  }
+  @keyframes butterflyHover {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-12px) rotate(2deg); }
+  }
+  @keyframes wingFlapL {
+    0%, 100% { transform: scaleX(1) skewY(0deg); }
+    50% { transform: scaleX(0.38) skewY(6deg); }
+  }
+  @keyframes wingFlapR {
+    0%, 100% { transform: scaleX(1) skewY(0deg); }
+    50% { transform: scaleX(0.38) skewY(-6deg); }
+  }
+  @keyframes parrotBreathe {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-6px) rotate(-1.5deg); }
+  }
+  @keyframes parrotWingRuffle {
+    0%, 100% { transform: rotate(0deg); }
+    40% { transform: rotate(-14deg) translateY(-6px); }
+    70% { transform: rotate(4deg); }
+  }
+  @keyframes foxTailWag {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(14deg) translateY(-4px); }
+  }
+  @keyframes foxBreathe {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(1.035) translateY(-3px); }
+  }
+  @keyframes boatRock {
+    0%, 100% { transform: translateY(0px) rotate(-3.5deg); }
+    50% { transform: translateY(-10px) rotate(3.5deg); }
+  }
+  @keyframes sailBillow {
+    0%, 100% { transform: scaleX(1); }
+    50% { transform: scaleX(1.06) skewY(-1.5deg); }
+  }
+  @keyframes waveSlide {
+    0%, 100% { transform: translateX(-12px); }
+    50% { transform: translateX(12px); }
+  }
+
+  /* Interactive reaction burst classes on realistic creatures */
+  .creature-react {
+    animation: creatureJoyJump 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  }
+
+  @keyframes creatureJoyJump {
+    0% { transform: scale(1) rotate(0deg) translateY(0); }
+    30% { transform: scale(1.14) rotate(-6deg) translateY(-24px); }
+    65% { transform: scale(1.08) rotate(6deg) translateY(-12px); }
+    100% { transform: scale(1) rotate(0deg) translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <!-- Dynamic Theme Background SVG -->
+  <svg id="bg-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice"></svg>
+
+  <!-- Ambient Living Environment Canvas (Bubbles, Leaves, Dandelion Seeds, Waves, Mist) -->
+  <canvas id="env-canvas"></canvas>
+
+  <!-- Top-Right Minimalist Icon-Only Controls -->
+  <div id="top-controls">
+    <div id="theme-gems"></div>
+    <button id="next-btn" aria-label="Next">
+      <svg width="62%" height="62%" viewBox="0 0 64 64" fill="none">
+        <defs>
+          <linearGradient id="arrowGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#fff3e0"/>
+          </linearGradient>
+          <filter id="arrowShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="rgba(120,30,0,0.65)"/>
+          </filter>
+        </defs>
+        <path d="M14 32 H48 M34 16 L52 32 L34 48"
+              stroke="url(#arrowGrad)"
+              stroke-width="8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              filter="url(#arrowShadow)"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Center Stylized Mosaic Board & Transformation Stage -->
+  <div id="board-wrapper">
+    <div id="board-frame">
+      <!-- Theme Corner Ornaments -->
+      <svg id="frame-ornaments" viewBox="0 0 500 500" preserveAspectRatio="none"></svg>
+
+      <div id="board-well">
+        <!-- 8x8 Number Grid -->
+        <div id="number-grid"></div>
+
+        <!-- Realistic Animated SVG Artwork (Revealed when all Round Numbers are painted) -->
+        <div id="realistic-stage"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Foreground Interactive FX Particle Canvas -->
+  <canvas id="fx-canvas"></canvas>
+</div>
+
+<script>
+/* ==========================================================================
+   WEB AUDIO SYNTHESIZER (No external sound files, rich organic feedback)
+   ========================================================================== */
+class SoundEngine {
+  constructor() {
+    this.ctx = null;
+    // Pentatonic & Lydian ascending scale frequencies for joyful progression
+    this.scale = [
+      261.63, 293.66, 329.63, 392.00, 440.00,
+      523.25, 587.33, 659.25, 783.99, 880.00,
+      1046.50, 1174.66, 1318.51, 1567.98
+    ];
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Played when clicking a ROUND number (10, 20... 100)
+  playPaintNote(stepIndex) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const freq = this.scale[stepIndex % this.scale.length] * (stepIndex >= this.scale.length ? 1.25 : 1);
+
+    // Warm Marimba + Bell Harp harmonic
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc1.type = 'triangle';
+    osc2.type = 'sine';
+    osc1.frequency.setValueAtTime(freq, now);
+    osc2.frequency.setValueAtTime(freq * 2, now);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.28, now + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.65);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.68);
+    osc2.stop(now + 0.68);
+  }
+
+  // Played when clicking a NON-ROUND number
+  playWoodBoing() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(165, now);
+    osc.frequency.exponentialRampToValueAtTime(95, now + 0.11);
+    osc.frequency.exponentialRampToValueAtTime(142, now + 0.24);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.linearRampToValueAtTime(0.22, now + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.28);
+  }
+
+  // Played when the mosaic completes and transforms into the realistic artwork
+  playTransformationFanfare() {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    const chord = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+
+    chord.forEach((freq, idx) => {
+      const start = now + idx * 0.075;
+      const osc = this.ctx.createOscillator();
+      const sub = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      sub.type = 'sine';
+      osc.frequency.setValueAtTime(freq, start);
+      sub.frequency.setValueAtTime(freq * 1.5, start);
+
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(0.2, start + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0008, start + 1.45);
+
+      osc.connect(gain);
+      sub.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(start);
+      sub.start(start);
+      osc.stop(start + 1.5);
+      sub.stop(start + 1.5);
+    });
+  }
+
+  // Played when child clicks on the transformed realistic creature/boat
+  playCreatureVoice(themeIndex) {
+    this.init();
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+
+    if (themeIndex === 0) {
+      // Sea Turtle: Magical underwater bubble arpeggio
+      [392, 493.88, 587.33, 783.99, 987.77].forEach((f, i) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(f, now + i * 0.06);
+        osc.frequency.exponentialRampToValueAtTime(f * 1.35, now + i * 0.06 + 0.18);
+        g.gain.setValueAtTime(0.18, now + i * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.25);
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(now + i * 0.06);
+        osc.stop(now + i * 0.06 + 0.26);
+      });
+    } else if (themeIndex === 1) {
+      // Butterfly: Sparkling fairy harp glissando
+      [523.25, 659.25, 783.99, 1046.5, 1318.5, 1567.98].forEach((f, i) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, now + i * 0.045);
+        g.gain.setValueAtTime(0.16, now + i * 0.045);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.045 + 0.45);
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(now + i * 0.045);
+        osc.stop(now + i * 0.045 + 0.46);
+      });
+    } else if (themeIndex === 2) {
+      // Macaw Parrot: Exotic cheerful double chirp
+      [0, 0.18].forEach((offset, idx) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        const base = idx === 0 ? 580 : 720;
+        osc.frequency.setValueAtTime(base, now + offset);
+        osc.frequency.exponentialRampToValueAtTime(base * 1.65, now + offset + 0.09);
+        osc.frequency.exponentialRampToValueAtTime(base * 0.9, now + offset + 0.14);
+        g.gain.setValueAtTime(0.12, now + offset);
+        g.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.15);
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.16);
+      });
+    } else if (themeIndex === 3) {
+      // Red Fox: Playful woodland yip-chime & rustle
+      [440, 659.25, 880].forEach((f, i) => {
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, now + i * 0.07);
+        osc.frequency.exponentialRampToValueAtTime(f * 1.2, now + i * 0.07 + 0.15);
+        g.gain.setValueAtTime(0.2, now + i * 0.07);
+        g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.07 + 0.28);
+        osc.connect(g);
+        g.connect(this.ctx.destination);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.3);
+      });
+    } else {
+      // Vintage Sailboat: Twin brass ship bell chime
+      [0, 0.22].forEach((offset) => {
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc1.type = 'sine';
+        osc2.type = 'triangle';
+        osc1.frequency.setValueAtTime(880, now + offset);
+        osc2.frequency.setValueAtTime(1760, now + offset);
+        g.gain.setValueAtTime(0.22, now + offset);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + offset + 0.75);
+        osc1.connect(g);
+        osc2.connect(g);
+        g.connect(this.ctx.destination);
+        osc1.start(now + offset);
+        osc2.start(now + offset);
+        osc1.stop(now + offset + 0.78);
+        osc2.stop(now + offset + 0.78);
+      });
+    }
+  }
+}
+
+const sound = new SoundEngine();
+
+/* ==========================================================================
+   5 THEMED BOARDS (8x8 Mosaics + Palette + Frame Styling + Realistic SVGs)
+   ========================================================================== */
+const THEMES = [
+  // ------------------------------------------------------------------------
+  // 1. CORAL REEF & SEA TURTLE (Морська черепаха)
+  // ------------------------------------------------------------------------
+  {
+    id: 'turtle',
+    gemColor: '#00e5ff',
+    frameStyle: {
+      background: 'linear-gradient(135deg, #006978 0%, #004d5a 50%, #002f38 100%)',
+      wellBg: 'radial-gradient(circle at 50% 40%, #073b4c 0%, #031d29 100%)',
+      tileUnpaintedBg: 'linear-gradient(145deg, #d8f3dc 0%, #b7e4c7 55%, #95d5b2 100%)',
+      tileUnpaintedText: '#0b4f6c',
+      tileUnpaintedShadow: '0 5px 0 #52b788, 0 7px 12px rgba(0,0,0,0.35)'
+    },
+    palette: {
+      1: 'linear-gradient(135deg, #2ec4b6 0%, #1b9aaa 100%)', // Head & Flippers (Turquoise Emerald)
+      2: 'linear-gradient(135deg, #ffbe0b 0%, #fb5607 100%)', // Golden Shell Rim
+      3: 'linear-gradient(135deg, #386641 0%, #1b4332 100%)', // Deep Emerald Carapace Scutes
+      4: 'linear-gradient(135deg, #a7c957 0%, #6a994e 100%)'  // Olive Gold Carapace Highlights
+    },
+    // 8x8 pixel mosaic (26 painted cells -> all contain round numbers 10..100)
+    grid: [
+      [0, 0, 0, 1, 1, 0, 0, 0],
+      [0, 1, 0, 1, 1, 0, 1, 0],
+      [1, 1, 2, 4, 4, 2, 1, 1],
+      [1, 0, 4, 3, 3, 4, 0, 1],
+      [0, 0, 2, 3, 3, 2, 0, 0],
+      [0, 0, 4, 2, 2, 4, 0, 0],
+      [0, 1, 0, 4, 4, 0, 1, 0],
+      [0, 1, 0, 0, 0, 0, 1, 0]
+    ]
+  },
+
+  // ------------------------------------------------------------------------
+  // 2. SUNNY MEADOW & MONARCH BUTTERFLY (Метелик Монарх)
+  // ------------------------------------------------------------------------
+  {
+    id: 'butterfly',
+    gemColor: '#ff9100',
+    frameStyle: {
+      background: 'linear-gradient(135deg, #6d4c41 0%, #4e342e 50%, #3e2723 100%)',
+      wellBg: 'radial-gradient(circle at 50% 45%, #2d4c1e 0%, #16290d 100%)',
+      tileUnpaintedBg: 'linear-gradient(145deg, #fff8e1 0%, #ffecb3 55%, #ffe082 100%)',
+      tileUnpaintedText: '#4e342e',
+      tileUnpaintedShadow: '0 5px 0 #ca9b52, 0 7px 12px rgba(0,0,0,0.35)'
+    },
+    palette: {
+      1: 'linear-gradient(135deg, #ff9e00 0%, #ff5400 100%)', // Monarch Orange Wing
+      2: 'linear-gradient(135deg, #ffea00 0%, #ffaa00 100%)', // Golden Wing Inner Glow
+      3: 'linear-gradient(135deg, #3c096c 0%, #10002b 100%)', // Velvet Black Body & Rim
+      4: 'linear-gradient(135deg, #ff4d6d 0%, #c9184a 100%)'  // Lower Wing Crimson Accent
+    },
+    // 8x8 pixel mosaic (32 painted cells)
+    grid: [
+      [3, 1, 0, 3, 3, 0, 1, 3],
+      [1, 2, 1, 0, 0, 1, 2, 1],
+      [1, 2, 2, 3, 3, 2, 2, 1],
+      [3, 1, 1, 3, 3, 1, 1, 3],
+      [0, 3, 4, 3, 3, 4, 3, 0],
+      [0, 1, 4, 3, 3, 4, 1, 0],
+      [0, 3, 1, 0, 0, 1, 3, 0],
+      [0, 0, 0, 0, 0, 0, 0, 0]
+    ]
+  },
+
+  // ------------------------------------------------------------------------
+  // 3. TROPICAL RAINFOREST & SCARLET MACAW PARROT (Папуга Ара)
+  // ------------------------------------------------------------------------
+  {
+    id: 'parrot',
+    gemColor: '#ff1744',
+    frameStyle: {
+      background: 'linear-gradient(135deg, #558b2f 0%, #33691e 50%, #1b4332 100%)',
+      wellBg: 'radial-gradient(circle at 50% 45%, #183a27 0%, #091c12 100%)',
+      tileUnpaintedBg: 'linear-gradient(145deg, #e8f5e9 0%, #c8e6c9 55%, #a5d6a7 100%)',
+      tileUnpaintedText: '#1b5e20',
+      tileUnpaintedShadow: '0 5px 0 #66bb6a, 0 7px 12px rgba(0,0,0,0.35)'
+    },
+    palette: {
+      1: 'linear-gradient(135deg, #ff1744 0%, #b71c1c 100%)', // Scarlet Plumage
+      2: 'linear-gradient(135deg, #ffee58 0%, #fbc02d 100%)', // Beak & Golden Wing Feathers
+      3: 'linear-gradient(135deg, #00b0ff 0%, #004ecb 100%)', // Cobalt Blue Flight Feathers
+      4: 'linear-gradient(135deg, #ffffff 0%, #cfd8dc 100%)'  // Eye Patch
+    },
+    // 8x8 pixel mosaic (26 painted cells)
+    grid: [
+      [0, 0, 1, 1, 1, 0, 0, 0],
+      [0, 0, 1, 4, 1, 2, 2, 0],
+      [0, 0, 1, 1, 1, 2, 0, 0],
+      [0, 1, 2, 2, 1, 1, 0, 0],
+      [0, 1, 3, 2, 2, 1, 0, 0],
+      [0, 3, 3, 3, 1, 1, 0, 0],
+      [0, 0, 3, 1, 1, 0, 0, 0],
+      [0, 0, 3, 0, 1, 0, 0, 0]
+    ]
+  },
+
+  // ------------------------------------------------------------------------
+  // 4. GOLDEN AUTUMN FOREST & RED FOX (Руда лисичка)
+  // ------------------------------------------------------------------------
+  {
+    id: 'fox',
+    gemColor: '#ff6d00',
+    frameStyle: {
+      background: 'linear-gradient(135deg, #8d4004 0%, #5c2c06 50%, #3b1c02 100%)',
+      wellBg: 'radial-gradient(circle at 50% 45%, #3d2314 0%, #1f1108 100%)',
+      tileUnpaintedBg: 'linear-gradient(145deg, #fbe9e7 0%, #ffccbc 55%, #ffab91 100%)',
+      tileUnpaintedText: '#4e2609',
+      tileUnpaintedShadow: '0 5px 0 #d87a56, 0 7px 12px rgba(0,0,0,0.35)'
+    },
+    palette: {
+      1: 'linear-gradient(135deg, #ff7b00 0%, #d04000 100%)', // Fiery Fox Coat
+      2: 'linear-gradient(135deg, #fffdf7 0%, #ffe5b4 100%)', // Cream Cheeks, Chest & Tail Tip
+      3: 'linear-gradient(135deg, #3e2723 0%, #1b0f0d 100%)'  // Dark Chestnut Ears, Eyes & Nose
+    },
+    // 8x8 pixel mosaic (32 painted cells)
+    grid: [
+      [0, 3, 0, 0, 0, 3, 0, 0],
+      [0, 1, 1, 0, 1, 1, 0, 0],
+      [0, 1, 1, 1, 1, 1, 0, 0],
+      [0, 1, 3, 1, 3, 1, 0, 2],
+      [0, 2, 2, 3, 2, 2, 0, 2],
+      [0, 0, 1, 2, 1, 0, 1, 1],
+      [0, 0, 1, 2, 1, 1, 1, 1],
+      [0, 0, 3, 0, 3, 1, 1, 0]
+    ]
+  },
+
+  // ------------------------------------------------------------------------
+  // 5. SUNSET HARBOR & VINTAGE SAILBOAT (Вітрильник на заході сонця)
+  // ------------------------------------------------------------------------
+  {
+    id: 'sailboat',
+    gemColor: '#ffd600',
+    frameStyle: {
+      background: 'linear-gradient(135deg, #5d4037 0%, #3e2723 50%, #261612 100%)',
+      wellBg: 'radial-gradient(circle at 50% 45%, #2b1d42 0%, #130b24 100%)',
+      tileUnpaintedBg: 'linear-gradient(145deg, #f5f0e6 0%, #e6ccb2 55%, #ddb892 100%)',
+      tileUnpaintedText: '#3e2723',
+      tileUnpaintedShadow: '0 5px 0 #a68a64, 0 7px 12px rgba(0,0,0,0.35)'
+    },
+    palette: {
+      1: 'linear-gradient(135deg, #ff1744 0%, #c51162 100%)', // Crimson Pennant & Trim
+      2: 'linear-gradient(135deg, #fffdf9 0%, #ffe082 100%)', // Sunlit Cream Sails
+      3: 'linear-gradient(135deg, #8d5524 0%, #4e2a0c 100%)', // Mahogany Wooden Hull
+      4: 'linear-gradient(135deg, #00e5ff 0%, #0077b6 100%)'  // Sparkling Sea Wave Crest
+    },
+    // 8x8 pixel mosaic (29 painted cells)
+    grid: [
+      [0, 0, 0, 1, 1, 0, 0, 0],
+      [0, 0, 0, 2, 0, 0, 0, 0],
+      [0, 0, 2, 2, 0, 2, 0, 0],
+      [0, 2, 2, 2, 0, 2, 2, 0],
+      [0, 2, 2, 2, 0, 2, 2, 0],
+      [3, 3, 3, 3, 3, 3, 3, 3],
+      [0, 3, 3, 3, 3, 3, 3, 0],
+      [0, 0, 4, 4, 4, 4, 0, 0]
+    ]
+  }
+];
+
+/* ==========================================================================
+   LIVING BACKGROUND SVGs & REALISTIC TRANSFORMED ARTWORK SVGs
+   ========================================================================== */
+function getBackgroundSVG(themeIndex) {
+  switch (themeIndex) {
+    case 0: // Coral Reef
+      return `
+        <defs>
+          <linearGradient id="oceanSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00b4d8"/>
+            <stop offset="45%" stop-color="#0077b6"/>
+            <stop offset="100%" stop-color="#03045e"/>
+          </linearGradient>
+          <linearGradient id="sunRay" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(144,224,239,0.38)"/>
+            <stop offset="100%" stop-color="rgba(144,224,239,0)"/>
+          </linearGradient>
+          <linearGradient id="sandFloor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#e9c46a"/>
+            <stop offset="100%" stop-color="#b5838d"/>
+          </linearGradient>
+        </defs>
+        <rect width="1920" height="1080" fill="url(#oceanSky)"/>
+        <!-- Sun Caustic Rays -->
+        <polygon points="200,0 450,0 750,1080 50,1080" fill="url(#sunRay)"/>
+        <polygon points="750,0 1080,0 1380,1080 650,1080" fill="url(#sunRay)"/>
+        <polygon points="1400,0 1680,0 1920,1080 1280,1080" fill="url(#sunRay)"/>
+        <!-- Distant Reef Silhouettes -->
+        <path d="M0,920 Q320,820 680,910 T1360,890 T1920,900 L1920,1080 L0,1080 Z" fill="#023e8a" opacity="0.65"/>
+        <!-- Sandy Seafloor -->
+        <path d="M0,970 Q480,910 960,965 T1920,945 L1920,1080 L0,1080 Z" fill="url(#sandFloor)"/>
+        <!-- Left Coral & Kelp -->
+        <g>
+          <path d="M90,1020 C50,870 150,760 80,620 C140,740 70,860 125,1020 Z" fill="#2a9d8f"/>
+          <path d="M160,1030 C110,890 210,790 155,670 C215,780 140,890 195,1030 Z" fill="#52b788"/>
+          <path d="M240,1000 Q190,900 220,830 Q250,880 270,800 Q300,880 280,1000 Z" fill="#f72585"/>
+          <circle cx="220" cy="830" r="16" fill="#ff9ebb"/>
+          <circle cx="270" cy="800" r="18" fill="#ff9ebb"/>
+        </g>
+        <!-- Right Coral & Kelp -->
+        <g>
+          <path d="M1810,1020 C1860,860 1750,730 1825,580 C1755,710 1835,850 1775,1020 Z" fill="#2a9d8f"/>
+          <path d="M1710,1030 C1760,910 1660,810 1720,690 C1665,790 1735,900 1680,1030 Z" fill="#40916c"/>
+          <path d="M1610,995 Q1570,890 1615,820 Q1645,870 1665,795 Q1700,885 1665,995 Z" fill="#ff6b6b"/>
+        </g>
+      `;
+
+    case 1: // Sunny Wildflower Meadow
+      return `
+        <defs>
+          <linearGradient id="meadowSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#48cae4"/>
+            <stop offset="60%" stop-color="#ade8f4"/>
+            <stop offset="100%" stop-color="#fefae0"/>
+          </linearGradient>
+          <linearGradient id="hillFar" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#95d5b2"/>
+            <stop offset="100%" stop-color="#52b788"/>
+          </linearGradient>
+          <linearGradient id="hillNear" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#74c69d"/>
+            <stop offset="100%" stop-color="#2d6a4f"/>
+          </linearGradient>
+        </defs>
+        <rect width="1920" height="1080" fill="url(#meadowSky)"/>
+        <!-- Warm Sun Glow -->
+        <circle cx="260" cy="180" r="140" fill="#fff3b0" opacity="0.65"/>
+        <circle cx="260" cy="180" r="85" fill="#ffea00" opacity="0.85"/>
+        <!-- Soft Clouds -->
+        <g fill="#ffffff" opacity="0.82">
+          <path d="M1320,210 Q1350,160 1410,175 Q1460,140 1520,180 Q1570,190 1560,235 L1310,235 Z"/>
+          <path d="M380,310 Q410,270 460,285 Q500,260 545,290 Q580,300 570,335 L370,335 Z"/>
+        </g>
+        <!-- Rolling Meadow Hills -->
+        <path d="M0,780 Q520,650 1080,770 T1920,730 L1920,1080 L0,1080 Z" fill="url(#hillFar)"/>
+        <path d="M0,870 Q640,770 1240,860 T1920,830 L1920,1080 L0,1080 Z" fill="url(#hillNear)"/>
+        <!-- Left & Right Wildflowers -->
+        <g stroke="#1b4332" stroke-width="6" fill="none">
+          <path d="M140,1080 Q160,910 210,780"/>
+          <path d="M260,1080 Q240,940 290,830"/>
+          <path d="M1760,1080 Q1730,900 1680,770"/>
+          <path d="M1640,1080 Q1660,940 1610,840"/>
+        </g>
+        <!-- Flower Blossoms -->
+        <g>
+          <circle cx="210" cy="780" r="28" fill="#ff4d6d"/><circle cx="210" cy="780" r="12" fill="#ffbe0b"/>
+          <circle cx="290" cy="830" r="24" fill="#ffffff"/><circle cx="290" cy="830" r="10" fill="#fb8500"/>
+          <circle cx="1680" cy="770" r="30" fill="#c77dff"/><circle cx="1680" cy="770" r="13" fill="#ffbe0b"/>
+          <circle cx="1610" cy="840" r="24" fill="#ff9e00"/><circle cx="1610" cy="840" r="10" fill="#5c2c06"/>
+        </g>
+      `;
+
+    case 2: // Tropical Rainforest
+      return `
+        <defs>
+          <linearGradient id="jungleBg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#1b4332"/>
+            <stop offset="55%" stop-color="#081c15"/>
+            <stop offset="100%" stop-color="#04100b"/>
+          </linearGradient>
+          <radialGradient id="jungleMist" cx="50%" cy="45%" r="55%">
+            <stop offset="0%" stop-color="rgba(149,213,178,0.28)"/>
+            <stop offset="100%" stop-color="rgba(8,28,21,0)"/>
+          </radialGradient>
+        </defs>
+        <rect width="1920" height="1080" fill="url(#jungleBg)"/>
+        <rect width="1920" height="1080" fill="url(#jungleMist)"/>
+        <!-- Hanging Jungle Lianas -->
+        <path d="M180,0 Q240,380 120,760" stroke="#2d6a4f" stroke-width="14" fill="none"/>
+        <path d="M320,0 Q260,260 350,520" stroke="#40916c" stroke-width="9" fill="none"/>
+        <path d="M1740,0 Q1660,360 1790,740" stroke="#2d6a4f" stroke-width="14" fill="none"/>
+        <path d="M1590,0 Q1640,280 1560,540" stroke="#40916c" stroke-width="9" fill="none"/>
+        <!-- Giant Tropical Palm & Monstera Fronds Left & Right -->
+        <path d="M0,250 Q280,290 380,480 Q210,450 0,390 Z" fill="#2d6a4f"/>
+        <path d="M0,680 Q320,640 420,850 Q220,890 0,840 Z" fill="#40916c"/>
+        <path d="M1920,240 Q1640,290 1540,480 Q1710,450 1920,390 Z" fill="#2d6a4f"/>
+        <path d="M1920,680 Q1600,640 1500,850 Q1700,890 1920,840 Z" fill="#40916c"/>
+        <!-- Exotic Hibiscus Blooms -->
+        <circle cx="350" cy="520" r="26" fill="#ff1744"/>
+        <circle cx="350" cy="520" r="8" fill="#ffea00"/>
+        <circle cx="1560" cy="540" r="26" fill="#ff9100"/>
+        <circle cx="1560" cy="540" r="8" fill="#fff"/>
+      `;
+
+    case 3: // Golden Autumn Forest
+      return `
+        <defs>
+          <linearGradient id="autumnSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#f4a261"/>
+            <stop offset="50%" stop-color="#e76f51"/>
+            <stop offset="100%" stop-color="#4a151b"/>
+          </linearGradient>
+          <linearGradient id="forestFloor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#bc6c25"/>
+            <stop offset="100%" stop-color="#432818"/>
+          </linearGradient>
+        </defs>
+        <rect width="1920" height="1080" fill="url(#autumnSky)"/>
+        <!-- Golden Sun Glow -->
+        <circle cx="960" cy="360" r="460" fill="#ffbe0b" opacity="0.22"/>
+        <!-- Birch & Oak Trunks Left & Right -->
+        <rect x="80" y="0" width="95" height="1080" fill="#582f0e"/>
+        <rect x="240" y="0" width="65" height="1080" fill="#7f4f24"/>
+        <rect x="1740" y="0" width="105" height="1080" fill="#582f0e"/>
+        <rect x="1610" y="0" width="68" height="1080" fill="#7f4f24"/>
+        <!-- Autumn Canopy Clusters -->
+        <circle cx="160" cy="140" r="220" fill="#d62828" opacity="0.85"/>
+        <circle cx="340" cy="80" r="190" fill="#f77f00" opacity="0.85"/>
+        <circle cx="1760" cy="140" r="230" fill="#d62828" opacity="0.85"/>
+        <circle cx="1560" cy="90" r="190" fill="#fcbf49" opacity="0.85"/>
+        <!-- Autumn Forest Floor & Mossy Stones -->
+        <path d="M0,900 Q540,830 1050,910 T1920,880 L1920,1080 L0,1080 Z" fill="url(#forestFloor)"/>
+        <ellipse cx="260" cy="980" rx="130" ry="55" fill="#606c38"/>
+        <ellipse cx="1680" cy="975" rx="145" ry="60" fill="#606c38"/>
+      `;
+
+    case 4: // Sunset Harbor
+    default:
+      return `
+        <defs>
+          <linearGradient id="sunsetSky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3c096c"/>
+            <stop offset="35%" stop-color="#c9184a"/>
+            <stop offset="68%" stop-color="#ff7b00"/>
+            <stop offset="100%" stop-color="#ffea00"/>
+          </linearGradient>
+          <linearGradient id="sunsetSea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#ff6d00"/>
+            <stop offset="35%" stop-color="#005f73"/>
+            <stop offset="100%" stop-color="#001219"/>
+          </linearGradient>
+        </defs>
+        <rect width="1920" height="720" fill="url(#sunsetSky)"/>
+        <!-- Giant Setting Sun -->
+        <circle cx="960" cy="680" r="260" fill="#ffea00" opacity="0.88"/>
+        <circle cx="960" cy="680" r="330" fill="#ff9e00" opacity="0.35"/>
+        <!-- Distant Coastal Headland & Lighthouse -->
+        <path d="M0,715 L360,715 L310,640 L190,630 L0,660 Z" fill="#240046"/>
+        <polygon points="275,645 292,645 288,565 279,565" fill="#f8edeb"/>
+        <circle cx="283" cy="558" r="9" fill="#ffea00"/>
+        <!-- Ocean Horizon -->
+        <rect y="710" width="1920" height="370" fill="url(#sunsetSea)"/>
+        <!-- Shimmering Sun Path on Water -->
+        <ellipse cx="960" cy="755" rx="220" ry="14" fill="#ffea00" opacity="0.65"/>
+        <ellipse cx="960" cy="805" rx="170" ry="12" fill="#ffbe0b" opacity="0.55"/>
+        <ellipse cx="960" cy="860" rx="120" ry="10" fill="#ff9e00" opacity="0.45"/>
+      `;
+  }
+}
+
+/* Frame Corner Ornaments SVG per theme */
+function getFrameOrnamentsSVG(themeIndex) {
+  switch (themeIndex) {
+    case 0: // Sea shells & starfish on corners
+      return `
+        <g fill="#ff9e00" stroke="#e36414" stroke-width="2">
+          <!-- Top-Left Starfish -->
+          <polygon points="35,12 43,28 60,30 47,42 50,59 35,50 20,59 23,42 10,30 27,28"/>
+          <!-- Bottom-Right Starfish -->
+          <polygon points="465,442 473,458 490,460 477,472 480,489 465,480 450,489 453,472 440,460 457,458"/>
+        </g>
+        <g fill="#ffccd5" stroke="#ff758f" stroke-width="2">
+          <circle cx="465" cy="35" r="18"/>
+          <circle cx="35" cy="465" r="18"/>
+        </g>
+      `;
+    case 1: // Oak leaves & ladybugs
+      return `
+        <g fill="#52b788" stroke="#1b4332" stroke-width="2">
+          <ellipse cx="36" cy="32" rx="22" ry="12" transform="rotate(-35 36 32)"/>
+          <ellipse cx="464" cy="32" rx="22" ry="12" transform="rotate(35 464 32)"/>
+          <ellipse cx="36" cy="468" rx="22" ry="12" transform="rotate(35 36 468)"/>
+          <ellipse cx="464" cy="468" rx="22" ry="12" transform="rotate(-35 464 468)"/>
+        </g>
+        <circle cx="36" cy="32" r="9" fill="#d90429"/>
+        <circle cx="464" cy="468" r="9" fill="#d90429"/>
+      `;
+    case 2: // Bamboo bindings & tropical flowers
+      return `
+        <g fill="#ff1744">
+          <circle cx="32" cy="32" r="16"/><circle cx="32" cy="32" r="6" fill="#ffea00"/>
+          <circle cx="468" cy="32" r="16"/><circle cx="468" cy="32" r="6" fill="#ffea00"/>
+          <circle cx="32" cy="468" r="16"/><circle cx="32" cy="468" r="6" fill="#ffea00"/>
+          <circle cx="468" cy="468" r="16"/><circle cx="468" cy="468" r="6" fill="#ffea00"/>
+        </g>
+      `;
+    case 3: // Autumn acorns & golden leaves
+      return `
+        <g fill="#f77f00" stroke="#7f4f24" stroke-width="2">
+          <circle cx="34" cy="34" r="15"/>
+          <circle cx="466" cy="34" r="15"/>
+          <circle cx="34" cy="466" r="15"/>
+          <circle cx="466" cy="466" r="15"/>
+        </g>
+      `;
+    case 4: // Brass nautical rivets
+    default:
+      return `
+        <g fill="#ffd600" stroke="#b58300" stroke-width="3">
+          <circle cx="34" cy="34" r="12"/>
+          <circle cx="466" cy="34" r="12"/>
+          <circle cx="34" cy="466" r="12"/>
+          <circle cx="466" cy="466" r="12"/>
+        </g>
+      `;
+  }
+}
+
+/* ==========================================================================
+   REALISTIC MULTI-LAYERED ANIMATED SVG ARTWORKS (Revealed on Completion)
+   ========================================================================== */
+function getRealisticArtworkSVG(themeIndex) {
+  switch (themeIndex) {
+    // 1. REALISTIC ANIMATED SEA TURTLE
+    case 0:
+      return `
+        <svg viewBox="0 0 500 500">
+          <defs>
+            <radialGradient id="shellMain" cx="45%" cy="40%" r="55%">
+              <stop offset="0%" stop-color="#80b918"/>
+              <stop offset="45%" stop-color="#2b9348"/>
+              <stop offset="85%" stop-color="#004b23"/>
+              <stop offset="100%" stop-color="#002912"/>
+            </radialGradient>
+            <linearGradient id="scuteGold" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffea00"/>
+              <stop offset="50%" stop-color="#55a630"/>
+              <stop offset="100%" stop-color="#1b4332"/>
+            </linearGradient>
+            <linearGradient id="skinGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#64dfdf"/>
+              <stop offset="55%" stop-color="#2ec4b6"/>
+              <stop offset="100%" stop-color="#0f4c5c"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Ambient Water Ripple Rings -->
+          <circle cx="250" cy="250" r="205" fill="none" stroke="rgba(144,224,239,0.22)" stroke-width="4" stroke-dasharray="28 18"/>
+          <circle cx="250" cy="250" r="165" fill="none" stroke="rgba(144,224,239,0.16)" stroke-width="3" stroke-dasharray="16 24"/>
+
+          <!-- Animated Swimming Sea Turtle Group -->
+          <g style="animation: turtleSwim 3.6s ease-in-out infinite; transform-origin: 250px 250px;">
+            <!-- Rear Flippers -->
+            <g style="animation: flipperLeft 2.4s ease-in-out infinite; transform-origin: 185px 350px;">
+              <path d="M190,340 Q135,385 115,435 Q155,445 195,395 Z" fill="url(#skinGrad)" stroke="#0b3c49" stroke-width="3"/>
+              <circle cx="145" cy="410" r="7" fill="#1b4332" opacity="0.6"/>
+              <circle cx="165" cy="392" r="6" fill="#1b4332" opacity="0.6"/>
+            </g>
+            <g style="animation: flipperRight 2.4s ease-in-out infinite; transform-origin: 315px 350px;">
+              <path d="M310,340 Q365,385 385,435 Q345,445 305,395 Z" fill="url(#skinGrad)" stroke="#0b3c49" stroke-width="3"/>
+              <circle cx="355" cy="410" r="7" fill="#1b4332" opacity="0.6"/>
+              <circle cx="335" cy="392" r="6" fill="#1b4332" opacity="0.6"/>
+            </g>
+
+            <!-- Front Articulated Flippers -->
+            <g style="animation: flipperLeft 2.1s ease-in-out infinite; transform-origin: 165px 195px;">
+              <path d="M175,190 C95,145 32,175 18,245 C58,255 125,235 175,220 Z" fill="url(#skinGrad)" stroke="#0b3c49" stroke-width="3.5"/>
+              <!-- Flipper Scales -->
+              <ellipse cx="115" cy="195" rx="14" ry="8" fill="#1b4332" opacity="0.55" transform="rotate(-15 115 195)"/>
+              <ellipse cx="82" cy="208" rx="13" ry="7" fill="#1b4332" opacity="0.55" transform="rotate(-20 82 208)"/>
+              <ellipse cx="52" cy="224" rx="11" ry="6" fill="#1b4332" opacity="0.55" transform="rotate(-25 52 224)"/>
+            </g>
+            <g style="animation: flipperRight 2.1s ease-in-out infinite; transform-origin: 335px 195px;">
+              <path d="M325,190 C405,145 468,175 482,245 C442,255 375,235 325,220 Z" fill="url(#skinGrad)" stroke="#0b3c49" stroke-width="3.5"/>
+              <!-- Flipper Scales -->
+              <ellipse cx="385" cy="195" rx="14" ry="8" fill="#1b4332" opacity="0.55" transform="rotate(15 385 195)"/>
+              <ellipse cx="418" cy="208" rx="13" ry="7" fill="#1b4332" opacity="0.55" transform="rotate(20 418 208)"/>
+              <ellipse cx="448" cy="224" rx="11" ry="6" fill="#1b4332" opacity="0.55" transform="rotate(25 448 224)"/>
+            </g>
+
+            <!-- Head & Expressive Eyes -->
+            <g>
+              <path d="M215,145 C205,85 225,52 250,48 C275,52 295,85 285,145 Z" fill="url(#skinGrad)" stroke="#0b3c49" stroke-width="3.5"/>
+              <!-- Crown Scales -->
+              <polygon points="250,68 264,82 258,102 242,102 236,82" fill="#2b9348" opacity="0.65"/>
+              <polygon points="250,106 266,116 260,132 240,132 234,116" fill="#ffbe0b" opacity="0.55"/>
+              <!-- Eyes -->
+              <circle cx="222" cy="85" r="9" fill="#081c15"/>
+              <circle cx="220" cy="82" r="3.2" fill="#ffffff"/>
+              <circle cx="278" cy="85" r="9" fill="#081c15"/>
+              <circle cx="276" cy="82" r="3.2" fill="#ffffff"/>
+            </g>
+
+            <!-- Detailed Carapace (Shell) -->
+            <ellipse cx="250" cy="260" rx="108" ry="132" fill="url(#shellMain)" stroke="#ffbe0b" stroke-width="5"/>
+            <ellipse cx="250" cy="260" rx="98" ry="122" fill="none" stroke="#aacc00" stroke-width="2" stroke-dasharray="18 8"/>
+
+            <!-- Hexagonal Carapace Scutes -->
+            <g stroke="#ffea00" stroke-width="2.5" fill="url(#scuteGold)" opacity="0.9">
+              <!-- Center Vertebral Scutes -->
+              <polygon points="250,152 276,170 268,205 232,205 224,170"/>
+              <polygon points="232,210 268,210 278,255 250,272 222,255"/>
+              <polygon points="222,262 250,278 278,262 272,312 228,312"/>
+              <polygon points="228,318 272,318 260,358 240,358"/>
+              <!-- Left Lateral Scutes -->
+              <polygon points="218,175 226,208 192,228 168,202"/>
+              <polygon points="190,234 218,256 218,302 175,288 164,252"/>
+              <polygon points="178,295 222,310 232,352 192,340"/>
+              <!-- Right Lateral Scutes -->
+              <polygon points="282,175 274,208 308,228 332,202"/>
+              <polygon points="310,234 282,256 282,302 325,288 336,252"/>
+              <polygon points="322,295 278,310 268,352 308,340"/>
+            </g>
+
+            <!-- Glossy Shell Specular Highlight -->
+            <ellipse cx="220" cy="215" rx="45" ry="62" fill="rgba(255,255,255,0.18)" transform="rotate(-18 220 215)"/>
+          </g>
+        </svg>
+      `;
+
+    // 2. REALISTIC ANIMATED MONARCH BUTTERFLY ON WILDFLOWER
+    case 1:
+      return `
+        <svg viewBox="0 0 500 500">
+          <defs>
+            <linearGradient id="monarchTop" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffea00"/>
+              <stop offset="40%" stop-color="#ff7b00"/>
+              <stop offset="85%" stop-color="#d00000"/>
+              <stop offset="100%" stop-color="#370617"/>
+            </linearGradient>
+            <linearGradient id="monarchBottom" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffbe0b"/>
+              <stop offset="60%" stop-color="#fb5607"/>
+              <stop offset="100%" stop-color="#9d0208"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Blooming Coneflower Perch at Bottom -->
+          <g transform="translate(0, 25)">
+            <path d="M250,490 Q242,420 258,365" stroke="#2d6a4f" stroke-width="12" fill="none" stroke-linecap="round"/>
+            <!-- Petals -->
+            <g fill="#c77dff" stroke="#7b2cbf" stroke-width="2">
+              <ellipse cx="205" cy="382" rx="38" ry="14" transform="rotate(-25 205 382)"/>
+              <ellipse cx="222" cy="396" rx="38" ry="14" transform="rotate(-45 222 396)"/>
+              <ellipse cx="295" cy="382" rx="38" ry="14" transform="rotate(25 295 382)"/>
+              <ellipse cx="278" cy="396" rx="38" ry="14" transform="rotate(45 278 396)"/>
+              <ellipse cx="250" cy="402" rx="14" ry="38"/>
+            </g>
+            <ellipse cx="250" cy="364" rx="32" ry="22" fill="#b54500" stroke="#5c2c06" stroke-width="3"/>
+            <ellipse cx="250" cy="358" rx="22" ry="12" fill="#ffbe0b" opacity="0.65"/>
+          </g>
+
+          <!-- Hovering & Flapping Monarch Butterfly -->
+          <g style="animation: butterflyHover 3.2s ease-in-out infinite; transform-origin: 250px 235px;">
+            <!-- LEFT WINGS (3D Perspective Flap) -->
+            <g style="animation: wingFlapL 1.55s ease-in-out infinite; transform-origin: 250px 235px;">
+              <!-- Left Hindwing -->
+              <path d="M246,245 C175,245 95,295 112,368 C132,422 218,395 246,315 Z"
+                    fill="url(#monarchBottom)" stroke="#14080e" stroke-width="12"/>
+              <!-- Hindwing Veins -->
+              <path d="M242,265 Q175,295 128,345 M242,285 Q185,335 155,382 M205,282 L145,305"
+                    stroke="#14080e" stroke-width="5" fill="none"/>
+              <!-- Left Forewing -->
+              <path d="M246,225 C175,115 52,75 34,152 C18,225 115,285 246,255 Z"
+                    fill="url(#monarchTop)" stroke="#14080e" stroke-width="14"/>
+              <!-- Forewing Intricate Veins -->
+              <path d="M242,232 C165,185 105,145 45,148 M168,185 L85,118 M152,195 L62,188 M185,212 L95,232"
+                    stroke="#14080e" stroke-width="6" fill="none"/>
+              <!-- White Marginal Spots Left -->
+              <g fill="#ffffff">
+                <circle cx="48" cy="128" r="6"/><circle cx="66" cy="112" r="7"/><circle cx="38" cy="155" r="6.5"/>
+                <circle cx="46" cy="182" r="5.5"/><circle cx="62" cy="206" r="6"/><circle cx="84" cy="228" r="5"/>
+                <circle cx="118" cy="348" r="5.5"/><circle cx="132" cy="372" r="6"/><circle cx="158" cy="388" r="5.5"/>
+              </g>
+            </g>
+
+            <!-- RIGHT WINGS (3D Perspective Flap) -->
+            <g style="animation: wingFlapR 1.55s ease-in-out infinite; transform-origin: 250px 235px;">
+              <!-- Right Hindwing -->
+              <path d="M254,245 C325,245 405,295 388,368 C368,422 282,395 254,315 Z"
+                    fill="url(#monarchBottom)" stroke="#14080e" stroke-width="12"/>
+              <!-- Hindwing Veins -->
+              <path d="M258,265 Q325,295 372,345 M258,285 Q315,335 345,382 M295,282 L355,305"
+                    stroke="#14080e" stroke-width="5" fill="none"/>
+              <!-- Right Forewing -->
+              <path d="M254,225 C325,115 448,75 466,152 C482,225 385,285 254,255 Z"
+                    fill="url(#monarchTop)" stroke="#14080e" stroke-width="14"/>
+              <!-- Forewing Intricate Veins -->
+              <path d="M258,232 C335,185 395,145 455,148 M332,185 L415,118 M348,195 L438,188 M315,212 L405,232"
+                    stroke="#14080e" stroke-width="6" fill="none"/>
+              <!-- White Marginal Spots Right -->
+              <g fill="#ffffff">
+                <circle cx="452" cy="128" r="6"/><circle cx="434" cy="112" r="7"/><circle cx="462" cy="155" r="6.5"/>
+                <circle cx="454" cy="182" r="5.5"/><circle cx="438" cy="206" r="6"/><circle cx="416" cy="228" r="5"/>
+                <circle cx="382" cy="348" r="5.5"/><circle cx="368" cy="372" r="6"/><circle cx="342" cy="388" r="5.5"/>
+              </g>
+            </g>
+
+            <!-- Butterfly Body, Head & Antennae -->
+            <g>
+              <!-- Antennae -->
+              <path d="M244,168 C228,122 195,95 178,108" stroke="#14080e" stroke-width="4" fill="none" stroke-linecap="round"/>
+              <path d="M256,168 C272,122 305,95 322,108" stroke="#14080e" stroke-width="4" fill="none" stroke-linecap="round"/>
+              <circle cx="178" cy="108" r="5" fill="#14080e"/>
+              <circle cx="322" cy="108" r="5" fill="#14080e"/>
+              <!-- Thorax & Abdomen -->
+              <ellipse cx="250" cy="215" rx="13" ry="28" fill="#1f1118"/>
+              <ellipse cx="250" cy="285" rx="9" ry="52" fill="#14080e"/>
+              <!-- Head & White Polka Dots -->
+              <circle cx="250" cy="176" r="14" fill="#14080e"/>
+              <circle cx="243" cy="172" r="3.5" fill="#ffffff"/>
+              <circle cx="257" cy="172" r="3.5" fill="#ffffff"/>
+              <circle cx="246" cy="205" r="2.8" fill="#ffffff"/>
+              <circle cx="254" cy="205" r="2.8" fill="#ffffff"/>
+            </g>
+          </g>
+        </svg>
+      `;
+
+    // 3. REALISTIC ANIMATED SCARLET MACAW PARROT
+    case 2:
+      return `
+        <svg viewBox="0 0 500 500">
+          <defs>
+            <linearGradient id="macawRed" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff4d6d"/>
+              <stop offset="45%" stop-color="#ff0a54"/>
+              <stop offset="100%" stop-color="#800f2f"/>
+            </linearGradient>
+            <linearGradient id="macawGold" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#fff3b0"/>
+              <stop offset="60%" stop-color="#ffbe0b"/>
+              <stop offset="100%" stop-color="#e36414"/>
+            </linearGradient>
+            <linearGradient id="macawBlue" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#48cae4"/>
+              <stop offset="50%" stop-color="#0077b6"/>
+              <stop offset="100%" stop-color="#03045e"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Tropical Mossy Jungle Branch -->
+          <path d="M35,380 Q240,345 465,395" stroke="#582f0e" stroke-width="26" fill="none" stroke-linecap="round"/>
+          <path d="M55,375 Q240,342 445,388" stroke="#7f4f24" stroke-width="10" fill="none" stroke-linecap="round"/>
+          <!-- Tropical Leaves on Branch -->
+          <path d="M90,372 Q45,325 32,355 Q58,392 90,372 Z" fill="#52b788"/>
+          <path d="M415,388 Q455,342 475,372 Q445,412 415,388 Z" fill="#2d6a4f"/>
+
+          <!-- Animated Scarlet Macaw -->
+          <g style="animation: parrotBreathe 2.8s ease-in-out infinite; transform-origin: 250px 350px;">
+            <!-- Long Tail Feathers -->
+            <path d="M210,335 L145,485 L182,482 L238,345 Z" fill="url(#macawBlue)"/>
+            <path d="M225,340 L195,492 L235,492 L258,345 Z" fill="url(#macawRed)"/>
+            <path d="M245,340 L255,485 L285,478 L268,340 Z" fill="url(#macawBlue)"/>
+
+            <!-- Main Scarlet Body & Chest -->
+            <path d="M185,175 C155,235 168,325 225,365 C275,372 315,325 305,235 C295,165 235,145 185,175 Z"
+                  fill="url(#macawRed)"/>
+
+            <!-- Articulated Multi-Layered Wing -->
+            <g style="animation: parrotWingRuffle 3.2s ease-in-out infinite; transform-origin: 215px 210px;">
+              <!-- Cobalt Blue Flight Feathers -->
+              <path d="M185,235 C128,285 112,355 135,405 C175,385 225,345 245,275 Z" fill="url(#macawBlue)"/>
+              <!-- Golden Yellow Median Coverts -->
+              <path d="M192,212 C145,248 135,305 158,342 C195,328 235,292 248,238 Z" fill="url(#macawGold)"/>
+              <!-- Green Feather Transition -->
+              <path d="M158,332 Q195,318 228,282" stroke="#38b000" stroke-width="10" fill="none" stroke-linecap="round"/>
+              <!-- Scarlet Shoulder Coverts -->
+              <path d="M198,192 C162,218 158,265 182,292 C215,282 242,248 245,205 Z" fill="url(#macawRed)"/>
+            </g>
+
+            <!-- Head & Curved Ivory/Black Beak -->
+            <g>
+              <circle cx="245" cy="142" r="56" fill="url(#macawRed)"/>
+              <!-- Upper Ivory Hooked Mandible -->
+              <path d="M285,112 C345,108 378,145 358,195 C338,168 312,162 282,162 Z"
+                    fill="#fff8e7" stroke="#d4a373" stroke-width="3"/>
+              <!-- Lower Black Mandible -->
+              <path d="M278,158 C305,158 328,168 332,188 C305,198 282,185 275,168 Z" fill="#212529"/>
+              <!-- White Facial Patch & Red Feather Lines -->
+              <path d="M235,112 C268,108 292,125 288,162 C262,172 232,158 228,132 Z" fill="#ffffff"/>
+              <path d="M242,145 Q262,152 278,146 M245,154 Q262,160 276,154" stroke="#d90429" stroke-width="2" fill="none"/>
+              <!-- Expressive Eye -->
+              <circle cx="258" cy="132" r="10" fill="#ffea00" stroke="#212529" stroke-width="2"/>
+              <circle cx="259" cy="132" r="5.5" fill="#14080e"/>
+              <circle cx="257" cy="129" r="2.2" fill="#ffffff"/>
+            </g>
+
+            <!-- Zygodactyl Claws Gripping Branch -->
+            <g fill="#495057" stroke="#212529" stroke-width="2">
+              <ellipse cx="222" cy="364" rx="8" ry="14"/>
+              <ellipse cx="236" cy="365" rx="8" ry="14"/>
+              <ellipse cx="268" cy="368" rx="8" ry="14"/>
+              <ellipse cx="282" cy="369" rx="8" ry="14"/>
+            </g>
+          </g>
+        </svg>
+      `;
+
+    // 4. REALISTIC ANIMATED RED FOX IN AUTUMN FOREST
+    case 3:
+      return `
+        <svg viewBox="0 0 500 500">
+          <defs>
+            <linearGradient id="foxFur" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ff9e00"/>
+              <stop offset="50%" stop-color="#e85d04"/>
+              <stop offset="100%" stop-color="#9d0208"/>
+            </linearGradient>
+            <linearGradient id="foxCream" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="100%" stop-color="#f8edeb"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Mossy Woodland Mound & Autumn Leaves -->
+          <ellipse cx="250" cy="425" rx="195" ry="42" fill="#4f772d"/>
+          <ellipse cx="250" cy="418" rx="165" ry="30" fill="#90a955"/>
+
+          <!-- Animated Red Fox -->
+          <g style="animation: foxBreathe 2.8s ease-in-out infinite; transform-origin: 250px 410px;">
+            <!-- Fluffy Animated Tail with White Tip -->
+            <g style="animation: foxTailWag 2.4s ease-in-out infinite; transform-origin: 295px 385px;">
+              <path d="M285,388 C365,415 445,365 462,275 C435,245 365,265 325,325 C295,355 285,375 285,388 Z"
+                    fill="url(#foxFur)"/>
+              <!-- Fluffy White Tail Tip -->
+              <path d="M412,265 C438,255 456,262 462,275 C454,308 432,328 408,322 C418,298 402,288 412,265 Z"
+                    fill="url(#foxCream)"/>
+            </g>
+
+            <!-- Hind Haunches & Torso -->
+            <path d="M168,245 C142,315 152,395 195,415 L298,415 C328,392 325,315 292,245 Z"
+                  fill="url(#foxFur)"/>
+
+            <!-- Fluffy Cream Chest Fur -->
+            <path d="M192,225 C182,275 195,335 235,358 C275,335 288,275 278,225 Z"
+                  fill="url(#foxCream)"/>
+
+            <!-- Front Legs & Dark Stocking Paws -->
+            <rect x="195" y="315" width="28" height="102" rx="14" fill="url(#foxFur)"/>
+            <rect x="248" y="315" width="28" height="102" rx="14" fill="url(#foxFur)"/>
+            <path d="M195,375 L223,375 L223,417 C212,422 202,422 195,417 Z" fill="#2b1912"/>
+            <path d="M248,375 L276,375 L276,417 C265,422 255,422 248,417 Z" fill="#2b1912"/>
+
+            <!-- Fox Head, Pointed Ears & Whiskered Snout -->
+            <g>
+              <!-- Left Ear -->
+              <path d="M168,148 L142,58 L212,108 Z" fill="#2b1912"/>
+              <path d="M172,142 L154,75 L204,112 Z" fill="#ffccd5"/>
+              <!-- Right Ear -->
+              <path d="M302,148 L328,58 L258,108 Z" fill="#2b1912"/>
+              <path d="M298,142 L316,75 L266,112 Z" fill="#ffccd5"/>
+
+              <!-- Main Diamond Face Shape -->
+              <path d="M142,168 C155,105 315,105 328,168 C312,218 265,248 235,252 C205,248 158,218 142,168 Z"
+                    fill="url(#foxFur)"/>
+
+              <!-- White Cheek Fur -->
+              <path d="M142,168 C168,175 208,198 235,252 C192,248 155,215 142,168 Z" fill="url(#foxCream)"/>
+              <path d="M328,168 C302,175 262,198 235,252 C278,248 315,215 328,168 Z" fill="url(#foxCream)"/>
+
+              <!-- Amber Eyes -->
+              <ellipse cx="198" cy="168" rx="13" ry="10" fill="#ffbe0b" stroke="#2b1912" stroke-width="2.5" transform="rotate(10 198 168)"/>
+              <ellipse cx="198" cy="168" rx="4.5" ry="8" fill="#14080e"/>
+              <circle cx="195" cy="164" r="2.5" fill="#ffffff"/>
+
+              <ellipse cx="272" cy="168" rx="13" ry="10" fill="#ffbe0b" stroke="#2b1912" stroke-width="2.5" transform="rotate(-10 272 168)"/>
+              <ellipse cx="272" cy="168" rx="4.5" ry="8" fill="#14080e"/>
+              <circle cx="269" cy="164" r="2.5" fill="#ffffff"/>
+
+              <!-- Glossy Nose & Smile -->
+              <polygon points="222,226 248,226 235,244" fill="#14080e"/>
+              <ellipse cx="232" cy="230" rx="5" ry="2.2" fill="rgba(255,255,255,0.55)"/>
+              <!-- Whiskers -->
+              <g stroke="#ffffff" stroke-width="2" opacity="0.85" stroke-linecap="round">
+                <line x1="185" y1="218" x2="128" y2="212"/>
+                <line x1="188" y1="228" x2="135" y2="232"/>
+                <line x1="285" y1="218" x2="342" y2="212"/>
+                <line x1="282" y1="228" x2="335" y2="232"/>
+              </g>
+            </g>
+          </g>
+        </svg>
+      `;
+
+    // 5. REALISTIC ANIMATED VINTAGE WOODEN SAILBOAT AT SUNSET
+    case 4:
+    default:
+      return `
+        <svg viewBox="0 0 500 500">
+          <defs>
+            <linearGradient id="sailMain" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#ffffff"/>
+              <stop offset="55%" stop-color="#fff3b0"/>
+              <stop offset="100%" stop-color="#ffaa00"/>
+            </linearGradient>
+            <linearGradient id="hullWood" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#b07d62"/>
+              <stop offset="45%" stop-color="#7f4f24"/>
+              <stop offset="100%" stop-color="#3d2314"/>
+            </linearGradient>
+            <linearGradient id="seaWaveGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#48cae4"/>
+              <stop offset="100%" stop-color="#023e8a"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Background Sunset Halo -->
+          <circle cx="250" cy="260" r="185" fill="rgba(255, 183, 3, 0.18)"/>
+
+          <!-- Rocking Vintage Schooner Sailboat -->
+          <g style="animation: boatRock 3.4s ease-in-out infinite; transform-origin: 250px 360px;">
+            <!-- Tall Wooden Mast & Boom -->
+            <rect x="234" y="42" width="12" height="310" rx="6" fill="#582f0e"/>
+            <rect x="75" y="295" width="340" height="9" rx="4" fill="#7f4f24"/>
+
+            <!-- Fluttering Crimson Pennant Flag at Masthead -->
+            <path d="M244,44 Q288,32 325,52 Q288,68 244,64 Z" fill="#ff1744"/>
+
+            <!-- Billowing Mainsail (Left) -->
+            <g style="animation: sailBillow 2.6s ease-in-out infinite; transform-origin: 234px 180px;">
+              <path d="M230,68 C135,95 85,185 82,290 L230,290 Z"
+                    fill="url(#sailMain)" stroke="#e09f3e" stroke-width="3"/>
+              <!-- Sail Stitching Stripes -->
+              <path d="M172,118 L230,118 M125,175 L230,175 M96,235 L230,235"
+                    stroke="rgba(180,100,20,0.32)" stroke-width="2.5" fill="none"/>
+              <!-- Crimson Racing Stripe -->
+              <path d="M112,202 L230,202 L230,224 L102,224 Z" fill="#e63946" opacity="0.85"/>
+            </g>
+
+            <!-- Billowing Headsail / Jib (Right) -->
+            <g style="animation: sailBillow 2.6s ease-in-out infinite; transform-origin: 246px 190px;">
+              <path d="M250,82 C335,132 385,205 408,290 C345,282 292,285 250,290 Z"
+                    fill="url(#sailMain)" stroke="#e09f3e" stroke-width="3"/>
+              <path d="M250,155 L335,172 M250,225 L378,238"
+                    stroke="rgba(180,100,20,0.32)" stroke-width="2.5" fill="none"/>
+            </g>
+
+            <!-- Wooden Schooner Hull -->
+            <path d="M58,322 L442,322 L392,402 C305,418 195,418 108,402 Z"
+                  fill="url(#hullWood)" stroke="#2b1912" stroke-width="4"/>
+            <!-- Gold & Crimson Hull Trim Line -->
+            <path d="M68,340 L432,340" stroke="#ffbe0b" stroke-width="6"/>
+            <path d="M74,350 L426,350" stroke="#e63946" stroke-width="4"/>
+
+            <!-- Brass Portholes -->
+            <g fill="#48cae4" stroke="#ffbe0b" stroke-width="4">
+              <circle cx="165" cy="372" r="11"/>
+              <circle cx="222" cy="372" r="11"/>
+              <circle cx="278" cy="372" r="11"/>
+              <circle cx="335" cy="372" r="11"/>
+            </g>
+          </g>
+
+          <!-- Animated Foreground Rolling Ocean Waves & White Bow Foam -->
+          <g style="animation: waveSlide 2.8s ease-in-out infinite;">
+            <path d="M25,398 Q85,370 145,398 T265,398 T385,398 T485,398 L475,442 L35,442 Z"
+                  fill="url(#seaWaveGrad)" opacity="0.92"/>
+            <path d="M25,398 Q85,370 145,398 T265,398 T385,398 T485,398"
+                  fill="none" stroke="#caf0f8" stroke-width="6" stroke-linecap="round"/>
+          </g>
+        </svg>
+      `;
+  }
+}
+
+/* ==========================================================================
+   PARTICLE SYSTEMS (Ambient Living Scene + Interactive Click/Paint Bursts)
+   ========================================================================== */
+const envCanvas = document.getElementById('env-canvas');
+const envCtx = envCanvas.getContext('2d');
+const fxCanvas = document.getElementById('fx-canvas');
+const fxCtx = fxCanvas.getContext('2d');
+
+let envParticles = [];
+let fxParticles = [];
+
+function resizeCanvases() {
+  envCanvas.width = window.innerWidth;
+  envCanvas.height = window.innerHeight;
+  fxCanvas.width = window.innerWidth;
+  fxCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+function initAmbientParticles(themeIndex) {
+  envParticles = [];
+  const count = 34;
+  for (let i = 0; i < count; i++) {
+    envParticles.push(makeAmbientParticle(themeIndex, true));
+  }
+}
+
+function makeAmbientParticle(themeIndex, randomY = false) {
+  const w = envCanvas.width;
+  const h = envCanvas.height;
+
+  if (themeIndex === 0) {
+    // Rising underwater bubbles
+    return {
+      type: 'bubble',
+      x: Math.random() * w,
+      y: randomY ? Math.random() * h : h + 20,
+      r: 4 + Math.random() * 14,
+      vy: -(0.7 + Math.random() * 1.6),
+      vx: (Math.random() - 0.5) * 0.6,
+      phase: Math.random() * Math.PI * 2
+    };
+  } else if (themeIndex === 1) {
+    // Floating dandelion seeds & golden pollen
+    return {
+      type: 'pollen',
+      x: Math.random() * w,
+      y: randomY ? Math.random() * h : h + 20,
+      r: 3 + Math.random() * 6,
+      vy: -(0.3 + Math.random() * 0.8),
+      vx: 0.4 + Math.random() * 0.9,
+      phase: Math.random() * Math.PI * 2,
+      color: Math.random() > 0.4 ? '#fffdf0' : '#ffea00'
+    };
+  } else if (themeIndex === 2) {
+    // Jungle fireflies & glowing mist Spores
+    return {
+      type: 'spore',
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: 3 + Math.random() * 7,
+      vy: (Math.random() - 0.5) * 0.7,
+      vx: (Math.random() - 0.5) * 0.7,
+      phase: Math.random() * Math.PI * 2,
+      color: Math.random() > 0.5 ? '#b7e4c7' : '#ffea00'
+    };
+  } else if (themeIndex === 3) {
+    // Falling colorful autumn leaves
+    const colors = ['#ff7b00', '#d62828', '#fcbf49', '#e36414'];
+    return {
+      type: 'leaf',
+      x: Math.random() * w,
+      y: randomY ? Math.random() * h : -25,
+      r: 8 + Math.random() * 10,
+      vy: 0.8 + Math.random() * 1.4,
+      vx: 0.5 + Math.random() * 1.1,
+      rot: Math.random() * Math.PI * 2,
+      vRot: (Math.random() - 0.5) * 0.04,
+      color: colors[Math.floor(Math.random() * colors.length)]
+    };
+  } else {
+    // Sunset sea sparkles & gliding gulls
+    return {
+      type: 'sparkle',
+      x: Math.random() * w,
+      y: h * 0.64 + Math.random() * (h * 0.36),
+      r: 2 + Math.random() * 5,
+      phase: Math.random() * Math.PI * 2,
+      color: Math.random() > 0.5 ? '#ffea00' : '#ffffff'
+    };
+  }
+}
+
+// Spawn interactive burst on tile click or transformation
+function spawnFXBurst(x, y, colors, count = 26, scale = 1) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.35;
+    const speed = (2.5 + Math.random() * 7.5) * scale;
+    fxParticles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 1.5,
+      r: (4 + Math.random() * 7) * scale,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      alpha: 1,
+      decay: 0.018 + Math.random() * 0.018,
+      gravity: 0.16,
+      star: Math.random() > 0.45
+    });
+  }
+}
+
+function animateCanvases() {
+  // 1. Ambient Canvas
+  envCtx.clearRect(0, 0, envCanvas.width, envCanvas.height);
+  const w = envCanvas.width;
+  const h = envCanvas.height;
+
+  for (let i = 0; i < envParticles.length; i++) {
+    const p = envParticles[i];
+    p.phase = (p.phase || 0) + 0.03;
+
+    if (p.type === 'bubble') {
+      p.y += p.vy;
+      p.x += Math.sin(p.phase) * 0.8 + p.vx;
+      if (p.y < -30) Object.assign(p, makeAmbientParticle(0, false));
+      envCtx.beginPath();
+      envCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      envCtx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      envCtx.lineWidth = 1.8;
+      envCtx.stroke();
+      envCtx.beginPath();
+      envCtx.arc(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.25, 0, Math.PI * 2);
+      envCtx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      envCtx.fill();
+    } else if (p.type === 'pollen' || p.type === 'spore') {
+      p.y += p.vy + Math.cos(p.phase) * 0.3;
+      p.x += p.vx + Math.sin(p.phase) * 0.5;
+      if (p.y < -20) p.y = h + 15;
+      if (p.x > w + 20) p.x = -15;
+      if (p.x < -20) p.x = w + 15;
+      envCtx.save();
+      envCtx.globalAlpha = 0.45 + Math.sin(p.phase) * 0.35;
+      envCtx.beginPath();
+      envCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      envCtx.fillStyle = p.color;
+      envCtx.shadowColor = p.color;
+      envCtx.shadowBlur = 10;
+      envCtx.fill();
+      envCtx.restore();
+    } else if (p.type === 'leaf') {
+      p.y += p.vy;
+      p.x += p.vx + Math.sin(p.phase) * 0.9;
+      p.rot += p.vRot;
+      if (p.y > h + 30) Object.assign(p, makeAmbientParticle(3, false));
+      if (p.x > w + 30) p.x = -20;
+      envCtx.save();
+      envCtx.translate(p.x, p.y);
+      envCtx.rotate(p.rot);
+      envCtx.fillStyle = p.color;
+      envCtx.beginPath();
+      envCtx.ellipse(0, 0, p.r, p.r * 0.55, 0, 0, Math.PI * 2);
+      envCtx.fill();
+      envCtx.restore();
+    } else if (p.type === 'sparkle') {
+      envCtx.save();
+      envCtx.globalAlpha = Math.max(0.1, Math.sin(p.phase) * 0.85);
+      envCtx.fillStyle = p.color;
+      envCtx.beginPath();
+      envCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      envCtx.fill();
+      envCtx.restore();
+    }
+  }
+
+  // 2. FX Particle Burst Canvas
+  fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+  for (let i = fxParticles.length - 1; i >= 0; i--) {
+    const f = fxParticles[i];
+    f.x += f.vx;
+    f.y += f.vy;
+    f.vy += f.gravity;
+    f.alpha -= f.decay;
+
+    if (f.alpha <= 0) {
+      fxParticles.splice(i, 1);
+      continue;
+    }
+
+    fxCtx.save();
+    fxCtx.globalAlpha = Math.max(0, f.alpha);
+    fxCtx.fillStyle = f.color;
+    fxCtx.translate(f.x, f.y);
+
+    if (f.star) {
+      fxCtx.beginPath();
+      for (let s = 0; s < 5; s++) {
+        fxCtx.lineTo(
+          Math.cos(((18 + s * 72) * Math.PI) / 180) * f.r,
+          -Math.sin(((18 + s * 72) * Math.PI) / 180) * f.r
+        );
+        fxCtx.lineTo(
+          Math.cos(((54 + s * 72) * Math.PI) / 180) * (f.r * 0.45),
+          -Math.sin(((54 + s * 72) * Math.PI) / 180) * (f.r * 0.45)
+        );
+      }
+      fxCtx.closePath();
+      fxCtx.fill();
+    } else {
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, f.r, 0, Math.PI * 2);
+      fxCtx.fill();
+    }
+    fxCtx.restore();
+  }
+
+  requestAnimationFrame(animateCanvases);
+}
+
+/* ==========================================================================
+   GAME STATE & BOARD GENERATOR
+   ========================================================================== */
+const ROUND_NUMBERS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const NON_ROUND_POOL = [];
+for (let n = 1; n <= 99; n++) {
+  if (n % 10 !== 0) NON_ROUND_POOL.push(n);
+}
+
+let currentThemeIndex = 0;
+let remainingRoundTiles = 0;
+let paintedCount = 0;
+let isBoardComplete = false;
+let idleHintTimer = null;
+
+const bgSvgEl = document.getElementById('bg-svg');
+const frameEl = document.getElementById('board-frame');
+const ornamentsEl = document.getElementById('frame-ornaments');
+const wellEl = document.getElementById('board-well');
+const gridEl = document.getElementById('number-grid');
+const realisticStageEl = document.getElementById('realistic-stage');
+const nextBtnEl = document.getElementById('next-btn');
+const themeGemsContainer = document.getElementById('theme-gems');
+
+// Build top-right visual-only theme gems
+THEMES.forEach((theme, idx) => {
+  const gem = document.createElement('div');
+  gem.className = 'theme-gem';
+  gem.style.background = theme.gemColor;
+  gem.style.color = theme.gemColor;
+  gem.addEventListener('click', () => {
+    sound.playPaintNote(idx * 2);
+    loadBoard(idx);
+  });
+  themeGemsContainer.appendChild(gem);
+});
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function resetIdleHintTimer() {
+  if (idleHintTimer) clearTimeout(idleHintTimer);
+  document.querySelectorAll('.num-tile.hint-pulse').forEach(el => el.classList.remove('hint-pulse'));
+  if (isBoardComplete) return;
+
+  // If child doesn't click for 9 seconds and <= 4 round numbers remain, gently shimmer one
+  idleHintTimer = setTimeout(() => {
+    if (isBoardComplete) return;
+    const unpaintedRoundTiles = Array.from(document.querySelectorAll('.num-tile[data-round="true"]:not(.painted)'));
+    if (unpaintedRoundTiles.length > 0 && unpaintedRoundTiles.length <= 5) {
+      unpaintedRoundTiles[0].classList.add('hint-pulse');
+    }
+  }, 9000);
+}
+
+function loadBoard(themeIdx) {
+  currentThemeIndex = ((themeIdx % THEMES.length) + THEMES.length) % THEMES.length;
+  const theme = THEMES[currentThemeIndex];
+
+  isBoardComplete = false;
+  paintedCount = 0;
+  remainingRoundTiles = 0;
+  nextBtnEl.classList.remove('celebrate-pulse');
+
+  // Update active gem
+  Array.from(themeGemsContainer.children).forEach((gem, idx) => {
+    gem.classList.toggle('active', idx === currentThemeIndex);
+  });
+
+  // Update background & ambient particles
+  bgSvgEl.innerHTML = getBackgroundSVG(currentThemeIndex);
+  ornamentsEl.innerHTML = getFrameOrnamentsSVG(currentThemeIndex);
+  initAmbientParticles(currentThemeIndex);
+
+  // Apply stylized frame & well surfaces
+  frameEl.style.background = theme.frameStyle.background;
+  wellEl.style.background = theme.frameStyle.wellBg;
+
+  // Reset grid & realistic stage visibility
+  gridEl.classList.remove('mosaic-complete');
+  gridEl.style.opacity = '1';
+  gridEl.style.transform = 'scale(1)';
+  gridEl.style.pointerEvents = 'auto';
+
+  realisticStageEl.classList.remove('active', 'creature-react');
+  realisticStageEl.innerHTML = getRealisticArtworkSVG(currentThemeIndex);
+
+  // Count how many picture cells (value > 0) exist in this 8x8 mosaic
+  let pictureCellCount = 0;
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      if (theme.grid[r][c] > 0) pictureCellCount++;
+    }
+  }
+  remainingRoundTiles = pictureCellCount;
+
+  // Build pool of round numbers for the picture cells so ALL 10 round numbers (10..100) are guaranteed
+  const roundPool = [];
+  while (roundPool.length < pictureCellCount) {
+    roundPool.push(...shuffleArray(ROUND_NUMBERS));
+  }
+  const assignedRoundNumbers = shuffleArray(roundPool.slice(0, pictureCellCount));
+
+  // Build shuffled pool of non-round numbers for background cells
+  const assignedNonRoundNumbers = shuffleArray(NON_ROUND_POOL);
+
+  // Render 64 stylized tiles
+  gridEl.innerHTML = '';
+  let roundPtr = 0;
+  let nonRoundPtr = 0;
+
+  for (let r = 0; r < 8; r++) {
+    for (let c = 0; c < 8; c++) {
+      const colorCode = theme.grid[r][c];
+      const isRoundCell = colorCode > 0;
+      const numberVal = isRoundCell
+        ? assignedRoundNumbers[roundPtr++]
+        : assignedNonRoundNumbers[nonRoundPtr++];
+
+      const tile = document.createElement('div');
+      tile.className = 'num-tile';
+      tile.dataset.round = isRoundCell ? 'true' : 'false';
+      tile.dataset.colorCode = colorCode;
+      tile.style.background = theme.frameStyle.tileUnpaintedBg;
+      tile.style.color = theme.frameStyle.tileUnpaintedText;
+      tile.style.boxShadow = theme.frameStyle.tileUnpaintedShadow;
+
+      const label = document.createElement('span');
+      label.className = 'tile-label';
+      label.textContent = numberVal;
+      tile.appendChild(label);
+
+      tile.addEventListener('click', (e) => handleTileClick(tile, e));
+      gridEl.appendChild(tile);
+    }
+  }
+
+  resetIdleHintTimer();
+}
+
+function handleTileClick(tile, event) {
+  if (isBoardComplete) return;
+  resetIdleHintTimer();
+
+  const rect = tile.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  const theme = THEMES[currentThemeIndex];
+
+  if (tile.dataset.round === 'true') {
+    // Already painted? Play a soft chime and sparkle
+    if (tile.classList.contains('painted')) {
+      sound.playPaintNote(paintedCount);
+      spawnFXBurst(centerX, centerY, ['#ffea00', '#ffffff', theme.gemColor], 10, 0.7);
+      return;
+    }
+
+    // Paint the round number tile!
+    tile.classList.remove('hint-pulse');
+    tile.classList.add('painted');
+    const colorCode = Number(tile.dataset.colorCode);
+    tile.style.background = theme.palette[colorCode];
+    tile.style.boxShadow = '0 4px 12px rgba(0,0,0,0.45), inset 0 2px 6px rgba(255,255,255,0.45)';
+
+    sound.playPaintNote(paintedCount);
+    paintedCount++;
+    remainingRoundTiles--;
+
+    spawnFXBurst(centerX, centerY, ['#ffea00', '#ffffff', theme.gemColor, '#ff6d00'], 22, 0.95);
+
+    if (remainingRoundTiles <= 0) {
+      triggerMosaicCompletion();
+    }
+  } else {
+    // Clicked a NON-ROUND number: playful wobble + wood boing + subtle dust puff
+    sound.playWoodBoing();
+    tile.classList.remove('wobble');
+    void tile.offsetWidth;
+    tile.classList.add('wobble');
+    spawnFXBurst(centerX, centerY, ['rgba(255,255,255,0.65)', 'rgba(220,200,170,0.65)'], 8, 0.55);
+  }
+}
+
+function triggerMosaicCompletion() {
+  isBoardComplete = true;
+  if (idleHintTimer) clearTimeout(idleHintTimer);
+
+  // Step 1: Dissolve all non-round background tiles so the child clearly sees the mosaic picture they painted
+  const allTiles = Array.from(gridEl.children);
+  allTiles.forEach((tile, idx) => {
+    if (tile.dataset.round === 'false') {
+      setTimeout(() => {
+        tile.classList.add('dissolve');
+      }, (idx % 8) * 35 + Math.floor(idx / 8) * 35);
+    }
+  });
+
+  // Step 2: Hide numbers on painted tiles so the pixel mosaic shines cleanly
+  setTimeout(() => {
+    gridEl.classList.add('mosaic-complete');
+    sound.playTransformationFanfare();
+    const wellRect = wellEl.getBoundingClientRect();
+    spawnFXBurst(
+      wellRect.left + wellRect.width / 2,
+      wellRect.top + wellRect.height / 2,
+      ['#ffea00', '#00e5ff', '#ff1744', '#ffffff', '#76ff03'],
+      48,
+      1.35
+    );
+  }, 650);
+
+  // Step 3: Smoothly morph the pixel mosaic into the realistic animated SVG creature/vessel!
+  setTimeout(() => {
+    gridEl.style.opacity = '0';
+    gridEl.style.transform = 'scale(1.12)';
+    gridEl.style.pointerEvents = 'none';
+
+    realisticStageEl.classList.add('active');
+    nextBtnEl.classList.add('celebrate-pulse');
+    sound.playCreatureVoice(currentThemeIndex);
+
+    const wellRect = wellEl.getBoundingClientRect();
+    spawnFXBurst(
+      wellRect.left + wellRect.width / 2,
+      wellRect.top + wellRect.height / 2,
+      ['#ffea00', '#ffffff', THEMES[currentThemeIndex].gemColor],
+      55,
+      1.45
+    );
+  }, 1850);
+}
+
+// Interactive click on the transformed realistic creature/boat
+realisticStageEl.addEventListener('click', (e) => {
+  if (!isBoardComplete) return;
+  sound.playCreatureVoice(currentThemeIndex);
+
+  realisticStageEl.classList.remove('creature-react');
+  void realisticStageEl.offsetWidth;
+  realisticStageEl.classList.add('creature-react');
+
+  spawnFXBurst(
+    e.clientX || window.innerWidth / 2,
+    e.clientY || window.innerHeight / 2,
+    ['#ffea00', '#ffffff', THEMES[currentThemeIndex].gemColor, '#ff9100'],
+    36,
+    1.15
+  );
+});
+
+// Minimalist "Next" Button: Immediately transitions to the next board at any time
+nextBtnEl.addEventListener('click', () => {
+  sound.playPaintNote(5);
+  const rect = nextBtnEl.getBoundingClientRect();
+  spawnFXBurst(
+    rect.left + rect.width / 2,
+    rect.top + rect.height / 2,
+    ['#ffea00', '#ffffff', '#ff9100'],
+    20,
+    0.85
+  );
+  loadBoard(currentThemeIndex + 1);
+});
+
+// Start Game & 60fps Canvas Loop on Window Load
+window.onload = function () {
+  loadBoard(0);
+  animateCanvases();
+};
+</script>
+</body>
+</html>
