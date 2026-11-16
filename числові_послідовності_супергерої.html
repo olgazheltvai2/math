@@ -1,0 +1,2180 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Superhero Animal Sequences</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@700;800;900&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #0d0826;
+      font-family: 'Rubik', sans-serif;
+    }
+
+    /* Full viewport 16:9 adaptive stage */
+    #stage-wrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 35%, #3d1c52 0%, #190d33 60%, #0b051d 100%);
+    }
+
+    #game-stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    /* Canvases for living background & active particle feedbacks */
+    #bg-canvas, #fx-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    #bg-canvas { z-index: 1; }
+    #fx-canvas { z-index: 40; }
+
+    /* SVG Rooftop & Heroes Layer */
+    #scene-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10;
+      overflow: visible;
+    }
+
+    /* Top UI Controls (Level crests & Next button) */
+    .hud-top-left {
+      position: absolute;
+      top: 2.2vh;
+      left: 2.2vw;
+      z-index: 50;
+      display: flex;
+      gap: 1vw;
+      align-items: center;
+    }
+
+    .hud-top-right {
+      position: absolute;
+      top: 2.2vh;
+      right: 2.2vw;
+      z-index: 50;
+      display: flex;
+      gap: 1vw;
+      align-items: center;
+    }
+
+    .crest-btn {
+      position: relative;
+      width: clamp(48px, 4.6vw, 76px);
+      height: clamp(48px, 4.6vw, 76px);
+      cursor: pointer;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
+      filter: drop-shadow(0 6px 12px rgba(0,0,0,0.55));
+      background: transparent;
+      border: none;
+      padding: 0;
+      outline: none;
+    }
+
+    .crest-btn:hover {
+      transform: scale(1.12) translateY(-2px);
+      filter: drop-shadow(0 8px 18px rgba(255, 200, 60, 0.65));
+    }
+
+    .crest-btn:active {
+      transform: scale(0.92);
+    }
+
+    .crest-btn.active-level {
+      transform: scale(1.15);
+      filter: drop-shadow(0 0 18px rgba(255, 215, 0, 0.95)) drop-shadow(0 6px 14px rgba(0,0,0,0.7));
+    }
+
+    /* Floating Stylized Superhero Keypad */
+    #keypad-bar {
+      position: absolute;
+      bottom: 2.2vh;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(5px, 0.65vw, 12px);
+      padding: clamp(8px, 1vh, 14px) clamp(14px, 1.8vw, 28px);
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(28, 16, 66, 0.92) 0%, rgba(56, 22, 97, 0.92) 50%, rgba(22, 13, 54, 0.95) 100%);
+      border: 3px solid #f59e0b;
+      box-shadow:
+        0 12px 32px rgba(0, 0, 0, 0.75),
+        0 0 24px rgba(245, 158, 11, 0.35),
+        inset 0 2px 6px rgba(255, 255, 255, 0.25),
+        inset 0 -4px 10px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Decorative winged pattern inside keypad bar */
+    #keypad-bar::before {
+      content: "";
+      position: absolute;
+      inset: 3px;
+      border-radius: 999px;
+      background-image: radial-gradient(rgba(255, 215, 0, 0.14) 1.5px, transparent 1.5px);
+      background-size: 10px 10px;
+      pointer-events: none;
+    }
+
+    .key-hex {
+      position: relative;
+      width: clamp(42px, 4.3vw, 68px);
+      height: clamp(46px, 4.7vw, 74px);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      padding: 0;
+      outline: none;
+      transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.16s ease;
+      filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.5));
+    }
+
+    .key-hex:hover {
+      transform: translateY(-5px) scale(1.09);
+      filter: drop-shadow(0 8px 14px rgba(56, 189, 248, 0.7));
+    }
+
+    .key-hex:active, .key-hex.pressed {
+      transform: translateY(2px) scale(0.92);
+    }
+
+    .key-hex svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* Elastic animations for badges and characters */
+    @keyframes pulseGlow {
+      0%, 100% { filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.75)); }
+      50% { filter: drop-shadow(0 0 24px rgba(56, 189, 248, 1)); }
+    }
+
+    .fifth-badge-glow {
+      animation: pulseGlow 2s infinite ease-in-out;
+    }
+
+    .hero-interactive {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage-wrapper">
+    <div id="game-stage">
+      <!-- Living Sunset Megapolis & Park Canvas -->
+      <canvas id="bg-canvas"></canvas>
+
+      <!-- Main Vector Stage: Rooftop, 5 Superhero Animals, and 5 Sequence Shield Emblems -->
+      <svg id="scene-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <!-- Rich Metallic, Carbon, Gemstone & Energy Gradients (NO WHITE BOXES!) -->
+          <linearGradient id="goldRim" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#fde047" />
+            <stop offset="35%" stop-color="#f59e0b" />
+            <stop offset="70%" stop-color="#b45309" />
+            <stop offset="100%" stop-color="#fef08a" />
+          </linearGradient>
+
+          <linearGradient id="cyanRim" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#67e8f9" />
+            <stop offset="50%" stop-color="#0284c7" />
+            <stop offset="100%" stop-color="#a5f3fc" />
+          </linearGradient>
+
+          <linearGradient id="crimsonShield" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#991b1b" />
+            <stop offset="50%" stop-color="#450a0a" />
+            <stop offset="100%" stop-color="#7f1d1d" />
+          </linearGradient>
+
+          <linearGradient id="emeraldShield" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#065f46" />
+            <stop offset="50%" stop-color="#022c22" />
+            <stop offset="100%" stop-color="#047857" />
+          </linearGradient>
+
+          <linearGradient id="cobaltShield" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#1e40af" />
+            <stop offset="50%" stop-color="#0f172a" />
+            <stop offset="100%" stop-color="#1d4ed8" />
+          </linearGradient>
+
+          <linearGradient id="amethystShield" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#6b21a8" />
+            <stop offset="50%" stop-color="#2e1065" />
+            <stop offset="100%" stop-color="#7e22ce" />
+          </linearGradient>
+
+          <linearGradient id="mysteryShield" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#0e7490" />
+            <stop offset="50%" stop-color="#090d26" />
+            <stop offset="100%" stop-color="#4f46e5" />
+          </linearGradient>
+
+          <!-- Rooftop & Architectural Gradients -->
+          <linearGradient id="rooftopDeck" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#2e1d4a" />
+            <stop offset="25%" stop-color="#1e1333" />
+            <stop offset="100%" stop-color="#0c0717" />
+          </linearGradient>
+
+          <linearGradient id="rooftopTrim" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.3" />
+            <stop offset="25%" stop-color="#38bdf8" stop-opacity="0.85" />
+            <stop offset="50%" stop-color="#fde047" stop-opacity="0.95" />
+            <stop offset="75%" stop-color="#38bdf8" stop-opacity="0.85" />
+            <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.3" />
+          </linearGradient>
+
+          <!-- Geometric Honeycomb Pattern for Badges -->
+          <pattern id="hexPattern" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M10 0 L20 5 L20 15 L10 20 L0 15 L0 5 Z" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="1.2" />
+          </pattern>
+
+          <pattern id="starGridPattern" width="24" height="24" patternUnits="userSpaceOnUse">
+            <circle cx="12" cy="12" r="2" fill="rgba(253, 224, 71, 0.14)" />
+            <path d="M0 12 H24 M12 0 V24" stroke="rgba(56, 189, 248, 0.08)" stroke-width="1" />
+          </pattern>
+
+          <!-- Character Fur & Suit Gradients -->
+          <!-- 1. Raccoon -->
+          <linearGradient id="raccoonFur" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#9ca3af" />
+            <stop offset="60%" stop-color="#6b7280" />
+            <stop offset="100%" stop-color="#374151" />
+          </linearGradient>
+          <linearGradient id="raccoonSuit" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ef4444" />
+            <stop offset="60%" stop-color="#b91c1c" />
+            <stop offset="100%" stop-color="#7f1d1d" />
+          </linearGradient>
+
+          <!-- 2. Red Fox -->
+          <linearGradient id="foxFur" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#fb923c" />
+            <stop offset="55%" stop-color="#ea580c" />
+            <stop offset="100%" stop-color="#9a3412" />
+          </linearGradient>
+          <linearGradient id="foxSuit" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#10b981" />
+            <stop offset="60%" stop-color="#047857" />
+            <stop offset="100%" stop-color="#064e3b" />
+          </linearGradient>
+
+          <!-- 3. Mighty Bear -->
+          <linearGradient id="bearFur" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#b45309" />
+            <stop offset="55%" stop-color="#78350f" />
+            <stop offset="100%" stop-color="#451a03" />
+          </linearGradient>
+          <linearGradient id="bearSuit" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#3b82f6" />
+            <stop offset="60%" stop-color="#1d4ed8" />
+            <stop offset="100%" stop-color="#1e3a8a" />
+          </linearGradient>
+
+          <!-- 4. Panther/Lynx Speedster -->
+          <linearGradient id="lynxFur" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#c084fc" />
+            <stop offset="50%" stop-color="#7e22ce" />
+            <stop offset="100%" stop-color="#3b0764" />
+          </linearGradient>
+          <linearGradient id="lynxSuit" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#a855f7" />
+            <stop offset="50%" stop-color="#6b21a8" />
+            <stop offset="100%" stop-color="#facc15" />
+          </linearGradient>
+
+          <!-- 5. Wolf / Shiba Hero -->
+          <linearGradient id="wolfFur" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#cbd5e1" />
+            <stop offset="55%" stop-color="#64748b" />
+            <stop offset="100%" stop-color="#334155" />
+          </linearGradient>
+          <linearGradient id="wolfSuit" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#22d3ee" />
+            <stop offset="55%" stop-color="#0284c7" />
+            <stop offset="100%" stop-color="#1e3a8a" />
+          </linearGradient>
+
+          <!-- Eye Sclera Soft Gradient (No Pure White Rectangles!) -->
+          <radialGradient id="eyeSclera" cx="45%" cy="40%" r="55%">
+            <stop offset="0%" stop-color="#fef9c3" />
+            <stop offset="75%" stop-color="#fde68a" />
+            <stop offset="100%" stop-color="#f59e0b" />
+          </radialGradient>
+
+          <radialGradient id="creamFurGrad" cx="50%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#fde68a" />
+            <stop offset="100%" stop-color="#d97706" />
+          </radialGradient>
+
+          <radialGradient id="silverFurGrad" cx="50%" cy="40%" r="60%">
+            <stop offset="0%" stop-color="#e2e8f0" />
+            <stop offset="100%" stop-color="#94a3b8" />
+          </radialGradient>
+        </defs>
+
+        <!-- ROOFTOP FOREGROUND ARCHITECTURE -->
+        <g id="rooftop-structure">
+          <!-- Distant Rooftop Ventilators & Water Tower Silhouette -->
+          <g transform="translate(130, 620)" opacity="0.85">
+            <rect x="0" y="60" width="90" height="70" rx="8" fill="#1b1030" stroke="#4c2882" stroke-width="3" />
+            <path d="M10 60 L25 110 M80 60 L65 110 M45 60 L45 110" stroke="#3b1d66" stroke-width="5" />
+            <path d="M-8 60 L45 20 L98 60 Z" fill="#2c174d" stroke="#f59e0b" stroke-width="2" />
+          </g>
+
+          <!-- Superhero Spotlight Projector on Right Ledge -->
+          <g transform="translate(1740, 650)" opacity="0.9">
+            <path d="M10 80 L35 35 L65 35 L90 80 Z" fill="#1e1b4b" stroke="#38bdf8" stroke-width="3" />
+            <ellipse cx="50" cy="32" rx="34" ry="20" fill="#312e81" stroke="#fbbf24" stroke-width="4" />
+            <ellipse cx="50" cy="28" rx="24" ry="12" fill="#67e8f9" opacity="0.8" />
+          </g>
+
+          <!-- Main Rooftop Parapet & Textured Terrace -->
+          <path d="M 0 725 Q 960 705 1920 725 L 1920 1080 L 0 1080 Z" fill="url(#rooftopDeck)" />
+          <path d="M 0 725 Q 960 705 1920 725" fill="none" stroke="url(#rooftopTrim)" stroke-width="8" />
+
+          <!-- Decorative Glowing Stone Tiles & Neon Groove Lines on Rooftop -->
+          <g opacity="0.35" stroke="#6366f1" stroke-width="2" fill="none">
+            <path d="M 0 780 Q 960 760 1920 780" />
+            <path d="M 0 855 Q 960 835 1920 855" />
+            <path d="M 0 940 Q 960 920 1920 940" />
+            <path d="M 320 720 L 210 1080" />
+            <path d="M 640 715 L 570 1080" />
+            <path d="M 960 712 L 960 1080" />
+            <path d="M 1280 715 L 1350 1080" />
+            <path d="M 1600 720 L 1710 1080" />
+          </g>
+        </g>
+
+        <!-- QUEUE OF 5 SUPERHERO ANIMALS + THEIR 5 EMBLEM SHIELDS -->
+        <g id="heroes-queue">
+          <!-- ================= HERO 1: RACCOON GUARDIAN (X: 250) ================= -->
+          <g id="hero-0" class="hero-interactive" transform="translate(250, 560)" onclick="triggerHeroClick(0)">
+            <!-- Ground Heroic Aura -->
+            <ellipse cx="0" cy="175" rx="95" ry="22" fill="#ef4444" opacity="0.28" />
+            <g id="hero-body-0">
+              <!-- Billowing Crimson Cape -->
+              <path id="cape-0" d="M -45 -35 C -95 30, -115 115, -75 160 C -30 145, 35 150, 80 160 C 105 110, 85 25, 45 -35 Z" fill="url(#raccoonSuit)" stroke="#fbbf24" stroke-width="3" />
+              <!-- Striped Bushy Raccoon Tail -->
+              <g id="tail-0" transform="translate(-55, 95)">
+                <path d="M 0 0 C -65 -15, -105 20, -85 55 C -65 85, -15 65, 10 30 Z" fill="url(#raccoonFur)" stroke="#1f2937" stroke-width="3" />
+                <path d="M -30 -2 C -40 18, -35 42, -20 55" stroke="#111827" stroke-width="12" stroke-linecap="round" fill="none" />
+                <path d="M -58 8 C -68 28, -60 48, -48 60" stroke="#111827" stroke-width="12" stroke-linecap="round" fill="none" />
+              </g>
+              <!-- Legs & Hero Boots -->
+              <path d="M -38 95 L -44 158 L -14 158 L -12 95 Z" fill="#374151" />
+              <path d="M 12 95 L 14 158 L 44 158 L 38 95 Z" fill="#374151" />
+              <path d="M -48 130 L -10 130 L -8 168 C -25 172, -48 170, -52 162 Z" fill="url(#raccoonSuit)" stroke="#fbbf24" stroke-width="2.5" />
+              <path d="M 10 130 L 48 130 L 52 162 C 48 170, 25 172, 8 168 Z" fill="url(#raccoonSuit)" stroke="#fbbf24" stroke-width="2.5" />
+              <!-- Torso & Armor Suit -->
+              <path d="M -52 -25 C -62 25, -50 75, -42 105 L 42 105 C 50 75, 62 25, 52 -25 Z" fill="url(#raccoonSuit)" stroke="#fbbf24" stroke-width="3" />
+              <!-- Chest Lightning / R-Crest -->
+              <polygon points="0,-5 22,15 0,38 -22,15" fill="url(#goldRim)" stroke="#7f1d1d" stroke-width="2" />
+              <!-- Utility Belt -->
+              <rect x="-46" y="78" width="92" height="18" rx="6" fill="#f59e0b" stroke="#78350f" stroke-width="2.5" />
+              <rect x="-14" y="74" width="28" height="26" rx="5" fill="#fde047" stroke="#78350f" stroke-width="2.5" />
+              <!-- Left & Right Arms -->
+              <g id="armL-0" transform="translate(-52, -10)">
+                <path d="M 0 0 C -35 20, -42 55, -22 75 C -8 82, 5 65, 2 45 Z" fill="url(#raccoonFur)" stroke="#1f2937" stroke-width="2.5" />
+                <circle cx="-20" cy="65" r="14" fill="#b91c1c" stroke="#fbbf24" stroke-width="2" />
+              </g>
+              <g id="armR-0" transform="translate(52, -10)">
+                <path d="M 0 0 C 35 20, 42 55, 22 75 C 8 82, -5 65, -2 45 Z" fill="url(#raccoonFur)" stroke="#1f2937" stroke-width="2.5" />
+                <circle cx="20" cy="65" r="14" fill="#b91c1c" stroke="#fbbf24" stroke-width="2" />
+              </g>
+              <!-- Head Group -->
+              <g id="head-0" transform="translate(0, -68)">
+                <!-- Ears -->
+                <path d="M -52 -32 C -68 -72, -35 -82, -18 -48 Z" fill="url(#raccoonFur)" stroke="#1f2937" stroke-width="3" />
+                <path d="M -46 -38 C -55 -60, -35 -66, -24 -46 Z" fill="#fca5a5" opacity="0.65" />
+                <path d="M 52 -32 C 68 -72, 35 -82, 18 -48 Z" fill="url(#raccoonFur)" stroke="#1f2937" stroke-width="3" />
+                <path d="M 46 -38 C 55 -60, 35 -66, 24 -46 Z" fill="#fca5a5" opacity="0.65" />
+                <!-- Main Raccoon Head with Cheek Tufts -->
+                <path d="M -55 -25 C -75 5, -82 32, -52 46 C -25 58, 25 58, 52 46 C 82 32, 75 5, 55 -25 C 38 -58, -38 -58, -55 -25 Z" fill="url(#raccoonFur)" stroke="#1f2937" stroke-width="3" />
+                <!-- Superhero Domino Mask Patch -->
+                <path d="M -58 -8 C -42 -28, -12 -22, 0 -12 C 12 -22, 42 -28, 58 -8 C 66 12, 42 26, 12 16 L 0 12 L -12 16 C -42 26, -66 12, -58 -8 Z" fill="#111827" stroke="#fbbf24" stroke-width="2.2" />
+                <!-- Snout & Cheek Fur -->
+                <ellipse cx="0" cy="24" rx="28" ry="20" fill="url(#silverFurGrad)" />
+                <!-- Puff Cheeks (Mood driven) -->
+                <circle id="cheekL-0" cx="-38" cy="24" r="10" fill="#fb7185" opacity="0.35" />
+                <circle id="cheekR-0" cx="38" cy="24" r="10" fill="#fb7185" opacity="0.35" />
+                <!-- Open Eyes (NEVER BLINK, ONLY SHIFT GAZE!) -->
+                <g transform="translate(-24, -4)">
+                  <ellipse cx="0" cy="0" rx="13.5" ry="14.5" fill="url(#eyeSclera)" stroke="#0f172a" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="0">
+                    <circle cx="0" cy="0" r="8" fill="#7c2d12" />
+                    <circle cx="0" cy="0" r="4.5" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.6" fill="#fef08a" />
+                  </g>
+                </g>
+                <g transform="translate(24, -4)">
+                  <ellipse cx="0" cy="0" rx="13.5" ry="14.5" fill="url(#eyeSclera)" stroke="#0f172a" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="0">
+                    <circle cx="0" cy="0" r="8" fill="#7c2d12" />
+                    <circle cx="0" cy="0" r="4.5" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.6" fill="#fef08a" />
+                  </g>
+                </g>
+                <!-- Expressive Eyebrows -->
+                <path id="browL-0" d="M -38 -22 Q -24 -28 -10 -20" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <path id="browR-0" d="M 10 -20 Q 24 -28 38 -22" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <!-- Nose -->
+                <ellipse cx="0" cy="14" rx="9" ry="6.5" fill="#0f172a" />
+                <ellipse cx="-2" cy="12" rx="3" ry="1.8" fill="#64748b" />
+                <!-- Dynamic Mood Mouth -->
+                <path id="mouth-0" d="M -16 30 Q 0 42 16 30" fill="none" stroke="#1e293b" stroke-width="4" stroke-linecap="round" />
+              </g>
+            </g>
+            <!-- EMBLEM BADGE 1 (Hexagonal Crimson-Gold Crest) -->
+            <g id="badge-0" transform="translate(0, 175)">
+              <polygon points="0,-78 72,-40 72,40 0,78 -72,40 -72,-40" fill="url(#crimsonShield)" stroke="url(#goldRim)" stroke-width="7" />
+              <polygon points="0,-66 60,-33 60,33 0,66 -60,33 -60,-33" fill="url(#hexPattern)" stroke="#f87171" stroke-width="2" />
+              <circle cx="0" cy="0" r="46" fill="rgba(251, 191, 36, 0.12)" />
+              <text id="num-0" x="0" y="22" text-anchor="middle" fill="#fef08a" font-size="64" font-weight="900" stroke="#450a0a" stroke-width="3">2</text>
+            </g>
+          </g>
+
+          <!-- ================= HERO 2: RED FOX EMERALD RANGER (X: 605) ================= -->
+          <g id="hero-1" class="hero-interactive" transform="translate(605, 560)" onclick="triggerHeroClick(1)">
+            <ellipse cx="0" cy="175" rx="95" ry="22" fill="#10b981" opacity="0.28" />
+            <g id="hero-body-1">
+              <!-- Flowing Emerald & Gold Cape -->
+              <path id="cape-1" d="M -42 -35 C -90 25, -108 110, -70 158 C -25 145, 35 145, 78 158 C 102 108, 82 25, 42 -35 Z" fill="url(#foxSuit)" stroke="#fbbf24" stroke-width="3" />
+              <!-- Fluffy Fox Tail with Golden-Cream Tip -->
+              <g id="tail-1" transform="translate(50, 92)">
+                <path d="M 0 0 C 65 -25, 115 10, 92 55 C 72 88, 20 68, -8 32 Z" fill="url(#foxFur)" stroke="#7c2d12" stroke-width="3" />
+                <path d="M 65 8 C 95 15, 102 40, 88 56 C 74 70, 58 55, 54 38 Z" fill="url(#creamFurGrad)" />
+              </g>
+              <!-- Legs & Boots -->
+              <path d="M -34 95 L -38 158 L -12 158 L -10 95 Z" fill="#9a3412" />
+              <path d="M 10 95 L 12 158 L 38 158 L 34 95 Z" fill="#9a3412" />
+              <path d="M -44 128 L -8 128 L -6 168 C -22 172, -44 170, -48 162 Z" fill="url(#foxSuit)" stroke="#34d399" stroke-width="2.5" />
+              <path d="M 8 128 L 44 128 L 48 162 C 44 170, 22 172, 6 168 Z" fill="url(#foxSuit)" stroke="#34d399" stroke-width="2.5" />
+              <!-- Torso Suit -->
+              <path d="M -48 -25 C -56 25, -45 75, -38 105 L 38 105 C 45 75, 56 25, 48 -25 Z" fill="url(#foxSuit)" stroke="#fbbf24" stroke-width="3" />
+              <!-- Emerald Star Emblem -->
+              <polygon points="0,-10 18,14 0,38 -18,14" fill="#6ee7b7" stroke="#064e3b" stroke-width="2.5" />
+              <!-- Belt -->
+              <rect x="-42" y="78" width="84" height="16" rx="6" fill="#fbbf24" stroke="#064e3b" stroke-width="2.5" />
+              <!-- Arms -->
+              <g id="armL-1" transform="translate(-48, -10)">
+                <path d="M 0 0 C -32 18, -38 52, -20 72 C -6 78, 6 62, 2 42 Z" fill="url(#foxFur)" stroke="#7c2d12" stroke-width="2.5" />
+                <circle cx="-18" cy="62" r="13" fill="#047857" stroke="#fbbf24" stroke-width="2" />
+              </g>
+              <g id="armR-1" transform="translate(48, -10)">
+                <path d="M 0 0 C 32 18, 38 52, 20 72 C 6 78, -6 62, -2 42 Z" fill="url(#foxFur)" stroke="#7c2d12" stroke-width="2.5" />
+                <circle cx="18" cy="62" r="13" fill="#047857" stroke="#fbbf24" stroke-width="2" />
+              </g>
+              <!-- Fox Head -->
+              <g id="head-1" transform="translate(0, -68)">
+                <!-- Large Pointed Fox Ears -->
+                <path d="M -54 -25 C -78 -78, -38 -92, -14 -48 Z" fill="url(#foxFur)" stroke="#7c2d12" stroke-width="3" />
+                <path d="M -48 -32 C -64 -68, -36 -75, -20 -46 Z" fill="url(#creamFurGrad)" />
+                <path d="M 54 -25 C 78 -78, 38 -92, 14 -48 Z" fill="url(#foxFur)" stroke="#7c2d12" stroke-width="3" />
+                <path d="M 48 -32 C 64 -68, 36 -75, 20 -46 Z" fill="url(#creamFurGrad)" />
+                <!-- Fox Head Shape -->
+                <path d="M -52 -25 C -74 5, -78 30, -46 44 C -18 56, 18 56, 46 44 C 78 30, 74 5, 52 -25 C 35 -56, -35 -56, -52 -25 Z" fill="url(#foxFur)" stroke="#7c2d12" stroke-width="3" />
+                <!-- Cream Lower Cheeks -->
+                <path d="M -62 12 C -45 48, 45 48, 62 12 C 42 28, -42 28, -62 12 Z" fill="url(#creamFurGrad)" />
+                <!-- Emerald Visor Mask -->
+                <path d="M -54 -8 L 0 4 L 54 -8 L 46 18 L 0 10 L -46 18 Z" fill="#064e3b" stroke="#34d399" stroke-width="2.5" />
+                <!-- Cheeks -->
+                <circle id="cheekL-1" cx="-36" cy="24" r="10" fill="#f43f5e" opacity="0.35" />
+                <circle id="cheekR-1" cx="36" cy="24" r="10" fill="#f43f5e" opacity="0.35" />
+                <!-- Open Eyes (NO BLINKING!) -->
+                <g transform="translate(-23, -4)">
+                  <ellipse cx="0" cy="0" rx="13" ry="14" fill="url(#eyeSclera)" stroke="#064e3b" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="1">
+                    <circle cx="0" cy="0" r="7.8" fill="#059669" />
+                    <circle cx="0" cy="0" r="4.2" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.5" fill="#fef08a" />
+                  </g>
+                </g>
+                <g transform="translate(23, -4)">
+                  <ellipse cx="0" cy="0" rx="13" ry="14" fill="url(#eyeSclera)" stroke="#064e3b" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="1">
+                    <circle cx="0" cy="0" r="7.8" fill="#059669" />
+                    <circle cx="0" cy="0" r="4.2" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.5" fill="#fef08a" />
+                  </g>
+                </g>
+                <!-- Eyebrows -->
+                <path id="browL-1" d="M -36 -22 Q -22 -28 -8 -20" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <path id="browR-1" d="M 8 -20 Q 22 -28 36 -22" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <!-- Nose -->
+                <polygon points="-8,12 8,12 0,21" fill="#1c1917" />
+                <!-- Mouth -->
+                <path id="mouth-1" d="M -15 30 Q 0 41 15 30" fill="none" stroke="#431407" stroke-width="4" stroke-linecap="round" />
+              </g>
+            </g>
+            <!-- EMBLEM BADGE 2 (Winged Emerald-Gold Diamond Shield) -->
+            <g id="badge-1" transform="translate(0, 175)">
+              <polygon points="0,-80 78,-15 54,72 -54,72 -78,-15" fill="url(#emeraldShield)" stroke="url(#goldRim)" stroke-width="7" />
+              <polygon points="0,-66 64,-12 44,58 -44,58 -64,-12" fill="url(#hexPattern)" stroke="#34d399" stroke-width="2" />
+              <circle cx="0" cy="4" r="45" fill="rgba(52, 211, 153, 0.14)" />
+              <text id="num-1" x="0" y="24" text-anchor="middle" fill="#fef08a" font-size="64" font-weight="900" stroke="#022c22" stroke-width="3">4</text>
+            </g>
+          </g>
+
+          <!-- ================= HERO 3: MIGHTY BEAR TITAN (X: 960) ================= -->
+          <g id="hero-2" class="hero-interactive" transform="translate(960, 548)" onclick="triggerHeroClick(2)">
+            <ellipse cx="0" cy="187" rx="108" ry="24" fill="#3b82f6" opacity="0.32" />
+            <g id="hero-body-2">
+              <!-- Majestic Royal Cape -->
+              <path id="cape-2" d="M -56 -40 C -115 30, -130 125, -88 172 C -30 158, 30 158, 88 172 C 130 125, 115 30, 56 -40 Z" fill="url(#raccoonSuit)" stroke="#fbbf24" stroke-width="3.5" />
+              <!-- Bear Round Tail -->
+              <g id="tail-2" transform="translate(-58, 105)">
+                <circle cx="-12" cy="0" r="18" fill="url(#bearFur)" stroke="#451a03" stroke-width="3" />
+              </g>
+              <!-- Powerful Bear Legs -->
+              <path d="M -46 100 L -52 168 L -16 168 L -14 100 Z" fill="#451a03" />
+              <path d="M 14 100 L 16 168 L 52 168 L 46 100 Z" fill="#451a03" />
+              <path d="M -56 135 L -12 135 L -10 178 C -30 182, -54 180, -60 170 Z" fill="url(#bearSuit)" stroke="#fbbf24" stroke-width="3" />
+              <path d="M 12 135 L 56 135 L 60 170 C 54 180, 30 182, 10 178 Z" fill="url(#bearSuit)" stroke="#fbbf24" stroke-width="3" />
+              <!-- Broad Muscular Torso -->
+              <path d="M -64 -30 C -74 28, -58 82, -48 115 L 48 115 C 58 82, 74 28, 64 -30 Z" fill="url(#bearSuit)" stroke="#fbbf24" stroke-width="3.5" />
+              <!-- Golden Star Shield on Chest -->
+              <polygon points="0,-14 26,6 16,38 -16,38 -26,6" fill="url(#goldRim)" stroke="#1e3a8a" stroke-width="2.5" />
+              <!-- Champion Belt -->
+              <rect x="-54" y="86" width="108" height="20" rx="8" fill="#f59e0b" stroke="#1e3a8a" stroke-width="2.5" />
+              <ellipse cx="0" cy="96" rx="18" ry="13" fill="#38bdf8" stroke="#1e3a8a" stroke-width="2.5" />
+              <!-- Muscular Arms -->
+              <g id="armL-2" transform="translate(-62, -14)">
+                <path d="M 0 0 C -42 22, -48 62, -26 84 C -10 90, 8 72, 4 48 Z" fill="url(#bearFur)" stroke="#451a03" stroke-width="3" />
+                <circle cx="-24" cy="72" r="16" fill="#1d4ed8" stroke="#fbbf24" stroke-width="2.5" />
+              </g>
+              <g id="armR-2" transform="translate(62, -14)">
+                <path d="M 0 0 C 42 22, 48 62, 26 84 C 10 90, -8 72, -4 48 Z" fill="url(#bearFur)" stroke="#451a03" stroke-width="3" />
+                <circle cx="24" cy="72" r="16" fill="#1d4ed8" stroke="#fbbf24" stroke-width="2.5" />
+              </g>
+              <!-- Bear Head -->
+              <g id="head-2" transform="translate(0, -76)">
+                <!-- Round Bear Ears -->
+                <circle cx="-46" cy="-42" r="22" fill="url(#bearFur)" stroke="#451a03" stroke-width="3.5" />
+                <circle cx="-46" cy="-42" r="11" fill="#d97706" />
+                <circle cx="46" cy="-42" r="22" fill="url(#bearFur)" stroke="#451a03" stroke-width="3.5" />
+                <circle cx="46" cy="-42" r="11" fill="#d97706" />
+                <!-- Broad Bear Head -->
+                <path d="M -58 -28 C -72 8, -72 38, -46 50 C -20 62, 20 62, 46 50 C 72 38, 72 8, 58 -28 C 40 -60, -40 -60, -58 -28 Z" fill="url(#bearFur)" stroke="#451a03" stroke-width="3.5" />
+                <!-- Cobalt Hero Mask -->
+                <path d="M -56 -10 C -38 -28, -10 -22, 0 -12 C 10 -22, 38 -28, 56 -10 C 60 12, 38 22, 12 14 L 0 10 L -12 14 C -38 22, -60 12, -56 -10 Z" fill="#1e3a8a" stroke="#60a5fa" stroke-width="2.5" />
+                <!-- Muzzle -->
+                <ellipse cx="0" cy="24" rx="30" ry="22" fill="url(#creamFurGrad)" />
+                <!-- Cheeks -->
+                <circle id="cheekL-2" cx="-40" cy="24" r="11" fill="#fb7185" opacity="0.35" />
+                <circle id="cheekR-2" cx="40" cy="24" r="11" fill="#fb7185" opacity="0.35" />
+                <!-- Open Eyes (NO BLINKING!) -->
+                <g transform="translate(-24, -5)">
+                  <ellipse cx="0" cy="0" rx="13.5" ry="14.5" fill="url(#eyeSclera)" stroke="#1e3a8a" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="2">
+                    <circle cx="0" cy="0" r="8" fill="#1d4ed8" />
+                    <circle cx="0" cy="0" r="4.5" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.6" fill="#fef08a" />
+                  </g>
+                </g>
+                <g transform="translate(24, -5)">
+                  <ellipse cx="0" cy="0" rx="13.5" ry="14.5" fill="url(#eyeSclera)" stroke="#1e3a8a" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="2">
+                    <circle cx="0" cy="0" r="8" fill="#1d4ed8" />
+                    <circle cx="0" cy="0" r="4.5" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.6" fill="#fef08a" />
+                  </g>
+                </g>
+                <!-- Eyebrows -->
+                <path id="browL-2" d="M -38 -24 Q -24 -31 -10 -22" fill="none" stroke="#fde047" stroke-width="5" stroke-linecap="round" />
+                <path id="browR-2" d="M 10 -22 Q 24 -31 38 -24" fill="none" stroke="#fde047" stroke-width="5" stroke-linecap="round" />
+                <!-- Bear Nose -->
+                <ellipse cx="0" cy="13" rx="11" ry="7.5" fill="#27272a" />
+                <!-- Mouth -->
+                <path id="mouth-2" d="M -18 32 Q 0 44 18 32" fill="none" stroke="#451a03" stroke-width="4.5" stroke-linecap="round" />
+              </g>
+            </g>
+            <!-- EMBLEM BADGE 3 (Octagonal Cobalt-Gold Shield) -->
+            <g id="badge-2" transform="translate(0, 187)">
+              <polygon points="-32,-76 32,-76 76,-32 76,32 32,76 -32,76 -76,32 -76,-32" fill="url(#cobaltShield)" stroke="url(#goldRim)" stroke-width="7" />
+              <polygon points="-26,-64 26,-64 64,-26 64,26 26,64 -26,64 -64,26 -64,-26" fill="url(#hexPattern)" stroke="#60a5fa" stroke-width="2" />
+              <circle cx="0" cy="0" r="46" fill="rgba(96, 165, 250, 0.14)" />
+              <text id="num-2" x="0" y="22" text-anchor="middle" fill="#fef08a" font-size="64" font-weight="900" stroke="#0f172a" stroke-width="3">6</text>
+            </g>
+          </g>
+
+          <!-- ================= HERO 4: PANTHER / LYNX SPEEDSTER (X: 1315) ================= -->
+          <g id="hero-3" class="hero-interactive" transform="translate(1315, 560)" onclick="triggerHeroClick(3)">
+            <ellipse cx="0" cy="175" rx="95" ry="22" fill="#a855f7" opacity="0.28" />
+            <g id="hero-body-3">
+              <!-- Lightning Wing Cape -->
+              <path id="cape-3" d="M -40 -35 C -88 25, -105 110, -68 156 C -20 142, 25 142, 72 156 C 98 110, 82 25, 40 -35 Z" fill="url(#amethystShield)" stroke="#facc15" stroke-width="3" />
+              <!-- Sleek Curled Panther/Lynx Tail -->
+              <g id="tail-3" transform="translate(46, 95)">
+                <path d="M 0 0 C 55 -10, 95 25, 78 58 C 65 78, 42 62, 52 45" fill="none" stroke="url(#lynxFur)" stroke-width="18" stroke-linecap="round" />
+              </g>
+              <!-- Legs & Speedster Boots -->
+              <path d="M -34 95 L -38 158 L -12 158 L -10 95 Z" fill="#3b0764" />
+              <path d="M 10 95 L 12 158 L 38 158 L 34 95 Z" fill="#3b0764" />
+              <path d="M -44 128 L -8 128 L -6 168 C -22 172, -44 170, -48 162 Z" fill="url(#lynxSuit)" stroke="#fde047" stroke-width="2.5" />
+              <path d="M 8 128 L 44 128 L 48 162 C 44 170, 22 172, 6 168 Z" fill="url(#lynxSuit)" stroke="#fde047" stroke-width="2.5" />
+              <!-- Sleek Torso -->
+              <path d="M -46 -25 C -54 25, -44 75, -36 105 L 36 105 C 44 75, 54 25, 46 -25 Z" fill="url(#lynxSuit)" stroke="#fde047" stroke-width="3" />
+              <!-- Lightning Bolt Chest Emblem -->
+              <polygon points="6,-12 -14,14 2,14 -8,40 16,10 0,10" fill="#fde047" stroke="#3b0764" stroke-width="2" />
+              <!-- Belt -->
+              <rect x="-40" y="78" width="80" height="16" rx="6" fill="#fde047" stroke="#3b0764" stroke-width="2.5" />
+              <!-- Arms -->
+              <g id="armL-3" transform="translate(-46, -10)">
+                <path d="M 0 0 C -32 18, -38 52, -20 72 C -6 78, 6 62, 2 42 Z" fill="url(#lynxFur)" stroke="#3b0764" stroke-width="2.5" />
+                <circle cx="-18" cy="62" r="13" fill="#7e22ce" stroke="#fde047" stroke-width="2" />
+              </g>
+              <g id="armR-3" transform="translate(46, -10)">
+                <path d="M 0 0 C 32 18, 38 52, 20 72 C 6 78, -6 62, -2 42 Z" fill="url(#lynxFur)" stroke="#3b0764" stroke-width="2.5" />
+                <circle cx="18" cy="62" r="13" fill="#7e22ce" stroke="#fde047" stroke-width="2" />
+              </g>
+              <!-- Lynx/Panther Head -->
+              <g id="head-3" transform="translate(0, -68)">
+                <!-- Ears with Lynx Black Ear-Tufts -->
+                <path d="M -50 -28 C -68 -74, -34 -82, -16 -46 Z" fill="url(#lynxFur)" stroke="#3b0764" stroke-width="3" />
+                <path d="M -52 -68 L -58 -86 L -44 -74 Z" fill="#fde047" />
+                <path d="M 50 -28 C 68 -74, 34 -82, 16 -46 Z" fill="url(#lynxFur)" stroke="#3b0764" stroke-width="3" />
+                <path d="M 52 -68 L 58 -86 L 44 -74 Z" fill="#fde047" />
+                <!-- Head Shape -->
+                <path d="M -50 -24 C -72 5, -74 32, -44 45 C -18 56, 18 56, 44 45 C 74 32, 72 5, 50 -24 C 34 -56, -34 -56, -50 -24 Z" fill="url(#lynxFur)" stroke="#3b0764" stroke-width="3" />
+                <!-- Gold-Trimmed Speedster Mask -->
+                <path d="M -54 -10 L 0 4 L 54 -10 L 46 16 L 0 8 L -46 16 Z" fill="#2e1065" stroke="#facc15" stroke-width="2.5" />
+                <!-- Muzzle & Whiskers -->
+                <ellipse cx="0" cy="24" rx="25" ry="18" fill="#e9d5ff" />
+                <path d="M -42 20 L -68 16 M -42 26 L -66 28 M 42 20 L 68 16 M 42 26 L 66 28" stroke="#fde047" stroke-width="2.2" stroke-linecap="round" />
+                <!-- Cheeks -->
+                <circle id="cheekL-3" cx="-35" cy="24" r="10" fill="#f472b6" opacity="0.4" />
+                <circle id="cheekR-3" cx="35" cy="24" r="10" fill="#f472b6" opacity="0.4" />
+                <!-- Open Eyes (NO BLINKING!) -->
+                <g transform="translate(-23, -4)">
+                  <ellipse cx="0" cy="0" rx="13" ry="14" fill="url(#eyeSclera)" stroke="#2e1065" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="3">
+                    <circle cx="0" cy="0" r="7.8" fill="#9333ea" />
+                    <circle cx="0" cy="0" r="4.2" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.5" fill="#fef08a" />
+                  </g>
+                </g>
+                <g transform="translate(23, -4)">
+                  <ellipse cx="0" cy="0" rx="13" ry="14" fill="url(#eyeSclera)" stroke="#2e1065" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="3">
+                    <circle cx="0" cy="0" r="7.8" fill="#9333ea" />
+                    <circle cx="0" cy="0" r="4.2" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.5" fill="#fef08a" />
+                  </g>
+                </g>
+                <!-- Eyebrows -->
+                <path id="browL-3" d="M -36 -22 Q -22 -28 -8 -20" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <path id="browR-3" d="M 8 -20 Q 22 -28 36 -22" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <!-- Nose -->
+                <polygon points="-8,13 8,13 0,21" fill="#ec4899" stroke="#3b0764" stroke-width="1.5" />
+                <!-- Mouth -->
+                <path id="mouth-3" d="M -15 30 Q 0 41 15 30" fill="none" stroke="#3b0764" stroke-width="4" stroke-linecap="round" />
+              </g>
+            </g>
+            <!-- EMBLEM BADGE 4 (Amethyst Shield Crest) -->
+            <g id="badge-3" transform="translate(0, 175)">
+              <path d="M 0 -78 L 72 -42 L 62 38 L 0 78 L -62 38 L -72 -42 Z" fill="url(#amethystShield)" stroke="url(#goldRim)" stroke-width="7" />
+              <path d="M 0 -64 L 58 -34 L 50 30 L 0 64 L -50 30 L -58 -34 Z" fill="url(#hexPattern)" stroke="#c084fc" stroke-width="2" />
+              <circle cx="0" cy="0" r="45" fill="rgba(192, 132, 252, 0.14)" />
+              <text id="num-3" x="0" y="22" text-anchor="middle" fill="#fef08a" font-size="64" font-weight="900" stroke="#2e1065" stroke-width="3">8</text>
+            </g>
+          </g>
+
+          <!-- ================= HERO 5: WOLF / SHIBA CAPTAIN & INTERACTIVE 5th BADGE (X: 1670) ================= -->
+          <g id="hero-4" class="hero-interactive" transform="translate(1670, 560)" onclick="triggerHeroClick(4)">
+            <ellipse cx="0" cy="175" rx="105" ry="24" fill="#38bdf8" opacity="0.38" />
+            <g id="hero-body-4">
+              <!-- Dynamic Cyan-Gold Hero Cape -->
+              <path id="cape-4" d="M -45 -35 C -95 28, -112 115, -75 160 C -25 145, 30 145, 78 160 C 105 112, 88 28, 45 -35 Z" fill="url(#wolfSuit)" stroke="#fde047" stroke-width="3" />
+              <!-- Fluffy Wolf Tail -->
+              <g id="tail-4" transform="translate(48, 92)">
+                <path d="M 0 0 C 65 -28, 110 15, 86 58 C 68 85, 18 68, -6 30 Z" fill="url(#wolfFur)" stroke="#1e293b" stroke-width="3" />
+                <path d="M 60 6 C 88 15, 95 38, 82 55 C 68 68, 52 52, 48 36 Z" fill="url(#silverFurGrad)" />
+              </g>
+              <!-- Legs & Tactical Boots -->
+              <path d="M -36 95 L -40 158 L -12 158 L -10 95 Z" fill="#334155" />
+              <path d="M 10 95 L 12 158 L 40 158 L 36 95 Z" fill="#334155" />
+              <path d="M -46 128 L -8 128 L -6 168 C -22 172, -46 170, -50 162 Z" fill="url(#wolfSuit)" stroke="#fde047" stroke-width="2.5" />
+              <path d="M 8 128 L 46 128 L 50 162 C 46 170, 22 172, 6 168 Z" fill="url(#wolfSuit)" stroke="#fde047" stroke-width="2.5" />
+              <!-- Torso Armor -->
+              <path d="M -50 -25 C -58 25, -46 75, -38 105 L 38 105 C 46 75, 58 25, 50 -25 Z" fill="url(#wolfSuit)" stroke="#fde047" stroke-width="3" />
+              <!-- Cyan Winged Crest -->
+              <polygon points="0,-10 24,10 0,36 -24,10" fill="#67e8f9" stroke="#0c4a6e" stroke-width="2.5" />
+              <!-- Belt -->
+              <rect x="-44" y="78" width="88" height="17" rx="6" fill="#fde047" stroke="#0c4a6e" stroke-width="2.5" />
+              <!-- Arms -->
+              <g id="armL-4" transform="translate(-50, -10)">
+                <path d="M 0 0 C -34 18, -40 54, -22 74 C -8 80, 6 64, 2 44 Z" fill="url(#wolfFur)" stroke="#1e293b" stroke-width="2.5" />
+                <circle cx="-18" cy="64" r="14" fill="#0284c7" stroke="#fde047" stroke-width="2" />
+              </g>
+              <g id="armR-4" transform="translate(50, -10)">
+                <path d="M 0 0 C 34 18, 40 54, 22 74 C 8 80, -6 64, -2 44 Z" fill="url(#wolfFur)" stroke="#1e293b" stroke-width="2.5" />
+                <circle cx="18" cy="64" r="14" fill="#0284c7" stroke="#fde047" stroke-width="2" />
+              </g>
+              <!-- Wolf Head -->
+              <g id="head-4" transform="translate(0, -68)">
+                <!-- Pointed Wolf Ears -->
+                <path d="M -50 -28 C -72 -78, -34 -88, -14 -48 Z" fill="url(#wolfFur)" stroke="#1e293b" stroke-width="3" />
+                <path d="M -44 -34 C -58 -64, -32 -70, -20 -46 Z" fill="#cbd5e1" />
+                <path d="M 50 -28 C 72 -78, 34 -88, 14 -48 Z" fill="url(#wolfFur)" stroke="#1e293b" stroke-width="3" />
+                <path d="M 44 -34 C 58 -64, 32 -70, 20 -46 Z" fill="#cbd5e1" />
+                <!-- Wolf Head with Fluffy Cheek Ruffs -->
+                <path d="M -54 -25 C -76 5, -80 32, -48 46 C -20 58, 20 58, 48 46 C 80 32, 76 5, 54 -25 C 36 -58, -36 -58, -54 -25 Z" fill="url(#wolfFur)" stroke="#1e293b" stroke-width="3" />
+                <!-- Silver Cheek Fur -->
+                <path d="M -64 12 C -45 50, 45 50, 64 12 C 42 28, -42 28, -64 12 Z" fill="url(#silverFurGrad)" />
+                <!-- Cyan Tactical Hero Visor -->
+                <path d="M -56 -8 C -40 -26, -12 -20, 0 -10 C 12 -20, 40 -26, 56 -8 C 62 12, 40 24, 12 15 L 0 10 L -12 15 C -40 24, -62 12, -56 -8 Z" fill="#0c4a6e" stroke="#38bdf8" stroke-width="2.5" />
+                <!-- Cheeks -->
+                <circle id="cheekL-4" cx="-37" cy="24" r="10" fill="#fb7185" opacity="0.35" />
+                <circle id="cheekR-4" cx="37" cy="24" r="10" fill="#fb7185" opacity="0.35" />
+                <!-- Open Eyes (NO BLINKING!) -->
+                <g transform="translate(-24, -4)">
+                  <ellipse cx="0" cy="0" rx="13.5" ry="14.5" fill="url(#eyeSclera)" stroke="#0c4a6e" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="4">
+                    <circle cx="0" cy="0" r="8" fill="#0284c7" />
+                    <circle cx="0" cy="0" r="4.5" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.6" fill="#fef08a" />
+                  </g>
+                </g>
+                <g transform="translate(24, -4)">
+                  <ellipse cx="0" cy="0" rx="13.5" ry="14.5" fill="url(#eyeSclera)" stroke="#0c4a6e" stroke-width="2.5" />
+                  <g class="pupil-group" data-hero="4">
+                    <circle cx="0" cy="0" r="8" fill="#0284c7" />
+                    <circle cx="0" cy="0" r="4.5" fill="#090d16" />
+                    <circle cx="-3" cy="-3" r="2.6" fill="#fef08a" />
+                  </g>
+                </g>
+                <!-- Eyebrows -->
+                <path id="browL-4" d="M -38 -22 Q -24 -29 -10 -20" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <path id="browR-4" d="M 10 -20 Q 24 -29 38 -22" fill="none" stroke="#fde047" stroke-width="4.5" stroke-linecap="round" />
+                <!-- Nose -->
+                <ellipse cx="0" cy="14" rx="9.5" ry="6.5" fill="#0f172a" />
+                <!-- Mouth -->
+                <path id="mouth-4" d="M -16 30 Q 0 42 16 30" fill="none" stroke="#1e293b" stroke-width="4" stroke-linecap="round" />
+              </g>
+            </g>
+
+            <!-- EMBLEM BADGE 5: INTERACTIVE INPUT SHIELD (Golden-Cyan Star Crest) -->
+            <g id="badge-4" class="fifth-badge-glow" transform="translate(0, 175)">
+              <!-- Outer Glowing Halo Ring -->
+              <circle cx="0" cy="0" r="90" fill="none" stroke="url(#cyanRim)" stroke-width="3.5" stroke-dasharray="14 8" opacity="0.85">
+                <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="14s" repeatCount="indefinite" />
+              </circle>
+              <!-- Main 8-Point Superhero Star Shield -->
+              <polygon points="0,-86 58,-58 86,0 58,58 0,86 -58,58 -86,0 -58,-58" fill="url(#mysteryShield)" stroke="url(#goldRim)" stroke-width="8" />
+              <polygon points="0,-72 48,-48 72,0 48,48 0,72 -48,48 -72,0 -48,-48" fill="url(#starGridPattern)" stroke="#38bdf8" stroke-width="2.5" />
+              <!-- Pulsing Energy Core when awaiting input -->
+              <g id="input-prompt-crystal">
+                <polygon points="0,-32 24,0 0,32 -24,0" fill="none" stroke="#67e8f9" stroke-width="3.5" opacity="0.65">
+                  <animate attributeName="opacity" values="0.3;0.9;0.3" dur="1.4s" repeatCount="indefinite" />
+                </polygon>
+                <circle cx="0" cy="0" r="8" fill="#fde047" opacity="0.8">
+                  <animate attributeName="r" values="6;13;6" dur="1.4s" repeatCount="indefinite" />
+                </circle>
+              </g>
+              <!-- Entered Number Display -->
+              <text id="num-4" x="0" y="23" text-anchor="middle" fill="#67e8f9" font-size="66" font-weight="900" stroke="#090d26" stroke-width="3"></text>
+            </g>
+          </g>
+        </g>
+      </svg>
+
+      <!-- Active Celebratory & Feedback Particle FX Canvas -->
+      <canvas id="fx-canvas"></canvas>
+
+      <!-- TOP-LEFT HUD: 3 LEVEL CREST BUTTONS (1, 2, 3) -->
+      <div class="hud-top-left">
+        <button class="crest-btn active-level" id="lvl-btn-1" onclick="selectLevel(1)" aria-label="Level 1">
+          <svg viewBox="0 0 100 100">
+            <polygon points="50,5 92,26 82,78 50,96 18,78 8,26" fill="url(#emeraldShield)" stroke="url(#goldRim)" stroke-width="6" />
+            <polygon points="50,14 82,31 74,72 50,86 26,72 18,31" fill="none" stroke="#34d399" stroke-width="2" />
+            <text x="50" y="67" text-anchor="middle" fill="#fef08a" font-size="50" font-weight="900" stroke="#022c22" stroke-width="2.5">1</text>
+          </svg>
+        </button>
+
+        <button class="crest-btn" id="lvl-btn-2" onclick="selectLevel(2)" aria-label="Level 2">
+          <svg viewBox="0 0 100 100">
+            <polygon points="50,5 92,26 82,78 50,96 18,78 8,26" fill="url(#cobaltShield)" stroke="url(#goldRim)" stroke-width="6" />
+            <polygon points="50,14 82,31 74,72 50,86 26,72 18,31" fill="none" stroke="#60a5fa" stroke-width="2" />
+            <text x="50" y="67" text-anchor="middle" fill="#fef08a" font-size="50" font-weight="900" stroke="#0f172a" stroke-width="2.5">2</text>
+          </svg>
+        </button>
+
+        <button class="crest-btn" id="lvl-btn-3" onclick="selectLevel(3)" aria-label="Level 3">
+          <svg viewBox="0 0 100 100">
+            <polygon points="50,5 92,26 82,78 50,96 18,78 8,26" fill="url(#amethystShield)" stroke="url(#goldRim)" stroke-width="6" />
+            <polygon points="50,14 82,31 74,72 50,86 26,72 18,31" fill="none" stroke="#c084fc" stroke-width="2" />
+            <text x="50" y="67" text-anchor="middle" fill="#fef08a" font-size="50" font-weight="900" stroke="#2e1065" stroke-width="2.5">3</text>
+          </svg>
+        </button>
+      </div>
+
+      <!-- TOP-RIGHT HUD: MINIMALIST "NEXT" BUTTON (Immediate skip to next sequence) -->
+      <div class="hud-top-right">
+        <button class="crest-btn" id="next-btn" onclick="skipToNextSequence()" aria-label="Next">
+          <svg viewBox="0 0 100 100">
+            <polygon points="50,5 95,50 50,95 5,50" fill="url(#mysteryShield)" stroke="url(#goldRim)" stroke-width="6" />
+            <polygon points="50,15 85,50 50,85 15,50" fill="none" stroke="#38bdf8" stroke-width="2" />
+            <!-- Double Forward Superhero Arrows -->
+            <path d="M 32 33 L 52 50 L 32 67 M 52 33 L 72 50 L 52 67" fill="none" stroke="#fef08a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- BOTTOM FLOATING SUPERHERO KEYPAD (Digits 0-9, Erase, Confirm) -->
+      <div id="keypad-bar">
+        <!-- Generated dynamically or inline for crisp SVG hexagonal keys -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /********************************************************************
+     * 1. WEB AUDIO API SYNTHESIZER (NO EXTERNAL FILES, ACTIVE VARIED FX)
+     ********************************************************************/
+    let audioCtx = null;
+
+    function ensureAudio() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    function playTone(freq, type, duration, startTime = 0, vol = 0.18, slideTo = null) {
+      ensureAudio();
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime + startTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      if (slideTo) {
+        osc.frequency.exponentialRampToValueAtTime(slideTo, now + duration);
+      }
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(vol, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    }
+
+    function playKeySound(digit) {
+      const scale = [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25, 587.33, 659.25];
+      const base = scale[digit % scale.length] || 440;
+      playTone(base, 'triangle', 0.14, 0, 0.2, base * 1.15);
+      playTone(base * 2, 'sine', 0.09, 0.01, 0.08);
+    }
+
+    function playEraseSound() {
+      playTone(420, 'sine', 0.15, 0, 0.18, 210);
+    }
+
+    function playSkipPortalSound() {
+      playTone(300, 'sine', 0.22, 0, 0.15, 780);
+      playTone(450, 'triangle', 0.25, 0.06, 0.15, 960);
+    }
+
+    function playHeroClickSound(index) {
+      const pitches = [330, 392, 261, 440, 523];
+      const f = pitches[index % pitches.length];
+      playTone(f, 'triangle', 0.16, 0, 0.2, f * 1.35);
+      playTone(f * 1.5, 'sine', 0.18, 0.07, 0.16, f * 1.8);
+    }
+
+    // 5 Distinct Celebratory Sound Themes for Correct Answers!
+    let lastSoundTheme = -1;
+    function playVictorySound() {
+      ensureAudio();
+      let theme = Math.floor(Math.random() * 5);
+      if (theme === lastSoundTheme) theme = (theme + 1) % 5;
+      lastSoundTheme = theme;
+
+      if (theme === 0) {
+        // Theme 1: Heroic Brass Fanfare
+        const notes = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50];
+        const times = [0, 0.1, 0.2, 0.32, 0.48, 0.6];
+        const durs  = [0.14, 0.14, 0.14, 0.2, 0.14, 0.45];
+        notes.forEach((n, i) => {
+          playTone(n, 'sawtooth', durs[i], times[i], 0.14);
+          playTone(n * 0.5, 'triangle', durs[i], times[i], 0.18);
+        });
+      } else if (theme === 1) {
+        // Theme 2: Crystal Harp Glissando
+        const pentatonic = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5];
+        pentatonic.forEach((n, i) => {
+          playTone(n, 'sine', 0.32, i * 0.055, 0.16);
+          playTone(n * 1.5, 'triangle', 0.2, i * 0.055 + 0.02, 0.07);
+        });
+      } else if (theme === 2) {
+        // Theme 3: Superhero Power Synth Chord & Rise
+        const chord = [261.63, 329.63, 392.00, 523.25, 659.25];
+        chord.forEach((n, i) => {
+          playTone(n, 'triangle', 0.55, i * 0.03, 0.15, n * 2);
+        });
+        playTone(1046.5, 'sine', 0.45, 0.3, 0.2);
+      } else if (theme === 3) {
+        // Theme 4: Joyful Victory Chime Melody
+        const seq = [440, 554.37, 659.25, 880, 659.25, 880, 1108.73];
+        seq.forEach((n, i) => {
+          playTone(n, 'sine', 0.22, i * 0.08, 0.18);
+          playTone(n * 2, 'sine', 0.15, i * 0.08, 0.06);
+        });
+      } else {
+        // Theme 5: Ascending Rocket & Starburst Bell
+        playTone(300, 'sine', 0.3, 0, 0.18, 1200);
+        [783.99, 987.77, 1174.66, 1567.98].forEach((n, i) => {
+          playTone(n, 'triangle', 0.35, 0.22 + i * 0.07, 0.16);
+        });
+      }
+    }
+
+    // Active Comical Boing/Wobble Sound for Wrong Answer
+    function playWrongSound() {
+      ensureAudio();
+      playTone(320, 'sawtooth', 0.22, 0, 0.16, 145);
+      playTone(250, 'triangle', 0.28, 0.14, 0.2, 115);
+      playTone(190, 'sine', 0.25, 0.24, 0.18, 240);
+    }
+
+    /********************************************************************
+     * 2. BUILD STYLIZED HEXAGONAL KEYPAD (NO WHITE RECTANGLES!)
+     ********************************************************************/
+    function buildKeypad() {
+      const bar = document.getElementById('keypad-bar');
+      let html = '';
+
+      // Digits 0 to 9 (arranged 1..9, 0)
+      const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+      digits.forEach(d => {
+        html += `
+          <button class="key-hex" id="key-btn-${d}" onclick="handleDigitInput(${d})" aria-label="${d}">
+            <svg viewBox="0 0 90 100">
+              <polygon points="45,4 86,26 86,74 45,96 4,74 4,26" fill="url(#cobaltShield)" stroke="url(#goldRim)" stroke-width="5" />
+              <polygon points="45,12 78,30 78,70 45,88 12,70 12,30" fill="none" stroke="#38bdf8" stroke-width="1.8" opacity="0.7" />
+              <text x="45" y="66" text-anchor="middle" fill="#fef08a" font-size="48" font-weight="900" stroke="#0f172a" stroke-width="2">${d}</text>
+            </svg>
+          </button>
+        `;
+      });
+
+      // Backspace / Erase Crest Button
+      html += `
+        <button class="key-hex" id="key-btn-back" onclick="handleBackspace()" aria-label="Erase">
+          <svg viewBox="0 0 90 100">
+            <polygon points="45,4 86,26 86,74 45,96 4,74 4,26" fill="url(#crimsonShield)" stroke="url(#goldRim)" stroke-width="5" />
+            <path d="M 60 36 L 34 36 L 20 50 L 34 64 L 60 64 Z" fill="none" stroke="#fecaca" stroke-width="4" stroke-linejoin="round" />
+            <path d="M 41 44 L 53 56 M 53 44 L 41 56" stroke="#fef08a" stroke-width="4" stroke-linecap="round" />
+          </svg>
+        </button>
+      `;
+
+      // Check / Submit Superhero Crest Button
+      html += `
+        <button class="key-hex" id="key-btn-enter" onclick="checkSubmittedAnswer()" aria-label="Confirm">
+          <svg viewBox="0 0 90 100">
+            <polygon points="45,4 86,26 86,74 45,96 4,74 4,26" fill="url(#emeraldShield)" stroke="url(#goldRim)" stroke-width="5" />
+            <polygon points="45,12 78,30 78,70 45,88 12,70 12,30" fill="none" stroke="#34d399" stroke-width="2" />
+            <path d="M 25 52 L 40 67 L 66 35" fill="none" stroke="#fef08a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      `;
+
+      bar.innerHTML = html;
+    }
+
+    /********************************************************************
+     * 3. INFINITE NUMBER SEQUENCE GENERATOR (LEVELS 1, 2, 3)
+     ********************************************************************/
+    let currentLevel = 1;
+    let currentSequence = [2, 4, 6, 8, 10];
+    let currentInput = '';
+    let isTransitioning = false;
+    let autoCheckTimer = null;
+    let lastSignature = '';
+
+    function randInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function pickRandom(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    function generateSequenceForLevel(level) {
+      let seq = [];
+      let attempts = 0;
+
+      while (attempts < 40) {
+        attempts++;
+        if (level === 1) {
+          // Level 1: difference in {2, 3, 5, 10} (increasing or decreasing)
+          const diffs = [2, 3, 5, 10];
+          const d = pickRandom(diffs);
+          const increasing = Math.random() < 0.65;
+
+          if (increasing) {
+            let start;
+            if (d === 10) {
+              start = Math.random() < 0.7 ? randInt(1, 5) * 10 : randInt(1, 45);
+            } else if (d === 5) {
+              start = Math.random() < 0.7 ? randInt(1, 10) * 5 : randInt(1, 35);
+            } else {
+              start = randInt(1, 30);
+            }
+            seq = [0, 1, 2, 3, 4].map(i => start + i * d);
+          } else {
+            let endVal;
+            if (d === 10) {
+              endVal = Math.random() < 0.7 ? randInt(1, 5) * 10 : randInt(2, 35);
+            } else if (d === 5) {
+              endVal = Math.random() < 0.7 ? randInt(1, 8) * 5 : randInt(2, 30);
+            } else {
+              endVal = randInt(1, 25);
+            }
+            const start = endVal + 4 * d;
+            seq = [0, 1, 2, 3, 4].map(i => start - i * d);
+          }
+        } else if (level === 2) {
+          // Level 2: difference in {4, 6, 7, 8, 9, 11, 12} (increasing or decreasing)
+          const diffs = [4, 6, 7, 8, 9, 11, 12];
+          const d = pickRandom(diffs);
+          const increasing = Math.random() < 0.65;
+
+          if (increasing) {
+            const start = randInt(1, 35);
+            seq = [0, 1, 2, 3, 4].map(i => start + i * d);
+          } else {
+            const endVal = randInt(1, 25);
+            const start = endVal + 4 * d;
+            seq = [0, 1, 2, 3, 4].map(i => start - i * d);
+          }
+        } else {
+          // Level 3: Tabular Multiplication & Division (множення/ділення табличне)
+          // Rich bank of pure geometric & alternating tabular multiplication/division patterns
+          const patterns = [
+            // Pure ×2 chains
+            () => { const a = pickRandom([1, 2, 3, 4, 5, 6]); return [a, a*2, a*4, a*8, a*16]; },
+            // Pure ÷2 chains
+            () => { const a = pickRandom([1, 2, 3, 4, 5, 6]); return [a*16, a*8, a*4, a*2, a]; },
+            // Pure ×3 chains
+            () => { const a = pickRandom([1, 2]); return [a, a*3, a*9, a*27, a*81]; },
+            // Pure ÷3 chains
+            () => { const a = pickRandom([1, 2]); return [a*81, a*27, a*9, a*3, a]; },
+            // Alternating tabular: ×m, ÷d, ×m, ÷d (all exact tabular facts!)
+            () => {
+              // e.g. ×4, ÷2, ×4, ÷2
+              const a = pickRandom([1, 2, 3, 4, 5]);
+              return [a, a*4, a*2, a*8, a*4];
+            },
+            () => {
+              // e.g. ×6, ÷3, ×6, ÷3
+              const a = pickRandom([1, 2, 3]);
+              return [a, a*6, a*2, a*12, a*4];
+            },
+            () => {
+              // e.g. ×8, ÷4, ×8, ÷4
+              const a = pickRandom([1, 2]);
+              return [a, a*8, a*2, a*16, a*4];
+            },
+            () => {
+              // e.g. ×9, ÷3, ×9, ÷3
+              const a = pickRandom([1, 2]);
+              return [a, a*9, a*3, a*27, a*9];
+            },
+            () => {
+              // e.g. ÷2, ×4, ÷2, ×4
+              const a = pickRandom([2, 4, 6, 8, 10]);
+              return [a, a/2, a*2, a, a*4];
+            },
+            () => {
+              // e.g. ÷3, ×6, ÷3, ×6
+              const a = pickRandom([3, 6, 9]);
+              return [a, a/3, a*2, (a*2)/3, a*4];
+            },
+            () => {
+              // e.g. ×m, ÷m, ×m, ÷m (oscillating tabular multiplication/division)
+              const m = pickRandom([2, 3, 4, 5, 6, 7, 8, 9]);
+              const a = randInt(2, 9);
+              return [a, a * m, a, a * m, a];
+            },
+            () => {
+              // e.g. ÷m, ×m, ÷m, ×m (oscillating tabular division/multiplication)
+              const m = pickRandom([2, 3, 4, 5, 6, 7, 8, 9]);
+              const b = randInt(2, 9);
+              const a = b * m;
+              return [a, b, a, b, a];
+            }
+          ];
+          seq = pickRandom(patterns)();
+        }
+
+        const sig = seq.join(',');
+        if (sig !== lastSignature) {
+          lastSignature = sig;
+          break;
+        }
+      }
+
+      return seq;
+    }
+
+    function renderSequence() {
+      for (let i = 0; i < 4; i++) {
+        const el = document.getElementById(`num-${i}`);
+        el.textContent = currentSequence[i];
+        const len = String(currentSequence[i]).length;
+        el.setAttribute('font-size', len >= 3 ? '52' : '64');
+      }
+      updateInputDisplay();
+    }
+
+    function updateInputDisplay() {
+      const num4 = document.getElementById('num-4');
+      const crystal = document.getElementById('input-prompt-crystal');
+      num4.textContent = currentInput;
+      const len = currentInput.length;
+      num4.setAttribute('font-size', len >= 3 ? '52' : '66');
+      crystal.style.display = len === 0 ? 'block' : 'none';
+    }
+
+    function loadNewSequence() {
+      if (autoCheckTimer) {
+        clearTimeout(autoCheckTimer);
+        autoCheckTimer = null;
+      }
+      currentInput = '';
+      currentSequence = generateSequenceForLevel(currentLevel);
+      renderSequence();
+
+      // Pop-in animation on all 5 badges
+      for (let i = 0; i < 5; i++) {
+        heroStates[i].badgeScale = 0.25;
+        heroStates[i].badgeVel = 0.14 + i * 0.015;
+      }
+    }
+
+    function selectLevel(lvl) {
+      ensureAudio();
+      currentLevel = lvl;
+      for (let i = 1; i <= 3; i++) {
+        const btn = document.getElementById(`lvl-btn-${i}`);
+        if (i === lvl) btn.classList.add('active-level');
+        else btn.classList.remove('active-level');
+      }
+      playSkipPortalSound();
+      spawnPortalSparks();
+      loadNewSequence();
+    }
+
+    function skipToNextSequence() {
+      ensureAudio();
+      if (isTransitioning) return;
+      playSkipPortalSound();
+      spawnPortalSparks();
+      loadNewSequence();
+    }
+
+    /********************************************************************
+     * 4. INPUT HANDLING (KEYBOARD + TOUCH KEYPAD) & VALIDATION
+     ********************************************************************/
+    function handleDigitInput(digit) {
+      ensureAudio();
+      if (isTransitioning) return;
+      if (currentInput.length >= 3) return;
+      if (currentInput === '0') currentInput = String(digit);
+      else currentInput += String(digit);
+
+      playKeySound(digit);
+      updateInputDisplay();
+
+      // Subtle bounce on 5th badge & hero 4 glances down at badge
+      heroStates[4].badgeScale = 1.18;
+      heroStates[4].targetGazeX = 0;
+      heroStates[4].targetGazeY = 4.2;
+
+      // Button press visual feedback
+      const btn = document.getElementById(`key-btn-${digit}`);
+      if (btn) {
+        btn.classList.add('pressed');
+        setTimeout(() => btn.classList.remove('pressed'), 140);
+      }
+
+      // Auto-check smoothly once the child enters the expected number of digits
+      if (autoCheckTimer) clearTimeout(autoCheckTimer);
+      const targetStr = String(currentSequence[4]);
+      if (currentInput.length >= targetStr.length) {
+        autoCheckTimer = setTimeout(() => {
+          checkSubmittedAnswer();
+        }, 420);
+      }
+    }
+
+    function handleBackspace() {
+      ensureAudio();
+      if (isTransitioning) return;
+      if (autoCheckTimer) {
+        clearTimeout(autoCheckTimer);
+        autoCheckTimer = null;
+      }
+      if (currentInput.length > 0) {
+        currentInput = currentInput.slice(0, -1);
+        playEraseSound();
+        updateInputDisplay();
+        heroStates[4].badgeScale = 0.9;
+      }
+    }
+
+    function checkSubmittedAnswer() {
+      ensureAudio();
+      if (isTransitioning || currentInput.length === 0) return;
+      if (autoCheckTimer) {
+        clearTimeout(autoCheckTimer);
+        autoCheckTimer = null;
+      }
+
+      const enteredValue = parseInt(currentInput, 10);
+      const correctValue = currentSequence[4];
+
+      if (enteredValue === correctValue) {
+        triggerVictoryFeedback();
+      } else {
+        triggerWrongFeedback();
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
+        handleDigitInput(parseInt(e.key, 10));
+      } else if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        handleBackspace();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        checkSubmittedAnswer();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        skipToNextSequence();
+      }
+    });
+
+    /********************************************************************
+     * 5. INDEPENDENT MOODS, GAZE SHIFTS (NO BLINKING!) & HERO MOTIONS
+     ********************************************************************/
+    // Mood definitions: mouth path + eyebrow transforms + cheek puff
+    const MOODS = [
+      {
+        name: 'heroic_smile',
+        mouth: 'M -16 29 Q 0 43 16 29',
+        mouthFill: 'none',
+        browL: 'M -38 -22 Q -24 -29 -10 -20',
+        browR: 'M 10 -20 Q 24 -29 38 -22',
+        cheekScale: 1.0
+      },
+      {
+        name: 'joyful_grin',
+        mouth: 'M -19 27 Q 0 48 19 27 Z',
+        mouthFill: '#991b1b',
+        browL: 'M -38 -25 Q -24 -34 -10 -24',
+        browR: 'M 10 -24 Q 24 -34 38 -25',
+        cheekScale: 1.35
+      },
+      {
+        name: 'confident_smirk',
+        mouth: 'M -14 33 Q 4 36 18 25',
+        mouthFill: 'none',
+        browL: 'M -38 -19 Q -24 -23 -10 -18',
+        browR: 'M 10 -24 Q 24 -34 38 -24',
+        cheekScale: 1.05
+      },
+      {
+        name: 'surprised_o',
+        mouth: 'M -9 31 A 9 10 0 1 0 9 31 A 9 10 0 1 0 -9 31 Z',
+        mouthFill: '#7f1d1d',
+        browL: 'M -38 -27 Q -24 -36 -10 -26',
+        browR: 'M 10 -26 Q 24 -36 38 -27',
+        cheekScale: 0.9
+      },
+      {
+        name: 'determined_focus',
+        mouth: 'M -15 34 Q 0 28 15 34',
+        mouthFill: 'none',
+        browL: 'M -38 -25 Q -24 -22 -10 -16',
+        browR: 'M 10 -16 Q 24 -22 38 -25',
+        cheekScale: 1.15
+      },
+      {
+        name: 'puffed_proud',
+        mouth: 'M -12 31 Q -6 37 0 31 Q 6 37 12 31',
+        mouthFill: 'none',
+        browL: 'M -38 -23 Q -24 -31 -10 -22',
+        browR: 'M 10 -22 Q 24 -31 38 -23',
+        cheekScale: 1.55
+      }
+    ];
+
+    const heroBaseX = [250, 605, 960, 1315, 1670];
+    const heroBaseY = [560, 560, 548, 560, 560];
+
+    const heroStates = [0, 1, 2, 3, 4].map((i) => ({
+      index: i,
+      phase: Math.random() * Math.PI * 2,
+      speed: 1.5 + Math.random() * 0.9,
+      moveStyle: i, // Each animal has its own signature idle style + random switching
+      moodIndex: i % MOODS.length,
+      moodTimer: 120 + Math.random() * 180,
+      // Gaze shifting (NEVER BLINKS!)
+      gazeX: 0,
+      gazeY: 0,
+      targetGazeX: 0,
+      targetGazeY: 0,
+      gazeTimer: 40 + Math.random() * 100,
+      // Jump / Celebration physics
+      jumpY: 0,
+      jumpVel: 0,
+      // Badge spring physics
+      badgeScale: 1,
+      badgeVel: 0,
+      badgeShakeX: 0,
+      badgeShakePhase: 0
+    }));
+
+    function applyHeroMood(heroIdx, moodIdx) {
+      const mood = MOODS[moodIdx % MOODS.length];
+      const mouthEl = document.getElementById(`mouth-${heroIdx}`);
+      const browLEl = document.getElementById(`browL-${heroIdx}`);
+      const browREl = document.getElementById(`browR-${heroIdx}`);
+      const cheekLEl = document.getElementById(`cheekL-${heroIdx}`);
+      const cheekREl = document.getElementById(`cheekR-${heroIdx}`);
+
+      if (mouthEl) {
+        mouthEl.setAttribute('d', mood.mouth);
+        mouthEl.setAttribute('fill', mood.mouthFill);
+      }
+      if (browLEl) browLEl.setAttribute('d', mood.browL);
+      if (browREl) browREl.setAttribute('d', mood.browR);
+      if (cheekLEl && cheekREl) {
+        cheekLEl.setAttribute('r', String(10 * mood.cheekScale));
+        cheekREl.setAttribute('r', String(10 * mood.cheekScale));
+      }
+    }
+
+    function triggerHeroClick(idx) {
+      ensureAudio();
+      playHeroClickSound(idx);
+      const st = heroStates[idx];
+      st.jumpVel = -14;
+      st.moodIndex = (st.moodIndex + 1) % MOODS.length;
+      applyHeroMood(idx, st.moodIndex);
+
+      // Neighboring animals glance toward the clicked hero!
+      heroStates.forEach((other, j) => {
+        if (j !== idx) {
+          other.targetGazeX = j < idx ? 4.5 : -4.5;
+          other.targetGazeY = -1;
+          other.gazeTimer = 90;
+        }
+      });
+    }
+
+    function updateHeroesAnimation(timeSec) {
+      heroStates.forEach((st, i) => {
+        st.phase += 0.025 * st.speed;
+
+        // 1. Independent random mood switching
+        st.moodTimer--;
+        if (st.moodTimer <= 0 && !isTransitioning) {
+          st.moodIndex = Math.floor(Math.random() * MOODS.length);
+          applyHeroMood(i, st.moodIndex);
+          // Also occasionally vary idle movement style
+          st.moveStyle = Math.floor(Math.random() * 5);
+          st.moodTimer = 140 + Math.random() * 220;
+        }
+
+        // 2. Independent gaze shifting (OPEN EYES ONLY — NEVER BLINKING!)
+        st.gazeTimer--;
+        if (st.gazeTimer <= 0) {
+          const gazeChoices = [
+            { x: 0, y: 0 },       // Look straight at player
+            { x: -4.8, y: 0 },    // Glance at left neighbor
+            { x: 4.8, y: 0 },     // Glance at right neighbor
+            { x: 4.5, y: 3.2 },   // Look toward 5th badge
+            { x: 0, y: -4.2 },    // Look up at sky/blimp
+            { x: -3.2, y: 3.5 }   // Look down at own emblem
+          ];
+          const pick = pickRandom(gazeChoices);
+          st.targetGazeX = pick.x;
+          st.targetGazeY = pick.y;
+          st.gazeTimer = 55 + Math.random() * 130;
+        }
+
+        st.gazeX += (st.targetGazeX - st.gazeX) * 0.14;
+        st.gazeY += (st.targetGazeY - st.gazeY) * 0.14;
+
+        const pupils = document.querySelectorAll(`.pupil-group[data-hero="${i}"]`);
+        pupils.forEach(p => {
+          p.setAttribute('transform', `translate(${st.gazeX.toFixed(2)}, ${st.gazeY.toFixed(2)})`);
+        });
+
+        // 3. Jump physics
+        st.jumpY += st.jumpVel;
+        if (st.jumpY < 0) {
+          st.jumpVel += 0.72; // gravity
+        } else {
+          st.jumpY = 0;
+          st.jumpVel = 0;
+        }
+
+        // 4. Distinct Idle Movements per animal
+        let bodySwayX = 0;
+        let bodyBobY = 0;
+        let bodyRot = 0;
+        let headRot = 0;
+        let armLRot = 0;
+        let armRRot = 0;
+
+        if (st.moveStyle === 0) {
+          // Weight shift side-to-side sway
+          bodySwayX = Math.sin(st.phase) * 7;
+          bodyBobY = Math.abs(Math.cos(st.phase)) * -6;
+          bodyRot = Math.sin(st.phase) * 2.8;
+          headRot = -Math.sin(st.phase) * 4;
+          armLRot = Math.sin(st.phase) * 12;
+          armRRot = Math.sin(st.phase) * 12;
+        } else if (st.moveStyle === 1) {
+          // Heroic hovering / rhythmic bounce
+          bodyBobY = Math.sin(st.phase * 1.4) * 9;
+          headRot = Math.cos(st.phase * 0.9) * 3.5;
+          armLRot = -8 + Math.sin(st.phase * 1.4) * 14;
+          armRRot = 8 - Math.sin(st.phase * 1.4) * 14;
+        } else if (st.moveStyle === 2) {
+          // Mighty chest flex & proud stance
+          bodyBobY = Math.sin(st.phase) * 5;
+          bodyRot = Math.cos(st.phase * 0.7) * 1.8;
+          headRot = Math.sin(st.phase * 0.8) * 5;
+          armLRot = -15 + Math.sin(st.phase * 1.6) * 10;
+          armRRot = 15 - Math.sin(st.phase * 1.6) * 10;
+        } else if (st.moveStyle === 3) {
+          // Agile speedster step & head tilt
+          bodySwayX = Math.cos(st.phase * 1.5) * 6;
+          bodyBobY = Math.sin(st.phase * 3) * 4;
+          headRot = Math.sin(st.phase * 1.2) * 6.5;
+          armLRot = Math.cos(st.phase * 1.5) * 18;
+          armRRot = -Math.cos(st.phase * 1.5) * 18;
+        } else {
+          // Figure-8 heroic groove
+          bodySwayX = Math.sin(st.phase) * 6;
+          bodyBobY = Math.sin(st.phase * 2) * 5;
+          bodyRot = Math.sin(st.phase) * 2.2;
+          headRot = Math.cos(st.phase) * 4.5;
+          armLRot = Math.sin(st.phase * 1.2) * 10;
+          armRRot = -Math.sin(st.phase * 1.2) * 10;
+        }
+
+        const bodyEl = document.getElementById(`hero-body-${i}`);
+        const headEl = document.getElementById(`head-${i}`);
+        const armLEl = document.getElementById(`armL-${i}`);
+        const armREl = document.getElementById(`armR-${i}`);
+        const tailEl = document.getElementById(`tail-${i}`);
+        const capeEl = document.getElementById(`cape-${i}`);
+
+        if (bodyEl) {
+          bodyEl.setAttribute(
+            'transform',
+            `translate(${bodySwayX.toFixed(2)}, ${(bodyBobY + st.jumpY).toFixed(2)}) rotate(${bodyRot.toFixed(2)})`
+          );
+        }
+        if (headEl) {
+          headEl.setAttribute('transform', `translate(0, -68) rotate(${headRot.toFixed(2)})`);
+        }
+
+        // Base arm coordinates per hero
+        const armX = [52, 48, 62, 46, 50][i];
+        const armY = [-10, -10, -14, -10, -10][i];
+        if (armLEl) {
+          armLEl.setAttribute('transform', `translate(${-armX}, ${armY}) rotate(${armLRot.toFixed(2)})`);
+        }
+        if (armREl) {
+          armREl.setAttribute('transform', `translate(${armX}, ${armY}) rotate(${armRRot.toFixed(2)})`);
+        }
+
+        // Tail wagging
+        if (tailEl) {
+          const tailPivotX = [-55, 50, -58, 46, 48][i];
+          const tailPivotY = [95, 92, 105, 95, 92][i];
+          const tailRot = Math.sin(timeSec * 3.5 + i * 1.7) * 14;
+          tailEl.setAttribute('transform', `translate(${tailPivotX}, ${tailPivotY}) rotate(${tailRot.toFixed(2)})`);
+        }
+
+        // Cape billowing skew
+        if (capeEl) {
+          const capeSkew = Math.sin(timeSec * 2.6 + i) * 4.5;
+          capeEl.setAttribute('transform', `skewX(${capeSkew.toFixed(2)})`);
+        }
+
+        // 5. Badge spring scale & elastic shake
+        const force = (1 - st.badgeScale) * 0.22;
+        st.badgeVel = (st.badgeVel + force) * 0.76;
+        st.badgeScale += st.badgeVel;
+
+        if (st.badgeShakePhase > 0) {
+          st.badgeShakePhase -= 0.08;
+          st.badgeShakeX = Math.sin(st.badgeShakePhase * 18) * 18 * st.badgeShakePhase;
+        } else {
+          st.badgeShakeX = 0;
+        }
+
+        const badgeY = i === 2 ? 187 : 175;
+        const badgeEl = document.getElementById(`badge-${i}`);
+        if (badgeEl) {
+          badgeEl.setAttribute(
+            'transform',
+            `translate(${st.badgeShakeX.toFixed(2)}, ${badgeY}) scale(${st.badgeScale.toFixed(3)})`
+          );
+        }
+      });
+    }
+
+    /********************************************************************
+     * 6. ACTIVE CELEBRATORY & WRONG ANSWER FEEDBACKS (CANVAS FX)
+     ********************************************************************/
+    const fxCanvas = document.getElementById('fx-canvas');
+    const fxCtx = fxCanvas.getContext('2d');
+    let particles = [];
+    let shockwaves = [];
+    let lightnings = [];
+    let lastVictoryFX = -1;
+
+    function resizeCanvases() {
+      const bgCanvas = document.getElementById('bg-canvas');
+      bgCanvas.width = window.innerWidth;
+      bgCanvas.height = window.innerHeight;
+      fxCanvas.width = window.innerWidth;
+      fxCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvases);
+    resizeCanvases();
+
+    // Convert SVG stage coordinate (1920x1080) to screen canvas coordinate
+    function svgToScreen(svgX, svgY) {
+      const w = fxCanvas.width;
+      const h = fxCanvas.height;
+      const scale = Math.max(w / 1920, h / 1080);
+      const offsetX = (w - 1920 * scale) / 2;
+      const offsetY = (h - 1080 * scale) / 2;
+      return {
+        x: offsetX + svgX * scale,
+        y: offsetY + svgY * scale,
+        scale
+      };
+    }
+
+    function spawnPortalSparks() {
+      for (let i = 0; i < 5; i++) {
+        const pt = svgToScreen(heroBaseX[i], heroBaseY[i] + 175);
+        for (let k = 0; k < 14; k++) {
+          const ang = Math.random() * Math.PI * 2;
+          const spd = 2 + Math.random() * 6;
+          particles.push({
+            x: pt.x,
+            y: pt.y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            size: 4 + Math.random() * 5,
+            color: pickRandom(['#38bdf8', '#fde047', '#c084fc', '#34d399']),
+            alpha: 1,
+            decay: 0.025 + Math.random() * 0.015,
+            gravity: 0.05,
+            shape: 'star'
+          });
+        }
+      }
+    }
+
+    function triggerVictoryFeedback() {
+      isTransitioning = true;
+      playVictorySound();
+
+      // Synchronized Superhero Celebration Jump & Joyful Grin!
+      heroStates.forEach((st, i) => {
+        st.jumpVel = -16 - i * 1.2;
+        st.badgeScale = 1.35;
+        applyHeroMood(i, 1); // joyful_grin
+        st.targetGazeX = 0;
+        st.targetGazeY = 0;
+      });
+
+      // Choose 1 of 4 rich visual celebration styles
+      let fxStyle = Math.floor(Math.random() * 4);
+      if (fxStyle === lastVictoryFX) fxStyle = (fxStyle + 1) % 4;
+      lastVictoryFX = fxStyle;
+
+      const fifthPos = svgToScreen(heroBaseX[4], heroBaseY[4] + 175);
+
+      if (fxStyle === 0) {
+        // Style 1: Golden & Cyan Superhero Lightning Bolts + Shockwaves
+        shockwaves.push({ x: fifthPos.x, y: fifthPos.y, r: 10, maxR: 520, color: '#fde047', alpha: 1 });
+        shockwaves.push({ x: fifthPos.x, y: fifthPos.y, r: 10, maxR: 380, color: '#38bdf8', alpha: 1 });
+
+        for (let i = 0; i < 5; i++) {
+          const p = svgToScreen(heroBaseX[i], heroBaseY[i] - 40);
+          lightnings.push({
+            x1: p.x + (Math.random() - 0.5) * 80,
+            y1: 0,
+            x2: p.x,
+            y2: p.y + 200,
+            color: i % 2 === 0 ? '#fde047' : '#38bdf8',
+            alpha: 1
+          });
+        }
+      } else if (fxStyle === 1) {
+        // Style 2: Rainbow Prismatic Nova Across All 5 Heroes
+        const colors = ['#ef4444', '#10b981', '#3b82f6', '#a855f7', '#38bdf8'];
+        for (let i = 0; i < 5; i++) {
+          const p = svgToScreen(heroBaseX[i], heroBaseY[i] + 175);
+          shockwaves.push({ x: p.x, y: p.y, r: 15, maxR: 300, color: colors[i], alpha: 1 });
+        }
+      } else if (fxStyle === 2) {
+        // Style 3: Superhero Star Fountain Burst
+        for (let i = 0; i < 5; i++) {
+          const p = svgToScreen(heroBaseX[i], heroBaseY[i] + 60);
+          for (let k = 0; k < 22; k++) {
+            const ang = -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
+            const spd = 6 + Math.random() * 11;
+            particles.push({
+              x: p.x,
+              y: p.y,
+              vx: Math.cos(ang) * spd,
+              vy: Math.sin(ang) * spd,
+              size: 7 + Math.random() * 7,
+              color: pickRandom(['#fde047', '#38bdf8', '#f43f5e', '#34d399', '#c084fc']),
+              alpha: 1,
+              decay: 0.014 + Math.random() * 0.01,
+              gravity: 0.22,
+              shape: 'star'
+            });
+          }
+        }
+      } else {
+        // Style 4: Energy Vortex Rings & Rising Sparks
+        shockwaves.push({ x: fifthPos.x, y: fifthPos.y, r: 20, maxR: 650, color: '#34d399', alpha: 1 });
+        for (let k = 0; k < 95; k++) {
+          const x = Math.random() * fxCanvas.width;
+          const y = fxCanvas.height + Math.random() * 60;
+          particles.push({
+            x,
+            y,
+            vx: (Math.random() - 0.5) * 3,
+            vy: -7 - Math.random() * 9,
+            size: 5 + Math.random() * 6,
+            color: pickRandom(['#fde047', '#67e8f9', '#a855f7', '#fb7185']),
+            alpha: 1,
+            decay: 0.015 + Math.random() * 0.01,
+            gravity: -0.04,
+            shape: 'diamond'
+          });
+        }
+      }
+
+      // Always burst celebratory stars around the solved 5th badge
+      for (let k = 0; k < 45; k++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 3 + Math.random() * 11;
+        particles.push({
+          x: fifthPos.x,
+          y: fifthPos.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          size: 6 + Math.random() * 7,
+          color: pickRandom(['#fde047', '#38bdf8', '#34d399', '#f472b6', '#fb923c']),
+          alpha: 1,
+          decay: 0.016 + Math.random() * 0.012,
+          gravity: 0.12,
+          shape: k % 2 === 0 ? 'star' : 'diamond'
+        });
+      }
+
+      setTimeout(() => {
+        isTransitioning = false;
+        loadNewSequence();
+      }, 1350);
+    }
+
+    function triggerWrongFeedback() {
+      playWrongSound();
+
+      // Elastic shake on the 5th badge
+      heroStates[4].badgeShakePhase = 1.0;
+      heroStates[4].badgeScale = 0.82;
+
+      // All 5 animals look toward the 5th badge with surprised/puzzled moods!
+      heroStates.forEach((st, i) => {
+        applyHeroMood(i, i === 4 ? 3 : 4); // surprised 'O' or determined focus
+        st.targetGazeX = i < 4 ? 5.2 : 0;
+        st.targetGazeY = 3.5;
+        st.gazeTimer = 110;
+      });
+
+      // Orange/purple spark puff on the 5th badge
+      const fifthPos = svgToScreen(heroBaseX[4], heroBaseY[4] + 175);
+      for (let k = 0; k < 24; k++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 6;
+        particles.push({
+          x: fifthPos.x,
+          y: fifthPos.y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          size: 5 + Math.random() * 4,
+          color: pickRandom(['#fb923c', '#f43f5e', '#c084fc']),
+          alpha: 1,
+          decay: 0.03 + Math.random() * 0.015,
+          gravity: 0.15,
+          shape: 'diamond'
+        });
+      }
+
+      // Clear input after brief shake so child can try again immediately
+      setTimeout(() => {
+        currentInput = '';
+        updateInputDisplay();
+      }, 360);
+    }
+
+    function drawStar(ctx, cx, cy, spikes, outerR, innerR, color, alpha) {
+      let rot = (Math.PI / 2) * 3;
+      let x = cx;
+      let y = cy;
+      const step = Math.PI / spikes;
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - outerR);
+      for (let i = 0; i < spikes; i++) {
+        x = cx + Math.cos(rot) * outerR;
+        y = cy + Math.sin(rot) * outerR;
+        ctx.lineTo(x, y);
+        rot += step;
+
+        x = cx + Math.cos(rot) * innerR;
+        y = cy + Math.sin(rot) * innerR;
+        ctx.lineTo(x, y);
+        rot += step;
+      }
+      ctx.lineTo(cx, cy - outerR);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function updateAndDrawFX() {
+      fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+      // Shockwaves
+      for (let i = shockwaves.length - 1; i >= 0; i--) {
+        const sw = shockwaves[i];
+        sw.r += (sw.maxR - sw.r) * 0.12;
+        sw.alpha -= 0.024;
+        if (sw.alpha <= 0) {
+          shockwaves.splice(i, 1);
+          continue;
+        }
+        fxCtx.save();
+        fxCtx.globalAlpha = Math.max(0, sw.alpha);
+        fxCtx.strokeStyle = sw.color;
+        fxCtx.lineWidth = 8 * sw.alpha;
+        fxCtx.beginPath();
+        fxCtx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+        fxCtx.stroke();
+        fxCtx.restore();
+      }
+
+      // Superhero Lightning Bolts
+      for (let i = lightnings.length - 1; i >= 0; i--) {
+        const lt = lightnings[i];
+        lt.alpha -= 0.045;
+        if (lt.alpha <= 0) {
+          lightnings.splice(i, 1);
+          continue;
+        }
+        fxCtx.save();
+        fxCtx.globalAlpha = Math.max(0, lt.alpha);
+        fxCtx.strokeStyle = lt.color;
+        fxCtx.lineWidth = 6;
+        fxCtx.shadowColor = lt.color;
+        fxCtx.shadowBlur = 18;
+        fxCtx.beginPath();
+        fxCtx.moveTo(lt.x1, lt.y1);
+        const segments = 6;
+        for (let s = 1; s < segments; s++) {
+          const t = s / segments;
+          const mx = lt.x1 + (lt.x2 - lt.x1) * t + (Math.random() - 0.5) * 45;
+          const my = lt.y1 + (lt.y2 - lt.y1) * t;
+          fxCtx.lineTo(mx, my);
+        }
+        fxCtx.lineTo(lt.x2, lt.y2);
+        fxCtx.stroke();
+        fxCtx.restore();
+      }
+
+      // Particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.gravity;
+        p.alpha -= p.decay;
+
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        if (p.shape === 'star') {
+          drawStar(fxCtx, p.x, p.y, 5, p.size, p.size * 0.45, p.color, p.alpha);
+        } else {
+          fxCtx.save();
+          fxCtx.globalAlpha = Math.max(0, p.alpha);
+          fxCtx.fillStyle = p.color;
+          fxCtx.translate(p.x, p.y);
+          fxCtx.rotate(p.alpha * 4);
+          fxCtx.beginPath();
+          fxCtx.moveTo(0, -p.size);
+          fxCtx.lineTo(p.size * 0.7, 0);
+          fxCtx.lineTo(0, p.size);
+          fxCtx.lineTo(-p.size * 0.7, 0);
+          fxCtx.closePath();
+          fxCtx.fill();
+          fxCtx.restore();
+        }
+      }
+    }
+
+    /********************************************************************
+     * 7. LIVING STORY-DRIVEN BACKGROUND (SUNSET METROPOLIS & CITY PARK)
+     ********************************************************************/
+    const bgCanvas = document.getElementById('bg-canvas');
+    const bgCtx = bgCanvas.getContext('2d');
+
+    const clouds = Array.from({ length: 7 }, (_, i) => ({
+      x: (i / 7) * 2000,
+      y: 60 + (i % 3) * 65,
+      w: 160 + (i % 4) * 45,
+      h: 42 + (i % 3) * 14,
+      speed: 0.18 + (i % 3) * 0.08
+    }));
+
+    const birds = Array.from({ length: 6 }, (_, i) => ({
+      x: Math.random() * 1920,
+      y: 90 + Math.random() * 180,
+      speed: 0.7 + Math.random() * 0.6,
+      wingPhase: Math.random() * Math.PI * 2
+    }));
+
+    const blimp = { x: 420, y: 125, speed: 0.25 };
+
+    // Pre-generate multi-layered city skyline buildings with patterned glowing windows
+    const backBuildings = [
+      { x: 0, w: 150, h: 340, color: '#24123b' },
+      { x: 140, w: 190, h: 420, color: '#2b1547' },
+      { x: 320, w: 160, h: 310, color: '#24123b' },
+      { x: 470, w: 210, h: 460, color: '#2e174d' },
+      { x: 670, w: 170, h: 360, color: '#24123b' },
+      { x: 830, w: 230, h: 490, color: '#311852' },
+      { x: 1050, w: 180, h: 380, color: '#26133f' },
+      { x: 1220, w: 220, h: 450, color: '#2e174d' },
+      { x: 1430, w: 175, h: 330, color: '#24123b' },
+      { x: 1595, w: 200, h: 430, color: '#2b1547' },
+      { x: 1780, w: 160, h: 360, color: '#24123b' }
+    ];
+
+    const midBuildings = [
+      { x: 40, w: 170, h: 270, color: '#1a0c2e', spire: true },
+      { x: 250, w: 185, h: 330, color: '#1f0e36', arch: true },
+      { x: 490, w: 165, h: 250, color: '#180b2b', spire: false },
+      { x: 710, w: 195, h: 350, color: '#210f3a', spire: true },
+      { x: 960, w: 180, h: 290, color: '#1a0c2e', arch: true },
+      { x: 1190, w: 200, h: 360, color: '#210f3a', spire: true },
+      { x: 1440, w: 170, h: 280, color: '#180b2b', arch: false },
+      { x: 1660, w: 190, h: 320, color: '#1f0e36', spire: true }
+    ];
+
+    const fireflies = Array.from({ length: 28 }, () => ({
+      x: Math.random() * 1920,
+      y: 250 + Math.random() * 500,
+      r: 2 + Math.random() * 2.5,
+      phase: Math.random() * Math.PI * 2,
+      speedX: (Math.random() - 0.5) * 0.4,
+      speedY: (Math.random() - 0.5) * 0.3
+    }));
+
+    function drawLivingBackground(timeSec) {
+      const w = bgCanvas.width;
+      const h = bgCanvas.height;
+
+      // 1. Rich Sunset/Twilight Sky Gradient
+      const skyGrad = bgCtx.createLinearGradient(0, 0, 0, h * 0.75);
+      skyGrad.addColorStop(0, '#170b3b');
+      skyGrad.addColorStop(0.35, '#4c1d6e');
+      skyGrad.addColorStop(0.68, '#b8336a');
+      skyGrad.addColorStop(1, '#f59e0b');
+      bgCtx.fillStyle = skyGrad;
+      bgCtx.fillRect(0, 0, w, h);
+
+      // Scaling helper to map 1920x1080 coordinates onto current viewport
+      const sx = w / 1920;
+      const sy = h / 1080;
+
+      bgCtx.save();
+      bgCtx.scale(sx, sy);
+
+      // 2. Setting Golden Sun Glow on Horizon
+      const sunGrad = bgCtx.createRadialGradient(960, 560, 20, 960, 560, 420);
+      sunGrad.addColorStop(0, 'rgba(254, 240, 138, 0.75)');
+      sunGrad.addColorStop(0.4, 'rgba(251, 146, 60, 0.35)');
+      sunGrad.addColorStop(1, 'rgba(251, 146, 60, 0)');
+      bgCtx.fillStyle = sunGrad;
+      bgCtx.beginPath();
+      bgCtx.arc(960, 560, 420, 0, Math.PI * 2);
+      bgCtx.fill();
+
+      // 3. Sweeping Superhero Searchlights in the Sky
+      for (let s = 0; s < 3; s++) {
+        const baseX = 380 + s * 580;
+        const angle = Math.sin(timeSec * 0.65 + s * 2.1) * 0.38;
+        bgCtx.save();
+        bgCtx.translate(baseX, 700);
+        bgCtx.rotate(angle);
+        const beamGrad = bgCtx.createLinearGradient(0, 0, 0, -680);
+        beamGrad.addColorStop(0, 'rgba(253, 224, 71, 0.22)');
+        beamGrad.addColorStop(0.5, 'rgba(56, 189, 248, 0.10)');
+        beamGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        bgCtx.fillStyle = beamGrad;
+        bgCtx.beginPath();
+        bgCtx.moveTo(-12, 0);
+        bgCtx.lineTo(-110, -680);
+        bgCtx.lineTo(110, -680);
+        bgCtx.lineTo(12, 0);
+        bgCtx.closePath();
+        bgCtx.fill();
+        bgCtx.restore();
+      }
+
+      // 4. Volumetric Drifting Sunset Clouds
+      clouds.forEach(c => {
+        c.x += c.speed;
+        if (c.x - c.w > 1980) c.x = -c.w;
+
+        const cGrad = bgCtx.createLinearGradient(c.x, c.y - c.h, c.x, c.y + c.h);
+        cGrad.addColorStop(0, 'rgba(253, 186, 116, 0.38)');
+        cGrad.addColorStop(1, 'rgba(126, 34, 206, 0.22)');
+        bgCtx.fillStyle = cGrad;
+        bgCtx.beginPath();
+        bgCtx.ellipse(c.x, c.y, c.w, c.h, 0, 0, Math.PI * 2);
+        bgCtx.ellipse(c.x - c.w * 0.45, c.y + 8, c.w * 0.6, c.h * 0.75, 0, 0, Math.PI * 2);
+        bgCtx.ellipse(c.x + c.w * 0.45, c.y + 6, c.w * 0.65, c.h * 0.8, 0, 0, Math.PI * 2);
+        bgCtx.fill();
+      });
+
+      // 5. Floating City Patrol Blimp
+      blimp.x += blimp.speed;
+      if (blimp.x > 2050) blimp.x = -180;
+      const by = blimp.y + Math.sin(timeSec * 1.4) * 6;
+      bgCtx.save();
+      bgCtx.translate(blimp.x, by);
+      // Tail fins
+      bgCtx.fillStyle = '#dc2626';
+      bgCtx.beginPath();
+      bgCtx.moveTo(-58, 0);
+      bgCtx.lineTo(-78, -18);
+      bgCtx.lineTo(-48, -6);
+      bgCtx.moveTo(-58, 0);
+      bgCtx.lineTo(-78, 18);
+      bgCtx.lineTo(-48, 6);
+      bgCtx.fill();
+      // Gondola
+      bgCtx.fillStyle = '#fde047';
+      bgCtx.fillRect(-16, 18, 32, 9);
+      // Hull
+      const hullGrad = bgCtx.createLinearGradient(0, -24, 0, 24);
+      hullGrad.addColorStop(0, '#f59e0b');
+      hullGrad.addColorStop(0.5, '#7e22ce');
+      hullGrad.addColorStop(1, '#311042');
+      bgCtx.fillStyle = hullGrad;
+      bgCtx.beginPath();
+      bgCtx.ellipse(0, 0, 64, 22, 0, 0, Math.PI * 2);
+      bgCtx.fill();
+      bgCtx.strokeStyle = '#fde047';
+      bgCtx.lineWidth = 2;
+      bgCtx.stroke();
+      bgCtx.restore();
+
+      // 6. Distant Flying Birds
+      bgCtx.strokeStyle = '#fde047';
+      bgCtx.lineWidth = 2.2;
+      birds.forEach(b => {
+        b.x += b.speed;
+        if (b.x > 1960) b.x = -40;
+        const wingY = Math.sin(timeSec * 7 + b.wingPhase) * 6;
+        bgCtx.beginPath();
+        bgCtx.moveTo(b.x - 10, b.y + wingY);
+        bgCtx.quadraticCurveTo(b.x - 4, b.y - 4, b.x, b.y);
+        bgCtx.quadraticCurveTo(b.x + 4, b.y - 4, b.x + 10, b.y + wingY);
+        bgCtx.stroke();
+      });
+
+      // 7. Distant Skyline Layer
+      const horizonY = 730;
+      backBuildings.forEach((b, idx) => {
+        const topY = horizonY - b.h;
+        bgCtx.fillStyle = b.color;
+        bgCtx.fillRect(b.x, topY, b.w, b.h);
+
+        // Warm patterned windows
+        bgCtx.fillStyle = 'rgba(253, 224, 71, 0.25)';
+        for (let wy = topY + 24; wy < horizonY - 40; wy += 28) {
+          for (let wx = b.x + 18; wx < b.x + b.w - 22; wx += 24) {
+            if ((wx + wy + idx * 7) % 5 !== 0) {
+              bgCtx.fillRect(wx, wy, 10, 14);
+            }
+          }
+        }
+      });
+
+      // 8. Midground Architectural Skyline Layer
+      midBuildings.forEach((b, idx) => {
+        const topY = horizonY - b.h;
+        bgCtx.fillStyle = b.color;
+        bgCtx.fillRect(b.x, topY, b.w, b.h);
+
+        if (b.spire) {
+          bgCtx.beginPath();
+          bgCtx.moveTo(b.x + b.w * 0.2, topY);
+          bgCtx.lineTo(b.x + b.w * 0.5, topY - 55);
+          bgCtx.lineTo(b.x + b.w * 0.8, topY);
+          bgCtx.fill();
+        }
+        if (b.arch) {
+          bgCtx.beginPath();
+          bgCtx.arc(b.x + b.w / 2, topY, b.w * 0.38, Math.PI, 0);
+          bgCtx.fill();
+        }
+
+        // Glowing cyan & amber windows
+        for (let wy = topY + 22; wy < horizonY - 30; wy += 26) {
+          for (let wx = b.x + 20; wx < b.x + b.w - 24; wx += 26) {
+            const pulse = Math.sin(timeSec * 1.5 + wx * 0.1 + wy * 0.1);
+            if ((wx + wy + idx) % 3 !== 0) {
+              bgCtx.fillStyle = pulse > 0.2 ? 'rgba(251, 191, 36, 0.5)' : 'rgba(56, 189, 248, 0.35)';
+              bgCtx.fillRect(wx, wy, 12, 14);
+            }
+          }
+        }
+      });
+
+      // 9. Swaying City-Park Trees Canopy Along Rooftop Horizon
+      for (let tx = -20; tx <= 1960; tx += 85) {
+        const sway = Math.sin(timeSec * 1.8 + tx * 0.02) * 6;
+        const treeRadius = 46 + (tx % 3) * 12;
+        const treeGrad = bgCtx.createRadialGradient(
+          tx + sway,
+          horizonY - 22,
+          8,
+          tx + sway,
+          horizonY - 10,
+          treeRadius
+        );
+        treeGrad.addColorStop(0, '#10b981');
+        treeGrad.addColorStop(0.55, '#065f46');
+        treeGrad.addColorStop(1, '#1e1b4b');
+        bgCtx.fillStyle = treeGrad;
+        bgCtx.beginPath();
+        bgCtx.arc(tx + sway, horizonY - 12, treeRadius, Math.PI, 0);
+        bgCtx.fill();
+      }
+
+      // 10. Ambient Golden Fireflies / Twilight Sparks
+      fireflies.forEach(f => {
+        f.x += f.speedX;
+        f.y += f.speedY;
+        if (f.x < 0) f.x = 1920;
+        if (f.x > 1920) f.x = 0;
+        if (f.y < 180) f.y = 700;
+        if (f.y > 700) f.y = 180;
+
+        const alpha = 0.3 + 0.55 * Math.abs(Math.sin(timeSec * 2.2 + f.phase));
+        bgCtx.fillStyle = `rgba(253, 224, 71, ${alpha.toFixed(2)})`;
+        bgCtx.beginPath();
+        bgCtx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        bgCtx.fill();
+      });
+
+      bgCtx.restore();
+    }
+
+    /********************************************************************
+     * 8. MAIN ANIMATION LOOP & INITIALIZATION
+     ********************************************************************/
+    function animateLoop(timestamp) {
+      const timeSec = (timestamp || 0) * 0.001;
+      drawLivingBackground(timeSec);
+      updateHeroesAnimation(timeSec);
+      updateAndDrawFX();
+      requestAnimationFrame(animateLoop);
+    }
+
+    window.onload = function () {
+      buildKeypad();
+      heroStates.forEach((st, i) => applyHeroMood(i, st.moodIndex));
+      loadNewSequence();
+      requestAnimationFrame(animateLoop);
+    };
+  </script>
+</body>
+</html>
