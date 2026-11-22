@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    /* Базове скидання стилів та адаптація під весь екран без прокрутки */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #1c130d;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    /* Головний контейнер гри */
+    #game-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Сцена SVG заповнює весь екран */
+    #scene {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Мінімалістичні навігаційні кнопки (Назад / Далі) у стилі латуні та дерева */
+    .nav-controls {
+      position: absolute;
+      top: 18px;
+      right: 22px;
+      display: flex;
+      gap: 12px;
+      z-index: 40;
+    }
+
+    .nav-btn {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: 3px solid #d6a54b;
+      background: radial-gradient(circle at 32% 28%, #6d462b 0%, #3d2415 70%, #241309 100%);
+      box-shadow:
+        0 6px 14px rgba(0, 0, 0, 0.55),
+        inset 0 2px 4px rgba(255, 224, 155, 0.45),
+        inset 0 -3px 6px rgba(0, 0, 0, 0.5);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s, opacity 0.2s;
+    }
+
+    .nav-btn:hover:not(:disabled) {
+      transform: scale(1.1);
+      filter: brightness(1.15);
+    }
+
+    .nav-btn:active:not(:disabled) {
+      transform: scale(0.94);
+    }
+
+    .nav-btn:disabled {
+      opacity: 0.32;
+      cursor: default;
+      filter: grayscale(0.5);
+    }
+
+    .nav-btn svg {
+      width: 24px;
+      height: 24px;
+      fill: none;
+      stroke: #f8de9d;
+      stroke-width: 3.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
+    }
+
+    /* Панель завдання (стилізована під різьблену дерев'яну табличку з латунню) */
+    #task-overlay {
+      position: absolute;
+      top: 4%;
+      left: 50%;
+      transform: translateX(-50%) scale(0.76);
+      width: min(650px, 90vw);
+      z-index: 30;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.32s ease, transform 0.4s cubic-bezier(0.22, 1.25, 0.36, 1);
+    }
+
+    #task-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) scale(1);
+    }
+
+    /* Дерев'яна основа таблички з текстурою волокон */
+    .wood-plaque {
+      position: relative;
+      padding: 24px 30px 28px;
+      border-radius: 28px;
+      border: 4px solid #c9963e;
+      background:
+        repeating-linear-gradient(
+          3deg,
+          rgba(255, 210, 140, 0.05) 0px,
+          rgba(255, 210, 140, 0.05) 2px,
+          rgba(30, 15, 5, 0.09) 2px,
+          rgba(30, 15, 5, 0.09) 7px
+        ),
+        radial-gradient(ellipse at 50% 15%, #7c4d2b 0%, #523019 55%, #341c0d 100%);
+      box-shadow:
+        0 24px 48px rgba(0, 0, 0, 0.68),
+        0 0 0 2px #523117,
+        inset 0 3px 10px rgba(255, 222, 165, 0.35),
+        inset 0 -8px 18px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Декоративні латунні заклепки по кутах таблички */
+    .rivet {
+      position: absolute;
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #fff0b8 0%, #c89132 55%, #6e4810 100%);
+      box-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
+    }
+    .rivet.tl { top: 12px; left: 12px; }
+    .rivet.tr { top: 12px; right: 12px; }
+    .rivet.bl { bottom: 12px; left: 12px; }
+    .rivet.br { bottom: 12px; right: 12px; }
+
+    /* Внутрішнє віконце прикладу (стилізоване під темно-смарагдовий оксамит) */
+    .expression-display {
+      position: relative;
+      margin: 0 auto 22px;
+      padding: 16px 24px;
+      border-radius: 20px;
+      border: 3px solid #a6772c;
+      background:
+        radial-gradient(ellipse at 50% 30%, #2a473b 0%, #192d25 75%, #11201a 100%);
+      box-shadow:
+        inset 0 6px 16px rgba(0, 0, 0, 0.65),
+        0 2px 6px rgba(255, 224, 150, 0.25);
+      text-align: center;
+      font-size: clamp(2.3rem, 5vw, 3.7rem);
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: #fdf0c8;
+      text-shadow: 0 4px 8px rgba(0, 0, 0, 0.65), 0 0 18px rgba(255, 225, 140, 0.2);
+    }
+
+    /* Сітка варіантів відповідей */
+    .answers-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+    }
+
+    /* Кнопки відповідей у стилі теплих медово-латунних медальйонів */
+    .answer-btn {
+      position: relative;
+      padding: 15px 8px;
+      border-radius: 20px;
+      border: 3px solid #e6b85c;
+      background:
+        radial-gradient(ellipse at 35% 22%, #f4c869 0%, #cf8d2c 55%, #995d16 100%);
+      box-shadow:
+        0 8px 0 #5c3309,
+        0 12px 20px rgba(0, 0, 0, 0.5),
+        inset 0 3px 6px rgba(255, 248, 214, 0.65);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: clamp(1.8rem, 3.8vw, 2.6rem);
+      font-weight: 700;
+      color: #2e1605;
+      text-shadow: 0 1px 0 rgba(255, 240, 190, 0.6);
+      cursor: pointer;
+      transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.14s, filter 0.2s;
+    }
+
+    .answer-btn:hover:not(:disabled) {
+      transform: translateY(-4px) scale(1.04);
+      filter: brightness(1.08);
+      box-shadow:
+        0 12px 0 #5c3309,
+        0 18px 26px rgba(0, 0, 0, 0.55),
+        inset 0 3px 8px rgba(255, 250, 225, 0.8);
+    }
+
+    .answer-btn:active:not(:disabled) {
+      transform: translateY(4px) scale(0.98);
+      box-shadow:
+        0 3px 0 #5c3309,
+        0 5px 10px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Анімація правильної відповіді */
+    .answer-btn.correct {
+      border-color: #b7f587;
+      background: radial-gradient(ellipse at 35% 22%, #92e655 0%, #48a825 60%, #266b12 100%);
+      color: #ffffff;
+      text-shadow: 0 2px 5px rgba(0, 0, 0, 0.45);
+      box-shadow:
+        0 6px 0 #1a470c,
+        0 0 28px rgba(130, 245, 90, 0.8);
+      animation: popSuccess 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    /* Анімація помилкової відповіді */
+    .answer-btn.wrong {
+      border-color: #d97a6c;
+      background: radial-gradient(ellipse at 35% 22%, #c76252 0%, #8f3629 65%, #5c1e16 100%);
+      color: #f5d2cc;
+      opacity: 0.65;
+      box-shadow: 0 4px 0 #3b110b;
+      animation: shakeWrong 0.45s ease-in-out;
+    }
+
+    @keyframes popSuccess {
+      0% { transform: scale(1); }
+      45% { transform: scale(1.16) rotate(-2deg); }
+      75% { transform: scale(0.96) rotate(2deg); }
+      100% { transform: scale(1.06); }
+    }
+
+    @keyframes shakeWrong {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-9px) rotate(-3deg); }
+      40% { transform: translateX(8px) rotate(3deg); }
+      60% { transform: translateX(-6px) rotate(-2deg); }
+      80% { transform: translateX(5px) rotate(1deg); }
+    }
+
+    /* Плавне дихання котика (на окремій обгортці без SVG transform) */
+    @keyframes catBreathe {
+      0%, 100% { transform: translateY(0px) scaleY(1); }
+      50% { transform: translateY(-4px) scaleY(1.015); }
+    }
+
+    #cat-breathe {
+      transform-origin: 0px 0px;
+      animation: catBreathe 3.6s ease-in-out infinite;
+    }
+
+    /* Плаваючі пилинки в сонячному промені */
+    @keyframes floatDust {
+      0% { transform: translate(0, 0); opacity: 0.14; }
+      50% { transform: translate(20px, -26px); opacity: 0.58; }
+      100% { transform: translate(42px, -50px); opacity: 0.08; }
+    }
+
+    .dust-mote {
+      animation: floatDust 10s ease-in-out infinite;
+    }
+
+    /* Анімація мишки ТІЛЬКИ після того, як її знайшли (під час ховання вона абсолютно нерухома) */
+    @keyframes mouseCaughtJump {
+      0% { transform: translateY(0) scale(1); }
+      35% { transform: translateY(-14px) scale(1.14) rotate(-6deg); }
+      65% { transform: translateY(-4px) scale(1.08) rotate(5deg); }
+      100% { transform: translateY(0) scale(1.06) rotate(0deg); }
+    }
+
+    #mouse-clickable {
+      cursor: pointer;
+    }
+
+    #mouse-inner.caught {
+      animation: mouseCaughtJump 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+
+    @media (max-width: 600px) {
+      .answers-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+      .wood-plaque {
+        padding: 18px 18px 22px;
+      }
+      .nav-controls {
+        top: 12px;
+        right: 12px;
+      }
+      .nav-btn {
+        width: 44px;
+        height: 44px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <!-- Мінімалістичні кнопки навігації: Назад та Далі -->
+    <div class="nav-controls">
+      <button id="btn-prev" class="nav-btn" aria-label="Назад" disabled>
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+      <button id="btn-next" class="nav-btn" aria-label="Далі">
+        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+    </div>
+
+    <!-- Деталізована реалістична SVG-сцена: кімната з 20 схованками + котик крупним планом -->
+    <svg id="scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- ================= ПАТЕРНИ ТА ТЕКСТУРИ КІМНАТИ ================= -->
+        <pattern id="wallpaperPattern" width="90" height="120" patternUnits="userSpaceOnUse">
+          <rect width="90" height="120" fill="#d9c39e"/>
+          <rect width="45" height="120" fill="#d0b78d" opacity="0.55"/>
+          <path d="M45 18 C52 28, 52 42, 45 52 C38 42, 38 28, 45 18 Z" fill="#bfa073" opacity="0.45"/>
+          <path d="M0 78 C7 88, 7 102, 0 112 C-7 102, -7 88, 0 78 Z" fill="#bfa073" opacity="0.45"/>
+          <path d="M90 78 C97 88, 97 102, 90 112 C83 102, 83 88, 90 78 Z" fill="#bfa073" opacity="0.45"/>
+          <circle cx="45" cy="35" r="2.8" fill="#ebd9b8" opacity="0.45"/>
+        </pattern>
+
+        <pattern id="parquetPattern" width="160" height="44" patternUnits="userSpaceOnUse">
+          <rect width="160" height="44" fill="#8b5a34"/>
+          <rect x="0" y="0" width="79" height="21" fill="#9c663b"/>
+          <rect x="81" y="0" width="79" height="21" fill="#82512c"/>
+          <rect x="40" y="22" width="79" height="21" fill="#925e35"/>
+          <rect x="121" y="22" width="39" height="21" fill="#7a4a26"/>
+          <rect x="0" y="22" width="39" height="21" fill="#7a4a26"/>
+          <line x1="0" y1="21.5" x2="160" y2="21.5" stroke="#523017" stroke-width="1.2"/>
+          <line x1="0" y1="43.5" x2="160" y2="43.5" stroke="#523017" stroke-width="1.2"/>
+          <line x1="80" y1="0" x2="80" y2="21" stroke="#523017" stroke-width="1"/>
+          <line x1="40" y1="22" x2="40" y2="44" stroke="#523017" stroke-width="1"/>
+          <line x1="120" y1="22" x2="120" y2="44" stroke="#523017" stroke-width="1"/>
+        </pattern>
+
+        <pattern id="rugPattern" width="60" height="40" patternUnits="userSpaceOnUse">
+          <rect width="60" height="40" fill="#8c2d27"/>
+          <polygon points="30,4 54,20 30,36 6,20" fill="#b34934" stroke="#e0b25c" stroke-width="1.5"/>
+          <polygon points="30,11 42,20 30,29 18,20" fill="#2c4f4d"/>
+          <circle cx="30" cy="20" r="3" fill="#f0c975"/>
+        </pattern>
+
+        <pattern id="wickerPattern" width="16" height="12" patternUnits="userSpaceOnUse">
+          <rect width="16" height="12" fill="#9c6c3c"/>
+          <rect x="0" y="0" width="8" height="5" rx="2" fill="#bd8b52"/>
+          <rect x="8" y="6" width="8" height="5" rx="2" fill="#bd8b52"/>
+          <line x1="0" y1="6" x2="16" y2="6" stroke="#5e3c1b" stroke-width="1"/>
+        </pattern>
+
+        <!-- ================= ГРАДІЄНТИ ОСВІТЛЕННЯ ТА МЕБЛІВ ================= -->
+        <linearGradient id="wallLight" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fff4d2" stop-opacity="0.36"/>
+          <stop offset="45%" stop-color="#d4a76a" stop-opacity="0.06"/>
+          <stop offset="100%" stop-color="#26160b" stop-opacity="0.54"/>
+        </linearGradient>
+
+        <linearGradient id="sunBeam" x1="0%" y1="0%" x2="80%" y2="100%">
+          <stop offset="0%" stop-color="#fff9db" stop-opacity="0.34"/>
+          <stop offset="65%" stop-color="#ffe7a8" stop-opacity="0.09"/>
+          <stop offset="100%" stop-color="#ffe7a8" stop-opacity="0"/>
+        </linearGradient>
+
+        <linearGradient id="floorShade" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#2e180b" stop-opacity="0.55"/>
+          <stop offset="35%" stop-color="#000000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#170c05" stop-opacity="0.72"/>
+        </linearGradient>
+
+        <linearGradient id="woodDark" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6e4325"/>
+          <stop offset="50%" stop-color="#4d2c16"/>
+          <stop offset="100%" stop-color="#2c160a"/>
+        </linearGradient>
+
+        <linearGradient id="woodWarm" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#a86d3e"/>
+          <stop offset="50%" stop-color="#7a4924"/>
+          <stop offset="100%" stop-color="#4d2a12"/>
+        </linearGradient>
+
+        <linearGradient id="velvetChair" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#3e786c"/>
+          <stop offset="55%" stop-color="#235249"/>
+          <stop offset="100%" stop-color="#122e29"/>
+        </linearGradient>
+
+        <linearGradient id="velvetHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#589c8e"/>
+          <stop offset="100%" stop-color="#214d44"/>
+        </linearGradient>
+
+        <linearGradient id="curtainGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#521f24"/>
+          <stop offset="28%" stop-color="#8c3b42"/>
+          <stop offset="52%" stop-color="#592228"/>
+          <stop offset="78%" stop-color="#99424a"/>
+          <stop offset="100%" stop-color="#42171b"/>
+        </linearGradient>
+
+        <linearGradient id="skyOutside" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7ab3d6"/>
+          <stop offset="65%" stop-color="#c4e3f2"/>
+          <stop offset="100%" stop-color="#f7ebd2"/>
+        </linearGradient>
+
+        <linearGradient id="leafGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#6fa649"/>
+          <stop offset="55%" stop-color="#3c6e26"/>
+          <stop offset="100%" stop-color="#1f3d12"/>
+        </linearGradient>
+
+        <linearGradient id="leafGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#80b858"/>
+          <stop offset="100%" stop-color="#2a521b"/>
+        </linearGradient>
+
+        <linearGradient id="potGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#c46b45"/>
+          <stop offset="40%" stop-color="#d97d54"/>
+          <stop offset="80%" stop-color="#8c4427"/>
+          <stop offset="100%" stop-color="#592815"/>
+        </linearGradient>
+
+        <radialGradient id="lampGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#fff4bf" stop-opacity="0.82"/>
+          <stop offset="45%" stop-color="#ffd573" stop-opacity="0.26"/>
+          <stop offset="100%" stop-color="#ffb84d" stop-opacity="0"/>
+        </radialGradient>
+
+        <!-- ================= РЕАЛІСТИЧНІ ГРАДІЄНТИ КОТИКА ================= -->
+        <radialGradient id="catFurHead" cx="48%" cy="36%" r="58%">
+          <stop offset="0%" stop-color="#f7c07c"/>
+          <stop offset="42%" stop-color="#db8839"/>
+          <stop offset="78%" stop-color="#a8571a"/>
+          <stop offset="100%" stop-color="#632f0c"/>
+        </radialGradient>
+
+        <radialGradient id="catFurBody" cx="50%" cy="22%" r="68%">
+          <stop offset="0%" stop-color="#e89a4d"/>
+          <stop offset="55%" stop-color="#b56421"/>
+          <stop offset="100%" stop-color="#5c2b0b"/>
+        </radialGradient>
+
+        <radialGradient id="catChestCream" cx="50%" cy="32%" r="62%">
+          <stop offset="0%" stop-color="#fff8ec"/>
+          <stop offset="58%" stop-color="#edd4b2"/>
+          <stop offset="100%" stop-color="#c4915e"/>
+        </radialGradient>
+
+        <radialGradient id="catMuzzleGrad" cx="50%" cy="35%" r="62%">
+          <stop offset="0%" stop-color="#fffaf2"/>
+          <stop offset="62%" stop-color="#f2dec4"/>
+          <stop offset="100%" stop-color="#cc9b6d"/>
+        </radialGradient>
+
+        <linearGradient id="catEarInner" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#f5b0a8"/>
+          <stop offset="65%" stop-color="#d97b77"/>
+          <stop offset="100%" stop-color="#964747"/>
+        </linearGradient>
+
+        <radialGradient id="catNoseGrad" cx="45%" cy="28%" r="65%">
+          <stop offset="0%" stop-color="#ffc2c2"/>
+          <stop offset="55%" stop-color="#d96b70"/>
+          <stop offset="100%" stop-color="#803037"/>
+        </radialGradient>
+
+        <!-- Скляний реалістичний ефект котячих очей (смарагдово-бурштиновий) -->
+        <radialGradient id="catIrisGrad" cx="50%" cy="46%" r="52%">
+          <stop offset="0%" stop-color="#ede064"/>
+          <stop offset="32%" stop-color="#94bf3b"/>
+          <stop offset="70%" stop-color="#387529"/>
+          <stop offset="92%" stop-color="#183b16"/>
+          <stop offset="100%" stop-color="#0b1c0a"/>
+        </radialGradient>
+
+        <!-- ================= РЕАЛІСТИЧНІ ГРАДІЄНТИ МИШКИ ================= -->
+        <radialGradient id="mouseFurGrad" cx="42%" cy="35%" r="62%">
+          <stop offset="0%" stop-color="#ada49a"/>
+          <stop offset="52%" stop-color="#787068"/>
+          <stop offset="88%" stop-color="#4a443f"/>
+          <stop offset="100%" stop-color="#2b2724"/>
+        </radialGradient>
+
+        <radialGradient id="mouseEarGrad" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stop-color="#ebb0b0"/>
+          <stop offset="65%" stop-color="#bf767b"/>
+          <stop offset="100%" stop-color="#7a464b"/>
+        </radialGradient>
+
+        <!-- Фільтри тіней для об'єму та глибини -->
+        <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#170c05" flood-opacity="0.5"/>
+        </filter>
+        <filter id="deepShadow" x="-25%" y="-25%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#0d0602" flood-opacity="0.65"/>
+        </filter>
+      </defs>
+
+      <!-- ======================================================================= -->
+      <!-- ШАР 1: ЗАДНІЙ ПЛАН КІМНАТИ (СТІНИ, ПІДЛОГА, ВІКНО, КОМОД, МЕБЛІ)        -->
+      <!-- ======================================================================= -->
+      <g id="room-background">
+        <!-- Стіна зі шпалерами -->
+        <rect x="0" y="0" width="1600" height="585" fill="url(#wallpaperPattern)"/>
+        <rect x="0" y="0" width="1600" height="585" fill="url(#wallLight)"/>
+
+        <!-- Дерев'яна стінова панель та плінтус -->
+        <rect x="0" y="475" width="1600" height="110" fill="url(#woodWarm)"/>
+        <rect x="0" y="470" width="1600" height="12" fill="#ba7d49" stroke="#4f2c13" stroke-width="2"/>
+        <g stroke="#4f2c13" stroke-width="2" fill="none" opacity="0.45">
+          <rect x="30" y="492" width="140" height="70" rx="4"/>
+          <rect x="195" y="492" width="140" height="70" rx="4"/>
+          <rect x="360" y="492" width="140" height="70" rx="4"/>
+          <rect x="525" y="492" width="140" height="70" rx="4"/>
+          <rect x="690" y="492" width="140" height="70" rx="4"/>
+          <rect x="855" y="492" width="140" height="70" rx="4"/>
+          <rect x="1020" y="492" width="140" height="70" rx="4"/>
+          <rect x="1185" y="492" width="140" height="70" rx="4"/>
+          <rect x="1350" y="492" width="210" height="70" rx="4"/>
+        </g>
+        <rect x="0" y="572" width="1600" height="22" fill="#3b200e"/>
+
+        <!-- Мишача нірка в плінтусі (задня темна частина) -->
+        <path d="M1052 594 C1052 548, 1098 548, 1098 594 Z" fill="#100804"/>
+
+        <!-- Дубова паркетна підлога -->
+        <rect x="0" y="594" width="1600" height="306" fill="url(#parquetPattern)"/>
+        <rect x="0" y="594" width="1600" height="306" fill="url(#floorShade)"/>
+
+        <!-- Перський килим на підлозі -->
+        <g id="rug-base" filter="url(#softShadow)">
+          <polygon points="320,655 1280,655 1435,825 185,825" fill="#6b1e1a" stroke="#d9aa52" stroke-width="6"/>
+          <polygon points="348,668 1252,668 1390,808 230,808" fill="url(#rugPattern)"/>
+          <path d="M188 827 L180 839 M208 827 L202 839 M1415 827 L1423 839 M1432 827 L1440 839"
+                stroke="#e8d2a6" stroke-width="3" stroke-linecap="round"/>
+        </g>
+
+        <!-- ВІКНО ЗЛІВА -->
+        <g id="window-group">
+          <rect x="95" y="40" width="290" height="388" fill="url(#skyOutside)"/>
+          <circle cx="155" cy="310" r="78" fill="#6b9659" opacity="0.8"/>
+          <circle cx="265" cy="335" r="88" fill="#527d42" opacity="0.85"/>
+          <circle cx="340" cy="270" r="65" fill="#77a362" opacity="0.75"/>
+          <ellipse cx="200" cy="120" rx="58" ry="18" fill="#ffffff" opacity="0.55"/>
+          <rect x="95" y="40" width="290" height="388" fill="none" stroke="#5e381e" stroke-width="18"/>
+          <line x1="240" y1="40" x2="240" y2="428" stroke="#5e381e" stroke-width="12"/>
+          <line x1="95" y1="225" x2="385" y2="225" stroke="#5e381e" stroke-width="12"/>
+          <!-- Підвіконня -->
+          <rect x="70" y="422" width="340" height="22" rx="4" fill="#6e4325" stroke="#3b200e" stroke-width="2" filter="url(#softShadow)"/>
+          <!-- Карниз -->
+          <rect x="42" y="16" width="396" height="14" rx="7" fill="#b88435" stroke="#5c3d10" stroke-width="2"/>
+          <circle cx="42" cy="23" r="11" fill="#d9a64c"/>
+          <circle cx="438" cy="23" r="11" fill="#d9a64c"/>
+        </g>
+
+        <!-- КАРТИНА НА СТІНІ (ЗАДНЯ ТІНЬ — МИШКА МОЖЕ ВИГЛЯДАТИ ЗВЕРХУ) -->
+        <rect x="652" y="102" width="296" height="156" rx="6" fill="#261409" opacity="0.35"/>
+
+        <!-- ВІНТАЖНИЙ КОМОД ПО ЦЕНТРУ ПІД КАРТИНОЮ (ДЛЯ ДОДАТКОВИХ СХОВАНОК) -->
+        <g id="vintage-dresser" filter="url(#deepShadow)">
+          <rect x="615" y="348" width="370" height="248" rx="6" fill="url(#woodDark)" stroke="#261308" stroke-width="4"/>
+          <rect x="602" y="336" width="396" height="18" rx="4" fill="#82502a" stroke="#381d0c" stroke-width="2"/>
+          <!-- Шухляди комода з латунними ручками -->
+          <rect x="638" y="372" width="324" height="58" rx="4" fill="#5c361b" stroke="#30180a" stroke-width="2"/>
+          <rect x="638" y="442" width="324" height="58" rx="4" fill="#5c361b" stroke="#30180a" stroke-width="2"/>
+          <circle cx="725" cy="401" r="7" fill="#d4a248" stroke="#5c3d10" stroke-width="2"/>
+          <circle cx="875" cy="401" r="7" fill="#d4a248" stroke="#5c3d10" stroke-width="2"/>
+          <circle cx="725" cy="471" r="7" fill="#d4a248" stroke="#5c3d10" stroke-width="2"/>
+          <circle cx="875" cy="471" r="7" fill="#d4a248" stroke="#5c3d10" stroke-width="2"/>
+        </g>
+
+        <!-- ТОРШЕР З ТЕПЛИМ СВІТЛОМ (СТІЙКА) -->
+        <g id="floor-lamp-back">
+          <circle cx="518" cy="272" r="142" fill="url(#lampGlow)"/>
+          <rect x="512" y="292" width="12" height="316" fill="url(#woodDark)"/>
+        </g>
+
+        <!-- ВЕЛЮРОВЕ КРІСЛО (ЗАДНЯ ЧАСТИНА) -->
+        <g id="armchair-back" filter="url(#deepShadow)">
+          <path d="M235 615 L220 676 L242 676 L255 615 Z" fill="#3b200e"/>
+          <path d="M465 615 L480 676 L458 676 L445 615 Z" fill="#3b200e"/>
+          <!-- Тінь під кріслом -->
+          <ellipse cx="350" cy="672" rx="145" ry="20" fill="#120804" opacity="0.58"/>
+          <path d="M210 385 C210 330, 480 330, 480 385 L496 560 L195 560 Z" fill="url(#velvetChair)" stroke="#14332d" stroke-width="3"/>
+          <circle cx="285" cy="428" r="5" fill="#102924"/>
+          <circle cx="345" cy="414" r="5" fill="#102924"/>
+          <circle cx="405" cy="428" r="5" fill="#102924"/>
+          <circle cx="315" cy="474" r="5" fill="#102924"/>
+          <circle cx="375" cy="474" r="5" fill="#102924"/>
+          <rect x="200" y="528" width="290" height="92" rx="26" fill="url(#velvetHighlight)" stroke="#14332d" stroke-width="3"/>
+          <path d="M450 472 C498 472, 508 512, 495 612 L438 612 L438 508 Z" fill="url(#velvetChair)"/>
+        </g>
+
+        <!-- КНИЖКОВА ШАФА СПРАВА -->
+        <g id="bookshelf-back" filter="url(#deepShadow)">
+          <rect x="1155" y="135" width="315" height="475" rx="6" fill="url(#woodDark)" stroke="#261308" stroke-width="4"/>
+          <rect x="1175" y="160" width="275" height="118" fill="#211108"/>
+          <rect x="1175" y="298" width="275" height="122" fill="#211108"/>
+          <rect x="1175" y="440" width="275" height="135" fill="#211108"/>
+
+          <!-- Книги на верхній полиці -->
+          <rect x="1184" y="182" width="26" height="96" rx="2" fill="#8f2d27" stroke="#471310"/>
+          <rect x="1212" y="194" width="22" height="84" rx="2" fill="#355e4d" stroke="#183026"/>
+          <rect x="1236" y="176" width="28" height="102" rx="2" fill="#b88232" stroke="#5e4012"/>
+          <rect x="1266" y="190" width="24" height="88" rx="2" fill="#3c5273" stroke="#1c293d"/>
+
+          <!-- Книги на середній полиці -->
+          <rect x="1184" y="324" width="28" height="96" rx="2" fill="#465e39" stroke="#202e19"/>
+          <rect x="1214" y="336" width="24" height="84" rx="2" fill="#7d3b46" stroke="#3d181e"/>
+          <rect x="1340" y="318" width="28" height="102" rx="2" fill="#9c5a2b" stroke="#4d2910"/>
+          <rect x="1370" y="330" width="24" height="90" rx="2" fill="#39576b" stroke="#182936"/>
+          <rect x="1396" y="322" width="32" height="98" rx="2" fill="#a87c32" stroke="#523b12"/>
+
+          <!-- Книги на нижній полиці -->
+          <rect x="1184" y="468" width="30" height="107" rx="2" fill="#6b302a"/>
+          <rect x="1216" y="482" width="26" height="93" rx="2" fill="#2c4f4d"/>
+          <rect x="1244" y="472" width="26" height="103" rx="2" fill="#9e6d2c"/>
+        </g>
+
+        <!-- КІМНАТНА РОСЛИНА (ЗАДНЄ ЛИСТЯ) -->
+        <g id="plant-back">
+          <path d="M1120 545 C1082 490, 1052 450, 1076 408 C1108 432, 1125 480, 1125 545 Z" fill="url(#leafGrad2)"/>
+          <path d="M1135 545 C1162 470, 1190 422, 1158 388 C1130 422, 1125 475, 1130 545 Z" fill="url(#leafGrad1)"/>
+          <path d="M1115 550 C1058 522, 1025 496, 1038 468 C1074 478, 1108 512, 1120 550 Z" fill="url(#leafGrad1)"/>
+        </g>
+
+        <!-- КАПЕЦЬ БІЛЯ КИЛИМА (ЗАДНЯ ЧАСТИНА) -->
+        <g id="slipper-back" filter="url(#softShadow)">
+          <ellipse cx="1308" cy="705" rx="58" ry="24" fill="#6b343d" transform="rotate(-12 1308 705)"/>
+          <ellipse cx="1295" cy="702" rx="36" ry="14" fill="#38181e" transform="rotate(-12 1295 702)"/>
+        </g>
+
+        <!-- ПРОМІНЬ СОНЦЯ ТА ПИЛИНКИ -->
+        <polygon points="105,48 385,48 920,860 320,860" fill="url(#sunBeam)" pointer-events="none"/>
+        <g id="dust-particles" pointer-events="none">
+          <circle class="dust-mote" cx="260" cy="240" r="2.8" fill="#fff9db" style="animation-delay: 0s;"/>
+          <circle class="dust-mote" cx="410" cy="370" r="2.4" fill="#fff9db" style="animation-delay: 2.1s;"/>
+          <circle class="dust-mote" cx="320" cy="490" r="3.2" fill="#fff9db" style="animation-delay: 4.3s;"/>
+          <circle class="dust-mote" cx="480" cy="290" r="2.6" fill="#fff9db" style="animation-delay: 5.8s;"/>
+        </g>
+      </g>
+
+      <!-- ======================================================================= -->
+      <!-- ШАР 2: МИШКА (АБСОЛЮТНО НЕРУХОМА ПІД ЧАС ХОВАННЯ, ХОВАЄТЬСЯ ЗА ШАРОМ 3) -->
+      <!-- ======================================================================= -->
+      <g id="mouse-layer">
+        <g id="mouse-clickable" transform="translate(1075, 576)">
+          <!-- Невидима комфортна зона кліку для дитини -->
+          <circle cx="0" cy="-6" r="46" fill="transparent"/>
+          <g id="mouse-inner">
+            <!-- М'яка контактна тінь під мишкою -->
+            <ellipse cx="0" cy="20" rx="28" ry="8" fill="#0d0602" opacity="0.46"/>
+            <!-- Гнучкий рожево-сірий хвостик -->
+            <path d="M20 13 C44 17, 56 2, 46 -13 C41 -21, 52 -26, 62 -21"
+                  fill="none" stroke="#bf8488" stroke-width="5" stroke-linecap="round"/>
+            <path d="M20 13 C44 17, 56 2, 46 -13 C41 -21, 52 -26, 62 -21"
+                  fill="none" stroke="#e8aeb2" stroke-width="1.8" stroke-linecap="round"/>
+            <!-- Тільце мишки -->
+            <ellipse cx="5" cy="5" rx="26" ry="18" fill="url(#mouseFurGrad)"/>
+            <!-- Заднє вушко -->
+            <g transform="translate(-8, -20) rotate(-14)">
+              <ellipse cx="0" cy="0" rx="13" ry="15" fill="#5e5751"/>
+              <ellipse cx="0" cy="1" rx="8.8" ry="10.8" fill="url(#mouseEarGrad)"/>
+            </g>
+            <!-- Голівка мишки -->
+            <path d="M-32 4 C-26 -13, -6 -19, 11 -10 C20 -4, 18 14, 2 16 C-13 18, -28 13, -32 4 Z"
+                  fill="url(#mouseFurGrad)"/>
+            <!-- Переднє вушко -->
+            <g transform="translate(7, -17) rotate(18)">
+              <ellipse cx="0" cy="0" rx="13" ry="15" fill="#6b635c"/>
+              <ellipse cx="0" cy="1" rx="8.8" ry="10.8" fill="url(#mouseEarGrad)"/>
+            </g>
+            <!-- Блискуче чорне очко-намистинка -->
+            <circle cx="-12" cy="-2" r="4.3" fill="#141110"/>
+            <circle cx="-13.4" cy="-3.4" r="1.5" fill="#ffffff"/>
+            <circle cx="-10.6" cy="-0.6" r="0.8" fill="#ffffff" opacity="0.65"/>
+            <!-- Рожевий носик -->
+            <ellipse cx="-32" cy="3.5" rx="4.5" ry="3.5" fill="#de838c"/>
+            <ellipse cx="-33" cy="2.6" rx="1.5" ry="1" fill="#ffd9dc"/>
+            <!-- Тонкі вусики -->
+            <g stroke="#d6cfc4" stroke-width="1.2" stroke-linecap="round" opacity="0.82">
+              <path d="M-27 2.5 Q-41 -3 -50 -1"/>
+              <path d="M-27 5.5 Q-41 5.5 -51 8.5"/>
+              <path d="M-26 8.5 Q-39 13 -47 17.5"/>
+            </g>
+            <!-- Крихітні лапки -->
+            <ellipse cx="-11" cy="17" rx="6.5" ry="3.2" fill="#d49599"/>
+            <ellipse cx="13" cy="18" rx="7.5" ry="3.5" fill="#c48589"/>
+          </g>
+        </g>
+      </g>
+
+      <!-- ======================================================================= -->
+      <!-- ШАР 3: ПЕРЕДНІ ОБ'ЄКТИ-ПЕРЕКРИТТЯ (20 РІЗНИХ СХОВАНОК ПО ВСІЙ КІМНАТІ)  -->
+      <!-- ======================================================================= -->
+      <g id="room-occluders" pointer-events="none">
+        <!-- 1. Ліва штора -->
+        <path d="M55 20 L156 20 C146 185, 132 355, 144 600 L42 600 Z" fill="url(#curtainGrad)" filter="url(#softShadow)"/>
+
+        <!-- 2. Керамічний глечик і чашка на підвіконні -->
+        <g id="windowsill-props" filter="url(#softShadow)">
+          <path d="M238 422 C226 402, 232 372, 248 366 L248 354 L268 354 L268 366 C284 372, 290 402, 278 422 Z"
+                fill="#4c7a8c" stroke="#264552" stroke-width="2"/>
+          <path d="M278 372 C294 372, 294 398, 280 404" fill="none" stroke="#4c7a8c" stroke-width="5" stroke-linecap="round"/>
+        </g>
+
+        <!-- 3. Права штора з підхватом -->
+        <path d="M332 20 L425 20 C415 190, 436 360, 424 602 L342 602 C365 410, 346 210, 332 20 Z"
+              fill="url(#curtainGrad)" filter="url(#softShadow)"/>
+        <path d="M342 342 Q388 358 428 342" fill="none" stroke="#d9a64c" stroke-width="9" stroke-linecap="round"/>
+
+        <!-- 4. Подушка на кріслі та передній підлокітник (також прикриває 5. під кріслом) -->
+        <g filter="url(#softShadow)">
+          <path d="M242 465 C270 442, 342 448, 355 480 C364 510, 348 548, 305 552 C260 556, 230 515, 242 465 Z"
+                fill="#c77d32" stroke="#854e18" stroke-width="3"/>
+          <path d="M268 485 L322 485 M278 512 L318 512" stroke="#f0c878" stroke-width="3" stroke-dasharray="8 6" opacity="0.7"/>
+          <path d="M188 470 C236 470, 248 512, 236 618 L184 618 C176 545, 174 490, 188 470 Z"
+                fill="url(#velvetHighlight)" stroke="#14332d" stroke-width="3"/>
+          <!-- Передня нижня крайка крісла -->
+          <rect x="200" y="592" width="290" height="28" rx="10" fill="#1b423a"/>
+        </g>
+
+        <!-- 6 & 7. Абажур та основа торшера -->
+        <g id="floor-lamp-front" filter="url(#softShadow)">
+          <path d="M468 215 L568 215 L588 302 L448 302 Z" fill="#e8c37d" stroke="#a6772c" stroke-width="3"/>
+          <path d="M448 302 L588 302" stroke="#c9963e" stroke-width="6" stroke-dasharray="6 4"/>
+          <ellipse cx="518" cy="610" rx="46" ry="13" fill="#472814" stroke="#b88435" stroke-width="2"/>
+        </g>
+
+        <!-- 8. Картина на стіні в золоченій рамі -->
+        <g id="wall-painting-front" filter="url(#softShadow)">
+          <rect x="650" y="102" width="296" height="156" rx="6" fill="#6e441e" stroke="#c9963e" stroke-width="7"/>
+          <rect x="668" y="118" width="260" height="124" fill="#5e7e8c"/>
+          <path d="M668 205 Q735 168 805 194 T928 182 L928 242 L668 242 Z" fill="#466b3c"/>
+          <circle cx="878" cy="150" r="18" fill="#f7d88b" opacity="0.9"/>
+        </g>
+
+        <!-- 9. Фоторамка на комоді зліва -->
+        <g id="dresser-frame" filter="url(#softShadow)">
+          <rect x="642" y="268" width="66" height="72" rx="4" fill="#9c6a32" stroke="#e0b25c" stroke-width="4"/>
+          <rect x="652" y="278" width="46" height="52" fill="#d9c6a3"/>
+          <circle cx="675" cy="296" r="10" fill="#8c6a4a"/>
+          <path d="M658 326 C662 310, 688 310, 692 326 Z" fill="#6e4e32"/>
+        </g>
+
+        <!-- 10. Старовинний камінний годинник на комоді справа -->
+        <g id="dresser-clock" filter="url(#softShadow)">
+          <path d="M845 340 L852 292 C856 266, 926 266, 930 292 L937 340 Z" fill="#4a2812" stroke="#c9963e" stroke-width="3"/>
+          <circle cx="891" cy="304" r="22" fill="#f5e6c4" stroke="#b88435" stroke-width="3"/>
+          <line x1="891" y1="304" x2="891" y2="290" stroke="#2e180a" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="891" y1="304" x2="903" y2="308" stroke="#2e180a" stroke-width="2.5" stroke-linecap="round"/>
+          <circle cx="891" cy="304" r="2.5" fill="#8c3227"/>
+        </g>
+
+        <!-- 11. Арка мишачої нірки в плінтусі -->
+        <path d="M1046 594 C1046 540, 1104 540, 1104 594 L1096 594 C1096 550, 1054 550, 1054 594 Z" fill="#523018"/>
+
+        <!-- 12. Стопка вінтажних книг на підлозі зліва -->
+        <g id="floor-books-front" filter="url(#softShadow)">
+          <rect x="155" y="758" width="112" height="24" rx="3" fill="#355e4d" stroke="#183026" stroke-width="2"/>
+          <rect x="164" y="736" width="98" height="22" rx="3" fill="#8f2d27" stroke="#471310" stroke-width="2"/>
+          <rect x="172" y="718" width="82" height="18" rx="3" fill="#b88232" stroke="#5e4012" stroke-width="2"/>
+        </g>
+
+        <!-- 13. Клубок пряжі на підлозі -->
+        <g id="yarn-ball" transform="translate(442, 728)" filter="url(#softShadow)">
+          <path d="M36 26 C72 38, 102 22, 134 34" fill="none" stroke="#c94b58" stroke-width="4.5" stroke-linecap="round"/>
+          <circle cx="0" cy="0" r="40" fill="#ba3c4a"/>
+          <path d="M-32 -16 Q0 -32 32 -10 M-38 2 Q-2 -10 36 10 M-30 20 Q4 8 28 24 M-18 -34 Q12 0 -10 36 M6 -38 Q30 -4 10 36"
+                fill="none" stroke="#e67380" stroke-width="3.2" stroke-linecap="round" opacity="0.75"/>
+          <circle cx="0" cy="0" r="40" fill="none" stroke="#731d27" stroke-width="2.5"/>
+        </g>
+
+        <!-- 14. Теракотовий горщик та переднє листя рослини -->
+        <g id="plant-front" filter="url(#softShadow)">
+          <path d="M1128 552 C1180 518, 1218 498, 1208 462 C1168 474, 1138 510, 1125 552 Z" fill="url(#leafGrad2)"/>
+          <path d="M1112 555 C1082 505, 1086 456, 1118 432 C1138 466, 1135 515, 1120 555 Z" fill="url(#leafGrad1)"/>
+          <path d="M1078 548 L1172 548 L1158 638 L1092 638 Z" fill="url(#potGrad)"/>
+          <rect x="1072" y="536" width="106" height="18" rx="6" fill="#d97d54" stroke="#7d3b20" stroke-width="2"/>
+        </g>
+
+        <!-- 15. Ваза на верхній полиці шафи -->
+        <g id="shelf-top-vase" filter="url(#softShadow)">
+          <path d="M1355 278 C1332 255, 1338 212, 1362 204 L1362 188 L1386 188 L1386 204 C1410 212, 1416 255, 1393 278 Z"
+                fill="#c79f61" stroke="#6e5025" stroke-width="2"/>
+        </g>
+
+        <!-- 16. Нахилена книга на середній полиці шафи -->
+        <g transform="translate(1300, 338) rotate(14)" filter="url(#softShadow)">
+          <rect x="0" y="0" width="32" height="84" rx="3" fill="#9c2c2c" stroke="#471010" stroke-width="2"/>
+          <line x1="4" y1="16" x2="28" y2="16" stroke="#e6b85c" stroke-width="3"/>
+          <line x1="4" y1="68" x2="28" y2="68" stroke="#e6b85c" stroke-width="3"/>
+        </g>
+
+        <!-- 17. Різьблена дерев'яна скринька на нижній полиці шафи -->
+        <g id="shelf-box" filter="url(#softShadow)">
+          <rect x="1312" y="528" width="96" height="46" rx="4" fill="#7a421f" stroke="#d4a248" stroke-width="3"/>
+          <line x1="1312" y1="544" x2="1408" y2="544" stroke="#d4a248" stroke-width="2.5"/>
+          <rect x="1352" y="538" width="16" height="14" rx="2" fill="#e6b85c"/>
+        </g>
+
+        <!-- 18. Плетений кошик з пледом біля шафи справа -->
+        <g id="wicker-basket" filter="url(#softShadow)">
+          <!-- М'який складений плед у кошику -->
+          <path d="M1365 628 C1375 602, 1415 596, 1438 614 C1455 606, 1472 616, 1475 634 Z" fill="#a84438" stroke="#6b251d" stroke-width="2"/>
+          <path d="M1362 628 L1476 628 L1462 706 C1460 714, 1378 714, 1376 706 Z" fill="url(#wickerPattern)" stroke="#5c3918" stroke-width="3"/>
+          <rect x="1356" y="622" width="126" height="14" rx="7" fill="#b8844b" stroke="#5c3918" stroke-width="2.5"/>
+        </g>
+
+        <!-- 19. Передня частина домашнього капця -->
+        <g id="slipper-front" filter="url(#softShadow)">
+          <path d="M1302 686 C1348 672, 1378 686, 1372 708 C1362 725, 1320 728, 1290 718 C1298 706, 1300 696, 1302 686 Z"
+                fill="#8c4450" stroke="#4d1f27" stroke-width="2"/>
+          <path d="M1299 686 C1308 698, 1304 712, 1292 719" fill="none" stroke="#e8c8b0" stroke-width="7" stroke-linecap="round"/>
+        </g>
+
+        <!-- 20. Загорнутий кутик перського килима -->
+        <g id="rug-corner" filter="url(#softShadow)">
+          <path d="M1275 786 L1435 825 L1372 736 Z" fill="#a83c32" stroke="#d9aa52" stroke-width="4"/>
+          <path d="M1275 786 L1372 736 L1396 770 Z" fill="#d9c098" opacity="0.92"/>
+        </g>
+      </g>
+
+      <!-- ======================================================================= -->
+      <!-- ШАР 4: РЕАЛІСТИЧНИЙ КОТИК КРУПНИМ ПЛАНОМ (ПЕРЕДНІЙ ПЛАН ПО ЦЕНТРУ)      -->
+      <!-- Локальні координати (0,0) відповідають нижньому центру сцени (800, 900) -->
+      <!-- ======================================================================= -->
+      <g id="cat-root" transform="translate(800, 900)">
+        <g id="cat-motion">
+          <g id="cat-breathe">
+            <!-- Тінь під котиком -->
+            <ellipse cx="0" cy="-6" rx="265" ry="44" fill="#0d0602" opacity="0.65"/>
+
+            <!-- Тулуб та плечі котика крупним планом -->
+            <path d="M-245 20 C-235 -135, -155 -205, 0 -205 C155 -205, 235 -135, 245 20 Z"
+                  fill="url(#catFurBody)" filter="url(#deepShadow)"/>
+            <!-- Пухнаста кремова грудка з ворсинками -->
+            <path d="M-88 20 C-90 -100, -52 -152, 0 -152 C52 -152, 90 -100, 88 20 Z"
+                  fill="url(#catChestCream)"/>
+            <path d="M-42 -128 L-52 -106 M-18 -140 L-22 -114 M18 -140 L22 -114 M42 -128 L52 -106"
+                  stroke="#fff9ef" stroke-width="4" stroke-linecap="round" opacity="0.65"/>
+
+            <!-- Смужки табі на плечах -->
+            <g stroke="#632d0b" stroke-width="13" stroke-linecap="round" opacity="0.4" fill="none">
+              <path d="M-198 -115 Q-150 -128 -112 -110"/>
+              <path d="M-218 -68 Q-162 -82 -116 -62"/>
+              <path d="M198 -115 Q150 -128 112 -110"/>
+              <path d="M218 -68 Q162 -82 116 -62"/>
+            </g>
+
+            <!-- Передні лапки котика внизу кадру -->
+            <g id="cat-paws">
+              <ellipse cx="-146" cy="-22" rx="64" ry="37" fill="url(#catMuzzleGrad)" stroke="#a86d3b" stroke-width="3"/>
+              <path d="M-168 -36 Q-170 -14 -164 2 M-144 -39 Q-144 -14 -142 5 M-120 -35 Q-118 -14 -122 2"
+                    stroke="#9c6234" stroke-width="3.2" stroke-linecap="round"/>
+              <ellipse cx="146" cy="-22" rx="64" ry="37" fill="url(#catMuzzleGrad)" stroke="#a86d3b" stroke-width="3"/>
+              <path d="M120 -35 Q118 -14 122 2 M144 -39 Q144 -14 142 5 M168 -36 Q170 -14 164 2"
+                    stroke="#9c6234" stroke-width="3.2" stroke-linecap="round"/>
+            </g>
+
+            <!-- ================= ГОЛОВА КОТИКА (ПОВОРОТ ТА НАХИЛ) ================= -->
+            <g id="cat-head" transform="translate(0, -238)">
+              <!-- Ліве вухо -->
+              <g id="ear-left" transform="translate(-108, -108)">
+                <path d="M-36 50 C-56 -22, -42 -92, -8 -104 C22 -86, 54 -30, 64 26 Z"
+                      fill="#b56422" stroke="#632f0c" stroke-width="3"/>
+                <path d="M-22 32 C-36 -18, -26 -68, -5 -80 C15 -65, 36 -24, 42 18 Z"
+                      fill="url(#catEarInner)"/>
+                <path d="M-12 20 L10 -8 M-2 26 L22 4 M10 24 L32 15"
+                      stroke="#f7e2c6" stroke-width="4.5" stroke-linecap="round" opacity="0.88"/>
+              </g>
+
+              <!-- Праве вухо -->
+              <g id="ear-right" transform="translate(108, -108)">
+                <path d="M36 50 C56 -22, 42 -92, 8 -104 C-22 -86, -54 -30, -64 26 Z"
+                      fill="#b56422" stroke="#632f0c" stroke-width="3"/>
+                <path d="M22 32 C36 -18, 26 -68, 5 -80 C-15 -65, -36 -24, -42 18 Z"
+                      fill="url(#catEarInner)"/>
+                <path d="M12 20 L-10 -8 M2 26 L-22 4 M-10 24 L-32 15"
+                      stroke="#f7e2c6" stroke-width="4.5" stroke-linecap="round" opacity="0.88"/>
+              </g>
+
+              <!-- Основна форма голови з пухнастим контуром щічок -->
+              <path d="M-160 -16 C-170 -106, -104 -150, 0 -150 C104 -150, 170 -106, 160 -16
+                       C178 18, 164 62, 134 86 L142 96 L118 100
+                       C86 124, 46 132, 0 132 C-46 132, -86 124, -118 100 L-142 96 L-134 86
+                       C-164 62, -178 18, -160 -16 Z"
+                    fill="url(#catFurHead)" filter="url(#softShadow)"/>
+
+              <!-- Характерний табі-візерунок «М» на лобі та смужки на щічках -->
+              <g fill="none" stroke="#6b320d" stroke-linecap="round" opacity="0.48">
+                <path d="M0 -142 L0 -78" stroke-width="10"/>
+                <path d="M-24 -136 Q-20 -100 -30 -74" stroke-width="9"/>
+                <path d="M24 -136 Q20 -100 30 -74" stroke-width="9"/>
+                <path d="M-60 -114 Q-52 -92 -60 -72" stroke-width="7.5"/>
+                <path d="M60 -114 Q52 -92 60 -72" stroke-width="7.5"/>
+                <!-- Смужки на щоках -->
+                <path d="M-150 8 Q-122 14 -100 24" stroke-width="8.5"/>
+                <path d="M-146 36 Q-116 38 -94 44" stroke-width="7.5"/>
+                <path d="M150 8 Q122 14 100 24" stroke-width="8.5"/>
+                <path d="M146 36 Q116 38 94 44" stroke-width="7.5"/>
+              </g>
+
+              <!-- Світлі ділянки над бровами для виразності -->
+              <ellipse cx="-65" cy="-40" rx="44" ry="32" fill="#fae5c5" opacity="0.34"/>
+              <ellipse cx="65" cy="-40" rx="44" ry="32" fill="#fae5c5" opacity="0.34"/>
+
+              <!-- ================= ОЧІ КОТИКА (СТЕЖАТЬ ПО КІМНАТІ) ================= -->
+              <!-- Ліве око -->
+              <g id="eye-left" transform="translate(-65, -20)">
+                <ellipse cx="0" cy="0" rx="40" ry="36" fill="#1c120a"/>
+                <ellipse cx="0" cy="0" rx="36" ry="32" fill="url(#catIrisGrad)"/>
+                <!-- Тонкі волокна райдужки для реалізму -->
+                <g stroke="#d4e673" stroke-width="1" opacity="0.28">
+                  <line x1="0" y1="-30" x2="0" y2="-16"/><line x1="18" y1="-24" x2="10" y2="-12"/>
+                  <line x1="-18" y1="-24" x2="-10" y2="-12"/><line x1="28" y1="0" x2="15" y2="0"/>
+                  <line x1="-28" y1="0" x2="-15" y2="0"/><line x1="18" y1="24" x2="10" y2="12"/>
+                  <line x1="-18" y1="24" x2="-10" y2="12"/>
+                </g>
+                <g id="pupil-left-wrap">
+                  <ellipse id="pupil-left" cx="0" cy="0" rx="12" ry="25" fill="#070907"/>
+                </g>
+                <!-- Живі відблиски на рогівці -->
+                <circle cx="-12" cy="-11" r="8" fill="#ffffff" opacity="0.92"/>
+                <circle cx="11" cy="11" r="3.8" fill="#ffffff" opacity="0.65"/>
+                <path id="eyelid-left" d="M-42 -40 Q0 -46 42 -40 L42 -40 Q0 -40 -42 -40 Z" fill="#c77730"/>
+                <path id="happy-eye-left" d="M-32 4 Q0 -25 32 4" fill="none" stroke="#2e1708" stroke-width="8" stroke-linecap="round" opacity="0"/>
+              </g>
+
+              <!-- Праве око -->
+              <g id="eye-right" transform="translate(65, -20)">
+                <ellipse cx="0" cy="0" rx="40" ry="36" fill="#1c120a"/>
+                <ellipse cx="0" cy="0" rx="36" ry="32" fill="url(#catIrisGrad)"/>
+                <g stroke="#d4e673" stroke-width="1" opacity="0.28">
+                  <line x1="0" y1="-30" x2="0" y2="-16"/><line x1="18" y1="-24" x2="10" y2="-12"/>
+                  <line x1="-18" y1="-24" x2="-10" y2="-12"/><line x1="28" y1="0" x2="15" y2="0"/>
+                  <line x1="-28" y1="0" x2="-15" y2="0"/><line x1="18" y1="24" x2="10" y2="12"/>
+                  <line x1="-18" y1="24" x2="-10" y2="12"/>
+                </g>
+                <g id="pupil-right-wrap">
+                  <ellipse id="pupil-right" cx="0" cy="0" rx="12" ry="25" fill="#070907"/>
+                </g>
+                <circle cx="-12" cy="-11" r="8" fill="#ffffff" opacity="0.92"/>
+                <circle cx="11" cy="11" r="3.8" fill="#ffffff" opacity="0.65"/>
+                <path id="eyelid-right" d="M-42 -40 Q0 -46 42 -40 L42 -40 Q0 -40 -42 -40 Z" fill="#c77730"/>
+                <path id="happy-eye-right" d="M-32 4 Q0 -25 32 4" fill="none" stroke="#2e1708" stroke-width="8" stroke-linecap="round" opacity="0"/>
+              </g>
+
+              <!-- Мордочка, носик, ротик та вуса -->
+              <g id="cat-muzzle" transform="translate(0, 46)">
+                <ellipse cx="-30" cy="11" rx="40" ry="30" fill="url(#catMuzzleGrad)"/>
+                <ellipse cx="30" cy="11" rx="40" ry="30" fill="url(#catMuzzleGrad)"/>
+                <ellipse cx="0" cy="34" rx="26" ry="17" fill="#f5e0c4"/>
+
+                <!-- Реалістичний вологий носик з ніздрями -->
+                <path d="M-20 -11 C-22 -20, 22 -20, 20 -11 C17 0, 7 9, 0 9 C-7 9, -17 0, -20 -11 Z"
+                      fill="url(#catNoseGrad)" stroke="#6e2930" stroke-width="2"/>
+                <ellipse cx="-6" cy="-11" rx="5.5" ry="2.8" fill="#ffe0e3" opacity="0.72"/>
+                <ellipse cx="-8" cy="-4" rx="3" ry="1.6" fill="#632229" transform="rotate(24 -8 -4)"/>
+                <ellipse cx="8" cy="-4" rx="3" ry="1.6" fill="#632229" transform="rotate(-24 8 -4)"/>
+
+                <!-- Ротик -->
+                <path id="cat-mouth" d="M0 9 L0 21 M0 21 Q-17 34 -32 21 M0 21 Q17 34 32 21"
+                      fill="none" stroke="#472312" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+                <!-- Язичок (видимий при радості) -->
+                <ellipse id="cat-tongue" cx="0" cy="30" rx="10" ry="11" fill="#e67382" opacity="0"/>
+
+                <!-- Крапочки на подушечках вусів -->
+                <g fill="#7d4822" opacity="0.55">
+                  <circle cx="-34" cy="7" r="2.4"/><circle cx="-46" cy="14" r="2.4"/><circle cx="-30" cy="19" r="2.4"/>
+                  <circle cx="34" cy="7" r="2.4"/><circle cx="46" cy="14" r="2.4"/><circle cx="30" cy="19" r="2.4"/>
+                </g>
+
+                <!-- Довгі білі вуса + надбрівні вусики -->
+                <g stroke="#fff8ed" stroke-width="2.5" stroke-linecap="round" opacity="0.9">
+                  <path d="M-44 5 Q-120 -8 -198 2"/>
+                  <path d="M-46 15 Q-125 14 -208 27"/>
+                  <path d="M-42 25 Q-114 33 -186 52"/>
+                  <path d="M44 5 Q120 -8 198 2"/>
+                  <path d="M46 15 Q125 14 208 27"/>
+                  <path d="M42 25 Q114 33 186 52"/>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
+
+      <!-- ======================================================================= -->
+      <!-- ШАР 5: СПЕЦЕФЕКТИ (ЗІРОЧКИ, ІСКРИ, КОНФЕТІ ПРИ ПРАВИЛЬНІЙ ВІДПОВІДІ)    -->
+      <!-- ======================================================================= -->
+      <g id="fx-layer" pointer-events="none"></g>
+    </svg>
+
+    <!-- Панель математичного прикладу -->
+    <div id="task-overlay">
+      <div class="wood-plaque">
+        <span class="rivet tl"></span>
+        <span class="rivet tr"></span>
+        <span class="rivet bl"></span>
+        <span class="rivet br"></span>
+
+        <div id="expression-display" class="expression-display">27 + 6 = ?</div>
+        <div id="answers-grid" class="answers-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================================
+       1. ЗВУКОВИЙ РУШІЙ (WEB AUDIO API — БЕЗ ЗОВНІШНІХ ФАЙЛІВ ТА БЕЗ СЛІВ)
+    ========================================================================= */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioCtx();
+        }
+        if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      // Писк мишки при знаходженні
+      playMouseSqueak() {
+        this.init();
+        const now = this.ctx.currentTime;
+        [0, 0.11].forEach((offset, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1480 + i * 240, now + offset);
+          osc.frequency.exponentialRampToValueAtTime(2480 + i * 280, now + offset + 0.055);
+          osc.frequency.exponentialRampToValueAtTime(1650, now + offset + 0.095);
+
+          gain.gain.setValueAtTime(0.001, now + offset);
+          gain.gain.linearRampToValueAtTime(0.16, now + offset + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.1);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + offset);
+          osc.stop(now + offset + 0.11);
+        });
+      }
+
+      // Захоплене «мрр-мяу!» котика при виявленні мишки
+      playCatTrill() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(340, now);
+        osc.frequency.exponentialRampToValueAtTime(620, now + 0.22);
+
+        lfo.frequency.setValueAtTime(28, now);
+        lfoGain.gain.setValueAtTime(24, now);
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.14, now + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        lfo.start(now);
+        osc.stop(now + 0.3);
+        lfo.stop(now + 0.3);
+      }
+
+      // Різноманітні святкові звуки при правильній відповіді (3 варіації)
+      playSuccess(variant = 0) {
+        this.init();
+        const now = this.ctx.currentTime;
+        const melodies = [
+          [523.25, 659.25, 783.99, 1046.5],
+          [587.33, 739.99, 880.0, 1174.66],
+          [440.0, 554.37, 659.25, 880.0, 1108.7]
+        ];
+        const notes = melodies[variant % melodies.length];
+
+        notes.forEach((freq, idx) => {
+          const t = now + idx * 0.085;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = idx % 2 === 0 ? 'triangle' : 'sine';
+          osc.frequency.setValueAtTime(freq, t);
+
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.38);
+        });
+      }
+
+      // М'який кумедний звук при помилці (2 варіації)
+      playError(variant = 0) {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = variant % 2 === 0 ? 'sawtooth' : 'triangle';
+
+        osc.frequency.setValueAtTime(260, now);
+        osc.frequency.exponentialRampToValueAtTime(145, now + 0.24);
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(650, now);
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.14, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      }
+
+      // Клацання для кнопок навігації
+      playClick() {
+        this.init();
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520, now);
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.05);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.065);
+      }
+    }
+
+    const sound = new SoundEngine();
+
+    /* =========================================================================
+       2. ГЕНЕРАТОР ПРИКЛАДІВ З ПЕРЕХОДОМ ЧЕРЕЗ ДЕСЯТОК
+       Двозначне ± однозначне з обов'язковим переходом через десяток.
+    ========================================================================= */
+    function generateProblem(prevText = '') {
+      let a, b, op, answer, text;
+      let guard = 0;
+
+      do {
+        guard++;
+        const isAddition = Math.random() < 0.5;
+
+        if (isAddition) {
+          // Додавання: одиниці a (2..9) + b > 10 (строгий перехід через десяток), сума <= 98
+          const tens = Math.floor(Math.random() * 8) + 1;  // 1..8
+          const units = Math.floor(Math.random() * 8) + 2; // 2..9
+          a = tens * 10 + units;
+          const minB = 11 - units;
+          b = Math.floor(Math.random() * (9 - minB + 1)) + minB;
+          op = '+';
+          answer = a + b;
+        } else {
+          // Віднімання: одиниці a (1..8) менші за b (2..9)
+          const tens = Math.floor(Math.random() * 8) + 2;  // 2..9
+          const units = Math.floor(Math.random() * 8) + 1; // 1..8
+          a = tens * 10 + units;
+          const minB = units + 1;
+          b = Math.floor(Math.random() * (9 - minB + 1)) + minB;
+          op = '−';
+          answer = a - b;
+        }
+
+        text = `${a} ${op} ${b}`;
+      } while (text === prevText && guard < 20);
+
+      // Підбираємо 3 реалістичні помилкові варіанти
+      const candidates = new Set([answer]);
+      const offsets = op === '+'
+        ? [-10, -1, 1, 2, -2, 10, -9, 9]
+        : [10, -1, 1, -2, 2, -10, 9, -9];
+
+      for (let i = offsets.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [offsets[i], offsets[j]] = [offsets[j], offsets[i]];
+      }
+
+      for (const off of offsets) {
+        if (candidates.size >= 4) break;
+        const val = answer + off;
+        if (val > 0 && val <= 99) {
+          candidates.add(val);
+        }
+      }
+
+      const options = Array.from(candidates);
+      for (let i = options.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [options[i], options[j]] = [options[j], options[i]];
+      }
+
+      return { a, b, op, answer, text, options };
+    }
+
+    /* =========================================================================
+       3. 20 РІЗНОМАНІТНИХ СХОВАНОК МИШКИ ПО ВСІЙ КІМНАТІ
+       Кожна точка розташована за відповідним предметом у шарі #room-occluders
+       та знаходиться у безпечній видимій зоні (не перекривається котиком).
+    ========================================================================= */
+    const HIDING_SPOTS = [
+      { id: 'curtain-left',    x: 155,  y: 562, scale: 0.90, flipX: -1, rot: 4   }, // 1. З-за лівої штори внизу
+      { id: 'windowsill',      x: 288,  y: 405, scale: 0.80, flipX: -1, rot: -4  }, // 2. За глечиком на підвіконні
+      { id: 'curtain-right',   x: 342,  y: 332, scale: 0.84, flipX: 1,  rot: -10 }, // 3. З-за підхвату правої штори
+      { id: 'chair-pillow',    x: 356,  y: 472, scale: 0.85, flipX: -1, rot: 12  }, // 4. З-за подушки на кріслі
+      { id: 'under-chair',     x: 285,  y: 632, scale: 0.88, flipX: 1,  rot: 0   }, // 5. Під велюровим кріслом
+      { id: 'lamp-shade',      x: 518,  y: 205, scale: 0.78, flipX: -1, rot: 0   }, // 6. Визирає над абажуром торшера
+      { id: 'lamp-base',       x: 492,  y: 590, scale: 0.86, flipX: 1,  rot: -5  }, // 7. За основою торшера
+      { id: 'painting-top',    x: 780,  y: 94,  scale: 0.82, flipX: 1,  rot: 0   }, // 8. Визирає зверху картини
+      { id: 'dresser-frame',   x: 710,  y: 318, scale: 0.80, flipX: -1, rot: 6   }, // 9. За фоторамкою на комоді
+      { id: 'dresser-clock',   x: 840,  y: 316, scale: 0.80, flipX: 1,  rot: -6  }, // 10. За старовинним годинником
+      { id: 'mousehole',       x: 1075, y: 576, scale: 0.90, flipX: 1,  rot: 0   }, // 11. У мишачій нірці в плінтусі
+      { id: 'floor-books',     x: 256,  y: 746, scale: 0.94, flipX: -1, rot: 4   }, // 12. За стопкою книг на підлозі
+      { id: 'yarn-ball',       x: 404,  y: 722, scale: 0.96, flipX: 1,  rot: -6  }, // 13. За клубком червоної пряжі
+      { id: 'plant-pot',       x: 1170, y: 530, scale: 0.86, flipX: -1, rot: 8   }, // 14. Між листям рослини біля горщика
+      { id: 'shelf-top-vase',  x: 1335, y: 254, scale: 0.80, flipX: 1,  rot: -4  }, // 15. За вазою на верхній полиці
+      { id: 'shelf-mid-books', x: 1290, y: 396, scale: 0.82, flipX: 1,  rot: -5  }, // 16. Між книгами на середній полиці
+      { id: 'shelf-bot-box',   x: 1412, y: 552, scale: 0.82, flipX: -1, rot: 4   }, // 17. За скринькою на нижній полиці
+      { id: 'wicker-basket',   x: 1388, y: 604, scale: 0.86, flipX: 1,  rot: -8  }, // 18. Визирає з кошика з пледом
+      { id: 'slipper',         x: 1288, y: 690, scale: 0.94, flipX: 1,  rot: -8  }, // 19. Сховалася у домашньому капці
+      { id: 'rug-corner',      x: 1362, y: 752, scale: 0.98, flipX: 1,  rot: 12  }  // 20. Під загорнутим кутиком килима
+    ];
+
+    /* =========================================================================
+       4. КЕРУВАННЯ СТАНОМ ГРИ ТА ІСТОРІЄЮ РІВНІВ
+    ========================================================================= */
+    const state = {
+      levels: [],
+      currentIndex: -1,
+      phase: 'hunting', // 'hunting' | 'solving' | 'celebrating'
+      successCount: 0,
+      errorCount: 0,
+      recentSpots: [],  // Щоб схованки не повторювалися часто підряд
+      transitionTimer: null
+    };
+
+    const mouseClickable = document.getElementById('mouse-clickable');
+    const mouseInner = document.getElementById('mouse-inner');
+    const taskOverlay = document.getElementById('task-overlay');
+    const expressionDisplay = document.getElementById('expression-display');
+    const answersGrid = document.getElementById('answers-grid');
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    const fxLayer = document.getElementById('fx-layer');
+
+    // Елементи живого котика
+    const catHead = document.getElementById('cat-head');
+    const catMotion = document.getElementById('cat-motion');
+    const pupilLeftWrap = document.getElementById('pupil-left-wrap');
+    const pupilRightWrap = document.getElementById('pupil-right-wrap');
+    const pupilLeft = document.getElementById('pupil-left');
+    const pupilRight = document.getElementById('pupil-right');
+    const eyelidLeft = document.getElementById('eyelid-left');
+    const eyelidRight = document.getElementById('eyelid-right');
+    const happyEyeLeft = document.getElementById('happy-eye-left');
+    const happyEyeRight = document.getElementById('happy-eye-right');
+    const earLeft = document.getElementById('ear-left');
+    const earRight = document.getElementById('ear-right');
+    const catTongue = document.getElementById('cat-tongue');
+
+    /* =========================================================================
+       5. ЖИВА АНІМАЦІЯ КОТИКА (ОЗИРАЄТЬСЯ ПО КІМНАТІ, МОРГАЄ, РЕАГУЄ)
+    ========================================================================= */
+    let catLookTarget = { x: 0, y: 0 };
+    let catCurrentLook = { x: 0, y: 0 };
+    let autoLookTimer = null;
+    let isPointerActive = false;
+    let pointerTimeout = null;
+
+    // Плавний рух очей та голови котика у 60fps
+    function animateCatLoop() {
+      catCurrentLook.x += (catLookTarget.x - catCurrentLook.x) * 0.085;
+      catCurrentLook.y += (catLookTarget.y - catCurrentLook.y) * 0.085;
+
+      const px = catCurrentLook.x * 13;
+      const py = catCurrentLook.y * 9;
+      pupilLeftWrap.setAttribute('transform', `translate(${px.toFixed(2)}, ${py.toFixed(2)})`);
+      pupilRightWrap.setAttribute('transform', `translate(${px.toFixed(2)}, ${py.toFixed(2)})`);
+
+      // Поворот і нахил голови котика в бік, куди він дивиться
+      if (state.phase === 'hunting') {
+        const headRot = catCurrentLook.x * 8;
+        const headShiftX = catCurrentLook.x * 14;
+        const headShiftY = catCurrentLook.y * 7;
+        catHead.setAttribute(
+          'transform',
+          `translate(${headShiftX.toFixed(1)}, ${(-238 + headShiftY).toFixed(1)}) rotate(${headRot.toFixed(2)})`
+        );
+      }
+
+      requestAnimationFrame(animateCatLoop);
+    }
+
+    // Автономне озирання котика в різні боки кімнати під час пошуку мишки
+    function scheduleAutoLook() {
+      clearTimeout(autoLookTimer);
+      autoLookTimer = setTimeout(() => {
+        if (state.phase === 'hunting' && !isPointerActive) {
+          const directions = [
+            { x: -1.0, y: -0.45 }, // дивиться ліворуч на вікно/крісло
+            { x: 1.0,  y: -0.5  }, // дивиться праворуч на книжкову шафу
+            { x: -0.8, y: 0.35  }, // дивиться ліворуч вниз на клубок/книги
+            { x: 0.85, y: 0.3   }, // дивиться праворуч вниз на килим/капець
+            { x: 0.0,  y: -0.65 }, // дивиться вгору на картину/годинник
+            { x: 0.0,  y: 0.0   }  // дивиться прямо на дитину
+          ];
+          const next = directions[Math.floor(Math.random() * directions.length)];
+          catLookTarget = next;
+          twitchEar(Math.random() < 0.5 ? 'left' : 'right');
+        }
+        scheduleAutoLook();
+      }, 1300 + Math.random() * 1500);
+    }
+
+    // Легке стеження очима за курсором дитини
+    document.getElementById('scene').addEventListener('pointermove', (e) => {
+      if (state.phase !== 'hunting') return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ny = ((e.clientY - rect.top) / rect.height) * 2 - 1;
+      catLookTarget = {
+        x: Math.max(-1, Math.min(1, nx)),
+        y: Math.max(-0.8, Math.min(0.6, ny))
+      };
+      isPointerActive = true;
+      clearTimeout(pointerTimeout);
+      pointerTimeout = setTimeout(() => { isPointerActive = false; }, 1100);
+    });
+
+    // Сіпання вухом котика
+    function twitchEar(side) {
+      const el = side === 'left' ? earLeft : earRight;
+      const base = side === 'left' ? 'translate(-108, -108)' : 'translate(108, -108)';
+      const angle = side === 'left' ? -15 : 15;
+      el.style.transition = 'transform 0.12s ease-out';
+      el.setAttribute('transform', `${base} rotate(${angle})`);
+      setTimeout(() => {
+        el.setAttribute('transform', `${base} rotate(0)`);
+      }, 145);
+    }
+
+    // Природне моргання очима котика
+    function scheduleBlink() {
+      setTimeout(() => {
+        if (state.phase !== 'celebrating') {
+          eyelidLeft.setAttribute('d', 'M-42 -40 Q0 -46 42 -40 L42 36 Q0 44 -42 36 Z');
+          eyelidRight.setAttribute('d', 'M-42 -40 Q0 -46 42 -40 L42 36 Q0 44 -42 36 Z');
+          setTimeout(() => {
+            eyelidLeft.setAttribute('d', 'M-42 -40 Q0 -46 42 -40 L42 -40 Q0 -40 -42 -40 Z');
+            eyelidRight.setAttribute('d', 'M-42 -40 Q0 -46 42 -40 L42 -40 Q0 -40 -42 -40 Z');
+          }, 135);
+        }
+        scheduleBlink();
+      }, 2600 + Math.random() * 3200);
+    }
+
+    // Зміна емоційного стану котика: 'hunting' | 'excited' | 'happy' | 'confused'
+    function setCatMood(mood, spot = null) {
+      happyEyeLeft.setAttribute('opacity', '0');
+      happyEyeRight.setAttribute('opacity', '0');
+      catTongue.setAttribute('opacity', '0');
+      pupilLeft.setAttribute('opacity', '1');
+      pupilRight.setAttribute('opacity', '1');
+      catMotion.style.transition = 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      catMotion.setAttribute('transform', 'translate(0, 0) scale(1)');
+
+      if (mood === 'hunting') {
+        pupilLeft.setAttribute('rx', '12');
+        pupilLeft.setAttribute('ry', '25');
+        pupilRight.setAttribute('rx', '12');
+        pupilRight.setAttribute('ry', '25');
+        earLeft.setAttribute('transform', 'translate(-108, -108) rotate(0)');
+        earRight.setAttribute('transform', 'translate(108, -108) rotate(0)');
+      } else if (mood === 'excited') {
+        // Котик помітив мишку — зіниці розширюються, вушка насторожені!
+        pupilLeft.setAttribute('rx', '24');
+        pupilLeft.setAttribute('ry', '28');
+        pupilRight.setAttribute('rx', '24');
+        pupilRight.setAttribute('ry', '28');
+        if (spot) {
+          catLookTarget = {
+            x: Math.max(-1, Math.min(1, (spot.x - 800) / 550)),
+            y: Math.max(-0.8, Math.min(0.5, (spot.y - 550) / 350))
+          };
+          const headRot = catLookTarget.x * 7;
+          catHead.setAttribute('transform', `translate(${(catLookTarget.x * 12).toFixed(1)}, -234) rotate(${headRot.toFixed(1)})`);
+        }
+        catMotion.setAttribute('transform', 'translate(0, 18) scale(1.03, 0.96)');
+        earLeft.setAttribute('transform', 'translate(-108, -108) rotate(8)');
+        earRight.setAttribute('transform', 'translate(108, -108) rotate(-8)');
+      } else if (mood === 'happy') {
+        // Щасливий стрибок котика, примружені очі та язичок
+        happyEyeLeft.setAttribute('opacity', '1');
+        happyEyeRight.setAttribute('opacity', '1');
+        pupilLeft.setAttribute('opacity', '0');
+        pupilRight.setAttribute('opacity', '0');
+        catTongue.setAttribute('opacity', '1');
+        catMotion.setAttribute('transform', 'translate(0, -34) scale(1.06)');
+        catHead.setAttribute('transform', 'translate(0, -242) rotate(-5)');
+        setTimeout(() => {
+          if (state.phase === 'celebrating') {
+            catMotion.setAttribute('transform', 'translate(0, -10) scale(1.02)');
+            catHead.setAttribute('transform', 'translate(0, -238) rotate(5)');
+          }
+        }, 280);
+      } else if (mood === 'confused') {
+        // Здивований нахил голови при помилці
+        const tilt = state.errorCount % 2 === 0 ? -13 : 13;
+        catHead.setAttribute('transform', `translate(0, -232) rotate(${tilt})`);
+        earLeft.setAttribute('transform', 'translate(-108, -108) rotate(-20)');
+        earRight.setAttribute('transform', 'translate(108, -108) rotate(20)');
+        setTimeout(() => {
+          if (state.phase === 'solving') {
+            catHead.setAttribute('transform', 'translate(0, -238) rotate(0)');
+            earLeft.setAttribute('transform', 'translate(-108, -108) rotate(5)');
+            earRight.setAttribute('transform', 'translate(108, -108) rotate(-5)');
+          }
+        }, 550);
+      }
+    }
+
+    /* =========================================================================
+       6. СПЕЦЕФЕКТИ (ЗІРОЧКИ ТА КОНФЕТІ ПРИ УСПІШНІЙ ВІДПОВІДІ)
+    ========================================================================= */
+    function spawnCelebrationFX(originX = 800, originY = 440) {
+      fxLayer.innerHTML = '';
+      const colors = ['#ffd95c', '#ff7b54', '#7ce65e', '#6bc5ff', '#ff9ecd', '#fff4b8'];
+      const count = 34;
+
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+        const speed = 130 + Math.random() * 260;
+        const dx = Math.cos(angle) * speed;
+        const dy = Math.sin(angle) * speed - 70;
+        const color = colors[i % colors.length];
+        const size = 8 + Math.random() * 14;
+
+        const el = document.createElementNS('http://www.w3.org/2000/svg', i % 2 === 0 ? 'polygon' : 'circle');
+        if (i % 2 === 0) {
+          const pts = [];
+          for (let p = 0; p < 10; p++) {
+            const r = p % 2 === 0 ? size : size * 0.45;
+            const a = (Math.PI * p) / 5 - Math.PI / 2;
+            pts.push(`${(Math.cos(a) * r).toFixed(1)},${(Math.sin(a) * r).toFixed(1)}`);
+          }
+          el.setAttribute('points', pts.join(' '));
+        } else {
+          el.setAttribute('r', (size * 0.55).toFixed(1));
+        }
+
+        el.setAttribute('fill', color);
+        el.setAttribute('transform', `translate(${originX}, ${originY}) scale(0.2)`);
+        el.style.transition = `transform ${0.75 + Math.random() * 0.45}s cubic-bezier(0.16, 0.9, 0.3, 1), opacity 0.9s ease-out`;
+        el.style.opacity = '1';
+        fxLayer.appendChild(el);
+
+        requestAnimationFrame(() => {
+          el.setAttribute(
+            'transform',
+            `translate(${(originX + dx).toFixed(1)}, ${(originY + dy).toFixed(1)}) rotate(${(Math.random() * 360).toFixed(0)}) scale(1)`
+          );
+          setTimeout(() => { el.style.opacity = '0'; }, 550);
+        });
+      }
+
+      setTimeout(() => { fxLayer.innerHTML = ''; }, 1400);
+    }
+
+    /* =========================================================================
+       7. ЛОГІКА РІВНІВ (ПОШУК НЕРУХОМОЇ МИШКИ -> ПРИКЛАД -> НОВИЙ РАУНД)
+    ========================================================================= */
+    function createNewLevel() {
+      const prevLevel = state.levels[state.levels.length - 1];
+      const problem = generateProblem(prevLevel ? prevLevel.problem.text : '');
+
+      // Обираємо випадкову схованку, якої не було серед останніх 6 раундів
+      const availableSpots = HIDING_SPOTS.filter(s => !state.recentSpots.includes(s.id));
+      const pool = availableSpots.length > 0 ? availableSpots : HIDING_SPOTS;
+      const spot = pool[Math.floor(Math.random() * pool.length)];
+
+      state.recentSpots.push(spot.id);
+      if (state.recentSpots.length > 6) {
+        state.recentSpots.shift();
+      }
+
+      return { problem, spot };
+    }
+
+    function loadLevel(index) {
+      clearTimeout(state.transitionTimer);
+
+      state.currentIndex = index;
+      state.phase = 'hunting';
+
+      const level = state.levels[index];
+      const { spot } = level;
+
+      // Ховаємо панель прикладу
+      taskOverlay.classList.remove('visible');
+
+      // Розміщуємо мишку в новій схованці (абсолютно нерухомо!)
+      mouseClickable.style.transition = 'none';
+      mouseClickable.style.pointerEvents = 'auto';
+      mouseClickable.style.opacity = '1';
+      mouseClickable.setAttribute(
+        'transform',
+        `translate(${spot.x}, ${spot.y}) scale(${spot.scale * spot.flipX}, ${spot.scale}) rotate(${spot.rot})`
+      );
+      mouseInner.classList.remove('caught');
+
+      // Повертаємо котика в режим активного озирання
+      setCatMood('hunting');
+      updateNavButtons();
+    }
+
+    function updateNavButtons() {
+      btnPrev.disabled = state.currentIndex <= 0;
+    }
+
+    // Клік по знайденій мишці
+    function onMouseFound() {
+      if (state.phase !== 'hunting') return;
+
+      state.phase = 'solving';
+      const level = state.levels[state.currentIndex];
+
+      sound.playMouseSqueak();
+      setTimeout(() => sound.playCatTrill(), 120);
+      setCatMood('excited', level.spot);
+
+      // Мишка реагує стрибком тільки після виявлення
+      mouseClickable.style.pointerEvents = 'none';
+      mouseInner.classList.add('caught');
+
+      expressionDisplay.textContent = `${level.problem.text} = ?`;
+      answersGrid.innerHTML = '';
+
+      level.problem.options.forEach((val) => {
+        const btn = document.createElement('button');
+        btn.className = 'answer-btn';
+        btn.textContent = val;
+        btn.addEventListener('click', () => handleAnswer(btn, val, level.problem.answer));
+        answersGrid.appendChild(btn);
+      });
+
+      setTimeout(() => {
+        if (state.phase === 'solving') {
+          taskOverlay.classList.add('visible');
+        }
+      }, 240);
+    }
+
+    // Перевірка відповіді дитини
+    function handleAnswer(btn, chosen, correct) {
+      if (state.phase !== 'solving') return;
+
+      if (chosen === correct) {
+        state.phase = 'celebrating';
+        state.successCount++;
+
+        btn.classList.add('correct');
+        expressionDisplay.textContent = `${state.levels[state.currentIndex].problem.text} = ${correct}`;
+        Array.from(answersGrid.children).forEach(b => b.disabled = true);
+
+        sound.playSuccess(state.successCount);
+        setCatMood('happy');
+        spawnCelebrationFX(800, 440);
+
+        // Мишка швиденько ховається
+        mouseClickable.style.transition = 'opacity 0.3s ease';
+        mouseClickable.style.opacity = '0';
+
+        state.transitionTimer = setTimeout(() => {
+          goNextLevel();
+        }, 1450);
+      } else {
+        state.errorCount++;
+        btn.classList.add('wrong');
+        btn.disabled = true;
+        sound.playError(state.errorCount);
+        setCatMood('confused');
+      }
+    }
+
+    function goNextLevel() {
+      if (state.currentIndex < state.levels.length - 1) {
+        loadLevel(state.currentIndex + 1);
+      } else {
+        state.levels.push(createNewLevel());
+        loadLevel(state.levels.length - 1);
+      }
+    }
+
+    function goPrevLevel() {
+      if (state.currentIndex > 0) {
+        loadLevel(state.currentIndex - 1);
+      }
+    }
+
+    /* =========================================================================
+       8. ПІДКЛЮЧЕННЯ ПОДІЙ ТА СТАРТ ГРИ
+    ========================================================================= */
+    mouseClickable.addEventListener('click', onMouseFound);
+
+    btnNext.addEventListener('click', () => {
+      sound.playClick();
+      goNextLevel();
+    });
+
+    btnPrev.addEventListener('click', () => {
+      sound.playClick();
+      goPrevLevel();
+    });
+
+    // Керування стрілками клавіатури для зручності на уроці
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') {
+        sound.playClick();
+        goNextLevel();
+      } else if (e.key === 'ArrowLeft' && state.currentIndex > 0) {
+        sound.playClick();
+        goPrevLevel();
+      }
+    });
+
+    // Старт гри
+    state.levels.push(createNewLevel());
+    loadLevel(0);
+    animateCatLoop();
+    scheduleAutoLook();
+    scheduleBlink();
+  </script>
+</body>
+</html>
