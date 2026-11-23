@@ -1,0 +1,2005 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>1-10</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #1f4728;
+      font-family: 'Trebuchet MS', 'Georgia', sans-serif;
+      cursor: default;
+      touch-action: manipulation;
+    }
+
+    #game-viewport {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: radial-gradient(circle at 50% 25%, #a8ebff 0%, #3b8c42 100%);
+    }
+
+    #bg-svg {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    #stage-svg {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 10;
+      pointer-events: auto;
+    }
+
+    #fx-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    /* Ambient Close-Up Meadow Animations */
+    @keyframes cloudDrift {
+      0%, 100% { transform: translateX(-24px); }
+      50%      { transform: translateX(28px); }
+    }
+
+    @keyframes frondSwayL {
+      0%, 100% { transform: rotate(0deg); }
+      50%      { transform: rotate(4.5deg); }
+    }
+
+    @keyframes frondSwayR {
+      0%, 100% { transform: rotate(0deg); }
+      50%      { transform: rotate(-4.2deg); }
+    }
+
+    @keyframes grassBreeze {
+      0%, 100% { transform: skewX(0deg); }
+      50%      { transform: skewX(5.5deg); }
+    }
+
+    @keyframes rainbowShimmer {
+      0%, 100% { opacity: 0.42; }
+      50%      { opacity: 0.68; }
+    }
+
+    @keyframes sunRayPulse {
+      0%, 100% { opacity: 0.32; }
+      50%      { opacity: 0.58; }
+    }
+
+    @keyframes brookSparkle {
+      0%, 100% { opacity: 0.35; transform: translateX(0px); }
+      50%      { opacity: 0.85; transform: translateX(18px); }
+    }
+
+    #bg-clouds     { animation: cloudDrift 38s ease-in-out infinite; }
+    #fg-branch-l   { transform-origin: 0px 0px; animation: frondSwayL 6.4s ease-in-out infinite; }
+    #fg-branch-r   { transform-origin: 1600px 0px; animation: frondSwayR 7.2s ease-in-out infinite; }
+    #fg-grass-l    { transform-origin: 80px 900px; animation: grassBreeze 4.8s ease-in-out infinite; }
+    #fg-grass-r    { transform-origin: 1520px 900px; animation: grassBreeze 5.4s ease-in-out infinite reverse; }
+    #soft-rainbow  { animation: rainbowShimmer 8s ease-in-out infinite; }
+    .sun-beam      { animation: sunRayPulse 6.5s ease-in-out infinite; mix-blend-mode: screen; }
+    .water-glint   { animation: brookSparkle 4.2s ease-in-out infinite; }
+
+    /* Safe Interactive Hover/Active (No CSS transform on positioned <g>) */
+    .interactive-node {
+      cursor: pointer;
+      pointer-events: all;
+      transition: filter 0.18s ease;
+    }
+
+    .interactive-node:hover {
+      filter: brightness(1.1) drop-shadow(0 8px 16px rgba(255, 236, 130, 0.65));
+    }
+
+    .interactive-node:active {
+      filter: brightness(0.95) drop-shadow(0 3px 8px rgba(255, 210, 90, 0.45));
+    }
+
+    .hit-target {
+      fill: rgba(255, 255, 255, 0.001);
+      pointer-events: all;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-viewport">
+    <!-- ========================================================================
+         LAYER 1: CLOSE-UP SUNLIT ENCHANTED MEADOW BACKGROUND (1600x900, slice)
+         Soft bokeh background + rich lush foreground clearing
+         ======================================================================== -->
+    <svg id="bg-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="dof-soft" x="-15%" y="-15%" width="130%" height="130%">
+          <feGaussianBlur stdDeviation="8" />
+        </filter>
+        <filter id="dof-deep" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="16" />
+        </filter>
+        <filter id="dof-fg" x="-15%" y="-15%" width="130%" height="130%">
+          <feGaussianBlur stdDeviation="3.5" />
+        </filter>
+
+        <linearGradient id="sky-close-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#60c5f2" />
+          <stop offset="55%" stop-color="#b5ecfc" />
+          <stop offset="100%" stop-color="#fff6cf" />
+        </linearGradient>
+
+        <radialGradient id="sun-bloom" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#fffff5" stop-opacity="1" />
+          <stop offset="35%" stop-color="#fff0a6" stop-opacity="0.72" />
+          <stop offset="72%" stop-color="#ffd56b" stop-opacity="0.2" />
+          <stop offset="100%" stop-color="#ffc145" stop-opacity="0" />
+        </radialGradient>
+
+        <linearGradient id="sun-ray-grad" x1="0%" y1="0%" x2="45%" y2="100%">
+          <stop offset="0%" stop-color="#fffad6" stop-opacity="0.48" />
+          <stop offset="60%" stop-color="#ffe999" stop-opacity="0.16" />
+          <stop offset="100%" stop-color="#ffd86e" stop-opacity="0" />
+        </linearGradient>
+
+        <linearGradient id="hill-bokeh-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#8ae07e" />
+          <stop offset="100%" stop-color="#4ea854" />
+        </linearGradient>
+
+        <linearGradient id="brook-close-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#4ec2e6" />
+          <stop offset="45%" stop-color="#9cf0fc" />
+          <stop offset="100%" stop-color="#45b6db" />
+        </linearGradient>
+
+        <linearGradient id="meadow-close-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#82d964" />
+          <stop offset="28%" stop-color="#5ec24e" />
+          <stop offset="68%" stop-color="#3fa142" />
+          <stop offset="100%" stop-color="#22662b" />
+        </linearGradient>
+
+        <pattern id="grass-texture" width="140" height="80" patternUnits="userSpaceOnUse">
+          <path d="M24 38 Q30 22 38 35 M32 38 Q42 20 48 36" stroke="#9bf075" stroke-width="2.6" fill="none" stroke-linecap="round" opacity="0.34" />
+          <path d="M98 62 Q104 46 112 58 M106 62 Q115 48 122 60" stroke="#256b2b" stroke-width="2.4" fill="none" stroke-linecap="round" opacity="0.28" />
+          <circle cx="68" cy="24" r="3.4" fill="#fff799" opacity="0.45" />
+          <circle cx="122" cy="18" r="2.8" fill="#ffc4d6" opacity="0.42" />
+        </pattern>
+      </defs>
+
+      <!-- UPPER SKY (Higher horizon for close-up camera!) -->
+      <rect x="0" y="0" width="1600" height="310" fill="url(#sky-close-grad)" />
+
+      <!-- WARM SUN BLOOM -->
+      <circle cx="310" cy="75" r="210" fill="url(#sun-bloom)" />
+
+      <!-- SOFT BOKEH RAINBOW ARCH -->
+      <g id="soft-rainbow" fill="none" stroke-linecap="round" filter="url(#dof-deep)">
+        <path d="M220 350 A620 420 0 0 1 1420 350" stroke="#ff7a8a" stroke-width="26" opacity="0.52" />
+        <path d="M246 350 A594 396 0 0 1 1394 350" stroke="#ffb86c" stroke-width="24" opacity="0.52" />
+        <path d="M272 350 A568 372 0 0 1 1368 350" stroke="#ffe97d" stroke-width="24" opacity="0.55" />
+        <path d="M298 350 A542 348 0 0 1 1342 350" stroke="#7ce896" stroke-width="24" opacity="0.5" />
+        <path d="M324 350 A516 324 0 0 1 1316 350" stroke="#75d3ff" stroke-width="24" opacity="0.5" />
+        <path d="M350 350 A490 300 0 0 1 1290 350" stroke="#b594ff" stroke-width="24" opacity="0.46" />
+      </g>
+
+      <!-- SOFT CLOUDS -->
+      <g id="bg-clouds" fill="#ffffff" fill-opacity="0.78" filter="url(#dof-soft)">
+        <path d="M460 118 Q505 60 578 82 Q635 38 712 80 Q775 72 805 120 Z" />
+        <path d="M1040 105 Q1088 55 1158 72 Q1218 35 1295 76 Q1352 68 1380 112 Z" />
+      </g>
+
+      <!-- SOFT-FOCUS MEADOW HILLS & BLOOMING BUSHES BEHIND CLEARING -->
+      <g filter="url(#dof-soft)">
+        <path d="M-40 275 Q360 165 810 245 Q1230 160 1640 250 L1640 370 L-40 370 Z" fill="url(#hill-bokeh-grad)" />
+        <!-- Out-of-focus bokeh wildflowers in background -->
+        <circle cx="240" cy="245" r="24" fill="#ff9ebb" opacity="0.52" />
+        <circle cx="300" cy="260" r="18" fill="#ffe66d" opacity="0.56" />
+        <circle cx="1290" cy="238" r="26" fill="#c77dff" opacity="0.48" />
+        <circle cx="1365" cy="255" r="20" fill="#ff9ebb" opacity="0.55" />
+        <circle cx="960" cy="252" r="16" fill="#fff3b0" opacity="0.6" />
+      </g>
+
+      <!-- SPARKLING BROOK RIBBON IN MID-BACKGROUND -->
+      <g filter="url(#dof-soft)">
+        <path d="M-40 330 Q420 282 820 310 Q1240 338 1640 288 L1640 365 Q1240 402 820 372 Q420 344 -40 388 Z" fill="url(#brook-close-grad)" />
+      </g>
+      <g class="water-glint" stroke="#eaffff" stroke-width="4" stroke-linecap="round" opacity="0.65" fill="none">
+        <path d="M220 335 Q310 326 400 334" />
+        <path d="M680 342 Q790 334 895 344" />
+        <path d="M1140 350 Q1245 340 1350 348" />
+      </g>
+
+      <!-- LUSH CLOSE-UP MEADOW FLOOR (Occupies lower 62% of viewport!) -->
+      <path d="M-40 355 Q420 320 800 334 Q1220 318 1640 350 L1640 920 L-40 920 Z" fill="url(#meadow-close-grad)" />
+      <rect x="0" y="330" width="1600" height="570" fill="url(#grass-texture)" />
+
+      <!-- WARM SUNLIT SPOTLIGHT ON THE CLEARING -->
+      <ellipse cx="800" cy="590" rx="690" ry="260" fill="#e6ff9e" fill-opacity="0.18" filter="url(#dof-deep)" />
+
+      <!-- DIAGONAL GOLDEN SUNBEAMS -->
+      <g pointer-events="none">
+        <polygon class="sun-beam" points="210,0 440,0 1080,900 560,900" fill="url(#sun-ray-grad)" />
+        <polygon class="sun-beam" style="animation-delay: -3.2s;" points="410,0 600,0 1380,900 940,900" fill="url(#sun-ray-grad)" />
+      </g>
+
+      <!-- CLOSE-UP OVERHANGING WILLOW & BLOSSOM FRAMING (Top corners) -->
+      <g id="fg-branch-l" opacity="0.9">
+        <path d="M-10 -10 Q60 110 24 260" stroke="#36853c" stroke-width="5" fill="none" />
+        <path d="M55 -10 Q112 95 86 215" stroke="#479e4a" stroke-width="4" fill="none" />
+        <g fill="#69c75a">
+          <ellipse cx="38" cy="78" rx="14" ry="30" transform="rotate(-18 38 78)" />
+          <ellipse cx="42" cy="162" rx="13" ry="28" transform="rotate(14 42 162)" />
+          <ellipse cx="96" cy="92" rx="12" ry="26" transform="rotate(18 96 92)" />
+          <ellipse cx="92" cy="175" rx="11" ry="24" transform="rotate(-12 92 175)" />
+        </g>
+      </g>
+
+      <g id="fg-branch-r" opacity="0.88">
+        <path d="M1610 -10 Q1545 105 1575 245" stroke="#36853c" stroke-width="5" fill="none" />
+        <g fill="#69c75a">
+          <ellipse cx="1562" cy="82" rx="14" ry="28" transform="rotate(18 1562 82)" />
+          <ellipse cx="1558" cy="165" rx="13" ry="26" transform="rotate(-14 1558 165)" />
+        </g>
+      </g>
+
+      <!-- MACRO SOFT-FOCUS FOREGROUND GRASS BLADES (Bottom corners for close-up depth) -->
+      <g id="fg-grass-l" filter="url(#dof-fg)" opacity="0.85">
+        <path d="M-20 920 Q20 790 65 710 Q45 820 35 920 Z" fill="#236b2c" />
+        <path d="M35 920 Q85 780 140 735 Q105 835 95 920 Z" fill="#2f8536" />
+        <path d="M90 920 Q135 835 190 795 Q155 865 145 920 Z" fill="#46a348" />
+        <circle cx="65" cy="712" r="14" fill="#ff8fab" />
+        <circle cx="65" cy="712" r="5.5" fill="#ffe66d" />
+      </g>
+
+      <g id="fg-grass-r" filter="url(#dof-fg)" opacity="0.85">
+        <path d="M1620 920 Q1575 795 1530 725 Q1555 825 1565 920 Z" fill="#236b2c" />
+        <path d="M1560 920 Q1505 810 1445 765 Q1485 845 1500 920 Z" fill="#2f8536" />
+      </g>
+    </svg>
+
+    <!-- ========================================================================
+         LAYER 2: CLOSE-UP INTERACTIVE STAGE & UI SVG (1600x900, meet)
+         ======================================================================== -->
+    <svg id="stage-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="shadow-deep" x="-20%" y="-20%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="10" stdDeviation="8" flood-color="#102e17" flood-opacity="0.46" />
+        </filter>
+        <filter id="shadow-soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#14361c" flood-opacity="0.36" />
+        </filter>
+        <filter id="glow-gold" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="7" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        <!-- Wide Close-Up Sunlit Clearing Pad -->
+        <radialGradient id="clearing-close-grad" cx="50%" cy="50%" r="54%">
+          <stop offset="0%" stop-color="#faecc5" />
+          <stop offset="52%" stop-color="#ebd498" />
+          <stop offset="78%" stop-color="#98c961" />
+          <stop offset="94%" stop-color="#58a346" />
+          <stop offset="100%" stop-color="#3b8236" />
+        </radialGradient>
+
+        <pattern id="pebble-close" width="60" height="32" patternUnits="userSpaceOnUse">
+          <ellipse cx="16" cy="12" rx="8" ry="4" fill="#cca362" fill-opacity="0.2" />
+          <ellipse cx="44" cy="24" rx="7" ry="3.5" fill="#fff9e0" fill-opacity="0.24" />
+        </pattern>
+
+        <!-- Botanical Wood & Gold UI Gradients -->
+        <radialGradient id="btn-wood-face" cx="35%" cy="28%" r="72%">
+          <stop offset="0%" stop-color="#87cf74" />
+          <stop offset="52%" stop-color="#4e9e52" />
+          <stop offset="90%" stop-color="#2c6b38" />
+          <stop offset="100%" stop-color="#1c4726" />
+        </radialGradient>
+
+        <linearGradient id="btn-gold-rim" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#fff0a6" />
+          <stop offset="48%" stop-color="#d49a3b" />
+          <stop offset="100%" stop-color="#7a4c14" />
+        </linearGradient>
+
+        <linearGradient id="garland-wood-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#69b058" />
+          <stop offset="45%" stop-color="#438742" />
+          <stop offset="100%" stop-color="#24542b" />
+        </linearGradient>
+
+        <radialGradient id="flower-core-grad" cx="42%" cy="34%" r="68%">
+          <stop offset="0%" stop-color="#fffdf0" />
+          <stop offset="66%" stop-color="#fce2a2" />
+          <stop offset="100%" stop-color="#deaa49" />
+        </radialGradient>
+
+        <!-- Close-Up Detailed Pony Gradients -->
+        <radialGradient id="pony-coat-grad" cx="44%" cy="32%" r="68%">
+          <stop offset="0%" stop-color="#fff9f0" />
+          <stop offset="50%" stop-color="#fce2c2" />
+          <stop offset="84%" stop-color="#e5ae7d" />
+          <stop offset="100%" stop-color="#bf7c4b" />
+        </radialGradient>
+
+        <radialGradient id="pony-coat-back" cx="40%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#ebd0b0" />
+          <stop offset="65%" stop-color="#c99367" />
+          <stop offset="100%" stop-color="#99613a" />
+        </radialGradient>
+
+        <linearGradient id="pony-mane-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ff7aa2" />
+          <stop offset="32%" stop-color="#ffb85c" />
+          <stop offset="66%" stop-color="#9d7bff" />
+          <stop offset="100%" stop-color="#4dd0e1" />
+        </linearGradient>
+
+        <linearGradient id="pony-tail-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ff85a8" />
+          <stop offset="38%" stop-color="#ffc266" />
+          <stop offset="72%" stop-color="#a882ff" />
+          <stop offset="100%" stop-color="#5ce1e6" />
+        </linearGradient>
+
+        <radialGradient id="pony-eye-iris" cx="42%" cy="40%" r="60%">
+          <stop offset="0%" stop-color="#99f0ff" />
+          <stop offset="44%" stop-color="#4788eb" />
+          <stop offset="82%" stop-color="#293b9c" />
+          <stop offset="100%" stop-color="#14184f" />
+        </radialGradient>
+
+        <linearGradient id="pony-hoof-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#ffe48f" />
+          <stop offset="55%" stop-color="#d49833" />
+          <stop offset="100%" stop-color="#85550f" />
+        </linearGradient>
+
+        <linearGradient id="sepal-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#7cd461" />
+          <stop offset="60%" stop-color="#449940" />
+          <stop offset="100%" stop-color="#225c27" />
+        </linearGradient>
+      </defs>
+
+      <!-- ====================================================================
+           1. HUGE CLOSE-UP SUNLIT MEADOW CLEARING
+           ==================================================================== -->
+      <g id="meadow-clearing" filter="url(#shadow-deep)">
+        <ellipse cx="800" cy="690" rx="760" ry="215" fill="#3a8034" fill-opacity="0.55" />
+        <ellipse cx="800" cy="690" rx="742" ry="200" fill="url(#clearing-close-grad)" stroke="#3e7d34" stroke-width="5" />
+        <ellipse cx="800" cy="690" rx="730" ry="192" fill="url(#pebble-close)" />
+        <ellipse cx="800" cy="690" rx="680" ry="172" fill="none" stroke="#fff7d6" stroke-width="3.5" stroke-dasharray="15 11" stroke-opacity="0.52" />
+      </g>
+
+      <!-- ====================================================================
+           2. CONNECTING FLOWER VINE & DIRECTIONAL HORSESHOE TRAIL
+           ==================================================================== -->
+      <g id="vine-connecting-layer"></g>
+      <g id="hoof-trail-layer"></g>
+
+      <!-- ====================================================================
+           3. HERO CLOSE-UP FANTASY PONY (1.8x Larger, Richer Anatomical Detail)
+           ==================================================================== -->
+      <g id="pony-root" transform="translate(800, 455)">
+        <!-- Ground Shadow -->
+        <ellipse id="pony-shadow" cx="0" cy="96" rx="126" ry="28" fill="#17381b" fill-opacity="0.42" filter="url(#shadow-soft)" />
+
+        <!-- Happy Sparkle Aura -->
+        <g id="pony-joy-aura" opacity="0" pointer-events="none">
+          <circle cx="0" cy="-26" r="132" fill="none" stroke="#fff29c" stroke-width="3.5" stroke-dasharray="12 9" opacity="0.72" />
+          <circle cx="0" cy="-26" r="164" fill="none" stroke="#ff9ebb" stroke-width="2.8" stroke-dasharray="8 11" opacity="0.48" />
+        </g>
+
+        <!-- Facing Flip Group -->
+        <g id="pony-flip-group" transform="scale(1, 1)">
+          <!-- Close-Up Scale Wrapper (1.78x) -->
+          <g transform="scale(1.78)">
+            <!-- Whole Body Prance / Breath / Rear Rig -->
+            <g id="pony-body-rig" transform="translate(0, 0)">
+
+              <!-- FLOWING LAYERED RAINBOW TAIL -->
+              <g id="pony-tail-group" transform="translate(-52, -16)">
+                <path d="M0 0 C-32 -20, -72 -4, -67 36 C-62 64, -34 76, -17 60 C-29 47, -26 24, -4 14 Z" fill="url(#pony-tail-grad)" stroke="#854264" stroke-width="1.4" />
+                <path d="M-8 5 C-36 1, -55 24, -46 53" fill="none" stroke="#fff5cc" stroke-width="2.6" stroke-linecap="round" opacity="0.78" />
+                <path d="M-14 14 C-34 16, -42 36, -32 56" fill="none" stroke="#ff7aa2" stroke-width="2.2" stroke-linecap="round" opacity="0.7" />
+                <path d="M-6 11 C-24 14, -32 32, -23 48" fill="none" stroke="#75e6ff" stroke-width="1.8" stroke-linecap="round" opacity="0.75" />
+              </g>
+
+              <!-- BACK-LEFT LEG (Far side) -->
+              <g id="pony-leg-bl" transform="translate(-38, 12)">
+                <path d="M-12 -8 C-16 8, -14 26, -8 40 L4 40 C8 24, 12 8, 8 -8 Z" fill="url(#pony-coat-back)" stroke="#85502c" stroke-width="1.3" />
+                <path d="M-10 34 Q-2 30 6 34 L7 45 C7 49, -11 49, -11 45 Z" fill="url(#pony-hoof-grad)" stroke="#69420b" stroke-width="1.3" />
+              </g>
+
+              <!-- FRONT-LEFT LEG (Far side) -->
+              <g id="pony-leg-fl" transform="translate(26, 12)">
+                <path d="M-9 -8 C-11 10, -10 26, -7 40 L5 40 C8 24, 10 10, 8 -8 Z" fill="url(#pony-coat-back)" stroke="#85502c" stroke-width="1.3" />
+                <path d="M-8 34 Q-1 30 6 34 L7 45 C7 49, -9 49, -9 45 Z" fill="url(#pony-hoof-grad)" stroke="#69420b" stroke-width="1.3" />
+              </g>
+
+              <!-- SCULPTED PONY TORSO & HINDQUARTERS -->
+              <g id="pony-torso">
+                <path d="M-54 -6 C-56 -32, -26 -38, 2 -32 C26 -27, 48 -32, 54 -10 C60 12, 44 28, 18 28 C-8 28, -48 26, -54 -6 Z" fill="url(#pony-coat-grad)" stroke="#995e35" stroke-width="1.4" />
+                <!-- Soft Sunlit Dapples & Coat Highlight -->
+                <ellipse cx="4" cy="-16" rx="28" ry="11" fill="#ffffff" opacity="0.22" />
+                <circle cx="-30" cy="-13" r="4.8" fill="#fffaf0" opacity="0.58" />
+                <circle cx="-20" cy="-5" r="3.4" fill="#fffaf0" opacity="0.52" />
+                <circle cx="-37" cy="-3" r="3.1" fill="#fffaf0" opacity="0.48" />
+                <!-- Blossom Cutie Mark on Flank -->
+                <g transform="translate(-31, 0)">
+                  <circle cx="-3.5" cy="-2.5" r="3.6" fill="#ff8fb1" opacity="0.78" />
+                  <circle cx="3.5" cy="-2.5" r="3.6" fill="#ff8fb1" opacity="0.78" />
+                  <circle cx="0" cy="3.5" r="3.6" fill="#ff8fb1" opacity="0.78" />
+                  <circle cx="0" cy="0" r="2.6" fill="#ffe97d" />
+                </g>
+                <!-- Iridescent Fairy-Pony Wing with Delicate Veins -->
+                <g id="pony-wing" transform="translate(-4, -22)">
+                  <path d="M0 0 C-18 -36, -52 -38, -55 -17 C-57 -2, -33 5, -23 5 C-33 11, -25 22, -10 13 Z" fill="#fff7fd" fill-opacity="0.86" stroke="#c394ff" stroke-width="1.4" />
+                  <path d="M-5 -4 C-22 -24, -40 -23, -45 -12" fill="none" stroke="#78e0ff" stroke-width="1.6" stroke-linecap="round" opacity="0.8" />
+                  <path d="M-10 3 C-22 -6, -34 -6, -40 -2" fill="none" stroke="#ff9ebb" stroke-width="1.3" stroke-linecap="round" opacity="0.7" />
+                </g>
+              </g>
+
+              <!-- BACK-RIGHT LEG (Near side) -->
+              <g id="pony-leg-br" transform="translate(-28, 14)">
+                <path d="M-13 -12 C-17 6, -14 26, -8 40 L5 40 C9 24, 14 6, 10 -12 Z" fill="url(#pony-coat-grad)" stroke="#995e35" stroke-width="1.4" />
+                <path d="M-11 30 Q-14 35 -8 37 Q-2 33 6 36 Q10 33 7 29" fill="#fff9f0" stroke="#c48a5e" stroke-width="1" />
+                <path d="M-9 35 Q-1 31 7 35 L8 46 C8 50, -10 50, -10 46 Z" fill="url(#pony-hoof-grad)" stroke="#69420b" stroke-width="1.3" />
+                <ellipse cx="-3" cy="40" rx="2.5" ry="1.4" fill="#fff7d6" opacity="0.65" />
+              </g>
+
+              <!-- FRONT-RIGHT LEG (Near side) -->
+              <g id="pony-leg-fr" transform="translate(36, 14)">
+                <path d="M-9 -12 C-11 8, -10 26, -7 40 L6 40 C9 24, 11 8, 9 -12 Z" fill="url(#pony-coat-grad)" stroke="#995e35" stroke-width="1.4" />
+                <path d="M-9 30 Q-12 35 -6 37 Q0 33 7 36 Q10 33 7 29" fill="#fff9f0" stroke="#c48a5e" stroke-width="1" />
+                <path d="M-8 35 Q0 31 7 35 L8 46 C8 50, -9 50, -9 46 Z" fill="url(#pony-hoof-grad)" stroke="#69420b" stroke-width="1.3" />
+                <ellipse cx="-2" cy="40" rx="2.4" ry="1.3" fill="#fff7d6" opacity="0.65" />
+              </g>
+
+              <!-- ARCHED NECK & DETAILED CLOSE-UP HEAD -->
+              <g id="pony-neck-head" transform="translate(34, -18)">
+                <!-- Back Mane Flowing along Neck -->
+                <path d="M-12 -46 C-36 -36, -44 -6, -29 18 C-16 9, -9 -10, -3 -34 Z" fill="url(#pony-mane-grad)" stroke="#854264" stroke-width="1.3" />
+                <path d="M-16 -34 C-30 -24, -34 -6, -24 10" fill="none" stroke="#fff4cc" stroke-width="2" stroke-linecap="round" opacity="0.72" />
+
+                <!-- Arched Neck -->
+                <path d="M-16 14 C-14 -12, -8 -36, 8 -50 L28 -36 C20 -16, 20 6, 14 22 Z" fill="url(#pony-coat-grad)" stroke="#995e35" stroke-width="1.4" />
+
+                <!-- Head Sub-Group -->
+                <g id="pony-head" transform="translate(18, -46)">
+                  <!-- Far Ear -->
+                  <g id="pony-ear-back" transform="translate(-8, -24)">
+                    <path d="M-6 8 C-10 -8, -4 -22, 4 -24 C10 -16, 10 0, 6 10 Z" fill="url(#pony-coat-back)" stroke="#85502c" stroke-width="1.3" />
+                  </g>
+
+                  <!-- Sculpted Pony Head & Soft Muzzle -->
+                  <path d="M-24 -12 C-24 -30, -4 -34, 14 -26 C28 -20, 44 -8, 50 4 C54 13, 46 24, 34 24 C22 24, 12 20, 0 22 C-16 24, -26 10, -24 -12 Z" fill="url(#pony-coat-grad)" stroke="#995e35" stroke-width="1.4" />
+
+                  <!-- Soft Cream Muzzle Highlight -->
+                  <path d="M26 -6 C38 -4, 49 2, 50 9 C51 17, 42 24, 32 23 C24 22, 20 12, 26 -6 Z" fill="#fff8ef" opacity="0.76" />
+
+                  <!-- Velvety Nostril & Expressive Mouth -->
+                  <ellipse cx="42" cy="7" rx="3.2" ry="2.1" fill="#b5674e" transform="rotate(-15 42 7)" />
+                  <path id="pony-mouth-smile" d="M29 17 Q38 22.5 46 15" fill="none" stroke="#85482e" stroke-width="1.8" stroke-linecap="round" />
+                  <path id="pony-mouth-open" d="M33 17 Q40 26 45 16 Z" fill="#ff7a8a" stroke="#8a3846" stroke-width="1" opacity="0" />
+
+                  <!-- Rosy Cheek Blush -->
+                  <ellipse id="pony-blush" cx="20" cy="12" rx="9" ry="5.5" fill="#ff7597" opacity="0" style="transition: opacity 0.3s ease;" />
+
+                  <!-- EXPRESSIVE LARGE SAPPHIRE EYE WITH DUAL CATCHLIGHTS -->
+                  <g id="pony-eye-open" transform="translate(12, -5)">
+                    <ellipse cx="0" cy="0" rx="12" ry="13" fill="#1c1336" />
+                    <ellipse cx="0" cy="0" rx="10.8" ry="11.8" fill="url(#pony-eye-iris)" />
+                    <ellipse id="pony-pupil" cx="1" cy="0" rx="5.2" ry="7.4" fill="#0b0821" />
+                    <circle cx="-3.6" cy="-4.8" r="3.8" fill="#ffffff" />
+                    <circle cx="4" cy="4" r="1.9" fill="#ffffff" opacity="0.9" />
+                    <circle cx="-1" cy="6.2" r="1.1" fill="#a8f0ff" opacity="0.85" />
+                    <!-- Curved Eyelashes -->
+                    <path d="M-9 -8 L-13 -12 M-5 -11.5 L-8 -16.5 M1 -12.5 L1 -17.5" stroke="#291742" stroke-width="1.8" stroke-linecap="round" />
+                    <!-- Animated Eyelid -->
+                    <ellipse id="pony-eyelid" cx="0" cy="0" rx="12.2" ry="13.2" fill="url(#pony-coat-grad)" transform="scale(1, 0)" />
+                  </g>
+
+                  <!-- Happy Closed Smiling Eye -->
+                  <g id="pony-eye-happy" transform="translate(12, -5)" opacity="0">
+                    <path d="M-10 2 Q0 -11 11 2" fill="none" stroke="#472210" stroke-width="3.2" stroke-linecap="round" />
+                    <path d="M-9 -1 L-13 -5 M10 -1 L14 -5" stroke="#472210" stroke-width="2" stroke-linecap="round" />
+                  </g>
+
+                  <!-- Near Ear -->
+                  <g id="pony-ear-front" transform="translate(-16, -24)">
+                    <path d="M-7 10 C-11 -8, -4 -24, 5 -26 C12 -18, 12 0, 7 12 Z" fill="url(#pony-coat-grad)" stroke="#995e35" stroke-width="1.4" />
+                    <path d="M-3 7 C-6 -5, -1 -16, 4 -18 C8 -12, 8 -1, 4 8 Z" fill="#ffb8c6" />
+                  </g>
+
+                  <!-- FLOWING FOREHEAD MANE LOCKS & MINI BLOSSOM -->
+                  <g id="pony-forelock">
+                    <path d="M-12 -28 C2 -42, 24 -36, 29 -17 C16 -22, 4 -20, -6 -10 C-16 -14, -18 -20, -12 -28 Z" fill="url(#pony-mane-grad)" stroke="#854264" stroke-width="1.3" />
+                    <path d="M-6 -26 C6 -34, 18 -30, 23 -19" fill="none" stroke="#fff6cc" stroke-width="2" stroke-linecap="round" opacity="0.82" />
+                    <g transform="translate(-14, -18)">
+                      <circle cx="-4" cy="-3" r="4" fill="#ff85a8" />
+                      <circle cx="4" cy="-3" r="4" fill="#ff85a8" />
+                      <circle cx="0" cy="4" r="4" fill="#ff85a8" />
+                      <circle cx="0" cy="0" r="2.6" fill="#ffe66d" />
+                    </g>
+                  </g>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+
+        <!-- Generous Static Hitbox for Petting the Close-Up Pony -->
+        <rect id="pony-interactive-hitbox" class="hit-target" x="-140" y="-170" width="280" height="270" rx="50" />
+      </g>
+
+      <!-- ====================================================================
+           4. GIANT FOREGROUND INTERACTIVE FLOWER BUDS LAYER (r = 90..98!)
+           ==================================================================== -->
+      <g id="buds-layer"></g>
+
+      <!-- ====================================================================
+           5. TOP-CENTER TASK EMBLEM MEDALLION (+1/+2/+3 or -1/-2/-3)
+           Fades out gracefully when 1..10 helper garland slides down
+           ==================================================================== -->
+      <g id="task-emblem-group" transform="translate(800, 74)" filter="url(#shadow-deep)" style="transition: opacity 0.25s ease;">
+        <rect x="-126" y="-33" width="252" height="66" rx="33" fill="url(#btn-gold-rim)" stroke="#5c360c" stroke-width="3.2" />
+        <rect x="-118" y="-25" width="236" height="50" rx="25" fill="url(#flower-core-grad)" stroke="#9e6b24" stroke-width="2" stroke-dasharray="6 4" />
+        <path d="M-132 -4 C-150 -18, -152 6, -132 8 Z" fill="#63bd57" stroke="#2a6328" stroke-width="1.8" />
+        <path d="M132 -4 C150 -18, 152 6, 132 8 Z" fill="#63bd57" stroke="#2a6328" stroke-width="1.8" />
+        <g id="task-emblem-content"></g>
+      </g>
+
+      <!-- ====================================================================
+           6. COLLAPSIBLE 1..10 BLOOMING GARLAND HELPER
+           ==================================================================== -->
+      <g id="helper-garland-wrapper" transform="translate(0, -220)">
+        <line x1="300" y1="-60" x2="300" y2="56" stroke="#4da348" stroke-width="7" stroke-dasharray="9 4" />
+        <line x1="1170" y1="-60" x2="1170" y2="56" stroke="#4da348" stroke-width="7" stroke-dasharray="9 4" />
+
+        <!-- Carved Botanical Arch Board (fits cleanly between left & right top controls!) -->
+        <g filter="url(#shadow-deep)">
+          <rect x="172" y="18" width="1060" height="110" rx="30" fill="url(#garland-wood-grad)" stroke="#1d4a22" stroke-width="4.5" />
+          <rect x="185" y="29" width="1034" height="88" rx="22" fill="#2c6334" stroke="#a6e079" stroke-width="2.2" stroke-dasharray="10 6" />
+          <path d="M220 75 Q702 93 1184 75" fill="none" stroke="#ffe58f" stroke-width="3.2" stroke-dasharray="8 6" opacity="0.7" />
+        </g>
+
+        <!-- 10 Miniature Bloomed Flowers (1..10) -->
+        <g id="garland-flowers-container"></g>
+      </g>
+
+      <!-- ====================================================================
+           7. SAFE BOTANICAL-GOLD UI CONTROLS (Zero Words!)
+           ==================================================================== -->
+      <!-- TOP-LEFT (88, 74): Toggle 1..10 Helper Garland -->
+      <g id="btn-toggle-helper" class="interactive-node" transform="translate(88, 74)" filter="url(#shadow-deep)">
+        <g id="btn-helper-visual">
+          <circle cx="0" cy="0" r="46" fill="url(#btn-gold-rim)" stroke="#3d2407" stroke-width="3.2" />
+          <circle cx="0" cy="0" r="38" fill="url(#btn-wood-face)" stroke="#d6f5a3" stroke-width="1.6" stroke-opacity="0.55" />
+          <circle cx="0" cy="0" r="33" fill="none" stroke="#fff2b2" stroke-width="1.8" stroke-dasharray="5 5" opacity="0.65" />
+          <path d="M-24 10 Q0 20 24 10" fill="none" stroke="#ffe985" stroke-width="2.8" stroke-linecap="round" />
+          <circle cx="-18" cy="-4" r="10.5" fill="#ff6b8b" stroke="#6b182d" stroke-width="1.8" />
+          <text x="-18" y="0" text-anchor="middle" font-size="12" font-weight="bold" fill="#fffdf0">1</text>
+          <circle cx="0" cy="-9" r="10.8" fill="#ffa938" stroke="#6e4107" stroke-width="1.8" />
+          <text x="0" y="-5" text-anchor="middle" font-size="12" font-weight="bold" fill="#fffdf0">2</text>
+          <circle cx="18" cy="-4" r="10.5" fill="#52b2eb" stroke="#144566" stroke-width="1.8" />
+          <text x="18" y="0" text-anchor="middle" font-size="11" font-weight="bold" fill="#fffdf0">10</text>
+          <circle id="helper-active-ring" cx="0" cy="0" r="43" fill="none" stroke="#fff08a" stroke-width="3.8" opacity="0" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="52" />
+      </g>
+
+      <!-- TOP-RIGHT 1 (1310, 74): Direction Filter (⇄ / → / ←) -->
+      <g id="btn-filter-dir" class="interactive-node" transform="translate(1310, 74)" filter="url(#shadow-deep)">
+        <g id="btn-dir-visual">
+          <circle cx="0" cy="0" r="36" fill="url(#btn-gold-rim)" stroke="#3d2407" stroke-width="3" />
+          <circle cx="0" cy="0" r="29" fill="url(#btn-wood-face)" />
+          <circle cx="0" cy="0" r="25" fill="none" stroke="#fff2b2" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6" />
+          <g id="dir-filter-icon">
+            <path d="M-14 -5 L10 -5 M5 -10 L12 -5 L5 0" fill="none" stroke="#fff099" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M14 6 L-10 6 M-5 1 L-12 6 L-5 11" fill="none" stroke="#ffb3c6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="42" />
+      </g>
+
+      <!-- TOP-RIGHT 2 (1398, 74): Step Size Filter (1-3 / 1 / 2 / 3) -->
+      <g id="btn-filter-step" class="interactive-node" transform="translate(1398, 74)" filter="url(#shadow-deep)">
+        <g id="btn-step-visual">
+          <circle cx="0" cy="0" r="36" fill="url(#btn-gold-rim)" stroke="#3d2407" stroke-width="3" />
+          <circle cx="0" cy="0" r="29" fill="url(#btn-wood-face)" />
+          <circle cx="0" cy="0" r="25" fill="none" stroke="#fff2b2" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6" />
+          <text id="step-filter-text" x="0" y="7" text-anchor="middle" font-size="20" font-weight="bold" fill="#fff2a6" stroke="#1e4a22" stroke-width="1.2" paint-order="stroke">1-3</text>
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="42" />
+      </g>
+
+      <!-- TOP-RIGHT 3 (1496, 74): Sound Mute/Unmute -->
+      <g id="btn-toggle-sound" class="interactive-node" transform="translate(1496, 74)" filter="url(#shadow-deep)">
+        <g id="btn-sound-visual">
+          <circle cx="0" cy="0" r="40" fill="url(#btn-gold-rim)" stroke="#3d2407" stroke-width="3.2" />
+          <circle cx="0" cy="0" r="32" fill="url(#btn-wood-face)" />
+          <circle cx="0" cy="0" r="27" fill="none" stroke="#fff2b2" stroke-width="1.8" stroke-dasharray="5 5" opacity="0.6" />
+          <path d="M-13 -5 L-5 -5 L4 -14 L4 14 L-5 5 L-13 5 Z" fill="#ffe68a" stroke="#2c5922" stroke-width="2" stroke-linejoin="round" />
+          <g id="sound-waves-icon" stroke="#fff4b8" stroke-width="2.8" stroke-linecap="round" fill="none">
+            <path d="M9 -7 Q16 0 9 7" />
+            <path d="M15 -13 Q24 0 15 13" />
+          </g>
+          <line id="sound-mute-slash" x1="-15" y1="-15" x2="17" y2="17" stroke="#ff5c6c" stroke-width="4.4" stroke-linecap="round" opacity="0" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="46" />
+      </g>
+
+      <!-- BOTTOM-RIGHT (1502, 812): Minimalist "Next" ("Далі") Button -->
+      <g id="btn-next-round" class="interactive-node" transform="translate(1502, 812)" filter="url(#shadow-deep)">
+        <g id="btn-next-visual">
+          <circle id="next-pulse-halo" cx="0" cy="0" r="62" fill="none" stroke="#fff08a" stroke-width="4.5" opacity="0" />
+          <circle cx="0" cy="0" r="54" fill="#ff7aa2" stroke="#6e223d" stroke-width="3.5" />
+          <circle cx="0" cy="0" r="49" fill="none" stroke="#ffd4e2" stroke-width="3" stroke-dasharray="8 6" opacity="0.72" />
+          <circle cx="0" cy="0" r="41" fill="url(#btn-wood-face)" stroke="#ffe885" stroke-width="2.4" />
+          <path d="M-16 -6 L4 -6 L4 -17 L23 0 L4 17 L4 6 L-16 6 Z" fill="#ffe878" stroke="#1e4a22" stroke-width="2.5" stroke-linejoin="round" />
+        </g>
+        <circle class="hit-target" cx="0" cy="0" r="62" />
+      </g>
+    </svg>
+
+    <!-- LAYER 3: SUNLIT POLLEN, PETAL BURSTS & CELEBRATION PARTICLES -->
+    <canvas id="fx-canvas"></canvas>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. TEN VIBRANT BOTANICAL FLOWER PALETTES (1..10)
+       ========================================================================== */
+    const FLOWER_PALETTE = [
+      { petal: '#ff6b8b', light: '#ffb8c9', dark: '#a62646', rim: '#ffe0e8' }, // 1: Wild Rose
+      { petal: '#ffa438', light: '#ffd796', dark: '#9e5408', rim: '#ffeed1' }, // 2: Sun Marigold
+      { petal: '#4ec47e', light: '#a3f0c0', dark: '#1c6e3d', rim: '#d9fae5' }, // 3: Mint Clover
+      { petal: '#45a8e6', light: '#9edbff', dark: '#185785', rim: '#d9f2ff' }, // 4: Sky Bluebell
+      { petal: '#9e73e8', light: '#d4bdff', dark: '#4c288a', rim: '#ede3ff' }, // 5: Meadow Orchid
+      { petal: '#eb63b2', light: '#ffb3df', dark: '#85205c', rim: '#ffe0f2' }, // 6: Berry Peony
+      { petal: '#2ec4b6', light: '#8ef2e8', dark: '#126961', rim: '#d1faf6' }, // 7: Lagoon Lotus
+      { petal: '#f77845', light: '#ffbba0', dark: '#8f310d', rim: '#ffe2d6' }, // 8: Coral Poppy
+      { petal: '#667eea', light: '#b2c2ff', dark: '#28388a', rim: '#e0e7ff' }, // 9: Velvet Iris
+      { petal: '#e64c65', light: '#ff9ead', dark: '#7d192a', rim: '#ffd9e0' }  // 10: Ruby Dahlia
+    ];
+
+    function animateInnerScale(el, peakScale = 1.16, duration = 340) {
+      if (!el) return;
+      const start = performance.now();
+      function step(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const s = 1 + (peakScale - 1) * Math.sin(t * Math.PI);
+        el.setAttribute('transform', `scale(${s.toFixed(3)})`);
+        if (t < 1) requestAnimationFrame(step);
+        else el.setAttribute('transform', 'scale(1)');
+      }
+      requestAnimationFrame(step);
+    }
+
+    /* ==========================================================================
+       2. SYNTHESIZED WEB AUDIO ENGINE (Harp/Celesta, Hoofbeats, Pony Whinny)
+       ========================================================================== */
+    class MeadowSoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.scaleFreqs = [
+          261.63, 293.66, 329.63, 392.00, 440.00,
+          523.25, 587.33, 659.25, 783.99, 880.00
+        ];
+      }
+
+      init() {
+        try {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (AudioCtx) this.ctx = new AudioCtx();
+          }
+          if (this.ctx && this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        } catch (e) {}
+      }
+
+      playHoofStep(stepParity = 0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const filter = this.ctx.createBiquadFilter();
+        const gain = this.ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(stepParity % 2 === 0 ? 195 : 155, now);
+        osc.frequency.exponentialRampToValueAtTime(68, now + 0.055);
+
+        filter.type = 'bandpass';
+        filter.frequency.value = 340;
+        filter.Q.value = 1.6;
+
+        gain.gain.setValueAtTime(0.085, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+      }
+
+      playBloomReveal(num) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const idx = Math.max(0, Math.min(9, num - 1));
+        const freq = this.scaleFreqs[idx];
+
+        [1, 1.5, 2].forEach((mult, i) => {
+          const t = now + i * 0.035;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+
+          osc.type = i === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(freq * mult, t);
+
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(i === 0 ? 0.2 : 0.075, t + 0.015);
+          gain.gain.exponentialRampToValueAtTime(0.0008, t + (i === 0 ? 0.85 : 0.45));
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.9);
+        });
+      }
+
+      playPonyWhinny() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const vibrato = this.ctx.createOscillator();
+        const vibGain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
+        const mainGain = this.ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(420, now);
+        osc.frequency.exponentialRampToValueAtTime(760, now + 0.14);
+        osc.frequency.exponentialRampToValueAtTime(510, now + 0.42);
+        osc.frequency.exponentialRampToValueAtTime(340, now + 0.56);
+
+        vibrato.type = 'sine';
+        vibrato.frequency.value = 18;
+        vibGain.gain.value = 42;
+
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(950, now);
+        filter.frequency.exponentialRampToValueAtTime(1400, now + 0.15);
+        filter.frequency.exponentialRampToValueAtTime(720, now + 0.55);
+        filter.Q.value = 2.8;
+
+        mainGain.gain.setValueAtTime(0.001, now);
+        mainGain.gain.linearRampToValueAtTime(0.11, now + 0.05);
+        mainGain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+
+        vibrato.connect(vibGain);
+        vibGain.connect(osc.frequency);
+        osc.connect(filter);
+        filter.connect(mainGain);
+        mainGain.connect(this.ctx.destination);
+
+        osc.start(now);
+        vibrato.start(now);
+        osc.stop(now + 0.6);
+        vibrato.stop(now + 0.6);
+      }
+
+      playCelebration(styleIdx = 0) {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const patterns = [
+          [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50],
+          [329.63, 440.00, 523.25, 659.25, 783.99, 880.00, 1046.50],
+          [293.66, 369.99, 440.00, 587.33, 739.99, 880.00, 1174.66],
+          [392.00, 493.88, 587.33, 783.99, 987.77, 1174.66, 1567.98]
+        ];
+
+        const notes = patterns[styleIdx % patterns.length];
+        notes.forEach((freq, i) => {
+          const t = this.ctx.currentTime + i * 0.075;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = styleIdx % 2 === 0 ? 'sine' : 'triangle';
+          osc.frequency.setValueAtTime(freq, t);
+
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(0.14, t + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0008, t + 0.92);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.95);
+        });
+      }
+
+      playClick() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(480, now);
+        osc.frequency.exponentialRampToValueAtTime(240, now + 0.055);
+        gain.gain.setValueAtTime(0.11, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.065);
+      }
+    }
+
+    const sound = new MeadowSoundEngine();
+
+    /* ==========================================================================
+       3. CANVAS PARTICLE ENGINE (Pollen, Petals, Butterflies, Bubbles, Stars)
+       ========================================================================== */
+    class MeadowParticles {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx = canvas.getContext('2d');
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.pollen = [];
+        this.particles = [];
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+        this.initPollen();
+      }
+
+      resize() {
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+      }
+
+      svgToScreen(svgX, svgY) {
+        const scale = Math.min(this.width / 1600, this.height / 900);
+        const offsetX = (this.width - 1600 * scale) / 2;
+        const offsetY = (this.height - 900 * scale) / 2;
+        return { x: offsetX + svgX * scale, y: offsetY + svgY * scale, scale };
+      }
+
+      initPollen() {
+        this.pollen = [];
+        for (let i = 0; i < 46; i++) {
+          this.pollen.push({
+            x: Math.random() * this.width,
+            y: Math.random() * this.height,
+            r: 2 + Math.random() * 3.2,
+            vx: 0.16 + Math.random() * 0.25,
+            vy: -0.14 + Math.random() * 0.24,
+            phase: Math.random() * Math.PI * 2,
+            alpha: 0.24 + Math.random() * 0.52
+          });
+        }
+      }
+
+      spawnBloomBurst(svgX, svgY, paletteObj) {
+        const pos = this.svgToScreen(svgX, svgY);
+        const colors = [paletteObj.petal, paletteObj.light, paletteObj.rim, '#fff08a', '#ffffff'];
+        for (let i = 0; i < 34; i++) {
+          const angle = (Math.PI * 2 * i) / 34 + (Math.random() - 0.5) * 0.28;
+          const speed = (3.2 + Math.random() * 7.5) * pos.scale;
+          this.particles.push({
+            type: i % 3 === 0 ? 'star' : 'petal',
+            x: pos.x,
+            y: pos.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2.8 * pos.scale,
+            gravity: 0.12 * pos.scale,
+            size: (9 + Math.random() * 9) * pos.scale,
+            color: colors[i % colors.length],
+            rot: Math.random() * Math.PI * 2,
+            vRot: (Math.random() - 0.5) * 0.14,
+            life: 1,
+            decay: 0.014 + Math.random() * 0.01
+          });
+        }
+      }
+
+      spawnPonyHearts(svgX, svgY) {
+        const pos = this.svgToScreen(svgX, svgY);
+        const colors = ['#ff7597', '#ffb3c6', '#ffe066', '#a882ff'];
+        for (let i = 0; i < 9; i++) {
+          this.particles.push({
+            type: i % 2 === 0 ? 'heart' : 'star',
+            x: pos.x + (Math.random() - 0.5) * 110 * pos.scale,
+            y: pos.y - 35 * pos.scale,
+            vx: (Math.random() - 0.5) * 1.6 * pos.scale,
+            vy: (-1.9 - Math.random() * 1.8) * pos.scale,
+            gravity: -0.012 * pos.scale,
+            size: (13 + Math.random() * 10) * pos.scale,
+            color: colors[i % colors.length],
+            rot: (Math.random() - 0.5) * 0.4,
+            vRot: (Math.random() - 0.5) * 0.03,
+            life: 1,
+            decay: 0.011 + Math.random() * 0.008
+          });
+        }
+      }
+
+      spawnCelebration(styleIdx, budPositions, ponyPos) {
+        const rainbow = ['#ff6b8b', '#ffa438', '#ffe66d', '#5ce1a0', '#45c4f5', '#b388ff'];
+
+        if (styleIdx === 0) {
+          budPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y);
+            for (let i = 0; i < 5; i++) {
+              this.particles.push({
+                type: 'butterfly',
+                x: pos.x + (Math.random() - 0.5) * 75 * pos.scale,
+                y: pos.y,
+                vx: (Math.random() - 0.5) * 3.8 * pos.scale,
+                vy: (-2.5 - Math.random() * 2.8) * pos.scale,
+                gravity: -0.014 * pos.scale,
+                size: (16 + Math.random() * 10) * pos.scale,
+                color: rainbow[(i + b.num) % rainbow.length],
+                wingPhase: Math.random() * Math.PI * 2,
+                rot: 0,
+                vRot: 0,
+                life: 1,
+                decay: 0.0065 + Math.random() * 0.004
+              });
+            }
+          });
+        } else if (styleIdx === 1) {
+          budPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y - 25);
+            for (let i = 0; i < 9; i++) {
+              this.particles.push({
+                type: 'bubble',
+                x: pos.x + (Math.random() - 0.5) * 95 * pos.scale,
+                y: pos.y,
+                vx: (Math.random() - 0.5) * 2.0 * pos.scale,
+                vy: (-2.1 - Math.random() * 2.6) * pos.scale,
+                gravity: -0.01 * pos.scale,
+                size: (14 + Math.random() * 16) * pos.scale,
+                color: rainbow[(i + b.num) % rainbow.length],
+                phase: Math.random() * Math.PI * 2,
+                rot: 0,
+                vRot: 0,
+                life: 1,
+                decay: 0.007 + Math.random() * 0.005
+              });
+            }
+          });
+        } else if (styleIdx === 2) {
+          const pPos = this.svgToScreen(ponyPos.x, ponyPos.y - 75);
+          for (let i = 0; i < 46; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = (2.4 + Math.random() * 6.2) * pPos.scale;
+            this.particles.push({
+              type: i % 2 === 0 ? 'heart' : 'star',
+              x: pPos.x + (Math.random() - 0.5) * 190 * pPos.scale,
+              y: pPos.y,
+              vx: Math.cos(angle) * speed * 0.85,
+              vy: -Math.abs(Math.sin(angle) * speed) - 1.8 * pPos.scale,
+              gravity: 0.045 * pPos.scale,
+              size: (13 + Math.random() * 11) * pPos.scale,
+              color: rainbow[i % rainbow.length],
+              rot: (Math.random() - 0.5) * 0.6,
+              vRot: (Math.random() - 0.5) * 0.06,
+              life: 1,
+              decay: 0.009 + Math.random() * 0.005
+            });
+          }
+        } else {
+          budPositions.forEach((b) => {
+            const pos = this.svgToScreen(b.x, b.y - 30);
+            for (let i = 0; i < 24; i++) {
+              const angle = (Math.PI * 2 * i) / 24;
+              const speed = (3.2 + Math.random() * 7.2) * pos.scale;
+              this.particles.push({
+                type: i % 3 === 0 ? 'star' : 'petal',
+                x: pos.x,
+                y: pos.y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 3.8 * pos.scale,
+                gravity: 0.12 * pos.scale,
+                size: (12 + Math.random() * 10) * pos.scale,
+                color: rainbow[(i + b.num) % rainbow.length],
+                rot: Math.random() * Math.PI * 2,
+                vRot: (Math.random() - 0.5) * 0.16,
+                life: 1,
+                decay: 0.0095 + Math.random() * 0.006
+              });
+            }
+          });
+        }
+      }
+
+      updateAndDraw(time) {
+        const ctx = this.ctx;
+        ctx.clearRect(0, 0, this.width, this.height);
+
+        for (const m of this.pollen) {
+          m.x += m.vx + Math.sin(time * 0.001 + m.phase) * 0.24;
+          m.y += m.vy + Math.cos(time * 0.0013 + m.phase) * 0.16;
+          if (m.x > this.width + 12) m.x = -12;
+          if (m.y > this.height + 12) m.y = -12;
+          if (m.y < -12) m.y = this.height + 12;
+
+          const glow = 0.5 + 0.5 * Math.sin(time * 0.003 + m.phase);
+          ctx.save();
+          ctx.globalAlpha = m.alpha * glow;
+          ctx.fillStyle = '#fff9c4';
+          ctx.shadowColor = '#ffe066';
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const p = this.particles[i];
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += p.gravity;
+          p.rot += p.vRot;
+          p.life -= p.decay;
+
+          if (p.life <= 0) {
+            this.particles.splice(i, 1);
+            continue;
+          }
+
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+
+          if (p.type === 'petal') {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, p.size * 0.72, p.size * 0.42, 0, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (p.type === 'star') {
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 8;
+            this.drawStar(ctx, 0, 0, p.size, p.size * 0.38);
+          } else if (p.type === 'heart') {
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = p.color;
+            ctx.shadowBlur = 6;
+            this.drawHeart(ctx, 0, 0, p.size);
+          } else if (p.type === 'bubble') {
+            p.x += Math.sin(time * 0.005 + p.phase) * 0.9;
+            ctx.strokeStyle = p.color;
+            ctx.lineWidth = 2.4;
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+            ctx.beginPath();
+            ctx.arc(0, 0, p.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+            ctx.beginPath();
+            ctx.arc(-p.size * 0.34, -p.size * 0.34, p.size * 0.22, 0, Math.PI * 2);
+            ctx.fill();
+          } else if (p.type === 'butterfly') {
+            p.wingPhase += 0.25;
+            p.x += Math.sin(p.wingPhase * 0.3) * 1.4;
+            const wingW = Math.abs(Math.cos(p.wingPhase)) * p.size;
+            ctx.fillStyle = p.color;
+            ctx.shadowColor = '#fff5b8';
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.ellipse(-wingW * 0.5, -2, wingW * 0.65, p.size * 0.52, -0.28, 0, Math.PI * 2);
+            ctx.ellipse(wingW * 0.5, -2, wingW * 0.65, p.size * 0.52, 0.28, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#472a5e';
+            ctx.fillRect(-1.6, -p.size * 0.36, 3.2, p.size * 0.72);
+          }
+
+          ctx.restore();
+        }
+      }
+
+      drawStar(ctx, x, y, outerR, innerR) {
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const r = i % 2 === 0 ? outerR : innerR;
+          const a = (i * Math.PI) / 4;
+          if (i === 0) ctx.moveTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+          else ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      drawHeart(ctx, x, y, size) {
+        const s = size * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(x, y + s * 0.6);
+        ctx.bezierCurveTo(x - s * 1.3, y - s * 0.2, x - s * 0.7, y - s * 1.2, x, y - s * 0.4);
+        ctx.bezierCurveTo(x + s * 0.7, y - s * 1.2, x + s * 1.3, y - s * 0.2, x, y + s * 0.6);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    /* ==========================================================================
+       4. GIANT CLOSE-UP FLOWER BUD SVG GENERATOR
+       ========================================================================== */
+    function createFlowerBudSVG(number, x, y, radius, isRevealed, isNextHint = false) {
+      const pal = FLOWER_PALETTE[(number - 1) % FLOWER_PALETTE.length];
+      const ns = 'http://www.w3.org/2000/svg';
+      const g = document.createElementNS(ns, 'g');
+      g.setAttribute('class', 'interactive-node');
+      g.setAttribute('transform', `translate(${x}, ${y})`);
+      g.dataset.number = number;
+
+      const gradId = `petal-grad-${number}-${Math.round(x)}-${Math.round(y)}`;
+      const r = radius;
+      const fontSize = Math.round(r * 0.92);
+      const bloomScale = isRevealed ? 1 : 0.001;
+      const bloomOpacity = isRevealed ? 1 : 0;
+      const budOpacity = isRevealed ? 0 : 1;
+
+      let petalsHtml = '';
+      for (let i = 0; i < 8; i++) {
+        const angle = i * 45;
+        petalsHtml += `
+          <g transform="rotate(${angle})">
+            <ellipse cx="0" cy="${-r * 0.66}" rx="${r * 0.35}" ry="${r * 0.53}"
+                     fill="url(#${gradId})" stroke="${pal.dark}" stroke-width="${Math.max(1.8, r * 0.028)}" />
+            <ellipse cx="${-r * 0.08}" cy="${-r * 0.72}" rx="${r * 0.11}" ry="${r * 0.24}"
+                     fill="#ffffff" fill-opacity="0.3" />
+          </g>
+        `;
+      }
+
+      const hintY = Math.round(-r * 1.28);
+      const butterflyHintHtml = (!isRevealed && isNextHint) ? `
+        <g class="next-hint-indicator" data-base-y="${hintY}" transform="translate(0, ${hintY})">
+          <circle cx="0" cy="0" r="24" fill="#fff08a" fill-opacity="0.48" filter="url(#glow-gold)" />
+          <ellipse cx="-10" cy="-2" rx="11" ry="8.5" fill="#ffe066" stroke="#8a5210" stroke-width="1.8" transform="rotate(-18 -10 -2)" />
+          <ellipse cx="10" cy="-2" rx="11" ry="8.5" fill="#ffe066" stroke="#8a5210" stroke-width="1.8" transform="rotate(18 10 -2)" />
+          <ellipse cx="-7" cy="6" rx="7.5" ry="6" fill="#ff9ebb" stroke="#8a2c4a" stroke-width="1.4" />
+          <ellipse cx="7" cy="6" rx="7.5" ry="6" fill="#ff9ebb" stroke="#8a2c4a" stroke-width="1.4" />
+          <rect x="-2.2" y="-8.5" width="4.4" height="18" rx="2.2" fill="#592e14" />
+        </g>
+      ` : '';
+
+      g.innerHTML = `
+        <defs>
+          <radialGradient id="${gradId}" cx="40%" cy="28%" r="72%">
+            <stop offset="0%" stop-color="${pal.light}" />
+            <stop offset="56%" stop-color="${pal.petal}" />
+            <stop offset="100%" stop-color="${pal.dark}" />
+          </radialGradient>
+        </defs>
+
+        <!-- Meadow Ground Shadow -->
+        <ellipse cx="0" cy="${r * 0.88}" rx="${r * 0.98}" ry="${r * 0.27}" fill="#17381b" fill-opacity="0.46" />
+
+        <!-- Lush Green Leaves beneath Flower -->
+        <g transform="translate(0, ${r * 0.44})">
+          <ellipse cx="${-r * 0.68}" cy="10" rx="${r * 0.48}" ry="${r * 0.23}" fill="url(#sepal-grad)" stroke="#1e5422" stroke-width="${Math.max(1.8, r * 0.026)}" transform="rotate(-18 ${-r * 0.68} 10)" />
+          <ellipse cx="${r * 0.68}" cy="10" rx="${r * 0.48}" ry="${r * 0.23}" fill="url(#sepal-grad)" stroke="#1e5422" stroke-width="${Math.max(1.8, r * 0.026)}" transform="rotate(18 ${r * 0.68} 10)" />
+        </g>
+
+        <!-- Inner Scaler Group at local (0,0) -->
+        <g class="flower-scaler" transform="scale(1)">
+          <!-- Soft Golden Halo -->
+          <circle class="next-bud-halo" cx="0" cy="0" r="${r + 14}" fill="none" stroke="#fff08a" stroke-width="5" opacity="${(!isRevealed && isNextHint) ? '0.88' : '0'}" />
+
+          <!-- CLOSED MYSTERY BUD STATE -->
+          <g class="closed-bud-view" opacity="${budOpacity}">
+            <path d="M0 ${-r * 0.96} C${r * 0.64} ${-r * 0.56}, ${r * 0.88} ${r * 0.25}, 0 ${r * 0.78} C${-r * 0.88} ${r * 0.25}, ${-r * 0.64} ${-r * 0.56}, 0 ${-r * 0.96} Z"
+                  fill="url(#${gradId})" stroke="${pal.dark}" stroke-width="${Math.max(2.2, r * 0.032)}" />
+            <path d="M0 ${-r * 0.92} C${r * 0.35} ${-r * 0.42}, ${r * 0.42} ${r * 0.26}, 0 ${r * 0.72} C${-r * 0.42} ${r * 0.26}, ${-r * 0.35} ${-r * 0.42}, 0 ${-r * 0.92} Z"
+                  fill="${pal.light}" fill-opacity="0.46" />
+            <!-- Glowing Dewdrop Swirl -->
+            <circle cx="0" cy="${-r * 0.08}" r="${r * 0.24}" fill="${pal.dark}" fill-opacity="0.28" />
+            <path d="M${-r * 0.16} ${-r * 0.14} Q0 ${-r * 0.32} ${r * 0.16} ${-r * 0.12} Q${r * 0.22} ${r * 0.08} 0 ${r * 0.12}"
+                  fill="none" stroke="${pal.rim}" stroke-width="${Math.max(3, r * 0.05)}" stroke-linecap="round" />
+            <!-- Embracing Green Sepals -->
+            <path d="M${-r * 0.64} ${r * 0.18} Q${-r * 0.36} ${r * 0.82} 0 ${r * 0.78} Q${r * 0.36} ${r * 0.82} ${r * 0.64} ${r * 0.18} Q${r * 0.26} ${r * 0.56} 0 ${r * 0.42} Q${-r * 0.26} ${r * 0.56} ${-r * 0.64} ${r * 0.18} Z"
+                  fill="url(#sepal-grad)" stroke="#1e5422" stroke-width="${Math.max(2, r * 0.028)}" />
+            <ellipse cx="${-r * 0.24}" cy="${-r * 0.34}" rx="${r * 0.14}" ry="${r * 0.26}" transform="rotate(-18 ${-r * 0.24} ${-r * 0.34})" fill="#ffffff" fill-opacity="0.34" />
+          </g>
+
+          <!-- BLOOMED OPEN FLOWER STATE (Reveals Giant Crisp Number) -->
+          <g class="open-blossom-view" transform="scale(${bloomScale})" opacity="${bloomOpacity}">
+            ${petalsHtml}
+            <circle cx="0" cy="0" r="${r * 0.64}" fill="url(#flower-core-grad)" stroke="#9e6416" stroke-width="${Math.max(2.4, r * 0.036)}" />
+            <circle cx="0" cy="0" r="${r * 0.54}" fill="none" stroke="#d98e2b" stroke-width="${Math.max(1.8, r * 0.025)}" stroke-dasharray="5 6" />
+            <text x="0" y="${fontSize * 0.35}" text-anchor="middle" font-size="${fontSize}" font-weight="bold" fill="#47220a" stroke="#fffdf0" stroke-width="${Math.max(1.6, r * 0.026)}" paint-order="stroke">${number}</text>
+          </g>
+        </g>
+
+        ${butterflyHintHtml}
+
+        <!-- Generous Static Hit Target -->
+        <circle class="hit-target" cx="0" cy="0" r="${r * 1.18}" />
+      `;
+
+      return g;
+    }
+
+    /* ==========================================================================
+       5. CLOSE-UP PONY ANIMATION & EMOTION CONTROLLER
+       ========================================================================== */
+    class PonyController {
+      constructor() {
+        this.root = document.getElementById('pony-root');
+        this.flipGroup = document.getElementById('pony-flip-group');
+        this.bodyRig = document.getElementById('pony-body-rig');
+        this.neckHead = document.getElementById('pony-neck-head');
+        this.tailGroup = document.getElementById('pony-tail-group');
+        this.wing = document.getElementById('pony-wing');
+        this.earFront = document.getElementById('pony-ear-front');
+        this.earBack = document.getElementById('pony-ear-back');
+        this.legFL = document.getElementById('pony-leg-fl');
+        this.legFR = document.getElementById('pony-leg-fr');
+        this.legBL = document.getElementById('pony-leg-bl');
+        this.legBR = document.getElementById('pony-leg-br');
+        this.eyeOpen = document.getElementById('pony-eye-open');
+        this.eyeHappy = document.getElementById('pony-eye-happy');
+        this.eyelid = document.getElementById('pony-eyelid');
+        this.blush = document.getElementById('pony-blush');
+        this.mouthOpen = document.getElementById('pony-mouth-open');
+        this.joyAura = document.getElementById('pony-joy-aura');
+
+        this.x = 800;
+        this.y = 455;
+        this.facing = 1;
+        this.emotion = 'calm';
+        this.emotionTimer = null;
+        this.trotState = null;
+        this.lastHoofTime = 0;
+        this.hoofParity = 0;
+
+        this.nextBlinkTime = performance.now() + 2600;
+        this.isBlinking = false;
+      }
+
+      setPositionImmediate(x, y, facing = 1) {
+        this.trotState = null;
+        this.x = x;
+        this.y = y;
+        this.facing = facing;
+        this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+        this.flipGroup.setAttribute('transform', `scale(${this.facing}, 1)`);
+        this.setEmotion('calm');
+      }
+
+      setEmotion(emotionName, durationMs = 0) {
+        this.emotion = emotionName;
+        if (this.emotionTimer) {
+          clearTimeout(this.emotionTimer);
+          this.emotionTimer = null;
+        }
+
+        this.eyeOpen.setAttribute('opacity', '1');
+        this.eyeHappy.setAttribute('opacity', '0');
+        this.blush.style.opacity = '0';
+        this.mouthOpen.setAttribute('opacity', '0');
+
+        if (emotionName === 'curious') {
+          this.mouthOpen.setAttribute('opacity', '0.6');
+        } else if (emotionName === 'happy') {
+          this.eyeOpen.setAttribute('opacity', '0');
+          this.eyeHappy.setAttribute('opacity', '1');
+          this.blush.style.opacity = '0.92';
+        } else if (emotionName === 'excited') {
+          this.blush.style.opacity = '0.85';
+          this.mouthOpen.setAttribute('opacity', '1');
+        } else if (emotionName === 'celebrating') {
+          this.eyeOpen.setAttribute('opacity', '0');
+          this.eyeHappy.setAttribute('opacity', '1');
+          this.blush.style.opacity = '1';
+          this.mouthOpen.setAttribute('opacity', '1');
+        }
+
+        if (durationMs > 0) {
+          this.emotionTimer = setTimeout(() => {
+            if (this.emotion !== 'trotting') {
+              this.setEmotion('calm');
+            }
+          }, durationMs);
+        }
+      }
+
+      trotTo(targetX, targetY, onArrive) {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 6) {
+          this.x = targetX;
+          this.y = targetY;
+          this.root.setAttribute('transform', `translate(${this.x}, ${this.y})`);
+          if (onArrive) onArrive();
+          return;
+        }
+
+        this.facing = dx >= 0 ? 1 : -1;
+        this.flipGroup.setAttribute('transform', `scale(${this.facing}, 1)`);
+        this.setEmotion('trotting');
+
+        const duration = Math.min(860, Math.max(360, dist * 1.05));
+        this.trotState = {
+          startX: this.x,
+          startY: this.y,
+          targetX,
+          targetY,
+          startTime: performance.now(),
+          duration,
+          onArrive
+        };
+      }
+
+      update(now) {
+        const wingSpeed = (this.emotion === 'celebrating' || this.trotState) ? 0.024 : 0.005;
+        const wingAmp = (this.emotion === 'celebrating' || this.trotState) ? 24 : 7;
+        const wingAngle = Math.sin(now * wingSpeed) * wingAmp;
+        this.wing.setAttribute('transform', `translate(-4, -22) rotate(${wingAngle.toFixed(1)})`);
+
+        const tailAngle = Math.sin(now * 0.0034) * 14 + (this.emotion === 'celebrating' ? Math.sin(now * 0.016) * 18 : 0);
+        this.tailGroup.setAttribute('transform', `translate(-52, -16) rotate(${tailAngle.toFixed(1)})`);
+
+        if (this.trotState) {
+          const elapsed = now - this.trotState.startTime;
+          const t = Math.min(1, elapsed / this.trotState.duration);
+          const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+          this.x = this.trotState.startX + (this.trotState.targetX - this.trotState.startX) * ease;
+          this.y = this.trotState.startY + (this.trotState.targetY - this.trotState.startY) * ease;
+
+          const phase = elapsed * 0.023;
+          const pranceY = -Math.abs(Math.sin(phase)) * 12;
+          const tilt = Math.sin(phase) * 4.2;
+
+          this.root.setAttribute('transform', `translate(${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
+          this.bodyRig.setAttribute('transform', `translate(0, ${pranceY.toFixed(1)}) rotate(${tilt.toFixed(1)})`);
+          this.neckHead.setAttribute('transform', `translate(34, -18) rotate(${(-tilt * 0.7).toFixed(1)})`);
+
+          const swingA = Math.sin(phase) * 28;
+          const swingB = -Math.sin(phase) * 28;
+          this.legFL.setAttribute('transform', `translate(26, 12) rotate(${swingA.toFixed(1)})`);
+          this.legBR.setAttribute('transform', `translate(-28, 14) rotate(${swingA.toFixed(1)})`);
+          this.legFR.setAttribute('transform', `translate(36, 14) rotate(${swingB.toFixed(1)})`);
+          this.legBL.setAttribute('transform', `translate(-38, 12) rotate(${swingB.toFixed(1)})`);
+
+          if (now - this.lastHoofTime > 165) {
+            sound.playHoofStep(this.hoofParity++);
+            this.lastHoofTime = now;
+          }
+
+          if (t >= 1) {
+            const cb = this.trotState.onArrive;
+            this.trotState = null;
+            this.legFL.setAttribute('transform', 'translate(26, 12)');
+            this.legFR.setAttribute('transform', 'translate(36, 14)');
+            this.legBL.setAttribute('transform', 'translate(-38, 12)');
+            this.legBR.setAttribute('transform', 'translate(-28, 14)');
+            this.bodyRig.setAttribute('transform', 'translate(0, 0)');
+            if (cb) cb();
+          }
+          return;
+        }
+
+        const breath = Math.sin(now * 0.003);
+        if (this.emotion === 'celebrating') {
+          const hop = Math.abs(Math.sin(now * 0.0085));
+          const rearAngle = -hop * 17;
+          const hopY = -hop * 18;
+          this.bodyRig.setAttribute('transform', `translate(0, ${hopY.toFixed(1)}) rotate(${rearAngle.toFixed(1)})`);
+          const frontLift = -hop * 34;
+          this.legFR.setAttribute('transform', `translate(36, 14) rotate(${frontLift.toFixed(1)})`);
+          this.legFL.setAttribute('transform', `translate(26, 12) rotate(${(frontLift * 0.85).toFixed(1)})`);
+          this.joyAura.setAttribute('opacity', (0.45 + 0.4 * Math.sin(now * 0.01)).toFixed(2));
+        } else if (this.emotion === 'happy') {
+          const bounce = -Math.abs(Math.sin(now * 0.008)) * 4.5;
+          this.bodyRig.setAttribute('transform', `translate(0, ${bounce.toFixed(1)})`);
+          this.legFR.setAttribute('transform', 'translate(36, 14)');
+          this.legFL.setAttribute('transform', 'translate(26, 12)');
+          this.joyAura.setAttribute('opacity', (0.35 + 0.3 * Math.sin(now * 0.009)).toFixed(2));
+        } else {
+          this.bodyRig.setAttribute('transform', `translate(0, ${(breath * 1.6).toFixed(1)}) scale(1, ${(1 + breath * 0.01).toFixed(4)})`);
+          this.legFR.setAttribute('transform', 'translate(36, 14)');
+          this.legFL.setAttribute('transform', 'translate(26, 12)');
+          this.joyAura.setAttribute('opacity', '0');
+        }
+
+        let headTilt = Math.sin(now * 0.002) * 3;
+        if (this.emotion === 'curious') headTilt = 9 + Math.sin(now * 0.004) * 3;
+        else if (this.emotion === 'happy') headTilt = -7 + Math.sin(now * 0.005) * 4;
+        else if (this.emotion === 'excited') headTilt = -5 + Math.cos(now * 0.007) * 5;
+        this.neckHead.setAttribute('transform', `translate(34, -18) rotate(${headTilt.toFixed(1)})`);
+
+        const earF = Math.sin(now * 0.0027) * 5;
+        const earB = -Math.cos(now * 0.0031) * 5;
+        this.earFront.setAttribute('transform', `translate(-16, -24) rotate(${earF.toFixed(1)})`);
+        this.earBack.setAttribute('transform', `translate(-8, -24) rotate(${earB.toFixed(1)})`);
+
+        if (!this.isBlinking && now > this.nextBlinkTime) {
+          this.isBlinking = true;
+          this.blinkStart = now;
+          this.nextBlinkTime = now + 2400 + Math.random() * 2800;
+        }
+        if (this.isBlinking) {
+          const bt = (now - this.blinkStart) / 170;
+          if (bt >= 1) {
+            this.isBlinking = false;
+            this.eyelid.setAttribute('transform', 'scale(1, 0)');
+          } else {
+            this.eyelid.setAttribute('transform', `scale(1, ${Math.sin(bt * Math.PI).toFixed(3)})`);
+          }
+        }
+      }
+    }
+
+    /* ==========================================================================
+       6. MAIN GAME CONTROLLER (Close-Up Framing)
+       ========================================================================== */
+    class PonyMeadowCloseUpGame {
+      constructor() {
+        this.canvas = document.getElementById('fx-canvas');
+        this.particles = new MeadowParticles(this.canvas);
+        this.pony = new PonyController();
+
+        this.budsLayer = document.getElementById('buds-layer');
+        this.vineLayer = document.getElementById('vine-connecting-layer');
+        this.hoofTrailLayer = document.getElementById('hoof-trail-layer');
+        this.taskEmblemGroup = document.getElementById('task-emblem-group');
+        this.taskEmblemContent = document.getElementById('task-emblem-content');
+        this.garlandContainer = document.getElementById('garland-flowers-container');
+        this.helperGarlandWrapper = document.getElementById('helper-garland-wrapper');
+        this.helperActiveRing = document.getElementById('helper-active-ring');
+        this.nextPulseHalo = document.getElementById('next-pulse-halo');
+
+        this.dirFilter = 0;
+        this.stepFilter = 0;
+
+        this.roundData = null;
+        this.lastSignature = '';
+        this.celebrationCounter = 0;
+        this.helperOpen = false;
+        this.garlandCurrentY = -220;
+        this.garlandTargetY = -220;
+
+        this.buildHelperGarland();
+        this.bindEvents();
+        this.generateNewRound(true);
+        this.startLoop();
+      }
+
+      buildHelperGarland() {
+        this.garlandContainer.innerHTML = '';
+        const ns = 'http://www.w3.org/2000/svg';
+        const startX = 248;
+        const spacing = 101;
+
+        for (let num = 1; num <= 10; num++) {
+          const cx = startX + (num - 1) * spacing;
+          const cy = 73;
+
+          const itemG = document.createElementNS(ns, 'g');
+          const ring = document.createElementNS(ns, 'circle');
+          ring.setAttribute('id', `garland-ring-${num}`);
+          ring.setAttribute('cx', cx);
+          ring.setAttribute('cy', cy);
+          ring.setAttribute('r', '36');
+          ring.setAttribute('fill', 'none');
+          ring.setAttribute('stroke', '#fff08a');
+          ring.setAttribute('stroke-width', '3.5');
+          ring.setAttribute('opacity', '0');
+          itemG.appendChild(ring);
+
+          const miniFlower = createFlowerBudSVG(num, cx, cy, 27, true, false);
+          miniFlower.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            sound.init();
+            sound.playBloomReveal(num);
+            this.particles.spawnBloomBurst(cx, cy, FLOWER_PALETTE[num - 1]);
+            const scaler = miniFlower.querySelector('.flower-scaler');
+            animateInnerScale(scaler, 1.22, 320);
+          });
+
+          itemG.appendChild(miniFlower);
+          this.garlandContainer.appendChild(itemG);
+        }
+      }
+
+      updateHelperHighlights() {
+        if (!this.roundData) return;
+        for (let num = 1; num <= 10; num++) {
+          const ring = document.getElementById(`garland-ring-${num}`);
+          if (!ring) continue;
+
+          const found = this.roundData.buds.find((b) => b.num === num);
+          if (!found) {
+            ring.setAttribute('opacity', '0');
+          } else if (found.num === this.roundData.startNum) {
+            ring.setAttribute('stroke', '#ffe66d');
+            ring.setAttribute('stroke-dasharray', 'none');
+            ring.setAttribute('opacity', '0.96');
+          } else {
+            ring.setAttribute('stroke', found.revealed ? '#9ef0b6' : '#ffe66d');
+            ring.setAttribute('stroke-dasharray', found.revealed ? 'none' : '6 4');
+            ring.setAttribute('opacity', '0.82');
+          }
+        }
+      }
+
+      renderTaskEmblem() {
+        if (!this.roundData) return;
+        const { dir, steps } = this.roundData;
+        const signStr = dir === 1 ? `+${steps}` : `-${steps}`;
+        const arrowColor = dir === 1 ? '#2e8b47' : '#d6456b';
+
+        let pipsHtml = '';
+        for (let i = 0; i < steps; i++) {
+          const px = 40 + i * 24;
+          pipsHtml += `<circle cx="${px}" cy="0" r="8" fill="${arrowColor}" stroke="#fffdf0" stroke-width="2" />`;
+        }
+
+        const arrowPath = dir === 1
+          ? `<path d="M-92 0 L-48 0 M-60 -12 L-46 0 L-60 12" fill="none" stroke="${arrowColor}" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round" />`
+          : `<path d="M-46 0 L-90 0 M-78 -12 L-92 0 L-78 12" fill="none" stroke="${arrowColor}" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round" />`;
+
+        this.taskEmblemContent.innerHTML = `
+          ${arrowPath}
+          <text x="-6" y="11" text-anchor="middle" font-size="33" font-weight="bold" fill="#47220a" stroke="#fffdf0" stroke-width="1.8" paint-order="stroke">${signStr}</text>
+          ${pipsHtml}
+        `;
+      }
+
+      generateNewRound(isFirstRound = false) {
+        let steps, dir, startNum, sig;
+        let attempts = 0;
+
+        do {
+          steps = this.stepFilter !== 0 ? this.stepFilter : [1, 2, 3][Math.floor(Math.random() * 3)];
+          dir = this.dirFilter !== 0 ? this.dirFilter : (Math.random() < 0.5 ? 1 : -1);
+
+          if (dir === 1) {
+            const maxStart = 10 - steps;
+            startNum = 1 + Math.floor(Math.random() * maxStart);
+          } else {
+            const minStart = 1 + steps;
+            startNum = minStart + Math.floor(Math.random() * (10 - minStart + 1));
+          }
+          sig = `${startNum}:${dir}:${steps}`;
+          attempts++;
+        } while (sig === this.lastSignature && attempts < 15);
+
+        this.lastSignature = sig;
+
+        const totalBuds = steps + 1;
+        const nums = [];
+        for (let i = 0; i <= steps; i++) {
+          nums.push(startNum + dir * i);
+        }
+        nums.sort((a, b) => a - b);
+
+        // Close-Up Generous Sizing & Spacing!
+        const budRadius = totalBuds === 4 ? 90 : 96;
+        const spacing = totalBuds === 4 ? 310 : totalBuds === 3 ? 355 : 395;
+        const centerX = 775;
+        const baseY = 720;
+
+        const buds = nums.map((num, idx) => {
+          const x = centerX + (idx - (totalBuds - 1) / 2) * spacing;
+          const y = baseY + Math.abs(idx - (totalBuds - 1) / 2) * 8;
+          return {
+            num,
+            x,
+            y,
+            r: budRadius,
+            revealed: num === startNum
+          };
+        });
+
+        this.roundData = {
+          startNum,
+          dir,
+          steps,
+          buds,
+          completed: false
+        };
+
+        if (this.nextPulseHalo) this.nextPulseHalo.setAttribute('opacity', '0');
+
+        this.renderTaskEmblem();
+        this.renderRoundScene(isFirstRound);
+        this.updateHelperHighlights();
+      }
+
+      getNextSequentialBud() {
+        if (!this.roundData) return null;
+        const { startNum, dir, steps, buds } = this.roundData;
+        for (let i = 1; i <= steps; i++) {
+          const targetNum = startNum + dir * i;
+          const found = buds.find((b) => b.num === targetNum);
+          if (found && !found.revealed) return found;
+        }
+        return null;
+      }
+
+      renderRoundScene(placePonyImmediately = false) {
+        this.budsLayer.innerHTML = '';
+        this.vineLayer.innerHTML = '';
+        this.hoofTrailLayer.innerHTML = '';
+
+        const ns = 'http://www.w3.org/2000/svg';
+        const { buds, startNum, dir } = this.roundData;
+        const nextBud = this.getNextSequentialBud();
+
+        // 1) Thick Flowering Green Vine connecting the giant buds
+        if (buds.length >= 2) {
+          let pathD = `M ${buds[0].x} ${buds[0].y + 52}`;
+          for (let i = 1; i < buds.length; i++) {
+            const prev = buds[i - 1];
+            const curr = buds[i];
+            const midX = (prev.x + curr.x) / 2;
+            const waveY = prev.y + 66 + (i % 2 === 0 ? -18 : 18);
+            pathD += ` Q ${midX} ${waveY} ${curr.x} ${curr.y + 52}`;
+          }
+
+          const vineShadow = document.createElementNS(ns, 'path');
+          vineShadow.setAttribute('d', pathD);
+          vineShadow.setAttribute('fill', 'none');
+          vineShadow.setAttribute('stroke', '#1d4a22');
+          vineShadow.setAttribute('stroke-width', '13');
+          vineShadow.setAttribute('stroke-linecap', 'round');
+          vineShadow.setAttribute('opacity', '0.42');
+          this.vineLayer.appendChild(vineShadow);
+
+          const vineMain = document.createElementNS(ns, 'path');
+          vineMain.setAttribute('d', pathD);
+          vineMain.setAttribute('fill', 'none');
+          vineMain.setAttribute('stroke', '#5cc458');
+          vineMain.setAttribute('stroke-width', '8');
+          vineMain.setAttribute('stroke-linecap', 'round');
+          this.vineLayer.appendChild(vineMain);
+
+          const vineSparkle = document.createElementNS(ns, 'path');
+          vineSparkle.setAttribute('d', pathD);
+          vineSparkle.setAttribute('fill', 'none');
+          vineSparkle.setAttribute('stroke', '#fff29c');
+          vineSparkle.setAttribute('stroke-width', '3.5');
+          vineSparkle.setAttribute('stroke-dasharray', '6 14');
+          vineSparkle.setAttribute('stroke-linecap', 'round');
+          this.vineLayer.appendChild(vineSparkle);
+        }
+
+        // 2) Directional golden horseshoe trail between the pony & flowers
+        const startBud = buds.find((b) => b.num === startNum);
+        const endBud = buds.find((b) => b.num === startNum + dir * this.roundData.steps);
+        if (startBud && endBud) {
+          const totalDist = endBud.x - startBud.x;
+          const count = this.roundData.steps * 2;
+          for (let p = 1; p <= count; p++) {
+            const frac = p / (count + 1);
+            const px = startBud.x + totalDist * frac;
+            const py = 576 + (p % 2 === 0 ? -8 : 8);
+            const angle = dir === 1 ? 90 : -90;
+
+            const shoe = document.createElementNS(ns, 'g');
+            shoe.setAttribute('transform', `translate(${px}, ${py}) rotate(${angle}) scale(1.05)`);
+            shoe.setAttribute('opacity', '0.48');
+            shoe.innerHTML = `
+              <path d="M-8 8 C-11 -4, -6 -11, 0 -11 C6 -11, 11 -4, 8 8" fill="none" stroke="#fff3b0" stroke-width="4.5" stroke-linecap="round" />
+            `;
+            this.hoofTrailLayer.appendChild(shoe);
+          }
+        }
+
+        // 3) Render Giant Close-Up Flower Buds
+        buds.forEach((b) => {
+          const isHint = nextBud && nextBud.num === b.num;
+          const budEl = createFlowerBudSVG(b.num, b.x, b.y, b.r, b.revealed, isHint);
+          b.element = budEl;
+
+          budEl.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+            this.handleBudClick(b);
+          });
+
+          this.budsLayer.appendChild(budEl);
+        });
+
+        // 4) Place Hero Close-Up Pony right above the starting flower
+        if (startBud) {
+          const ponyTargetX = startBud.x;
+          const ponyTargetY = 452;
+          const faceDir = dir === 1 ? 1 : -1;
+
+          if (placePonyImmediately) {
+            this.pony.setPositionImmediate(ponyTargetX, ponyTargetY, faceDir);
+          } else {
+            this.pony.trotTo(ponyTargetX, ponyTargetY, () => {
+              this.pony.facing = faceDir;
+              this.pony.flipGroup.setAttribute('transform', `scale(${faceDir}, 1)`);
+              this.pony.setEmotion('curious', 2000);
+            });
+          }
+        }
+      }
+
+      handleBudClick(budObj) {
+        sound.init();
+
+        const scaler = budObj.element ? budObj.element.querySelector('.flower-scaler') : null;
+        animateInnerScale(scaler, 1.15, 360);
+
+        if (!budObj.revealed) {
+          budObj.revealed = true;
+
+          const closedView = budObj.element.querySelector('.closed-bud-view');
+          const openView = budObj.element.querySelector('.open-blossom-view');
+
+          if (closedView) closedView.setAttribute('opacity', '0');
+          if (openView) {
+            openView.setAttribute('opacity', '1');
+            animateInnerScale(openView, 1.18, 420);
+          }
+
+          this.refreshHints();
+          this.updateHelperHighlights();
+
+          sound.playBloomReveal(budObj.num);
+          this.particles.spawnBloomBurst(budObj.x, budObj.y, FLOWER_PALETTE[budObj.num - 1]);
+        } else {
+          sound.playBloomReveal(budObj.num);
+          this.particles.spawnBloomBurst(budObj.x, budObj.y, FLOWER_PALETTE[budObj.num - 1]);
+        }
+
+        const targetX = budObj.x;
+        const targetY = 452;
+
+        this.pony.trotTo(targetX, targetY, () => {
+          const nextUnrevealed = this.getNextSequentialBud();
+          if (nextUnrevealed && nextUnrevealed.num !== budObj.num) {
+            const lookDir = nextUnrevealed.x >= budObj.x ? 1 : -1;
+            this.pony.facing = lookDir;
+            this.pony.flipGroup.setAttribute('transform', `scale(${lookDir}, 1)`);
+          }
+
+          const moods = ['happy', 'excited', 'curious'];
+          this.pony.setEmotion(moods[budObj.num % moods.length], 2800);
+          this.particles.spawnPonyHearts(this.pony.x, this.pony.y - 75);
+
+          const allDone = this.roundData.buds.every((b) => b.revealed);
+          if (allDone && !this.roundData.completed) {
+            this.roundData.completed = true;
+            setTimeout(() => this.triggerRoundComplete(), 250);
+          }
+        });
+      }
+
+      refreshHints() {
+        this.budsLayer.querySelectorAll('.next-hint-indicator').forEach((el) => el.remove());
+        this.budsLayer.querySelectorAll('.next-bud-halo').forEach((el) => el.setAttribute('opacity', '0'));
+
+        const nextBud = this.getNextSequentialBud();
+        if (nextBud && nextBud.element) {
+          const halo = nextBud.element.querySelector('.next-bud-halo');
+          if (halo) halo.setAttribute('opacity', '0.88');
+
+          const hintY = Math.round(-nextBud.r * 1.28);
+          const ns = 'http://www.w3.org/2000/svg';
+          const hintG = document.createElementNS(ns, 'g');
+          hintG.setAttribute('class', 'next-hint-indicator');
+          hintG.setAttribute('data-base-y', String(hintY));
+          hintG.setAttribute('transform', `translate(0, ${hintY})`);
+          hintG.innerHTML = `
+            <circle cx="0" cy="0" r="24" fill="#fff08a" fill-opacity="0.48" filter="url(#glow-gold)" />
+            <ellipse cx="-10" cy="-2" rx="11" ry="8.5" fill="#ffe066" stroke="#8a5210" stroke-width="1.8" transform="rotate(-18 -10 -2)" />
+            <ellipse cx="10" cy="-2" rx="11" ry="8.5" fill="#ffe066" stroke="#8a5210" stroke-width="1.8" transform="rotate(18 10 -2)" />
+            <ellipse cx="-7" cy="6" rx="7.5" ry="6" fill="#ff9ebb" stroke="#8a2c4a" stroke-width="1.4" />
+            <ellipse cx="7" cy="6" rx="7.5" ry="6" fill="#ff9ebb" stroke="#8a2c4a" stroke-width="1.4" />
+            <rect x="-2.2" y="-8.5" width="4.4" height="18" rx="2.2" fill="#592e14" />
+          `;
+          const hitTarget = nextBud.element.querySelector('.hit-target');
+          nextBud.element.insertBefore(hintG, hitTarget);
+        }
+      }
+
+      triggerRoundComplete() {
+        const styleIdx = this.celebrationCounter % 4;
+        this.celebrationCounter++;
+
+        sound.playCelebration(styleIdx);
+        setTimeout(() => sound.playPonyWhinny(), 260);
+        this.pony.setEmotion('celebrating', 3400);
+
+        if (this.nextPulseHalo) this.nextPulseHalo.setAttribute('opacity', '0.92');
+
+        this.particles.spawnCelebration(styleIdx, this.roundData.buds, {
+          x: this.pony.x,
+          y: this.pony.y
+        });
+
+        const ordered = [...this.roundData.buds].sort((a, b) =>
+          this.roundData.dir === 1 ? a.num - b.num : b.num - a.num
+        );
+        ordered.forEach((b, idx) => {
+          setTimeout(() => {
+            if (!b.element) return;
+            const scaler = b.element.querySelector('.flower-scaler');
+            animateInnerScale(scaler, 1.18, 420);
+          }, idx * 115);
+        });
+      }
+
+      bindEvents() {
+        // Petting the Close-Up Pony
+        document.getElementById('pony-interactive-hitbox').addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playPonyWhinny();
+          this.pony.setEmotion('happy', 3000);
+          this.particles.spawnPonyHearts(this.pony.x, this.pony.y - 80);
+        });
+
+        // Toggle 1..10 Garland Helper
+        const btnHelperVisual = document.getElementById('btn-helper-visual');
+        document.getElementById('btn-toggle-helper').addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playClick();
+          animateInnerScale(btnHelperVisual, 0.9, 180);
+          this.helperOpen = !this.helperOpen;
+          this.garlandTargetY = this.helperOpen ? 0 : -220;
+          this.helperActiveRing.setAttribute('opacity', this.helperOpen ? '0.96' : '0');
+          // Hide task emblem while garland is open so nothing ever overlaps
+          this.taskEmblemGroup.style.opacity = this.helperOpen ? '0' : '1';
+        });
+
+        // Direction Filter
+        const btnDirVisual = document.getElementById('btn-dir-visual');
+        const dirIcon = document.getElementById('dir-filter-icon');
+        document.getElementById('btn-filter-dir').addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playClick();
+          animateInnerScale(btnDirVisual, 0.9, 180);
+
+          if (this.dirFilter === 0) {
+            this.dirFilter = 1;
+            dirIcon.innerHTML = `<path d="M-15 0 L13 0 M4 -9 L15 0 L4 9" fill="none" stroke="#a8f5b8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />`;
+          } else if (this.dirFilter === 1) {
+            this.dirFilter = -1;
+            dirIcon.innerHTML = `<path d="M15 0 L-13 0 M-4 -9 L-15 0 L-4 9" fill="none" stroke="#ffb3c6" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />`;
+          } else {
+            this.dirFilter = 0;
+            dirIcon.innerHTML = `
+              <path d="M-14 -5 L10 -5 M5 -10 L12 -5 L5 0" fill="none" stroke="#fff099" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M14 6 L-10 6 M-5 1 L-12 6 L-5 11" fill="none" stroke="#ffb3c6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+            `;
+          }
+          this.generateNewRound(false);
+        });
+
+        // Step Filter
+        const btnStepVisual = document.getElementById('btn-step-visual');
+        const stepText = document.getElementById('step-filter-text');
+        document.getElementById('btn-filter-step').addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playClick();
+          animateInnerScale(btnStepVisual, 0.9, 180);
+
+          this.stepFilter = (this.stepFilter + 1) % 4;
+          stepText.textContent = this.stepFilter === 0 ? '1-3' : String(this.stepFilter);
+          this.generateNewRound(false);
+        });
+
+        // Sound Toggle
+        const btnSoundVisual = document.getElementById('btn-sound-visual');
+        const muteSlash = document.getElementById('sound-mute-slash');
+        const soundWaves = document.getElementById('sound-waves-icon');
+        document.getElementById('btn-toggle-sound').addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          animateInnerScale(btnSoundVisual, 0.9, 180);
+          sound.muted = !sound.muted;
+          muteSlash.setAttribute('opacity', sound.muted ? '1' : '0');
+          soundWaves.setAttribute('opacity', sound.muted ? '0.25' : '1');
+          if (!sound.muted) sound.playClick();
+        });
+
+        // Next Button
+        const btnNextVisual = document.getElementById('btn-next-visual');
+        document.getElementById('btn-next-round').addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          sound.init();
+          sound.playClick();
+          animateInnerScale(btnNextVisual, 0.9, 180);
+          this.generateNewRound(false);
+        });
+
+        window.addEventListener('pointerdown', () => sound.init(), { once: true });
+      }
+
+      startLoop() {
+        const loop = (now) => {
+          this.pony.update(now);
+          this.particles.updateAndDraw(now);
+
+          if (Math.abs(this.garlandTargetY - this.garlandCurrentY) > 0.4) {
+            this.garlandCurrentY += (this.garlandTargetY - this.garlandCurrentY) * 0.14;
+            this.helperGarlandWrapper.setAttribute('transform', `translate(0, ${this.garlandCurrentY.toFixed(1)})`);
+          }
+
+          const hint = this.budsLayer.querySelector('.next-hint-indicator');
+          if (hint) {
+            const baseY = Number(hint.getAttribute('data-base-y')) || -120;
+            const floatY = baseY + Math.sin(now * 0.0048) * 7;
+            const pulse = 1 + Math.sin(now * 0.008) * 0.09;
+            hint.setAttribute('transform', `translate(0, ${floatY.toFixed(1)}) scale(${pulse.toFixed(3)})`);
+          }
+
+          requestAnimationFrame(loop);
+        };
+        requestAnimationFrame(loop);
+      }
+    }
+
+    window.onload = function () {
+      new PonyMeadowCloseUpGame();
+    };
+  </script>
+</body>
+</html>
