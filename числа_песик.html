@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>1–20</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #2b1e14;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  #gameCanvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .controls {
+    position: fixed;
+    top: 18px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 10;
+  }
+  .btn {
+    border: 3px solid rgba(255, 244, 214, 0.85);
+    border-radius: 999px;
+    cursor: pointer;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 800;
+    color: #fff8eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 5px 14px rgba(40, 22, 8, 0.35), inset 0 2px 3px rgba(255, 255, 255, 0.35);
+    transition: transform 0.16s cubic-bezier(.34,1.56,.64,1), filter 0.16s ease, box-shadow 0.16s ease;
+  }
+  .btn:hover {
+    transform: translateY(-2px) scale(1.05);
+    filter: brightness(1.07);
+  }
+  .btn:active {
+    transform: translateY(1px) scale(0.95);
+  }
+  .loc-btn {
+    height: 48px;
+    padding: 0 18px;
+    font-size: 20px;
+    letter-spacing: 0.5px;
+    background: linear-gradient(180deg, #b87a46 0%, #8a5126 100%);
+    opacity: 0.78;
+  }
+  .loc-btn.active {
+    opacity: 1;
+    background: linear-gradient(180deg, #ff9d3b 0%, #e06b14 100%);
+    border-color: #fff3c4;
+    box-shadow: 0 6px 16px rgba(224, 107, 20, 0.45), inset 0 2px 4px rgba(255, 255, 255, 0.5);
+  }
+  .next-btn {
+    width: 52px;
+    height: 52px;
+    background: linear-gradient(180deg, #4ec968 0%, #2b9445 100%);
+    border-color: #e6ffea;
+  }
+  .next-btn svg {
+    width: 26px;
+    height: 26px;
+    fill: none;
+    stroke: #ffffff;
+    stroke-width: 3.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<div class="controls">
+  <button class="btn loc-btn active" id="btnLoc1" aria-label="1-10">1–10</button>
+  <button class="btn loc-btn" id="btnLoc2" aria-label="10-20">10–20</button>
+  <button class="btn next-btn" id="btnNext" aria-label="Next">
+    <svg viewBox="0 0 24 24">
+      <line x1="5" y1="12" x2="19" y2="12"></line>
+      <polyline points="12 5 19 12 12 19"></polyline>
+    </svg>
+  </button>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const btnLoc1 = document.getElementById('btnLoc1');
+  const btnLoc2 = document.getElementById('btnLoc2');
+  const btnNext = document.getElementById('btnNext');
+
+  let W = window.innerWidth;
+  let H = window.innerHeight;
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  // ==================== WEB AUDIO ENGINE ====================
+  const Sound = (() => {
+    let actx = null;
+    function ensure() {
+      if (!actx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) actx = new AudioCtx();
+      }
+      if (actx && actx.state === 'suspended') actx.resume();
+      return actx;
+    }
+
+    function playStep(isGarden) {
+      const c = ensure();
+      if (!c) return;
+      const t = c.currentTime;
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = isGarden ? 'triangle' : 'sine';
+      const base = isGarden ? 90 + Math.random() * 25 : 120 + Math.random() * 35;
+      osc.frequency.setValueAtTime(base, t);
+      osc.frequency.exponentialRampToValueAtTime(42, t + 0.05);
+      gain.gain.setValueAtTime(isGarden ? 0.04 : 0.055, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(t);
+      osc.stop(t + 0.06);
+    }
+
+    function playCrunch() {
+      const c = ensure();
+      if (!c) return;
+      for (let i = 0; i < 3; i++) {
+        const t = c.currentTime + i * 0.11;
+        const bufferSize = Math.floor(c.sampleRate * 0.075);
+        const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let j = 0; j < bufferSize; j++) {
+          data[j] = (Math.random() * 2 - 1) * Math.exp(-j / (bufferSize * 0.35));
+        }
+        const noise = c.createBufferSource();
+        noise.buffer = buffer;
+        const filter = c.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1100 + i * 260 + Math.random() * 250, t);
+        filter.Q.setValueAtTime(2.2, t);
+        const gain = c.createGain();
+        gain.gain.setValueAtTime(0.22, t);
+        gain.gain.exponentialRampToValueAtTime(0.005, t + 0.075);
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(c.destination);
+        noise.start(t);
+      }
+    }
+
+    function playHappyBark() {
+      const c = ensure();
+      if (!c) return;
+      const barks = Math.random() > 0.45 ? 2 : 1;
+      for (let i = 0; i < barks; i++) {
+        const t = c.currentTime + i * 0.14;
+        const osc = c.createOscillator();
+        const gain = c.createGain();
+        osc.type = 'triangle';
+        const f0 = 310 + Math.random() * 65;
+        osc.frequency.setValueAtTime(f0, t);
+        osc.frequency.exponentialRampToValueAtTime(f0 * 1.55, t + 0.045);
+        osc.frequency.exponentialRampToValueAtTime(f0 * 0.8, t + 0.11);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(0.14, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        osc.connect(gain);
+        gain.connect(c.destination);
+        osc.start(t);
+        osc.stop(t + 0.13);
+      }
+    }
+
+    function playChime(variant) {
+      const c = ensure();
+      if (!c) return;
+      const scales = [
+        [523.25, 659.25, 783.99, 1046.5],
+        [587.33, 739.99, 880.0, 1174.66],
+        [440.0, 554.37, 659.25, 880.0],
+        [493.88, 622.25, 739.99, 987.77]
+      ];
+      const notes = scales[variant % scales.length];
+      notes.forEach((freq, idx) => {
+        const t = c.currentTime + idx * 0.065;
+        const osc = c.createOscillator();
+        const gain = c.createGain();
+        osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0.001, t);
+        gain.gain.linearRampToValueAtTime(0.11, t + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+        osc.connect(gain);
+        gain.connect(c.destination);
+        osc.start(t);
+        osc.stop(t + 0.3);
+      });
+    }
+
+    function playSqueak() {
+      const c = ensure();
+      if (!c) return;
+      const t = c.currentTime;
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(980, t);
+      osc.frequency.exponentialRampToValueAtTime(1650, t + 0.07);
+      osc.frequency.exponentialRampToValueAtTime(1120, t + 0.15);
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.linearRampToValueAtTime(0.12, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    }
+
+    function playSplash() {
+      const c = ensure();
+      if (!c) return;
+      const t = c.currentTime;
+      const len = Math.floor(c.sampleRate * 0.22);
+      const buf = c.createBuffer(1, len, c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.4));
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      const flt = c.createBiquadFilter();
+      flt.type = 'bandpass';
+      flt.frequency.setValueAtTime(600, t);
+      flt.frequency.exponentialRampToValueAtTime(1800, t + 0.2);
+      const g = c.createGain();
+      g.gain.setValueAtTime(0.14, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      src.connect(flt);
+      flt.connect(g);
+      g.connect(c.destination);
+      src.start(t);
+    }
+
+    function playPop() {
+      const c = ensure();
+      if (!c) return;
+      const t = c.currentTime;
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(320, t);
+      osc.frequency.exponentialRampToValueAtTime(680, t + 0.08);
+      gain.gain.setValueAtTime(0.09, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      osc.connect(gain);
+      gain.connect(c.destination);
+      osc.start(t);
+      osc.stop(t + 0.11);
+    }
+
+    function playFanfare() {
+      const c = ensure();
+      if (!c) return;
+      const melody = [523.25, 659.25, 783.99, 1046.5, 987.77, 1046.5];
+      const times  = [0, 0.09, 0.18, 0.28, 0.42, 0.54];
+      melody.forEach((f, i) => {
+        const t = c.currentTime + times[i];
+        const osc = c.createOscillator();
+        const g = c.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, t);
+        g.gain.setValueAtTime(0.001, t);
+        g.gain.linearRampToValueAtTime(0.14, t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, t + (i === melody.length - 1 ? 0.55 : 0.2));
+        osc.connect(g);
+        g.connect(c.destination);
+        osc.start(t);
+        osc.stop(t + 0.6);
+      });
+    }
+
+    return { playStep, playCrunch, playHappyBark, playChime, playSqueak, playSplash, playPop, playFanfare };
+  })();
+
+  // ==================== GAME STATE ====================
+  let currentLocation = 1; // 1: Room (1-10), 2: Garden (10-20)
+  let treats = [];
+  let particles = [];
+  let ripples = [];
+  let dustMotes = [];
+  let butterflies = [];
+  let grassBlades = [];
+  let hoveredTreatId = null;
+  let pointer = { x: W / 2, y: H / 2 };
+  let celebrateTimer = 0;
+  let globalTime = 0;
+
+  // Interactive props
+  const roomBall = { x: 0.16, y: 0.78, vx: 0, vy: 0, r: 24, angle: 0 };
+  const waterBowl = { x: 0.13, y: 0.22, r: 34, ripple: 0 };
+
+  // Dog entity (top-down, enlarged)
+  const dog = {
+    x: W * 0.5,
+    y: H * 0.55,
+    angle: -Math.PI / 4,
+    targetAngle: -Math.PI / 4,
+    speed: 355,
+    state: 'idle', // 'idle', 'walk', 'eat', 'happy'
+    targetX: null,
+    targetY: null,
+    targetTreat: null,
+    walkPhase: 0,
+    lastStepPhase: 0,
+    tailPhase: 0,
+    eatTimer: 0,
+    happyTimer: 0,
+    happyType: 0,
+    happySpinStart: 0,
+    hopOffset: 0,
+    headTurn: 0,
+    scale: 1.85
+  };
+
+  // ==================== RESIZE & INIT ====================
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    // Significantly larger dog scale proportional to viewport
+    dog.scale = Math.max(1.45, Math.min(2.15, Math.min(W, H) / 410));
+    dog.x = Math.max(95, Math.min(W - 95, dog.x));
+    dog.y = Math.max(95, Math.min(H - 95, dog.y));
+
+    initAmbient();
+    reclampTreats();
+  }
+
+  function initAmbient() {
+    dustMotes = [];
+    for (let i = 0; i < 28; i++) {
+      dustMotes.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: 1.5 + Math.random() * 2.5,
+        vx: 6 + Math.random() * 10,
+        vy: 3 + Math.random() * 6,
+        alpha: 0.15 + Math.random() * 0.35,
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+    butterflies = [];
+    const bfColors = [
+      ['#ff85a2', '#ffd166'],
+      ['#5ec8ff', '#fff3b0'],
+      ['#ffb703', '#fb8500'],
+      ['#c77dff', '#ffcad4']
+    ];
+    for (let i = 0; i < 4; i++) {
+      butterflies.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        angle: Math.random() * Math.PI * 2,
+        speed: 48 + Math.random() * 35,
+        wingPhase: Math.random() * Math.PI * 2,
+        turnTimer: Math.random() * 2,
+        colors: bfColors[i % bfColors.length],
+        size: 10 + Math.random() * 5
+      });
+    }
+    grassBlades = [];
+    for (let i = 0; i < 110; i++) {
+      grassBlades.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        h: 7 + Math.random() * 9,
+        lean: (Math.random() - 0.5) * 0.6,
+        shade: Math.random() > 0.5 ? '#589e40' : '#4a8c34',
+        phase: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function reclampTreats() {
+    const padX = Math.max(85, W * 0.08);
+    const padTop = Math.max(95, H * 0.13);
+    const padBot = Math.max(85, H * 0.11);
+    for (const tr of treats) {
+      tr.x = Math.max(padX, Math.min(W - padX, tr.x));
+      tr.y = Math.max(padTop, Math.min(H - padBot, tr.y));
+    }
+  }
+
+  // ==================== TREAT GENERATION ====================
+  const TREAT_TYPES = ['bone', 'cookie', 'sausage', 'cheese', 'steak', 'pawcake', 'pretzel', 'cupcake'];
+
+  function generateTreats() {
+    treats = [];
+    celebrateTimer = 0;
+    dog.targetTreat = null;
+    if (dog.state === 'eat') dog.state = 'idle';
+
+    const minNum = currentLocation === 1 ? 1 : 10;
+    const maxNum = currentLocation === 1 ? 10 : 20;
+    const numbers = [];
+    for (let n = minNum; n <= maxNum; n++) numbers.push(n);
+
+    // Shuffle numbers
+    for (let i = numbers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [numbers[i], numbers[j]] = [numbers[j], numbers[i]];
+    }
+
+    const baseR = Math.max(36, Math.min(48, Math.min(W, H) * 0.056));
+    const padX = Math.max(baseR + 48, W * 0.085);
+    const padTop = Math.max(baseR + 68, H * 0.14);
+    const padBot = Math.max(baseR + 44, H * 0.1);
+    const minDist = baseR * 2.55;
+    const dogClearance = baseR + 55 * dog.scale;
+
+    numbers.forEach((num, idx) => {
+      let x = W * 0.5;
+      let y = H * 0.5;
+      let placed = false;
+
+      for (let attempt = 0; attempt < 260; attempt++) {
+        const cx = padX + Math.random() * (W - padX * 2);
+        const cy = padTop + Math.random() * (H - padTop - padBot);
+
+        // Avoid top-right controls area
+        if (cx > W - 280 && cy < 110) continue;
+        // Avoid spawning right under the enlarged dog
+        if (Math.hypot(cx - dog.x, cy - dog.y) < dogClearance) continue;
+
+        let ok = true;
+        for (const other of treats) {
+          if (Math.hypot(cx - other.x, cy - other.y) < minDist) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) {
+          x = cx;
+          y = cy;
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        const cols = Math.ceil(Math.sqrt(numbers.length * (W / H)));
+        const rows = Math.ceil(numbers.length / cols);
+        const col = idx % cols;
+        const row = Math.floor(idx / cols);
+        x = padX + ((col + 0.5) / cols) * (W - padX * 2);
+        y = padTop + ((row + 0.5) / rows) * (H - padTop - padBot);
+      }
+
+      const type = TREAT_TYPES[(idx + Math.floor(Math.random() * TREAT_TYPES.length)) % TREAT_TYPES.length];
+      treats.push({
+        id: idx + '_' + Math.random(),
+        num,
+        type,
+        x,
+        y,
+        r: baseR,
+        rot: (Math.random() - 0.5) * 0.42,
+        spawnScale: 0,
+        spawnDelay: idx * 0.045,
+        eaten: false,
+        eatProgress: 0,
+        bobPhase: Math.random() * Math.PI * 2,
+        hoverAmt: 0
+      });
+    });
+
+    Sound.playPop();
+  }
+
+  // ==================== PARTICLES & FEEDBACK ====================
+  function spawnBurst(x, y, type) {
+    const palettes = {
+      crumbs: ['#f3c677', '#d99343', '#fff0c2', '#b56c2a'],
+      hearts: ['#ff5c8a', '#ff85a1', '#ff2e63', '#ffb3c6'],
+      stars:  ['#ffd166', '#ff9f1c', '#fff3b0', '#56cfe1'],
+      water:  ['#72efdd', '#48bfe3', '#caf0f8', '#ffffff'],
+      confetti: ['#ff595e', '#ffca3a', '#8ac926', '#1982c4', '#ff924c', '#c77dff']
+    };
+    const colors = palettes[type] || palettes.stars;
+    const count = type === 'confetti' ? 55 : (type === 'crumbs' ? 18 : 15);
+
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const spd = (type === 'confetti' ? 120 : 75) + Math.random() * 180;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(a) * spd,
+        vy: Math.sin(a) * spd - (type === 'confetti' ? 40 : 15),
+        size: (type === 'crumbs' ? 4.5 : 8) + Math.random() * 7.5,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        shape: type === 'hearts' ? 'heart' : (type === 'stars' ? 'star' : (type === 'confetti' ? 'rect' : 'circle')),
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 8,
+        life: 0,
+        maxLife: 0.65 + Math.random() * 0.55
+      });
+    }
+  }
+
+  function addRipple(x, y, color) {
+    ripples.push({ x, y, r: 10, maxR: 58, alpha: 0.78, color });
+  }
+
+  // ==================== INPUT HANDLING ====================
+  function getPointerPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return {
+      x: src.clientX - rect.left,
+      y: src.clientY - rect.top
+    };
+  }
+
+  function handlePress(e) {
+    const pos = getPointerPos(e);
+    pointer.x = pos.x;
+    pointer.y = pos.y;
+
+    // 1. Check treats (topmost first)
+    let clickedTreat = null;
+    for (let i = treats.length - 1; i >= 0; i--) {
+      const tr = treats[i];
+      if (tr.eaten) continue;
+      if (Math.hypot(pos.x - tr.x, pos.y - tr.y) <= tr.r * 1.18) {
+        clickedTreat = tr;
+        break;
+      }
+    }
+
+    if (clickedTreat) {
+      dog.targetTreat = clickedTreat;
+      dog.targetX = clickedTreat.x;
+      dog.targetY = clickedTreat.y;
+      dog.state = 'walk';
+      addRipple(clickedTreat.x, clickedTreat.y, '#ffe066');
+      return;
+    }
+
+    // 2. Check interactive room ball (Location 1)
+    if (currentLocation === 1) {
+      const bx = roomBall.x * W;
+      const by = roomBall.y * H;
+      if (Math.hypot(pos.x - bx, pos.y - by) <= roomBall.r + 16) {
+        const ang = Math.atan2(by - dog.y, bx - dog.x) + (Math.random() - 0.5) * 0.9;
+        roomBall.vx = Math.cos(ang) * 340;
+        roomBall.vy = Math.sin(ang) * 340;
+        Sound.playSqueak();
+        spawnBurst(bx, by, 'stars');
+        return;
+      }
+    }
+
+    // 3. Check interactive water bowl (Location 2)
+    if (currentLocation === 2) {
+      const wx = waterBowl.x * W;
+      const wy = waterBowl.y * H;
+      if (Math.hypot(pos.x - wx, pos.y - wy) <= waterBowl.r + 16) {
+        waterBowl.ripple = 1;
+        Sound.playSplash();
+        spawnBurst(wx, wy, 'water');
+        return;
+      }
+    }
+
+    // 4. Walk to clicked spot on the floor
+    dog.targetTreat = null;
+    dog.targetX = Math.max(85, Math.min(W - 85, pos.x));
+    dog.targetY = Math.max(85, Math.min(H - 85, pos.y));
+    dog.state = 'walk';
+    addRipple(pos.x, pos.y, 'rgba(255, 255, 255, 0.75)');
+  }
+
+  canvas.addEventListener('mousedown', handlePress);
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    handlePress(e);
+  }, { passive: false });
+
+  canvas.addEventListener('mousemove', (e) => {
+    const pos = getPointerPos(e);
+    pointer.x = pos.x;
+    pointer.y = pos.y;
+    hoveredTreatId = null;
+    for (let i = treats.length - 1; i >= 0; i--) {
+      const tr = treats[i];
+      if (!tr.eaten && Math.hypot(pos.x - tr.x, pos.y - tr.y) <= tr.r * 1.15) {
+        hoveredTreatId = tr.id;
+        break;
+      }
+    }
+  });
+
+  btnLoc1.addEventListener('click', () => {
+    if (currentLocation === 1) return;
+    currentLocation = 1;
+    btnLoc1.classList.add('active');
+    btnLoc2.classList.remove('active');
+    generateTreats();
+  });
+
+  btnLoc2.addEventListener('click', () => {
+    if (currentLocation === 2) return;
+    currentLocation = 2;
+    btnLoc2.classList.add('active');
+    btnLoc1.classList.remove('active');
+    generateTreats();
+  });
+
+  btnNext.addEventListener('click', () => {
+    generateTreats();
+  });
+
+  // ==================== DRAWING: LOCATION 1 (COZY ROOM) ====================
+  function drawRoomBackground(t) {
+    // Warm honey-oak wooden parquet planks
+    ctx.fillStyle = '#c88d55';
+    ctx.fillRect(0, 0, W, H);
+
+    const plankH = 44;
+    const plankW = 190;
+    for (let row = 0; row * plankH < H + plankH; row++) {
+      const y = row * plankH;
+      const offset = (row % 2) * (plankW * 0.5);
+      for (let col = -1; col * plankW < W + plankW; col++) {
+        const x = col * plankW + offset;
+        const hash = Math.sin(row * 12.9898 + col * 78.233) * 43758.5453;
+        const shade = (hash - Math.floor(hash)) * 18 - 9;
+        ctx.fillStyle = `rgb(${202 + shade}, ${144 + shade * 0.8}, ${88 + shade * 0.6})`;
+        ctx.fillRect(x, y, plankW - 1.5, plankH - 1.5);
+
+        ctx.strokeStyle = 'rgba(110, 62, 22, 0.11)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + 6, y + plankH * 0.35);
+        ctx.bezierCurveTo(x + plankW * 0.35, y + plankH * 0.25, x + plankW * 0.65, y + plankH * 0.45, x + plankW - 8, y + plankH * 0.32);
+        ctx.moveTo(x + 12, y + plankH * 0.72);
+        ctx.bezierCurveTo(x + plankW * 0.4, y + plankH * 0.82, x + plankW * 0.7, y + plankH * 0.62, x + plankW - 10, y + plankH * 0.75);
+        ctx.stroke();
+      }
+    }
+
+    // Warm baseboard border along top edge
+    ctx.fillStyle = '#7d4c27';
+    ctx.fillRect(0, 0, W, 16);
+    ctx.fillStyle = '#9c6336';
+    ctx.fillRect(0, 16, W, 5);
+
+    // Cozy braided patterned oval rug
+    const rugX = W * 0.5;
+    const rugY = H * 0.53;
+    const rugRX = Math.min(W * 0.37, 470);
+    const rugRY = Math.min(H * 0.34, 280);
+
+    ctx.save();
+    ctx.translate(rugX, rugY);
+    ctx.fillStyle = 'rgba(55, 28, 10, 0.22)';
+    ctx.beginPath();
+    ctx.ellipse(6, 8, rugRX + 6, rugRY + 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = '#f2dec0';
+    ctx.lineWidth = 3;
+    for (let a = 0; a < Math.PI * 2; a += 0.12) {
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * rugRX, Math.sin(a) * rugRY);
+      ctx.lineTo(Math.cos(a) * (rugRX + 12), Math.sin(a) * (rugRY + 12));
+      ctx.stroke();
+    }
+
+    const rugRings = [
+      { s: 1.00, c: '#d96b43' },
+      { s: 0.90, c: '#f2c97d' },
+      { s: 0.78, c: '#4d908e' },
+      { s: 0.66, c: '#f4a261' },
+      { s: 0.52, c: '#e76f51' },
+      { s: 0.36, c: '#e9c46a' },
+      { s: 0.20, c: '#5aa09d' }
+    ];
+    rugRings.forEach((ring, idx) => {
+      ctx.fillStyle = ring.c;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rugRX * ring.s, rugRY * ring.s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (idx > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    });
+    ctx.restore();
+
+    // Plush dog bed in top-left corner (proportionally enlarged)
+    const bedX = Math.max(115, W * 0.095);
+    const bedY = Math.max(112, H * 0.16);
+    ctx.save();
+    ctx.translate(bedX, bedY);
+    ctx.rotate(-0.18);
+    ctx.fillStyle = 'rgba(50, 25, 8, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(6, 9, 98, 72, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3d7ea6';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 95, 70, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2a5d7c';
+    ctx.lineWidth = 4.5;
+    ctx.stroke();
+    ctx.fillStyle = '#f6d699';
+    ctx.beginPath();
+    ctx.ellipse(0, 2, 70, 48, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(209, 148, 75, 0.45)';
+    ctx.beginPath();
+    ctx.arc(0, 8, 12, 0, Math.PI * 2);
+    ctx.arc(-13, -7, 5.5, 0, Math.PI * 2);
+    ctx.arc(-4, -12, 5.5, 0, Math.PI * 2);
+    ctx.arc(6, -12, 5.5, 0, Math.PI * 2);
+    ctx.arc(14, -6, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Potted indoor plants
+    drawPottedPlant(W - 64, H - 64, 48, t);
+    drawPottedPlant(58, H - 62, 40, t + 1.5);
+
+    // Interactive rolling toy ball
+    const bx = roomBall.x * W;
+    const by = roomBall.y * H;
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.fillStyle = 'rgba(40, 20, 5, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(4, 6, roomBall.r, roomBall.r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.rotate(roomBall.angle);
+    const ballGrad = ctx.createRadialGradient(-6, -6, 3, 0, 0, roomBall.r);
+    ballGrad.addColorStop(0, '#ff758f');
+    ballGrad.addColorStop(1, '#c9184a');
+    ctx.fillStyle = ballGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, roomBall.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(0, 0, roomBall.r - 3, -0.6, 0.6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, roomBall.r - 3, Math.PI - 0.6, Math.PI + 0.6);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(-7, -7, 6, 4, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Warm sunbeams
+    ctx.save();
+    const beamGrad = ctx.createLinearGradient(0, 0, W * 0.65, H * 0.75);
+    beamGrad.addColorStop(0, 'rgba(255, 245, 195, 0.24)');
+    beamGrad.addColorStop(0.55, 'rgba(255, 240, 180, 0.08)');
+    beamGrad.addColorStop(1, 'rgba(255, 240, 180, 0)');
+    ctx.fillStyle = beamGrad;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.12, 0);
+    ctx.lineTo(W * 0.42, 0);
+    ctx.lineTo(W * 0.82, H);
+    ctx.lineTo(W * 0.36, H);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Floating sunlit dust motes
+    for (const m of dustMotes) {
+      const a = m.alpha * (0.6 + 0.4 * Math.sin(t * 1.8 + m.phase));
+      ctx.fillStyle = `rgba(255, 248, 210, ${a})`;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawPottedPlant(x, y, size, t) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(40, 20, 5, 0.24)';
+    ctx.beginPath();
+    ctx.arc(5, 6, size * 0.78, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#c85a32';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.56, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#4e342e';
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 0.44, 0, Math.PI * 2);
+    ctx.fill();
+
+    const leafCount = 7;
+    for (let i = 0; i < leafCount; i++) {
+      const baseA = (i / leafCount) * Math.PI * 2;
+      const sway = Math.sin(t * 1.6 + i * 1.1) * 0.07;
+      ctx.save();
+      ctx.rotate(baseA + sway);
+      ctx.fillStyle = i % 2 === 0 ? '#3a8f4c' : '#52b05c';
+      ctx.beginPath();
+      ctx.ellipse(size * 0.58, 0, size * 0.54, size * 0.24, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#7ad17b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(size * 0.12, 0);
+      ctx.lineTo(size * 0.95, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // ==================== DRAWING: LOCATION 2 (SUNNY GARDEN) ====================
+  function drawGardenBackground(t) {
+    const grassGrad = ctx.createRadialGradient(W * 0.5, H * 0.45, 80, W * 0.5, H * 0.5, Math.max(W, H) * 0.78);
+    grassGrad.addColorStop(0, '#7cc957');
+    grassGrad.addColorStop(0.65, '#63b344');
+    grassGrad.addColorStop(1, '#4c9433');
+    ctx.fillStyle = grassGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = 'rgba(255, 255, 220, 0.06)';
+    for (let x = 0; x < W; x += 140) {
+      ctx.fillRect(x, 0, 70, H);
+    }
+
+    ctx.fillStyle = '#9c6644';
+    ctx.fillRect(0, 0, W, 22);
+    for (let x = 0; x < W; x += 48) {
+      ctx.fillStyle = '#b07d56';
+      ctx.fillRect(x + 2, 0, 42, 20);
+      ctx.fillStyle = '#7f4f24';
+      ctx.beginPath();
+      ctx.arc(x + 23, 10, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const stones = [
+      { x: 0.22, y: 0.85, rx: 52, ry: 34, r: -0.2 },
+      { x: 0.34, y: 0.70, rx: 56, ry: 36, r: 0.15 },
+      { x: 0.47, y: 0.56, rx: 58, ry: 38, r: -0.1 },
+      { x: 0.60, y: 0.44, rx: 54, ry: 35, r: 0.22 },
+      { x: 0.74, y: 0.32, rx: 50, ry: 34, r: -0.18 }
+    ];
+    for (const s of stones) {
+      ctx.save();
+      ctx.translate(s.x * W, s.y * H);
+      ctx.rotate(s.r);
+      ctx.fillStyle = 'rgba(38, 74, 24, 0.22)';
+      ctx.beginPath();
+      ctx.ellipse(4, 5, s.rx, s.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#d9cfc1';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s.rx, s.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e8e0d5';
+      ctx.beginPath();
+      ctx.ellipse(-4, -3, s.rx * 0.82, s.ry * 0.78, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const px = W * 0.76;
+    const py = H * 0.74;
+    const pw = Math.min(250, W * 0.22);
+    const ph = Math.min(180, H * 0.24);
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(-0.14);
+    ctx.fillStyle = 'rgba(30, 65, 20, 0.25)';
+    ctx.fillRect(-pw / 2 + 6, -ph / 2 + 8, pw, ph);
+    ctx.fillStyle = '#fff5e4';
+    ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
+    const cell = 26;
+    for (let cx = -pw / 2; cx < pw / 2; cx += cell) {
+      for (let cy = -ph / 2; cy < ph / 2; cy += cell) {
+        const ix = Math.floor((cx + pw / 2) / cell);
+        const iy = Math.floor((cy + ph / 2) / cell);
+        const w = Math.min(cell, pw / 2 - cx);
+        const h = Math.min(cell, ph / 2 - cy);
+        if ((ix + iy) % 2 === 0) {
+          ctx.fillStyle = 'rgba(230, 72, 72, 0.78)';
+          ctx.fillRect(cx, cy, w, h);
+        } else if (ix % 2 === 0) {
+          ctx.fillStyle = 'rgba(230, 72, 72, 0.26)';
+          ctx.fillRect(cx, cy, w, h);
+        }
+      }
+    }
+    ctx.strokeStyle = '#d64545';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(-pw / 2, -ph / 2, pw, ph);
+    ctx.restore();
+
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    for (const g of grassBlades) {
+      const sway = Math.sin(t * 2.1 + g.phase) * 2.5;
+      ctx.strokeStyle = g.shade;
+      ctx.beginPath();
+      ctx.moveTo(g.x, g.y);
+      ctx.quadraticCurveTo(g.x + g.lean * 6 + sway * 0.5, g.y - g.h * 0.5, g.x + g.lean * 10 + sway, g.y - g.h);
+      ctx.stroke();
+    }
+
+    drawFlowerBush(52, H - 52, 54, t, '#ff758f');
+    drawFlowerBush(W - 44, H * 0.22, 42, t + 1.2, '#ffd166');
+    drawFlowerBush(W - 50, H - 48, 48, t + 2.4, '#c77dff');
+
+    const wx = waterBowl.x * W;
+    const wy = waterBowl.y * H;
+    ctx.save();
+    ctx.translate(wx, wy);
+    ctx.fillStyle = 'rgba(25, 55, 18, 0.26)';
+    ctx.beginPath();
+    ctx.arc(4, 6, waterBowl.r + 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e76f51';
+    ctx.beginPath();
+    ctx.arc(0, 0, waterBowl.r + 3, 0, Math.PI * 2);
+    ctx.fill();
+    const wGrad = ctx.createRadialGradient(-6, -6, 3, 0, 0, waterBowl.r - 4);
+    wGrad.addColorStop(0, '#90e0ef');
+    wGrad.addColorStop(1, '#0096c7');
+    ctx.fillStyle = wGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, waterBowl.r - 4, 0, Math.PI * 2);
+    ctx.fill();
+    const shimmer = 0.5 + 0.5 * Math.sin(t * 3.5);
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.35 + shimmer * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(-4, -3, 9 + shimmer * 3, 0.2, 1.8);
+    ctx.stroke();
+    if (waterBowl.ripple > 0) {
+      ctx.strokeStyle = `rgba(255, 255, 255, ${waterBowl.ripple})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, (1 - waterBowl.ripple) * (waterBowl.r - 5), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawFlowerBush(x, y, size, t, flowerColor) {
+    ctx.save();
+    ctx.translate(x, y);
+    const sway = Math.sin(t * 1.5 + x * 0.01) * 2;
+    ctx.fillStyle = 'rgba(25, 55, 15, 0.22)';
+    ctx.beginPath();
+    ctx.arc(5, 6, size, 0, Math.PI * 2);
+    ctx.fill();
+
+    const puffs = [
+      { dx: -size * 0.35, dy: -size * 0.2, r: size * 0.58, c: '#3d8b37' },
+      { dx: size * 0.3, dy: -size * 0.25, r: size * 0.52, c: '#4ca644' },
+      { dx: 0, dy: size * 0.22, r: size * 0.6, c: '#357a30' },
+      { dx: 0, dy: 0, r: size * 0.55, c: '#56b84d' }
+    ];
+    for (const p of puffs) {
+      ctx.fillStyle = p.c;
+      ctx.beginPath();
+      ctx.arc(p.dx + sway * 0.4, p.dy, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const flowers = [
+      { dx: -size * 0.3, dy: -size * 0.15 },
+      { dx: size * 0.25, dy: -size * 0.2 },
+      { dx: 4, dy: size * 0.25 },
+      { dx: -size * 0.1, dy: -size * 0.42 }
+    ];
+    for (const f of flowers) {
+      ctx.save();
+      ctx.translate(f.dx + sway, f.dy);
+      ctx.fillStyle = flowerColor;
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * Math.PI * 2 + t * 0.2;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * 5.5, Math.sin(a) * 5.5, 4.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#ffe066';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawButterflies() {
+    if (currentLocation !== 2) return;
+    for (const b of butterflies) {
+      const flap = Math.abs(Math.sin(b.wingPhase));
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.angle + Math.PI / 2);
+
+      ctx.fillStyle = 'rgba(20, 45, 10, 0.15)';
+      ctx.beginPath();
+      ctx.ellipse(8, 12, b.size * 0.8 * flap + 2, b.size * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      for (const side of [-1, 1]) {
+        ctx.save();
+        ctx.scale(side * (0.25 + 0.75 * flap), 1);
+        ctx.fillStyle = b.colors[0];
+        ctx.beginPath();
+        ctx.ellipse(b.size * 0.55, -b.size * 0.25, b.size * 0.65, b.size * 0.5, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = b.colors[1];
+        ctx.beginPath();
+        ctx.ellipse(b.size * 0.45, b.size * 0.35, b.size * 0.45, b.size * 0.38, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.fillStyle = '#3b2820';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 2.2, b.size * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ==================== DRAWING: TREATS & LARGE NUMBERS ====================
+  function drawTreat(tr, t) {
+    if (tr.eaten) return;
+    const sc = tr.spawnScale * (1 - tr.eatProgress * 0.85) * (1 + tr.hoverAmt * 0.12);
+    if (sc <= 0.02) return;
+
+    const bob = Math.sin(t * 2.4 + tr.bobPhase) * 2.2;
+    const r = tr.r;
+
+    ctx.save();
+    ctx.translate(tr.x, tr.y + bob);
+    ctx.scale(sc, sc);
+
+    if (tr.hoverAmt > 0.02) {
+      ctx.fillStyle = `rgba(255, 240, 140, ${tr.hoverAmt * 0.45})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.24, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = 'rgba(40, 22, 8, 0.26)';
+    ctx.beginPath();
+    ctx.ellipse(4, 8, r * 0.96, r * 0.84, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.rotate(tr.rot);
+    drawTreatShape(tr.type, r);
+    ctx.restore();
+
+    const fontSize = Math.round(r * (tr.num >= 10 ? 0.96 : 1.12));
+    ctx.font = `900 ${fontSize}px Arial, Helvetica, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(6, r * 0.18);
+    ctx.strokeStyle = '#3b1d0a';
+    ctx.strokeText(String(tr.num), 0, 2);
+
+    ctx.fillStyle = '#fffef7';
+    ctx.fillText(String(tr.num), 0, 2);
+
+    ctx.restore();
+  }
+
+  function drawTreatShape(type, r) {
+    if (type === 'bone') {
+      ctx.fillStyle = '#f2c078';
+      ctx.strokeStyle = '#b5742c';
+      ctx.lineWidth = 3.5;
+      const w = r * 0.82;
+      const h = r * 0.44;
+      const kr = r * 0.34;
+      ctx.beginPath();
+      ctx.arc(-w * 0.72, -h * 0.65, kr, 0, Math.PI * 2);
+      ctx.arc(-w * 0.72,  h * 0.65, kr, 0, Math.PI * 2);
+      ctx.arc( w * 0.72, -h * 0.65, kr, 0, Math.PI * 2);
+      ctx.arc( w * 0.72,  h * 0.65, kr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.roundRect(-w * 0.78, -h, w * 1.56, h * 2, 12);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fae0ab';
+      ctx.beginPath();
+      ctx.roundRect(-w * 0.62, -h * 0.65, w * 1.24, h * 1.3, 9);
+      ctx.fill();
+    } else if (type === 'cookie') {
+      ctx.fillStyle = '#e09f53';
+      ctx.strokeStyle = '#995c1e';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      const bumps = 12;
+      for (let i = 0; i <= bumps * 4; i++) {
+        const a = (i / (bumps * 4)) * Math.PI * 2;
+        const rad = r * (0.94 + 0.06 * Math.sin(a * bumps));
+        const px = Math.cos(a) * rad;
+        const py = Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#6b3a19';
+      for (let i = 0; i < 6; i++) {
+        const a = i * 1.05 + 0.3;
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * r * 0.65, Math.sin(a) * r * 0.65, r * 0.1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (type === 'sausage') {
+      ctx.fillStyle = '#d9534f';
+      ctx.strokeStyle = '#8c2824';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.roundRect(-r * 1.05, -r * 0.56, r * 2.1, r * 1.12, r * 0.56);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(95, 22, 18, 0.45)';
+      ctx.lineWidth = 4;
+      for (const gx of [-r * 0.52, r * 0.52]) {
+        ctx.beginPath();
+        ctx.moveTo(gx - 6, -r * 0.42);
+        ctx.lineTo(gx + 6, r * 0.42);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255, 215, 200, 0.35)';
+      ctx.beginPath();
+      ctx.ellipse(0, -r * 0.28, r * 0.72, r * 0.14, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (type === 'cheese') {
+      ctx.fillStyle = '#ffca3a';
+      ctx.strokeStyle = '#c48610';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.98, r * 0.58);
+      ctx.lineTo(r * 0.98, r * 0.58);
+      ctx.lineTo(r * 0.72, -r * 0.68);
+      ctx.quadraticCurveTo(-r * 0.25, -r * 0.82, -r * 0.98, r * 0.58);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#e09f1f';
+      ctx.beginPath();
+      ctx.arc(-r * 0.48, r * 0.28, r * 0.14, 0, Math.PI * 2);
+      ctx.arc(r * 0.52, -r * 0.22, r * 0.13, 0, Math.PI * 2);
+      ctx.arc(r * 0.42, r * 0.34, r * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (type === 'steak') {
+      ctx.fillStyle = '#c84b31';
+      ctx.strokeStyle = '#7a2514';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 1.02, r * 0.82, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#f3d5b5';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 0.82, r * 0.62, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (type === 'pawcake') {
+      ctx.fillStyle = '#ff8fab';
+      ctx.strokeStyle = '#c94a6a';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.92, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      const spColors = ['#ffe066', '#72efdd', '#ffffff', '#ff9f1c'];
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        ctx.save();
+        ctx.translate(Math.cos(a) * r * 0.7, Math.sin(a) * r * 0.7);
+        ctx.rotate(a + 0.7);
+        ctx.fillStyle = spColors[i % spColors.length];
+        ctx.fillRect(-5, -2.2, 10, 4.4);
+        ctx.restore();
+      }
+    } else if (type === 'pretzel') {
+      ctx.fillStyle = '#d4843e';
+      ctx.strokeStyle = '#874916';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(-r * 0.36, -r * 0.22, r * 0.56, 0, Math.PI * 2);
+      ctx.arc(r * 0.36, -r * 0.22, r * 0.56, 0, Math.PI * 2);
+      ctx.arc(0, r * 0.28, r * 0.62, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ebb06b';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 0.72, r * 0.62, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#6ec1e4';
+      ctx.strokeStyle = '#367c9c';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.96, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fff0c2';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.76, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#f2c078';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.56, 0.3, Math.PI * 1.85);
+      ctx.stroke();
+    }
+  }
+
+  // ==================== DRAWING: REALISTIC TOP-DOWN DOG ====================
+  function drawDog(t) {
+    ctx.save();
+    ctx.translate(dog.x, dog.y - dog.hopOffset);
+    ctx.rotate(dog.angle);
+    ctx.scale(dog.scale, dog.scale);
+
+    const isWalking = dog.state === 'walk';
+    const stride = isWalking ? Math.sin(dog.walkPhase) : 0;
+    const breathe = 1 + Math.sin(t * 3.2) * 0.022;
+    const bodySway = isWalking ? Math.sin(dog.walkPhase) * 0.06 : 0;
+
+    // Soft ground shadow
+    const shScale = Math.max(0.72, 1 - dog.hopOffset * 0.006);
+    ctx.fillStyle = 'rgba(35, 18, 6, 0.26)';
+    ctx.beginPath();
+    ctx.ellipse(-4, 7 + dog.hopOffset * 0.35, 44 * shScale, 25 * shScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ---- 1. FOUR ANIMATED PAWS ----
+    const pawPositions = [
+      { x: 18 + stride * 12,  y: -17 },
+      { x: 18 - stride * 12,  y:  17 },
+      { x: -20 - stride * 11, y: -16 },
+      { x: -20 + stride * 11, y:  16 }
+    ];
+    for (const p of pawPositions) {
+      ctx.fillStyle = '#fff5e4';
+      ctx.strokeStyle = '#9c622b';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 10, 6.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(130, 80, 35, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(p.x + 5, p.y - 2);
+      ctx.lineTo(p.x + 9, p.y - 2);
+      ctx.moveTo(p.x + 5, p.y + 2);
+      ctx.lineTo(p.x + 9, p.y + 2);
+      ctx.stroke();
+    }
+
+    // ---- 2. FLUFFY WAGGING TAIL ----
+    const wagAmp = dog.state === 'happy' ? 0.72 : (dog.state === 'eat' ? 0.58 : (isWalking ? 0.42 : 0.24));
+    const tailAngle = Math.sin(dog.tailPhase) * wagAmp;
+    ctx.save();
+    ctx.translate(-34, 0);
+    ctx.rotate(tailAngle);
+    ctx.fillStyle = '#d98a3c';
+    ctx.strokeStyle = '#8c4f19';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(4, -5);
+    ctx.quadraticCurveTo(-16, -9, -27, -2);
+    ctx.quadraticCurveTo(-30, 0, -27, 3);
+    ctx.quadraticCurveTo(-16, 9, 4, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#fff3db';
+    ctx.beginPath();
+    ctx.ellipse(-22, 0.5, 6.5, 3.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // ---- 3. TORSO WITH WARM FUR GRADIENT & SPOTS ----
+    ctx.save();
+    ctx.rotate(bodySway);
+    ctx.scale(breathe, 1 / Math.sqrt(breathe));
+
+    const bodyGrad = ctx.createRadialGradient(4, -4, 6, -4, 0, 42);
+    bodyGrad.addColorStop(0, '#f2b166');
+    bodyGrad.addColorStop(0.65, '#db8b3b');
+    bodyGrad.addColorStop(1, '#b86b24');
+    ctx.fillStyle = bodyGrad;
+    ctx.strokeStyle = '#824614';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.ellipse(-4, 0, 34, 21, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#a3581d';
+    ctx.beginPath();
+    ctx.ellipse(-11, 4, 15, 11, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(2, -8, 9, 6, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 240, 210, 0.35)';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-22, 0);
+    ctx.lineTo(14, 0);
+    ctx.stroke();
+
+    // Teal collar with gold tag
+    ctx.strokeStyle = '#2a9d8f';
+    ctx.lineWidth = 6.2;
+    ctx.beginPath();
+    ctx.arc(16, 0, 17, -1.15, 1.15);
+    ctx.stroke();
+    ctx.fillStyle = '#ffd166';
+    ctx.strokeStyle = '#b58318';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(32, 0, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // ---- 4. EXPRESSIVE HEAD, FLOPPY EARS, SNOUT & TONGUE ----
+    const chompOffset = dog.state === 'eat' ? Math.sin(dog.eatTimer * 28) * 3.2 : 0;
+    ctx.save();
+    ctx.translate(25 + chompOffset, 0);
+    ctx.rotate(dog.headTurn);
+
+    const showTongue = isWalking || dog.state === 'happy' || dog.state === 'eat';
+    if (showTongue) {
+      const tLen = dog.state === 'eat' ? 11 + Math.sin(dog.eatTimer * 28) * 5 : 10 + Math.sin(t * 14) * 2.5;
+      ctx.fillStyle = '#ff6b8b';
+      ctx.strokeStyle = '#c43b59';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.ellipse(22 + tLen * 0.4, 3, tLen * 0.55, 4.8, 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#fae1be';
+    ctx.strokeStyle = '#8f521c';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(17, 0, 15, 11, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    const headGrad = ctx.createRadialGradient(2, -3, 3, 0, 0, 22);
+    headGrad.addColorStop(0, '#f5ba73');
+    headGrad.addColorStop(1, '#d48435');
+    ctx.fillStyle = headGrad;
+    ctx.strokeStyle = '#824614';
+    ctx.lineWidth = 2.1;
+    ctx.beginPath();
+    ctx.ellipse(1, 0, 19, 17.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#fff2d9';
+    ctx.beginPath();
+    ctx.ellipse(7, 0, 12, 4.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const earFlap = (isWalking ? Math.sin(dog.walkPhase * 2) * 0.16 : 0) + (dog.state === 'happy' ? Math.sin(t * 20) * 0.25 : 0);
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(-3, side * 14);
+      ctx.rotate(side * (0.35 + earFlap));
+      ctx.fillStyle = '#8f4916';
+      ctx.strokeStyle = '#5c2c0b';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.ellipse(-2, side * 5, 11, 6.5, side * -0.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for (const side of [-1, 1]) {
+      if (dog.state === 'happy' || dog.state === 'eat') {
+        ctx.strokeStyle = '#2b1608';
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(9, side * 7.5, 3.6, side < 0 ? 0.2 : -Math.PI + 0.2, side < 0 ? Math.PI - 0.2 : -0.2, false);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#241206';
+        ctx.beginPath();
+        ctx.arc(9, side * 7.5, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(10.2, side * 7.5 - 1, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = '#241712';
+    ctx.beginPath();
+    ctx.ellipse(29, 0, 5.2, 6.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.beginPath();
+    ctx.ellipse(27.8, -2, 1.8, 1.2, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.restore();
+  }
+
+  // ==================== DRAWING: PARTICLES & RIPPLES ====================
+  function drawEffects() {
+    for (const rp of ripples) {
+      ctx.save();
+      ctx.strokeStyle = rp.color;
+      ctx.globalAlpha = rp.alpha;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    for (const p of particles) {
+      const alpha = Math.max(0, 1 - p.life / p.maxLife);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+
+      if (p.shape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.shape === 'rect') {
+        ctx.fillRect(-p.size * 0.5, -p.size * 0.3, p.size, p.size * 0.6);
+      } else if (p.shape === 'heart') {
+        const s = p.size * 0.55;
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.8);
+        ctx.bezierCurveTo(-s * 1.4, -s * 0.2, -s * 0.8, -s * 1.3, 0, -s * 0.4);
+        ctx.bezierCurveTo(s * 0.8, -s * 1.3, s * 1.4, -s * 0.2, 0, s * 0.8);
+        ctx.fill();
+      } else if (p.shape === 'star') {
+        const spikes = 5;
+        const outer = p.size * 0.65;
+        const inner = p.size * 0.28;
+        ctx.beginPath();
+        for (let i = 0; i < spikes * 2; i++) {
+          const rad = i % 2 === 0 ? outer : inner;
+          const a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+          const px = Math.cos(a) * rad;
+          const py = Math.sin(a) * rad;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // ==================== UPDATE LOOP ====================
+  function shortestAngleDiff(from, to) {
+    let diff = (to - from + Math.PI) % (Math.PI * 2) - Math.PI;
+    if (diff < -Math.PI) diff += Math.PI * 2;
+    return diff;
+  }
+
+  function update(dt) {
+    globalTime += dt;
+
+    for (const m of dustMotes) {
+      m.x += m.vx * dt;
+      m.y += m.vy * dt;
+      if (m.x > W + 10) m.x = -10;
+      if (m.y > H + 10) m.y = -10;
+    }
+
+    if (currentLocation === 2) {
+      for (const b of butterflies) {
+        b.wingPhase += dt * 16;
+        b.turnTimer -= dt;
+        if (b.turnTimer <= 0) {
+          b.angle += (Math.random() - 0.5) * 1.5;
+          b.turnTimer = 0.8 + Math.random() * 1.8;
+        }
+        b.x += Math.cos(b.angle) * b.speed * dt;
+        b.y += Math.sin(b.angle) * b.speed * dt;
+        if (b.x < -30) b.x = W + 25;
+        if (b.x > W + 30) b.x = -25;
+        if (b.y < -30) b.y = H + 25;
+        if (b.y > H + 30) b.y = -25;
+      }
+      if (waterBowl.ripple > 0) {
+        waterBowl.ripple = Math.max(0, waterBowl.ripple - dt * 1.4);
+      }
+    }
+
+    if (currentLocation === 1) {
+      if (Math.hypot(roomBall.vx, roomBall.vy) > 4) {
+        let bx = roomBall.x * W + roomBall.vx * dt;
+        let by = roomBall.y * H + roomBall.vy * dt;
+        if (bx < roomBall.r + 12 || bx > W - roomBall.r - 12) {
+          roomBall.vx *= -0.8;
+          bx = Math.max(roomBall.r + 12, Math.min(W - roomBall.r - 12, bx));
+        }
+        if (by < roomBall.r + 24 || by > H - roomBall.r - 12) {
+          roomBall.vy *= -0.8;
+          by = Math.max(roomBall.r + 24, Math.min(H - roomBall.r - 12, by));
+        }
+        roomBall.x = bx / W;
+        roomBall.y = by / H;
+        roomBall.angle += Math.hypot(roomBall.vx, roomBall.vy) * dt * 0.04;
+        roomBall.vx *= Math.pow(0.25, dt);
+        roomBall.vy *= Math.pow(0.25, dt);
+      }
+    }
+
+    for (const tr of treats) {
+      if (tr.spawnDelay > 0) {
+        tr.spawnDelay -= dt;
+      } else if (tr.spawnScale < 1) {
+        tr.spawnScale = Math.min(1, tr.spawnScale + dt * 4.5);
+      }
+      const targetHover = tr.id === hoveredTreatId ? 1 : 0;
+      tr.hoverAmt += (targetHover - tr.hoverAmt) * Math.min(1, dt * 12);
+    }
+
+    const wagSpeed = dog.state === 'happy' ? 22 : (dog.state === 'eat' ? 18 : (dog.state === 'walk' ? 11 : 5));
+    dog.tailPhase += dt * wagSpeed;
+
+    if (dog.state === 'walk') {
+      const dx = dog.targetX - dog.x;
+      const dy = dog.targetY - dog.y;
+      const dist = Math.hypot(dx, dy);
+      // Calibrated so the enlarged dog's snout lands right over the treat
+      const stopDist = dog.targetTreat ? (dog.targetTreat.r * 0.35 + 46 * dog.scale) : 12;
+
+      if (dist <= stopDist) {
+        if (dog.targetTreat && !dog.targetTreat.eaten) {
+          // Turn directly toward the treat before eating
+          dog.angle = Math.atan2(dy, dx);
+          dog.state = 'eat';
+          dog.eatTimer = 0;
+          Sound.playCrunch();
+          spawnBurst(dog.targetTreat.x, dog.targetTreat.y, 'crumbs');
+        } else {
+          dog.state = 'idle';
+        }
+      } else {
+        const desired = Math.atan2(dy, dx);
+        const diff = shortestAngleDiff(dog.angle, desired);
+        dog.angle += diff * Math.min(1, dt * 9.5);
+        dog.headTurn += (Math.max(-0.35, Math.min(0.35, diff)) - dog.headTurn) * Math.min(1, dt * 10);
+
+        const step = Math.min(dist - stopDist + 2, dog.speed * dt);
+        dog.x += Math.cos(dog.angle) * step;
+        dog.y += Math.sin(dog.angle) * step;
+        dog.walkPhase += dt * 11.5;
+
+        const stepCount = Math.floor(dog.walkPhase / Math.PI);
+        if (stepCount !== dog.lastStepPhase) {
+          dog.lastStepPhase = stepCount;
+          Sound.playStep(currentLocation === 2);
+        }
+      }
+    } else if (dog.state === 'eat') {
+      dog.eatTimer += dt;
+      dog.headTurn = Math.sin(dog.eatTimer * 22) * 0.14;
+      if (dog.targetTreat) {
+        dog.targetTreat.eatProgress = Math.min(1, dog.eatTimer / 0.42);
+      }
+      if (dog.eatTimer >= 0.42) {
+        if (dog.targetTreat) {
+          dog.targetTreat.eaten = true;
+          const fx = dog.targetTreat.x;
+          const fy = dog.targetTreat.y;
+          const numVal = dog.targetTreat.num;
+          dog.targetTreat = null;
+
+          const fbType = numVal % 3;
+          spawnBurst(fx, fy, fbType === 0 ? 'hearts' : (fbType === 1 ? 'stars' : 'confetti'));
+          Sound.playChime(numVal);
+          if (Math.random() > 0.35) Sound.playHappyBark();
+
+          dog.state = 'happy';
+          dog.happyTimer = 0;
+          dog.happyType = numVal % 2;
+          dog.happySpinStart = dog.angle;
+
+          if (treats.every(t => t.eaten)) {
+            celebrateTimer = 2.1;
+            Sound.playFanfare();
+            spawnBurst(W * 0.35, H * 0.45, 'confetti');
+            spawnBurst(W * 0.65, H * 0.45, 'confetti');
+            spawnBurst(W * 0.5, H * 0.35, 'hearts');
+          }
+        } else {
+          dog.state = 'idle';
+        }
+      }
+    } else if (dog.state === 'happy') {
+      dog.happyTimer += dt;
+      const dur = 0.52;
+      const p = Math.min(1, dog.happyTimer / dur);
+      if (dog.happyType === 0) {
+        dog.hopOffset = Math.abs(Math.sin(p * Math.PI * 2)) * 28;
+      } else {
+        dog.angle = dog.happySpinStart + p * Math.PI * 2;
+        dog.hopOffset = Math.sin(p * Math.PI) * 18;
+      }
+      if (dog.happyTimer >= dur) {
+        dog.hopOffset = 0;
+        dog.state = 'idle';
+      }
+    } else {
+      dog.hopOffset *= Math.pow(0.05, dt);
+      const lookAngle = Math.atan2(pointer.y - dog.y, pointer.x - dog.x);
+      const rel = shortestAngleDiff(dog.angle, lookAngle);
+      const clamped = Math.max(-0.42, Math.min(0.42, rel));
+      dog.headTurn += (clamped - dog.headTurn) * Math.min(1, dt * 5);
+    }
+
+    if (celebrateTimer > 0) {
+      celebrateTimer -= dt;
+      if (celebrateTimer <= 0) {
+        generateTreats();
+      }
+    }
+
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const rp = ripples[i];
+      rp.r += dt * 115;
+      rp.alpha -= dt * 1.8;
+      if (rp.alpha <= 0) ripples.splice(i, 1);
+    }
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life += dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= Math.pow(0.22, dt);
+      p.vy *= Math.pow(0.22, dt);
+      p.rot += p.vrot * dt;
+      if (p.life >= p.maxLife) particles.splice(i, 1);
+    }
+  }
+
+  // ==================== MAIN RENDER LOOP ====================
+  let lastTs = performance.now();
+  function frame(ts) {
+    const dt = Math.min(0.05, (ts - lastTs) / 1000);
+    lastTs = ts;
+
+    update(dt);
+
+    ctx.clearRect(0, 0, W, H);
+    if (currentLocation === 1) {
+      drawRoomBackground(globalTime);
+    } else {
+      drawGardenBackground(globalTime);
+    }
+
+    for (const tr of treats) {
+      drawTreat(tr, globalTime);
+    }
+
+    drawDog(globalTime);
+    drawButterflies();
+    drawEffects();
+
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  generateTreats();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
